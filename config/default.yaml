@@ -1,0 +1,8 @@
+agent:
+  max_loops: 15
+  per_tool_timeout_ms: 30000
+  per_loop_timeout_ms: 600000
+
+logging:
+  level: INFO
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
