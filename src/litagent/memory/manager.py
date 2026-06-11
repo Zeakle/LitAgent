@@ -44,7 +44,14 @@ class MemoryManager:
         return await self.episodic.store(episode)
 
     async def recall_episode(self, query: str, top_k: int = 5) -> list[Episode]:
+        """搜索 Episodic Memory。"""
         return await self.episodic.search(query, top_k)
+
+    # -- Recall (跨层) --
+
+    async def recall(self, query: str, top_k: int = 5) -> list[Episode]:
+        """跨层召回。Phase 4 只查 Episodic，Phase 5 合并 Semantic。"""
+        return await self.recall_episode(query, top_k)
 
     # -- Consolidate --
 
@@ -68,8 +75,3 @@ class MemoryManager:
         logger.info(f"Consolidated session '{session_id}' → episode '{eid}'")
         return episode
 
-    # -- Recall --
-
-    async def recall(self, query: str, top_k: int = 5) -> list[Episode]:
-        """跨层召回"""
-        return await self.recall_episode(query, top_k)

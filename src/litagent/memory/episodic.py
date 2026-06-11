@@ -39,7 +39,7 @@ class EpisodicMemory:
         client = AsyncQdrantClient(url=config.qdrant_url)
 
         await EpisodicMemory._ensure_collection(client)
-        logger.info(f"Connected to Qdrant: {config.qdrant_url}")
+        logger.info(f"Connected to Qdrant")
         return EpisodicMemory(client)
 
     @staticmethod

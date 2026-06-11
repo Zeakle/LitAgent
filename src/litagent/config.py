@@ -23,7 +23,6 @@ class MemoryConfig(BaseModel):
     qdrant_url: str = "http://localhost:6333"
     working_ttl_seconds: int = 1800
 
-
 class AppConfig(BaseModel):
     """应用顶层配置"""
     agent: AgentConfig

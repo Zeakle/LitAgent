@@ -31,7 +31,7 @@ class WorkingMemory:
     async def connect(config: MemoryConfig) -> "WorkingMemory":
         redis = Redis.from_url(config.redis_url, decode_responses=False)
         await redis.ping()
-        logger.info(f"Connected to Redis: {config.redis_url}")
+        logger.info(f"Connected to Redis")  # URL may contain password, don't log it
         return WorkingMemory(redis, config)
 
     async def get(self, session_id: str) -> dict | None:

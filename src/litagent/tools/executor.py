@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from litagent.tools.base import ToolDefinition, RateLimitConfig, FallbackStep
-from litagent.tools.registry import ToolRegistry, get_registry
+from litagent.tools.registry import ToolRegistry
 from litagent.logging import get_logger
 
 logger = get_logger('tools.executor')
@@ -50,7 +50,7 @@ class ToolExecutor:
 
     def __init__(self, registry: ToolRegistry):
         self._registry = registry
-        self._cache: dict[str, Any] = {}
+        self._cache: dict[str, Any] = {}  # TODO Phase 11: add TTL-based eviction
         self._rate_limits: dict[str, _RateLimitState] = {}
 
     async def execute(self, name: str, args: dict, session_id: str = "") -> ToolResult:
@@ -85,7 +85,7 @@ class ToolExecutor:
 
         # 4. 执行失败 -> 降级
         if result.error and td.fallback:
-            result = await self._apply_fallback(name, args, td.fallback)
+            result = await self._apply_fallback(name, args, td.fallback, result.error)
 
         # 5. 写入缓存
         if not result.error and td.cache_ttl_ms > 0:
@@ -127,7 +127,8 @@ class ToolExecutor:
         return result
     
 
-    async def _apply_fallback(self, name: str, args: dict, fallback: list[FallbackStep]) -> ToolResult:
+    async def _apply_fallback(self, name: str, args: dict, fallback: list[FallbackStep],
+                             original_error: str = "") -> ToolResult:
         """逐级尝试降级链"""
         for step in fallback:
             if step.type == "cached":
@@ -147,7 +148,10 @@ class ToolExecutor:
                     )
                 except KeyError:
                     continue
-        return ToolResult(name=name, args=args, error='All fallback steps exhausted')
+        msg = f"All fallback steps exhausted"
+        if original_error:
+            msg += f". Original: {original_error}"
+        return ToolResult(name=name, args=args, error=msg, from_fallback=True)
 
 
     def _make_cache_key(self, name: str, args: dict) -> str:

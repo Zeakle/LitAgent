@@ -45,14 +45,11 @@ def validate_tool_call(action: dict) -> dict:
 
     if errors:
         logger.warning(f"ToolCall validation failed: {errors}")
-        # _retry_count > 3放弃工具执行
-        action.setdefault("_retry_count", 0)
         return {
             "_validation_result": {
                 'valid': False,
-                'retry_count': action["_retry_count"],
                 'errors': errors,
             }
         }
 
-    return {'_validation_result': {"valid": True}}
+    return {'_validation_result': {"valid": True, "errors": []}}
