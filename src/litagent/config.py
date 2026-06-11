@@ -18,10 +18,17 @@ class LoggingConfig(BaseModel):
     format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
 
+class MemoryConfig(BaseModel):
+    redis_url: str = "redis://localhost:6379"
+    qdrant_url: str = "http://localhost:6333"
+    working_ttl_seconds: int = 1800
+
+
 class AppConfig(BaseModel):
     """应用顶层配置"""
     agent: AgentConfig
     logging: LoggingConfig
+    memory: MemoryConfig = MemoryConfig()
 
 
 def _find_project_root() -> Path:

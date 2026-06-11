@@ -13,6 +13,9 @@ dependencies = [
     "langgraph>=0.2",
     "langchain-core>=0.3",
     "httpx>=0.27",
+    "redis>=5.0",            # async Redis client
+    "qdrant-client>=1.7",    # Qdrant async client
+    "orjson>=3.9",           # 快 3-5x 的 JSON 序列化
 ]
 
 [project.optional-dependencies]

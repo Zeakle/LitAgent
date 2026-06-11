@@ -2,6 +2,8 @@ from typing import Annotated, Any, TypedDict
 
 from langgraph.graph.message import add_messages
 
+from litagent.tools.base import ToolDefinition
+
 
 class AgentState(TypedDict):
     """ReAct Loop 的共享状态。
@@ -13,7 +15,7 @@ class AgentState(TypedDict):
     messages: Annotated[list, add_messages]
 
     # 当前 Worker 可用的工具列表。TODO: Phase 3 换成 ToolDefinition
-    tools: list
+    tools: list[ToolDefinition]
 
     # 当前轮的思考过程（仅本轮消费，不进下一轮 observation）
     current_thought: str
@@ -26,3 +28,6 @@ class AgentState(TypedDict):
 
     # 输出。有值意味着循环终止
     final_answer: str | None
+
+    # 内部：校验节点与路由函数之间的通信通道（不暴露给 Worker 层）
+    _validation_result: dict  # {"valid": bool, "errors": [...], "retry_count": int}

@@ -5,8 +5,12 @@ Phase 2 用规则做校验（检查必须字段），Phase 3 迁移到 Pydantic�
 
 
 from litagent.logging import get_logger
+from litagent.tools.registry import get_registry
+
 
 logger = get_logger('agent_validation')
+
+registry = get_registry()
 
 _REQUIRED_FIELDS = {"name", "args"}
 
@@ -34,6 +38,10 @@ def validate_tool_call(action: dict) -> dict:
     # 检查args是否为dict
     if 'args' in action and not isinstance(action['args'], dict):
         errors.append('Tool args must be a dict')
+
+    # 检测工具是否注册
+    if len(registry) > 0 and action.get('name', "") not in registry:
+        errors.append(f"Tool {action.get('name', '')} not registered")
 
     if errors:
         logger.warning(f"ToolCall validation failed: {errors}")
