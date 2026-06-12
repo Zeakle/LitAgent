@@ -2,6 +2,7 @@
 
 from litagent.memory.working import WorkingMemory
 from litagent.memory.episodic import EpisodicMemory
+from litagent.memory.semantic import SemanticMemory
 from litagent.memory.models import Episode
 from litagent.memory.consolidate import consolidate_session
 from litagent.logging import get_logger
@@ -23,9 +24,11 @@ class MemoryManager:
         self,
         working: WorkingMemory,
         episodic: EpisodicMemory,
+        semantic: SemanticMemory
     ):
         self.working = working
         self.episodic = episodic
+        self.semantic = semantic
 
     # -- Working Memory --
 
@@ -47,11 +50,22 @@ class MemoryManager:
         """搜索 Episodic Memory。"""
         return await self.episodic.search(query, top_k)
 
+    # -- Semantic Memory --
+
+    async def recall_semantic(self, query: str, top_k: int = 5) -> list[dict]:
+        """搜索 Semantic Memory"""
+        return await self.semantic.search(query, top_k) if self.semantic else []
+
     # -- Recall (跨层) --
 
-    async def recall(self, query: str, top_k: int = 5) -> list[Episode]:
+    async def recall(self, query: str, top_k: int = 5) -> dict:
         """跨层召回。Phase 4 只查 Episodic，Phase 5 合并 Semantic。"""
-        return await self.recall_episode(query, top_k)
+        episodes = await self.recall_episode(query, top_k)
+        facts = await self.recall_semantic(query, top_k)
+        return {
+            'episodes': episodes,
+            'facts': facts
+        }
 
     # -- Consolidate --
 

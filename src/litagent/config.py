@@ -22,6 +22,7 @@ class MemoryConfig(BaseModel):
     redis_url: str = "redis://localhost:6379"
     qdrant_url: str = "http://localhost:6333"
     working_ttl_seconds: int = 1800
+    pg_url: str = "postgresql://litagent:litagent@localhost:5432/litagent"
 
 class AppConfig(BaseModel):
     """应用顶层配置"""

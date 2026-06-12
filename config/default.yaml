@@ -11,3 +11,4 @@ memory:
   redis_url: "redis://localhost:6379"
   qdrant_url: "http://localhost:6333"
   working_ttl_seconds: 1800  # Working Memory TTL
+  pg_url: "postgresql://litagent:litagent@localhost:5432/litagent"

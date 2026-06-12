@@ -16,6 +16,7 @@ dependencies = [
     "redis>=5.0",            # async Redis client
     "qdrant-client>=1.7",    # Qdrant async client
     "orjson>=3.9",           # 快 3-5x 的 JSON 序列化
+    "asyncpg>=0.29",
 ]
 
 [project.optional-dependencies]
