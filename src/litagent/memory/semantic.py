@@ -9,11 +9,8 @@ import asyncpg
 
 from litagent.config import MemoryConfig
 from litagent.logging import get_logger
-from litagent.memory.episodic import VECTOR_SIZE
 
 logger = get_logger('memory.semantic')
-
-_ZERO_VECTOR = [0.0] * VECTOR_SIZE
 
 
 class SemanticMemory:
@@ -57,7 +54,9 @@ class SemanticMemory:
             confidence = winner['confidence']
             source = winner['source']
         
-        vec_str = _vector_to_pg(_ZERO_VECTOR)
+        from litagent.rag.embedder import get_embedder
+        vec = get_embedder().embed(f"{key} {entry_type}")
+        vec_str = _vector_to_pg(vec)
         
         await self._pool.execute(
             """INSERT INTO semantic_entries (entry_type, key, value, confidence, source,
@@ -87,10 +86,14 @@ class SemanticMemory:
 
 
     async def search(self, query: str, top_k: int = 5) -> list[dict]:
-        """ 语义搜索 """
+        from litagent.rag.embedder import get_embedder
+        
+        embed = get_embedder()
+        vec_str = _vector_to_pg(embed.embed(query))
         rows = await self._pool.fetch(
-            "SELECT * FROM semantic_entries WHERE key ILIKE $1 OR entry_type ILIKE $1 LIMIT $2",
-            f"%{query}%", top_k
+            """SELECT *, embedding <=> $1::vector AS distance
+               FROM semantic_entries ORDER BY distance LIMIT $2""",
+            vec_str, top_k
         )
         return [dict(r) for r in rows]
 

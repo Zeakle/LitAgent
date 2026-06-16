@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS semantic_entries (
     confidence REAL NOT NULL DEFAULT 0.5,             -- 置信度 0-1，跨多次观察提升
     source VARCHAR(32) NOT NULL DEFAULT 'inferred',   -- 来源: explicit_user | observed | inferred
     source_episode_ids TEXT[] DEFAULT '{}',           -- 从哪些 Episode 推导出来，可溯源
-    embedding VECTOR(1536),                           -- SPECTER2 向量 (Phase 6 前用零向量占位)
+    embedding VECTOR(384),                           -- all-MiniLM-L6-v2 向量 (384d)
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),    -- 创建时间
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),    -- 最后更新时间
     UNIQUE(key)                                       -- key 唯一，防止重复知识条目
@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS procedures (
     status VARCHAR(32) NOT NULL DEFAULT 'active',      -- active | deprecated | disabled
     description TEXT NOT NULL,                         -- 描述这个 Procedure 做什么
     source_file VARCHAR(512),                          -- 对应 YAML 文件路径 (.claude/skills/extraction/cv.yaml)
-    trigger_embedding VECTOR(1536),                    -- 触发词的 embedding (Phase 6)
+    trigger_embedding VECTOR(384),                    -- 触发词的 embedding (384d)
     success_count INTEGER NOT NULL DEFAULT 0,          -- 历史成功次数
     failure_count INTEGER NOT NULL DEFAULT 0,          -- 历史失败次数
     avg_duration_ms INTEGER NOT NULL DEFAULT 0,        -- 平均执行耗时 (毫秒)
@@ -48,3 +48,8 @@ CREATE TABLE IF NOT EXISTS trigger_patterns (
 );
 
 CREATE INDEX idx_triggers_procedure ON trigger_patterns(procedure_id);  -- 按 Procedure 查触发词
+
+-- schema.sql 追加（HNSW 索引）
+CREATE INDEX IF NOT EXISTS idx_semantic_hnsw
+    ON semantic_entries USING hnsw (embedding vector_cosine_ops)
+    WITH (M = 16, ef_construction = 200);

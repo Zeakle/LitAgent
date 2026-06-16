@@ -17,6 +17,8 @@ dependencies = [
     "qdrant-client>=1.7",    # Qdrant async client
     "orjson>=3.9",           # 快 3-5x 的 JSON 序列化
     "asyncpg>=0.29",
+    "sentence-transformers>=3.0",       # embedding + cross-encoder
+    "langchain-text-splitters>=0.3",  
 ]
 
 [project.optional-dependencies]

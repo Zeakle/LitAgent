@@ -14,13 +14,13 @@ from qdrant_client.http.exceptions import UnexpectedResponse
 
 from litagent.config import MemoryConfig
 from litagent.memory.models import Episode
+from litagent.rag.embedder import get_embedder
 from litagent.logging import get_logger
 
 
 logger = get_logger('memory.episodic')
 
 COLLECTION_NAME = "episodes"
-VECTOR_SIZE = 1536
 
 
 class EpisodicMemory:
@@ -45,15 +45,17 @@ class EpisodicMemory:
     @staticmethod
     async def _ensure_collection(client: AsyncQdrantClient) -> None:
         """创建 collection（如果不存在）。"""
+        dim = get_embedder().dim
         try:
             await client.get_collection(COLLECTION_NAME)
         except UnexpectedResponse:
             await client.create_collection(
                 collection_name=COLLECTION_NAME,
-                vectors_config=VectorParams(size=VECTOR_SIZE, distance=Distance.COSINE)
+                vectors_config=VectorParams(size=dim, distance=Distance.COSINE)
             )
             logger.info(f"Created Qdrant collection: {COLLECTION_NAME}")
     
+
     async def store(self, episode: Episode) -> str:
         """存储 Episode。分配 episode_id，写入 Qdrant。"""
         if not episode.episode_id:
@@ -62,43 +64,20 @@ class EpisodicMemory:
         import time
         episode.created_at = time.time()
 
-        dummy_vector = [0.0] * VECTOR_SIZE
-
-        point = PointStruct(
-            id=episode.episode_id,
-            vector=dummy_vector,
-            payload=episode.to_dict(),
-        )
-
+        vector = get_embedder().embed(episode.summary)
+        point = PointStruct(id=episode.episode_id, vector=vector, payload=episode.to_dict())
         await self._client.upsert(collection_name=COLLECTION_NAME, points=[point])
-        logger.debug(f"Stored episode: {episode.episode_id}")
         return episode.episode_id
 
     async def search(self, query: str, top_k: int = 5) -> list[Episode]:
-        """语义（Phase 4 dummy）+ 关键词混合检索。
-        
-        Phase 4: embedding 是零向量，语义搜索无意义。
-        先用 Qdrant 的 scroll + 客户端关键词过滤作为过渡。
-        Phase 6 接入 SPECTER2 后换为真正的向量搜索。
-        """
-
-        records, _ = await self._client.scroll(
+        query_vec = get_embedder().embed(query)
+        results = await self._client.query_points(
             collection_name=COLLECTION_NAME,
-            limit=100,
-            with_payload=True
+            query=query_vec,
+            limit=top_k,
+            with_payload=True,
         )
-
-        query_lower = query.lower()
-        scored = []
-        for record in records:
-            payload = record.payload or {}
-            text = f"{payload.get('summary', '')} {payload.get('intent', '')}".lower()
-            score = sum(1 for word in query_lower.split() if word in text)
-            if score > 0:
-                scored.append((score, payload))
-
-        scored.sort(key=lambda x: x[0], reverse=True)
-        return [Episode.from_dict(p) for _, p in scored[:top_k]]
+        return [Episode.from_dict(r.payload) for r in results.points if r.payload]
 
     
     async def delete(self, episode_id: str) -> None:
