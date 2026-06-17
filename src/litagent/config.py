@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 
 class AgentConfig(BaseModel):
@@ -24,11 +24,18 @@ class MemoryConfig(BaseModel):
     working_ttl_seconds: int = 1800
     pg_url: str = "postgresql://litagent:litagent@localhost:5432/litagent"
 
+
+class ContextConfig(BaseModel):
+    max_tokens: int = Field(default=16000, gt=0)
+    compact_threshold: float = Field(default=0.7, gt=0, le=1.0)
+
+
 class AppConfig(BaseModel):
     """应用顶层配置"""
     agent: AgentConfig
     logging: LoggingConfig
     memory: MemoryConfig = MemoryConfig()
+    context: ContextConfig = ContextConfig()
 
 
 def _find_project_root() -> Path:

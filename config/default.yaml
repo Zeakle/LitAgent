@@ -12,3 +12,7 @@ memory:
   qdrant_url: "http://localhost:6333"
   working_ttl_seconds: 1800  # Working Memory TTL
   pg_url: "postgresql://litagent:litagent@localhost:5432/litagent"
+
+context:
+  max_tokens: 16000
+  compact_threshold: 0.7
