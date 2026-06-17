@@ -16,3 +16,7 @@ memory:
 context:
   max_tokens: 16000
   compact_threshold: 0.7
+
+orchestrator:
+  timeout_ms: 600000       # 整体编排超时 10 分钟
+  max_concurrent: 5        # 最大并行 Worker 数

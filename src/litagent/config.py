@@ -30,12 +30,18 @@ class ContextConfig(BaseModel):
     compact_threshold: float = Field(default=0.7, gt=0, le=1.0)
 
 
+class OrchestratorConfig(BaseModel):
+    timeout_ms: int = Field(default=600000, gt=0)
+    max_concurrent: int = Field(default=5, gt=0)
+
+
 class AppConfig(BaseModel):
     """应用顶层配置"""
     agent: AgentConfig
     logging: LoggingConfig
     memory: MemoryConfig = MemoryConfig()
     context: ContextConfig = ContextConfig()
+    orchestrator: OrchestratorConfig = OrchestratorConfig()
 
 
 def _find_project_root() -> Path:
