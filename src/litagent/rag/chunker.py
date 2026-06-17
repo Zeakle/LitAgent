@@ -81,7 +81,7 @@ class SemanticChunker(Chunker):
             if re.match(r'^\s*(?:\d+\.?\s*)?(?:Abstract|Introduction|Related|Method|Approach|Experiment|Result|Discussion|Conclusion|Reference)',
                        part, re.IGNORECASE):
                 header = part
-            elif header and len(part) > 100:
+            elif header and len(part) > 10:
                 section_name = header.lower().replace(" ", "_")  
                 if len(part) > self._max_section_chars:
                     sub_texts = self._sub_splitter.split_text(part)

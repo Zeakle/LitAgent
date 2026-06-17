@@ -23,6 +23,6 @@ class AgentError(LitAgentError):
     pass
 
 
-class MemoryError(LitAgentError):
-    """Memory 层操作失败（Phase 4 开始使用）。"""
+class MemoryStoreError(LitAgentError):
+    """Memory 层操作失败（Phase 4 开始使用）。不用 MemoryError 因为会覆盖 Python 内置 OOM 异常。"""
     pass

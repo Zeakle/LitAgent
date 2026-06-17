@@ -6,10 +6,8 @@
 
 import uuid
 
-from qdrant_client import QdrantClient, AsyncQdrantClient
-from qdrant_client.models import (
-    Distance, VectorParams, PointStruct, Filter, FieldCondition, MatchValue
-)
+from qdrant_client import AsyncQdrantClient
+from qdrant_client.models import Distance, VectorParams, PointStruct
 from qdrant_client.http.exceptions import UnexpectedResponse
 
 from litagent.config import MemoryConfig

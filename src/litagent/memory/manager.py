@@ -3,6 +3,7 @@
 from litagent.memory.working import WorkingMemory
 from litagent.memory.episodic import EpisodicMemory
 from litagent.memory.semantic import SemanticMemory
+from litagent.memory.procedural import ProceduralMemory
 from litagent.memory.models import Episode
 from litagent.memory.consolidate import consolidate_session
 from litagent.logging import get_logger
@@ -12,23 +13,19 @@ logger = get_logger('memory.manager')
 
 
 class MemoryManager:
-    """四层Memory 统一入口
-
-    Usage: 
-        working = await WorkingMemory.connect(memory_config)
-        episodic = await EpisodicMemory.connect(memory_config)
-        mm = MemoryManager(working, episodic)
-    """
+    """四层Memory 统一入口"""
 
     def __init__(
         self,
         working: WorkingMemory,
         episodic: EpisodicMemory,
-        semantic: SemanticMemory
+        semantic: SemanticMemory,
+        procedural: ProceduralMemory | None = None,
     ):
         self.working = working
         self.episodic = episodic
         self.semantic = semantic
+        self.procedural = procedural
 
     # -- Working Memory --
 
@@ -88,4 +85,15 @@ class MemoryManager:
         episode.episode_id = eid
         logger.info(f"Consolidated session '{session_id}' → episode '{eid}'")
         return episode
+
+    # -- Procedural Memory --
+
+    async def match_procedure(self, user_input: str) -> list[dict]:
+        """匹配触发词 → 返回匹配的 Procedure 模板"""
+        return await self.procedural.match(user_input) if self.procedural else []
+
+    async def record_procedure_execution(self, procedure_id: str, success: bool, duration_ms: int) -> None:
+        """记录 Procedure 执行结果"""
+        if self.procedural:
+            await self.procedural.record_execution(procedure_id, success, duration_ms)
 

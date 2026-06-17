@@ -1,8 +1,7 @@
 """Hybrid Retriever——Qdrant hybrid search + optional Rerank。"""
 
 
-from litagent.rag.interfaces import Retriever, ScoredDoc, Reranker
-from litagent.rag.vector_store import VectorStore
+from litagent.rag.interfaces import Retriever, ScoredDoc, Reranker, VectorStore
 from litagent.logging import get_logger
 
 logger = get_logger('rag.retriever')

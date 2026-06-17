@@ -33,4 +33,3 @@ class NoopReranker(Reranker):
     """透传——RAGAS baseline 评估用。"""
     def rerank(self, query: str, docs: list[ScoredDoc]) -> list[ScoredDoc]:
         return docs
-        

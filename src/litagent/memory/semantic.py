@@ -106,11 +106,10 @@ class SemanticMemory:
 
 
     def _resolve_conflict(self, key: str, candidates: list[dict]) -> dict:
-        """加权投票解决同一 key 的冲突。
+        """加权投票解决同一 key 的冲突。"""
+        if not candidates:
+            return {"confidence": 0.5, "source": "inferred"}
 
-        权重: source 权威性 × 0.4 + confidence × 0.3 + 来源 episode 数量 × 0.1
-        Phase 6: 加入 recency 权重（时间新度 × 0.2）
-        """
         source_weight = {
             'explicit_user': 3,
             'observed': 2,

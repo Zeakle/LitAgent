@@ -3,7 +3,7 @@ import hashlib
 import json
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
 
 from litagent.tools.base import ToolDefinition, RateLimitConfig, FallbackStep
 from litagent.tools.registry import ToolRegistry
@@ -96,7 +96,7 @@ class ToolExecutor:
 
 
     async def _execute_with_retry(
-        self, name: str, args: dict, func: callable, timeout_ms: int, max_retries: int
+        self, name: str, args: dict, func: Callable, timeout_ms: int, max_retries: int
     ) -> ToolResult:
         """带超时 + 指数退避重试的执行"""
         last_error = None
@@ -119,7 +119,7 @@ class ToolExecutor:
 
         return ToolResult(name=name, args=args, error=last_error)
     
-    async def _call_func(self, func: callable, args: dict) -> Any:
+    async def _call_func(self, func: Callable, args: dict) -> Any:
         """调用工具函数，支持同步和异步"""
         result = func(**args)
         if asyncio.iscoroutine(result):

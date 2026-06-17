@@ -5,25 +5,17 @@ Phase 2 用规则做校验（检查必须字段），Phase 3 迁移到 Pydantic�
 
 
 from litagent.logging import get_logger
-from litagent.tools.registry import get_registry
 
 
 logger = get_logger('agent_validation')
-
-registry = get_registry()
 
 _REQUIRED_FIELDS = {"name", "args"}
 
 
 def validate_tool_call(action: dict) -> dict:
-    """校验 tool_call 的格式是否合法。
-
-    Args:
-        action: 待校验的 tool_call，格式 {"name": str, "args": dict, "id": str}
-
-    Returns:
-        {"_validation_result": {"valid": bool, "retry_count": int, "errors": list[str]}}
-    """
+    """校验 tool_call 的格式是否合法。"""
+    from litagent.tools.registry import get_registry
+    registry = get_registry()
     errors = []
 
     # 检查必须字段

@@ -16,12 +16,11 @@ class ArxivLoader(DocumentLoader):
     BASE_URL = "http://export.arxiv.org/api/query"
 
     async def load(self, source: str) -> list[Document]:
-        """source = arxiv ID 或 search query"""
-        params = {
-            "search_query": source if ":" in source else f'id_list={source}',
-            'start': 0,
-            'max_results': 10,
-        }
+        """source = arxiv ID (如 '1703.05175') 或 search query (如 'all:few-shot+learning')"""
+        if ":" in source:
+            params = {"search_query": source, "start": 0, "max_results": 10}
+        else:
+            params = {"id_list": source, "start": 0, "max_results": 10}
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.get(self.BASE_URL, params=params)
             resp.raise_for_status()
