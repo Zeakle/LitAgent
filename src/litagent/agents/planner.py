@@ -78,25 +78,20 @@ class SurveyPlanner(BasePlanner):
 
         # layer4-6: 综合 -> 审稿 -> 报告(串行)
         graph.add_task(SubTask(
-            task_id='synthesis',
-            description='Write survey draft',
-            agent_type='synthesis',
+            task_id='adversarial_review',
+            description='Adversarial synthesis + review loop',
+            agent_type='adversarial_review',
             input_data={},
+            timeout_ms=300000
         ), depends_on=['extract', 'graph_analysis'])
 
-        graph.add_task(SubTask(
-            task_id='review',
-            description='Adversarial review of draft',
-            agent_type='reviewer',
-            input_data={},
-        ), depends_on=['synthesis'])
 
         graph.add_task(SubTask(
             task_id='report',
             description='Generate final report',
             agent_type='report',
             input_data={},
-        ), depends_on=['review'])
+        ), depends_on=['adversarial_review'])
 
         logger.info(f"Planned {len(graph.tasks)} tasks for query {query}")
         return graph

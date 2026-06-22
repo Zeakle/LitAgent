@@ -1,8 +1,11 @@
 import os
 from pathlib import Path
+from dotenv import load_dotenv
 
 import yaml
 from pydantic import BaseModel, Field, ValidationError
+
+load_dotenv()
 
 
 class AgentConfig(BaseModel):
@@ -35,6 +38,17 @@ class OrchestratorConfig(BaseModel):
     max_concurrent: int = Field(default=5, gt=0)
 
 
+class LLMConfig(BaseModel):
+    base_url: str = "https://api.deepseek.com"
+    model: str = "deepseek-v4-flash"
+    max_tokens: int = Field(default=4096, gt=0)
+    temperature: float = Field(default=0.1, ge=0, le=2.0)
+
+class AdversarialConfig(BaseModel):
+    max_rounds: int = Field(default=3, gt=0, le=5)
+    pass_threshold: float = Field(default=0.8, gt=0, le=1.0)
+
+
 class AppConfig(BaseModel):
     """应用顶层配置"""
     agent: AgentConfig
@@ -42,6 +56,8 @@ class AppConfig(BaseModel):
     memory: MemoryConfig = MemoryConfig()
     context: ContextConfig = ContextConfig()
     orchestrator: OrchestratorConfig = OrchestratorConfig()
+    llm: LLMConfig = LLMConfig()
+    adversarial: AdversarialConfig = AdversarialConfig()
 
 
 def _find_project_root() -> Path:

@@ -19,6 +19,7 @@ dependencies = [
     "asyncpg>=0.29",
     "sentence-transformers>=3.0",       # embedding + cross-encoder
     "langchain-text-splitters>=0.3",  
+    'openai>=1.0'
 ]
 
 [project.optional-dependencies]

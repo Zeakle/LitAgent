@@ -20,3 +20,14 @@ context:
 orchestrator:
   timeout_ms: 600000       # 整体编排超时 10 分钟
   max_concurrent: 5        # 最大并行 Worker 数
+
+llm:
+  base_url: "	https://api.deepseek.com"
+  model: "deepseek-v4-flash"
+  max_tokens: 4096
+  temperature: 0.1
+
+adversarial:
+  max_rounds: 3
+  pass_threshold: 0.8  # Reviewer评分 >= 0.8是未通过
+  
