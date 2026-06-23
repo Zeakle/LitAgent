@@ -3,6 +3,7 @@
 from __future__ import annotations
 from typing import Any
 
+from litagent.memory.manager import MemoryManager
 from litagent.orchestrator.scheduler import Worker
 from litagent.orchestrator.task_graph import SubTask
 from litagent.llm.client import BaseLLMClient
@@ -37,9 +38,10 @@ class SynthesisWorker(Worker):
     输出：结构化综述初稿
     """
 
-    def __init__(self, llm: BaseLLMClient):
+    def __init__(self, llm: BaseLLMClient, memory: MemoryManager | None = None):
         self._llm = llm
         self._compressor = TierCompressor()
+        self._memory = memory
 
     
     @property
@@ -51,14 +53,24 @@ class SynthesisWorker(Worker):
         upstream = task.input_data.get('upstream_results', {})
         extractions = self._get_extractions(upstream)
         graph_data = self._get_graph_data(upstream)
+        query = task.input_data.get('query', "")
 
         papers_context = self._build_papers_context(extractions, graph_data)
+
+        # Memory Recall
+        memory_texdt = ""
+        if self._memory:
+            recalled = await self._memory.recall(query, top_k=5)
+            memory_text = _format_recall(recalled)
 
         system = build_system_prompt(
             role=SYNTHESIS_ROLE,
             instructions=SYNTHESIS_INSTRUCTIONS,
         )
-        user_msg = wrap_xml('papers', papers_context)
+        user_parts = [wrap_xml('papers', papers_context)]
+        if memory_text:
+            user_parts.append(wrap_xml('memory', memory_text))
+        user_msg = '\n\n'.join(user_parts)
 
         resp = await self._llm.chat([
             {'role': 'system', 'content': system},
@@ -124,3 +136,13 @@ class SynthesisWorker(Worker):
             if isinstance(result, dict) and 'tier_counts' in result:
                 return result
         return {}
+
+
+    def _format_recall(recalled: dict) -> str:
+        lines = []
+        for ep in recalled.get('episodes', []):
+            findings = "; ".join(ep.key_findings[:3]) if ep.key_findings else "none"
+            lines.append(f"Previous session: {ep.summary} (findings: {findings})")
+        for f in recalled.get("facts", []):
+            lines.append(f"Known fact [{f.get('key')}]: {f.get('value')}")
+        return '\n'.join(lines)

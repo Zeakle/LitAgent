@@ -58,7 +58,7 @@ class SurveyPlanner(BasePlanner):
             task_id='dedup',
             description='Deduplicate search results',
             agent_type='dedup',
-            input_data={},
+            input_data={"query": query},
         ), depends_on=['search_arxiv', 'search_semscholar', 'search_pwc'])
 
         # layer3: 提取 + 引用分析(并行，只等dedup)
@@ -66,14 +66,14 @@ class SurveyPlanner(BasePlanner):
             task_id='extract',
             description='Extract structure info from papers',
             agent_type='extractor',
-            input_data={},
+            input_data={"query": query},
         ), depends_on=['dedup'])
 
         graph.add_task(SubTask(
             task_id='graph_analysis',
             description='Analyze citation network',
             agent_type='graph',
-            input_data={},
+            input_data={"query": query},
         ), depends_on=['dedup'])
 
         # layer4-6: 综合 -> 审稿 -> 报告(串行)
@@ -81,7 +81,7 @@ class SurveyPlanner(BasePlanner):
             task_id='adversarial_review',
             description='Adversarial synthesis + review loop',
             agent_type='adversarial_review',
-            input_data={},
+            input_data={"query": query},
             timeout_ms=300000
         ), depends_on=['extract', 'graph_analysis'])
 
@@ -90,7 +90,7 @@ class SurveyPlanner(BasePlanner):
             task_id='report',
             description='Generate final report',
             agent_type='report',
-            input_data={},
+            input_data={"query": query},
         ), depends_on=['adversarial_review'])
 
         logger.info(f"Planned {len(graph.tasks)} tasks for query {query}")
