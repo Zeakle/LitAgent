@@ -1,27 +1,76 @@
-"""Consolidate: Working Memory → Episodic Memory 提升。
-
-会话结束时调用。Phase 4 用规则提取结构化摘要。
-Phase 5 升级为 LLM 驱动的完整摘要（key_findings / tools_used / importance）。
-"""
+import json
 
 from langchain_core.messages import HumanMessage
 
 from litagent.memory.models import Episode
+from litagent.llm.client import BaseLLMClient
 from litagent.logging import get_logger
 
 
 logger = get_logger('memory.consolidate')
 
 
-async def consolidate_session(state: dict, session_id: str) -> Episode | None:
+async def consolidate_session(state: dict, session_id: str, llm: BaseLLMClient | None = None) -> Episode | None:
     """从 session state 提取 Episode"""
     messages = state.get('messages', [])
     if len(messages) < 2:
         return None
+    
+    if llm:
+        try:
+            return await _llm_consolidate(llm, messages, session_id)
+        except Exception as e:
+            logger.warning(f'LLM consolidate failed: {e}, falling back to rule-based')
+    return _rule_consolidate(messages, session_id)
 
+
+async def _llm_consolidate(llm: BaseLLMClient, messages: list, session_id: str) -> Episode:
+    """LLM Drive structured abstart"""
+    conversation = _format_messages(messages)
+
+    prompt = f"""Analyze this research session and return a JSON object in the format shown below.
+
+Example format:
+{{
+    "summary": "User did a literature review on few-shot learning, finding 47 papers and identifying ProtoNet as SOTA.",
+    "intent": "literature_review",
+    "key_findings": ["ProtoNet is SOTA on miniImageNet at 93.2%", "MAML dominates 1-shot scenarios"],
+    "tools_used": ["search_arxiv", "search_semantic_scholar", "extract_claims"],
+    "errors_encountered": ["PapersWithCode API timed out"],
+    "importance_score": 0.8,
+    "extracted_facts": [
+        {{"key": "few_shot_sota", "value": {{"model": "ProtoNet", "accuracy": "93.2%"}}, "type": "domain_knowledge", "confidence": 0.85}}
+    ]
+}}
+
+Return ONLY valid JSON, no other text.
+
+Conversation:
+{conversation}"""
+
+    resp = await llm.chat([
+        {'role': 'system', 'content': "You are a memory consolidation system. Output only JSON."},
+        {'role': 'user', 'content': prompt},
+    ], response_format={'type': 'json_object'})
+
+    parsed = json.loads(resp.content)
+
+    return Episode(
+        summary=parsed.get("summary", ""),
+        intent=parsed.get("intent", "general"),
+        key_findings=parsed.get("key_findings", []),
+        tools_used=parsed.get("tools_used", []),
+        errors_encountered=parsed.get("errors_encountered", []),
+        importance_score=float(parsed.get("importance_score", 0.5)),
+        extracted_facts=parsed.get("extracted_facts", []),
+        session_id=session_id,
+    )
+
+
+def _rule_consolidate(messages: list, session_id: str) -> Episode:
+    """规则版 consolidate（LLM 不可用时的降级）。"""
     user_query = _extract_user_query(messages)
     msg_count = len(messages)
-
     return Episode(
         summary=f"User asked: '{user_query}' ({msg_count} messages exchanged)",
         intent=_classify_intent(user_query),
@@ -29,9 +78,25 @@ async def consolidate_session(state: dict, session_id: str) -> Episode | None:
     )
 
 
+def _format_messages(messages: list) -> str:
+    """将对话历史格式化为 LLM 可读文本。"""
+    lines = []
+    for msg in messages:
+        if isinstance(msg, dict):
+            role = msg.get("type", "unknown")
+            content = msg.get("content", "")
+        elif isinstance(msg, HumanMessage):
+            role, content = "user", msg.content
+        elif hasattr(msg, "type"):
+            role, content = msg.type, getattr(msg, "content", "")
+        else:
+            continue
+        lines.append(f"[{role}]: {content}")
+    return "\n".join(lines)
+
+
 def _extract_user_query(messages: list) -> str:
     for msg in messages:
-        # 处理两种形态: LangChain Message 对象 / Redis 反序列化的 dict
         if isinstance(msg, dict):
             if msg.get("type") == "human":
                 return msg.get("content", "")

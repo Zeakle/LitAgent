@@ -29,6 +29,21 @@ class Worker(ABC):
         ...
 
 
+class CancellationToken:
+    def __init__(self):
+        # Event() 异步信号标记，类似boolean开关，支持await
+        self._event = asyncio.Event()
+
+    
+    def cancel(self) -> None:
+        self._event.set()
+
+    
+    @property
+    def is_cancelled(self) -> bool:
+        return self._event.is_set()
+
+
 class Scheduler:
     """编排调度器-驱动TaskGraph从开始到完成
 
@@ -55,14 +70,14 @@ class Scheduler:
         self._timeout_ms = timeout_ms
 
     
-    async def run(self, graph: TaskGraph) -> dict[str, Any]:
+    async def run(self, graph: TaskGraph, cancellation: CancellationToken | None = None) -> dict[str, Any]:
         """运行编排循环，返回所有成功的结果。
 
         整体超时后返回部分结果（不崩溃）
         """
         try:
             return await asyncio.wait_for(
-                self._loop(graph),
+                self._loop(graph, cancellation),
                 timeout=self._timeout_ms / 1000,
             )
         except asyncio.TimeoutError:
@@ -70,12 +85,16 @@ class Scheduler:
             return graph.get_results()
 
     
-    async def _loop(self, graph: TaskGraph) -> dict[str, Any]:
+    async def _loop(self, graph: TaskGraph, cancellation: CancellationToken | None = None) -> dict[str, Any]:
         """编排主循环
 
         找就绪任务->并行执行->等完成
         """
         while not graph.is_complete():
+            if cancellation and cancellation.is_cancelled:
+                logger.info("Cancelled by user, returning partial results")
+                return graph.get_results()
+
             ready = graph.get_ready_tasks()
             if not ready:
                 await asyncio.sleep(0.05)  # 无就绪任务，暂停后重新获取
@@ -106,6 +125,8 @@ class Scheduler:
             graph.mark_running(task.task_id)
 
             last_error = None
+
+            validation_attempts = 0
             for attempt in range(task.max_retries + 1):
                 try:
                     # wait_for: 给async操作架超时限制，超时就抛TimeoutError
@@ -113,6 +134,20 @@ class Scheduler:
                         worker.execute(task),
                         timeout=task.timeout_ms / 1000,
                     )
+
+                    if task.output_schema and 'type' in task.output_schema:
+                        from pydantic import TypeAdapter, ValidationError
+                        try:
+                            # TypeAdapter 类型校验器，给定schema判断数据是否符合schema
+                            adapter = TypeAdapter(task.output_schema)
+                            adapter.validate_python(result)
+                        except ValidationError as e:
+                            validation_attempts += 1
+                            if validation_attempts <= 3:
+                                continue
+                            last_error = f"Schema validation exhausted {e}"
+                            raise
+
                     graph.mark_done(task.task_id, result)
                     return
                 except asyncio.TimeoutError:

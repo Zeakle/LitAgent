@@ -25,6 +25,18 @@ class Episode:
     created_at: float = 0.0
     last_recalled_at: float = 0.0
     recall_count: int = 0
+    extracted_facts: list[dict] = field(default_factory=list)
+
+    
+    def decay_score(self) -> float:
+        import time
+        if self.created_at <= 0:
+            return self.importance_score
+    
+        days = (time.time() - self.created_at) / 86400.0
+        recall_bonus = 1.0 + min(self.recall_count / 5.0, 1.0)
+        return self.importance_score * (0.5 ** (days / 30.0)) * recall_bonus
+
 
     def to_dict(self) -> dict:
         return asdict(self)

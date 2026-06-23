@@ -31,3 +31,6 @@ class AgentState(TypedDict):
 
     # 内部：校验节点与路由函数之间的通信通道（不暴露给 Worker 层）
     _validation_result: dict  # {"valid": bool, "errors": [...], "retry_count": int}
+
+    # 最近三个tool_call Json
+    _last_tool_calls: list[str]

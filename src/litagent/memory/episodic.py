@@ -67,15 +67,34 @@ class EpisodicMemory:
         await self._client.upsert(collection_name=COLLECTION_NAME, points=[point])
         return episode.episode_id
 
+
     async def search(self, query: str, top_k: int = 5) -> list[Episode]:
+        """语义搜索 + 时间衰减重排。"""
         query_vec = get_embedder().embed(query)
         results = await self._client.query_points(
             collection_name=COLLECTION_NAME,
             query=query_vec,
-            limit=top_k,
+            limit=top_k * 2,  # 多取一些，decay 重排后截断
             with_payload=True,
         )
-        return [Episode.from_dict(r.payload) for r in results.points if r.payload]
+
+        episodes = []
+        for r in results.points:
+            if not r.payload:
+                continue
+            ep = Episode.from_dict(r.payload)
+            qdr_score = r.score if r.score else 0.0
+            # _score 是临时字段（不持久化），用于重排
+            ep._score = qdr_score * (1.0 + ep.decay_score())
+            episodes.append(ep)
+
+        # 按合并分数降序
+        episodes.sort(key=lambda e: getattr(e, '_score', 0), reverse=True)
+
+        # 清理临时字段
+        for ep in episodes:
+            delattr(ep, '_score')
+        return episodes[:top_k]
 
     
     async def delete(self, episode_id: str) -> None:

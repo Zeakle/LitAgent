@@ -1,5 +1,6 @@
 """ MemoryManager - 四层Memory统一入口 """
 
+from litagent.llm.client import BaseLLMClient
 from litagent.memory.working import WorkingMemory
 from litagent.memory.episodic import EpisodicMemory
 from litagent.memory.semantic import SemanticMemory
@@ -66,24 +67,37 @@ class MemoryManager:
 
     # -- Consolidate --
 
-    async def consolidate(self, session_id: str) -> Episode | None:
-        """Working → Episodic 提升。
+    async def consolidate(self, session_id: str, llm: BaseLLMClient | None = None) -> Episode | None:
+        """Working → Episodic 提升 + Semantic 知识沉淀"""
 
-        读 Working Memory → 提取结构化摘要 → 写入 Qdrant。
-        Phase 4 用规则提取；Phase 5 升级为 LLM 驱动。
-        """
         state = await self.working.get(session_id)
         if state is None:
             logger.warning(f"Session '{session_id}' not found for consolidate")
             return None
 
-        episode = await consolidate_session(state, session_id)
+        episode = await consolidate_session(state, session_id, llm=llm)
         if episode is None:
             return None
         
         eid = await self.episodic.store(episode)
         episode.episode_id = eid
         logger.info(f"Consolidated session '{session_id}' → episode '{eid}'")
+
+        for fact in episode.extracted_facts:
+            if not isinstance(fact, dict) or 'key' not in fact:
+                continue
+            await self.semantic.upsert(
+                key=fact['key'],
+                value=fact.get('value', {}),
+                entry_type=fact.get('type', 'domain_knowledge'),
+                source='extracted',
+                confidence=fact.get('confidence', 0.5),
+                episode_id=eid,
+            )
+
+        if episode.extracted_facts:
+            logger.info(f"Extracted {len(episode.extracted_facts)} facts → Semantic Memory")
+
         return episode
 
     # -- Procedural Memory --

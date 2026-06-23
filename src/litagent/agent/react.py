@@ -1,4 +1,5 @@
 from typing import Literal
+import json
 
 from langchain_core.runnables import Runnable
 from langgraph.graph import StateGraph, END
@@ -38,6 +39,9 @@ def build_react_graph(
 
     # _route_after_agent 闭包捕获 config.max_loops，只读 state，返回方向
     def _route_after_agent(state: AgentState) -> Literal['validate', 'end']:
+        if state.get('final_answer') is not None:
+            return 'end'
+
         if state.get('loop_count', 0) >= config.max_loops:
             logger.warning(f'Max loops ({config.max_loops}) exceeded, forcing termination')
             return 'end'
@@ -50,7 +54,23 @@ def build_react_graph(
 
     # step 节点——递增 loop_count（引擎负责，不依赖 Worker 层）
     def _step_node(state: AgentState) -> dict:
-        return {"loop_count": state.get("loop_count", 0) + 1}
+        result = {'loop_count': state.get('loop_count', 0) + 1}
+
+        # Dead loop Detection
+        action = state.get('current_action')
+        history: list[str] = state.get('_last_tool_calls', [])
+        if action is not None:
+            history.append(json.dumps(action, sort_keys=True))
+            history = history[-3:]
+            result['_last_tool_calls'] = history
+            if len(history) >= 3 and len(set(history)) == 1:
+                result['final_answer'] = 'Dead loop detected: same tool call 3 times'
+                logger.warning('Dead Loop Detected')
+        else:
+            result['_last_tool_calls'] = history
+        
+        return result
+
 
     # 节点注册
     workflow.add_node("step", _step_node)
