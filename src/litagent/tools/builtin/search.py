@@ -59,7 +59,7 @@ async def search_paperswithcode(query: str = "", max_results: int = 20) -> list[
 def register_search_tools():
     r = get_registry()
     r.register(ToolDefinition(name="search_arxiv", description="Search arxiv by keyword",
-            category=ToolCategory.READ, timeout_ms=30000, max_retries=2), search_arxiv)
+              category=ToolCategory.READ, timeout_ms=30000, max_retries=2), search_arxiv)
     r.register(ToolDefinition(name="search_semantic_scholar", description="Search Semantic Scholar",
               category=ToolCategory.READ, timeout_ms=30000, max_retries=2), search_semantic_scholar)
     r.register(ToolDefinition(name="search_paperswithcode", description="Search PapersWithCode",
