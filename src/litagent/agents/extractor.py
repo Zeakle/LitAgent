@@ -8,6 +8,7 @@ from typing import Any
 from litagent.orchestrator.scheduler import Worker
 from litagent.orchestrator.task_graph import SubTask
 from litagent.logging import get_logger
+from litagent.rag.claims_index import ClaimsIndex, Claim
 from litagent.tools.executor import ToolExecutor
 
 
@@ -17,8 +18,9 @@ logger = get_logger('agents.extractor')
 class ExtractorWorker(Worker):
     """提取 Worker——从论文列表中提取结构化信息。
     """
-    def __init__(self, executor: ToolExecutor):
+    def __init__(self, executor: ToolExecutor, claims_index: ClaimsIndex | None = None):
         self._executor = executor
+        self._claims_index = claims_index
 
     @property
     def agent_type(self) -> str:
@@ -47,6 +49,21 @@ class ExtractorWorker(Worker):
                 "citation_count": paper.get("citation_count", 0),
                 "source": paper.get("source", ""),
             })
+
+        # 写入claim index
+        if self._claims_index:
+            try:
+                claims_objs = []
+                for ext in extractions:
+                    for c in ext.get("claims", []):
+                        claims_objs.append(Claim(
+                            text=c, source_paper=ext.get('paper_id', ""),
+                            confidence=0.5))
+                if claims_objs:
+                    await self._claims_index.add(claims_objs)
+            except Exception as e:
+                logger.warning(f"Claimsindex write failed: {e}")
+
         return extractions
 
 
