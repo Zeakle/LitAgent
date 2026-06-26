@@ -33,7 +33,7 @@ class ExtractorWorker(Worker):
 
         extractions = []
         for paper in papers:
-            title = paper.get('abstract', '')
+            title = paper.get('title', '')
             abstract = paper.get('abstract', '')
             text = f'{title} {abstract}'.lower()
             claims_r = await self._executor.execute("extract_claims", {"abstract": abstract})

@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Literal, AsyncIterator
 import json
 
 from langchain_core.runnables import Runnable
@@ -134,3 +134,12 @@ def _make_validate_node():
         return {"_validation_result": vr}
 
     return validate_node
+
+
+async def astream_tokens(graph: StateGraph, input_state: dict) -> AsyncIterator[str]:
+    compiled = graph.compile()
+    async for event in compiled.stream_events(input_state, version='v2'):
+        if event['event'] == 'on_chat_model_stream':
+            chunk = event['data']['chunk']
+            if hasattr(chunk, 'content') and chunk.content:
+                yield chunk.content

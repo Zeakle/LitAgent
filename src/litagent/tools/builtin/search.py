@@ -3,14 +3,12 @@
 import httpx
 import xml.etree.ElementTree as ET
 
-from pytest import param
-
 from litagent.tools.base import ToolDefinition, ToolCategory
 from litagent.tools.registry import get_registry
 
 
 async def search_arxiv(query: str = "", max_results: int = 20) -> list[dict]:
-    url = "http://export.arxiv.org/api/query"
+    url = "https://export.arxiv.org/api/query"
     params = {"search_query": f"all:{query}", "start": 0, "max_results": max_results}
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.get(url, params=params)
@@ -33,7 +31,8 @@ def _parse_arxiv_xml(xml_text: str) -> list[dict]:
     return papers
 
 
-async def search_semantic_scholar(query: str = "", max_results: int = 20) -> list[dcit]:
+async def search_semantic_scholar(query: str = "", max_results: int = 20) -> list[dict]:
+    url = "https://api.semanticscholar.org/graph/v1/paper/search"
     params = {"query": query, "limit": max_results, "fields": "paperId,title,abstract,citationCount,year"}
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.get(url, params=params)

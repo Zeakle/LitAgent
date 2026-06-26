@@ -58,10 +58,10 @@ class SynthesisWorker(Worker):
         papers_context = self._build_papers_context(extractions, graph_data)
 
         # Memory Recall
-        memory_texdt = ""
+        memory_text = ""
         if self._memory:
             recalled = await self._memory.recall(query, top_k=5)
-            memory_text = _format_recall(recalled)
+            memory_text = self._format_recall(recalled)
 
         system = build_system_prompt(
             role=SYNTHESIS_ROLE,
@@ -138,7 +138,7 @@ class SynthesisWorker(Worker):
         return {}
 
 
-    def _format_recall(recalled: dict) -> str:
+    def _format_recall(self, recalled: dict) -> str:
         lines = []
         for ep in recalled.get('episodes', []):
             findings = "; ".join(ep.key_findings[:3]) if ep.key_findings else "none"

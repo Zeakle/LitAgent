@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 import json
+import re
 from typing import Any
 
 from litagent.orchestrator.scheduler import Worker
@@ -9,6 +10,7 @@ from litagent.orchestrator.task_graph import SubTask
 from litagent.llm.client import BaseLLMClient
 from litagent.context.templates import build_system_prompt, wrap_xml
 from litagent.logging import get_logger
+from litagent.rag.claims_index import ClaimsIndex
 
 
 logger = get_logger('agents.reviewer')
@@ -41,8 +43,9 @@ class ReviewerWorker(Worker):
     输出：审稿意见(JSON)
     """
 
-    def __init__(self, llm: BaseLLMClient):
+    def __init__(self, llm: BaseLLMClient, claims_index: ClaimsIndex | None = None):
         self._llm = llm
+        self._claims_index = claims_index
 
 
     @property
@@ -54,11 +57,31 @@ class ReviewerWorker(Worker):
         upstream = task.input_data.get('upstream_results', {})
         draft = self._get_draft(upstream)
 
+        # 交叉验证: 搜索Claims Index
+        related_claims_text = ""
+        if self._claims_index and draft:
+            try:
+                phrases = self._extract_key_phrases(draft)
+                related = []
+                for phrase in phrases:
+                    similar = await self._claims_index.search(phrase, top_k=5)
+                    for c in similar:
+                        if c.text.lower() not in draft.lower():
+                            related.append(c.text)
+
+                if related:
+                    related_claims_text = '\n'.join(f"- {c}" for c in related[:10])
+            except Exception as e:
+                logger.warning(f"ClaimsIndex search failed: {e}")
+
         system = build_system_prompt(
             role=REVIEWER_ROLE,
-            instructions=REVIEWER_INSTRUCTIONS,
-        )
-        user_msg = wrap_xml('survey_draft', draft)
+            instructions=REVIEWER_INSTRUCTIONS + "\nCross-reference related claims from other papers against the draft for completeness.")
+        user_parts = [wrap_xml('survey_draft', draft)]
+
+        if related_claims_text:
+            user_parts.append(wrap_xml('related_claims', related_claims_text))
+        user_msg = '\n\n'.join(user_parts)
 
         resp = await self._llm.chat(
             [
@@ -125,3 +148,10 @@ class ReviewerWorker(Worker):
             if isinstance(result, dict) and 'draft' in result:
                 return result['draft']
         return ""
+
+
+    def _extract_key_phrases(self, draft: str) -> list[str]:
+        """提取包含指标/声明的关键句作为搜索短语。"""
+        sentences = re.split(r'(?<=[.!?])\s+', draft)
+        return [s.strip() for s in sentences
+                if any(kw in s.lower() for kw in ["achieve", "%", "outperform", "state-of-the-art", "sota"])][:10]
