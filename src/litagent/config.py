@@ -49,6 +49,16 @@ class AdversarialConfig(BaseModel):
     pass_threshold: float = Field(default=0.8, gt=0, le=1.0)
 
 
+class MCPServerConfig(BaseModel):
+    transport: str = 'stdio'
+    command: str | None = None
+    args: list[str] = []
+    env: dict | None = None
+    url: str | None = None
+    headers: dict | None = None
+    enabled: bool = True
+
+
 class AppConfig(BaseModel):
     """应用顶层配置"""
     agent: AgentConfig
@@ -58,6 +68,7 @@ class AppConfig(BaseModel):
     orchestrator: OrchestratorConfig = OrchestratorConfig()
     llm: LLMConfig = LLMConfig()
     adversarial: AdversarialConfig = AdversarialConfig()
+    mcp_servers: dict[str, MCPServerConfig] = {}
 
 
 def _find_project_root() -> Path:

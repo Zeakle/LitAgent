@@ -26,3 +26,8 @@ class AgentError(LitAgentError):
 class MemoryStoreError(LitAgentError):
     """Memory 层操作失败（Phase 4 开始使用）。不用 MemoryError 因为会覆盖 Python 内置 OOM 异常。"""
     pass
+
+
+class MCPError(LitAgentError):
+    """MCP 连接或调用失败"""
+    pass
