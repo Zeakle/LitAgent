@@ -1,9 +1,10 @@
 """Search tools — arxiv / Semantic Scholar / PapersWithCode."""
+from __future__ import annotations
 
 import httpx
 import xml.etree.ElementTree as ET
 
-from litagent.tools.base import ToolDefinition, ToolCategory
+from litagent.tools.base import FallbackStep, ToolDefinition, ToolCategory
 from litagent.tools.registry import get_registry
 
 
@@ -58,7 +59,11 @@ async def search_paperswithcode(query: str = "", max_results: int = 20) -> list[
 def register_search_tools():
     r = get_registry()
     r.register(ToolDefinition(name="search_arxiv", description="Search arxiv by keyword",
-              category=ToolCategory.READ, timeout_ms=30000, max_retries=2), search_arxiv)
+              category=ToolCategory.READ, timeout_ms=30000, max_retries=2, fallback=[
+                FallbackStep(type="alternative_tool", alternative_tool="search_semantic_scholar"),
+                FallbackStep(type="alternative_tool", alternative_tool="search_paperswithcode"),
+                FallbackStep(type="skip"),   # 全挂了就跳过，返回空
+              ]), search_arxiv)
     r.register(ToolDefinition(name="search_semantic_scholar", description="Search Semantic Scholar",
               category=ToolCategory.READ, timeout_ms=30000, max_retries=2), search_semantic_scholar)
     r.register(ToolDefinition(name="search_paperswithcode", description="Search PapersWithCode",

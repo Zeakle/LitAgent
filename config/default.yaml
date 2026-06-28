@@ -32,3 +32,11 @@ adversarial:
   pass_threshold: 0.8  # Reviewer评分 >= 0.8是未通过
 
 mcp_servers: {} 
+
+safety:
+  max_cost_tokens: 500000
+  cost_warn_ratio: 0.8
+
+resilience:
+  cb_fail_threshold: 5       # 连续失败 5 次熔断
+  cb_cooldown_seconds: 60    # 熔断后冷却 60 秒

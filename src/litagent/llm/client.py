@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 
 from openai import AsyncOpenAI
 
+from litagent.safety.budget import CostBudget
 from litagent.logging import get_logger
 
 
@@ -40,6 +41,7 @@ class OpenAICompatibleClient(BaseLLMClient):
         model: str,
         max_tokens: int = 4096,
         temperature: float = 0.1,
+        cost_budget: CostBudget | None = None
     ):
         api_key = os.environ.get("LLM_API_KEY") or os.environ.get("OPENAI_API_KEY", "")
         if not api_key:
@@ -48,6 +50,8 @@ class OpenAICompatibleClient(BaseLLMClient):
         self._model = model
         self._max_tokens = max_tokens
         self._temperature = temperature
+        self._cost_budget = cost_budget
+
 
     async def chat(self, messages: list[dict], **kwargs) -> LLMResponse:
         model = kwargs.get('model', self._model)
@@ -67,13 +71,18 @@ class OpenAICompatibleClient(BaseLLMClient):
 
             resp = await self._client.chat.completions.create(**create_kwargs)
             choice = resp.choices[0]
+            usage = {
+                'prompt_tokens': resp.usage.prompt_tokens if resp.usage else 0,
+                'completion_tokens': resp.usage.completion_tokens if resp.usage else 0,
+            }
+
+            if self._cost_budget:
+                self._cost_budget.record(usage)
+
             return LLMResponse(
                 content=choice.message.content or "",
                 model=resp.model,
-                usage={
-                    "prompt_tokens": resp.usage.prompt_tokens if resp.usage else 0,
-                    "completion_tokens": resp.usage.completion_tokens if resp.usage else 0,
-                },
+                usage=usage
             )
         except Exception as e:
             logger.error(f"LLM call failed: {e}")

@@ -9,6 +9,8 @@ from litagent.orchestrator.scheduler import Worker
 from litagent.orchestrator.task_graph import SubTask
 from litagent.llm.client import BaseLLMClient
 from litagent.context.templates import build_system_prompt, wrap_xml
+from litagent.context.pipeline import ContextPipeline, ContextLayer
+from litagent.context.budget import BudgetManager
 from litagent.logging import get_logger
 from litagent.rag.claims_index import ClaimsIndex
 
@@ -43,9 +45,11 @@ class ReviewerWorker(Worker):
     输出：审稿意见(JSON)
     """
 
-    def __init__(self, llm: BaseLLMClient, claims_index: ClaimsIndex | None = None):
+    def __init__(self, llm: BaseLLMClient, claims_index: ClaimsIndex | None = None,
+                 budget: BudgetManager | None = None):
         self._llm = llm
         self._claims_index = claims_index
+        self._budget = budget or BudgetManager(max_tokens=16000)
 
 
     @property
@@ -57,32 +61,17 @@ class ReviewerWorker(Worker):
         upstream = task.input_data.get('upstream_results', {})
         draft = self._get_draft(upstream)
 
-        # 交叉验证: 搜索Claims Index
-        related_claims_text = ""
-        if self._claims_index and draft:
-            try:
-                phrases = self._extract_key_phrases(draft)
-                related = []
-                for phrase in phrases:
-                    similar = await self._claims_index.search(phrase, top_k=5)
-                    for c in similar:
-                        if c.text.lower() not in draft.lower():
-                            related.append(c.text)
-
-                if related:
-                    related_claims_text = '\n'.join(f"- {c}" for c in related[:10])
-            except Exception as e:
-                logger.warning(f"ClaimsIndex search failed: {e}")
+        # ContextPipeline 分层：draft 优先级高（必保），claims 低（超预算先截）
+        pipeline = ContextPipeline(self._budget)
+        pipeline.add_layer(ContextLayer("draft", priority=0, max_tokens=12000,
+                                        builder=self._draft_layer))
+        pipeline.add_layer(ContextLayer("claims", priority=1, max_tokens=3000,
+                                        builder=self._claims_layer))
+        user_msg, used = await pipeline.build({"draft": draft})
 
         system = build_system_prompt(
             role=REVIEWER_ROLE,
             instructions=REVIEWER_INSTRUCTIONS + "\nCross-reference related claims from other papers against the draft for completeness.")
-        user_parts = [wrap_xml('survey_draft', draft)]
-
-        if related_claims_text:
-            user_parts.append(wrap_xml('related_claims', related_claims_text))
-        user_msg = '\n\n'.join(user_parts)
-
         resp = await self._llm.chat(
             [
                 {'role': 'system', 'content': system},
@@ -94,6 +83,27 @@ class ReviewerWorker(Worker):
         review = self._parse_review(resp.content)
         logger.info(f"Review score: {review.get('score', 'N/A')}, verdict: {review.get('verdict', 'N/A')}")
         return review
+
+
+    async def _draft_layer(self, state: dict) -> str:
+        return wrap_xml('survey_draft', state["draft"])
+
+
+    async def _claims_layer(self, state: dict) -> str:
+        draft = state["draft"]
+        if not (self._claims_index and draft):
+            return ""
+        try:
+            related = []
+            for phrase in self._extract_key_phrases(draft):
+                for c in await self._claims_index.search(phrase, top_k=5):
+                    if c.text.lower() not in draft.lower():
+                        related.append(c.text)
+            if related:
+                return wrap_xml('related_claims', '\n'.join(f"- {c}" for c in related[:10]))
+        except Exception as e:
+            logger.warning(f"ClaimsIndex search failed: {e}")
+        return ""
 
     
     async def review_revision(self, revised_draft: str, previous_review: dict) -> dict:

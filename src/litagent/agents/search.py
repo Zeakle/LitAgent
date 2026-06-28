@@ -2,6 +2,8 @@
 
 
 from __future__ import annotations
+
+from litagent.tools.base import FallbackStep
 import asyncio
 from typing import Any
 

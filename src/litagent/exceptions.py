@@ -31,3 +31,8 @@ class MemoryStoreError(LitAgentError):
 class MCPError(LitAgentError):
     """MCP 连接或调用失败"""
     pass
+
+
+class SafetyError(LitAgentError):
+    """安全检查失败（注入检测、cost 超限等）。"""
+    pass

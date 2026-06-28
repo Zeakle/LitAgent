@@ -6,6 +6,7 @@ import asyncio
 from abc import ABC, abstractmethod
 from typing import Any, Callable
 
+from litagent.safety.budget import CostBudget
 from litagent.orchestrator.message_bus import AgentMessage, MessageBus, MessageType
 from litagent.orchestrator.task_graph import TaskGraph, SubTask, TaskStatus
 from litagent.logging import get_logger
@@ -67,6 +68,7 @@ class Scheduler:
         timeout_ms: int = 600000,
         on_complete: Callable | None = None,
         bus: MessageBus | None = None,
+        cost_budget: CostBudget | None = None
     ):
         self._workers: dict[str, Worker] = {w.agent_type: w for w in workers}
         self._semaphore = asyncio.Semaphore(max_concurrent)  # 并发限流器--控制同时运行的任务数量
@@ -76,6 +78,7 @@ class Scheduler:
         self._bus = bus
         if bus:
             bus.register('orchestrator')
+        self._cost_budget = cost_budget
 
     
     async def run(self, graph: TaskGraph, cancellation: CancellationToken | None = None) -> dict[str, Any]:
@@ -105,6 +108,14 @@ class Scheduler:
         找就绪任务->并行执行->等完成
         """
         while not graph.is_complete():
+            # 整体cost超限 -> 停发新任务，聚合已有结果
+            if self._cost_budget and self._cost_budget.is_exceeded():
+                logger.warning(
+                    f"Cost budget exceeded ({self._cost_budget.used} tokens), "
+                    f"stopping dispatch, returning partial results"
+                )
+                return graph.get_results()
+
             if cancellation and cancellation.is_cancelled:
                 logger.info("Cancelled by user, returning partial results")
                 return graph.get_results()
@@ -168,6 +179,7 @@ class Scheduler:
 
                     graph.mark_done(task.task_id, result)
 
+                    # search文档太少，replan + search
                     if (self._bus and task.agent_type == 'search' and isinstance(result, list) and len(result) < 3):
                         await self._bus.broadcast(
                             AgentMessage(
@@ -221,7 +233,8 @@ class Scheduler:
         
         self._replan_count += 1
         original = msg.payload['query']
-        expanded = f"{original} Or broader: {(original.split())[0]}"
+        parts = original.split()
+        expanded = f"{original} Or broader: {parts[0]}" if parts else original
         new_id = f'search_replan_{hash(expanded) & 0xFFFF:04x}'
         graph.add_task(SubTask(
             task_id = new_id, description=f'Replan {expanded}',

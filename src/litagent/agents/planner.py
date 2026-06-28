@@ -3,8 +3,10 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
 
+from litagent.exceptions import SafetyError
 from litagent.orchestrator.task_graph import TaskGraph, SubTask
 from litagent.logging import get_logger
+from litagent.safety.injection import InjectionDetector, InjectionRisk
 
 logger = get_logger("agents.planner")
 
@@ -29,6 +31,12 @@ class SurveyPlanner(BasePlanner):
     """
 
     async def plan(self, query: str) -> TaskGraph:
+        # prompt injection检测
+        detector = InjectionDetector()
+        result = detector.scan(query)
+        if result.risk == InjectionRisk.HIGH:
+            raise SafetyError(f"Query rejected: injection detected {result.matched}")
+            
         graph = TaskGraph()
 
         # layer1: 三个并行搜索（无依赖)

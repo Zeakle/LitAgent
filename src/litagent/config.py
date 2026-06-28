@@ -59,6 +59,21 @@ class MCPServerConfig(BaseModel):
     enabled: bool = True
 
 
+class SafetyConfig(BaseModel):
+    max_cost_tokens: int = Field(default=500_000, gt=0)
+    cost_warn_ratio: float = Field(default=0.8, gt=0, le=1.0)
+
+
+class ResilienceConfig(BaseModel):
+    cb_fail_threshold: int = Field(default=5, gt=0)
+    cb_cooldown_seconds: int = Field(default=60, gt=0)
+
+
+class ExtractorConfig(BaseModel):
+    max_concurrent: int = Field(default=5, gt=0)
+    enable_llm: bool = True
+
+
 class AppConfig(BaseModel):
     """应用顶层配置"""
     agent: AgentConfig
@@ -69,6 +84,9 @@ class AppConfig(BaseModel):
     llm: LLMConfig = LLMConfig()
     adversarial: AdversarialConfig = AdversarialConfig()
     mcp_servers: dict[str, MCPServerConfig] = {}
+    safety: SafetyConfig = SafetyConfig()
+    resilience: ResilienceConfig = ResilienceConfig()
+    extractor: ExtractorConfig = ExtractorConfig()
 
 
 def _find_project_root() -> Path:

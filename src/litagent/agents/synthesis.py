@@ -3,6 +3,8 @@
 from __future__ import annotations
 from typing import Any
 
+from litagent.context.pipeline import ContextPipeline, ContextLayer
+from litagent.context.budget import BudgetManager
 from litagent.memory.manager import MemoryManager
 from litagent.orchestrator.scheduler import Worker
 from litagent.orchestrator.task_graph import SubTask
@@ -38,10 +40,11 @@ class SynthesisWorker(Worker):
     输出：结构化综述初稿
     """
 
-    def __init__(self, llm: BaseLLMClient, memory: MemoryManager | None = None):
+    def __init__(self, llm: BaseLLMClient, memory: MemoryManager | None = None, budget: BudgetManager | None = None):
         self._llm = llm
         self._compressor = TierCompressor()
         self._memory = memory
+        self._budget = budget or BudgetManager(max_tokens=16000)
 
     
     @property
@@ -55,29 +58,26 @@ class SynthesisWorker(Worker):
         graph_data = self._get_graph_data(upstream)
         query = task.input_data.get('query', "")
 
-        papers_context = self._build_papers_context(extractions, graph_data)
-
-        # Memory Recall
-        memory_text = ""
-        if self._memory:
-            recalled = await self._memory.recall(query, top_k=5)
-            memory_text = self._format_recall(recalled)
+        # ContextPipeline 分层组装（按预算截断；papers 优先级高、memory 低）
+        pipeline = ContextPipeline(self._budget)
+        pipeline.add_layer(ContextLayer("papers", priority=0, max_tokens=12000,
+                                        builder=self._papers_layer))
+        pipeline.add_layer(ContextLayer("memory", priority=1, max_tokens=2000,
+                                        builder=self._memory_layer))
+        user_msg, used = await pipeline.build({
+            "extractions": extractions, "graph_data": graph_data, "query": query,
+        })
 
         system = build_system_prompt(
             role=SYNTHESIS_ROLE,
             instructions=SYNTHESIS_INSTRUCTIONS,
         )
-        user_parts = [wrap_xml('papers', papers_context)]
-        if memory_text:
-            user_parts.append(wrap_xml('memory', memory_text))
-        user_msg = '\n\n'.join(user_parts)
-
         resp = await self._llm.chat([
             {'role': 'system', 'content': system},
-            {'role': 'user', 'content': user_msg}
+            {'role': 'user', 'content': user_msg},
         ])
 
-        logger.info(f"Synthesis draft generated: {len(resp.content)} chars")
+        logger.info(f"Synthesis draft: {len(resp.content)} chars, ctx {used} tokens")
         return {
             'draft': resp.content,
             'usage': resp.usage,
@@ -146,3 +146,16 @@ class SynthesisWorker(Worker):
         for f in recalled.get("facts", []):
             lines.append(f"Known fact [{f.get('key')}]: {f.get('value')}")
         return '\n'.join(lines)
+
+
+    async def _papers_layer(self, state: dict) -> str:
+        ctx = self._build_papers_context(state["extractions"], state["graph_data"])
+        return wrap_xml('papers', ctx) if ctx else ""
+
+
+    async def _memory_layer(self, state: dict) -> str:
+        if not self._memory:
+            return ""
+        recalled = await self._memory.recall(state["query"], top_k=5)
+        text = self._format_recall(recalled)
+        return wrap_xml('memory', text) if text else ""

@@ -5,6 +5,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
+from litagent.errors.circuit_breaker import CircuitBreaker
 from litagent.tools.base import ToolDefinition, RateLimitConfig, FallbackStep
 from litagent.tools.registry import ToolRegistry
 from litagent.logging import get_logger
@@ -48,10 +49,23 @@ class ToolExecutor:
     每个 session 持有一个实例（缓存和限流状态是 session 级别的）。
     """
 
-    def __init__(self, registry: ToolRegistry):
+    def __init__(self, registry: ToolRegistry, cb_fail_threshold: int = 5, cb_cooldown_seconds: int = 60):
         self._registry = registry
         self._cache: dict[str, Any] = {}  # TODO Phase 11: add TTL-based eviction
         self._rate_limits: dict[str, _RateLimitState] = {}
+        # circuit breaker
+        self._breakers: dict[str, CircuitBreaker] = {}
+        self._cb_fail_threshold = cb_fail_threshold
+        self._cb_cooldown = cb_cooldown_seconds
+
+
+    def _get_breaker(self, name: str) -> CircuitBreaker:
+        if name not in self._breakers:
+            self._breakers[name] = CircuitBreaker(
+                self._cb_fail_threshold, self._cb_cooldown
+            )
+        return self._breakers[name]
+
 
     async def execute(self, name: str, args: dict, session_id: str = "") -> ToolResult:
         """执行一次工具调用，走完整保护链路。
@@ -66,6 +80,11 @@ class ToolExecutor:
             return ToolResult(name=name, args=args, error=f'Tool {name} not registered', elapsed_ms=0)
 
         td = registered.definition
+
+        # 熔断检查
+        breaker = self._get_breaker(name)
+        if not breaker.allow():
+            return ToolResult(name=name, args=args, error='Circuit breaker open')
 
         # 1.限流检查
         if td.rate_limit and not self._check_rate_limit(name, td.rate_limit):
@@ -82,6 +101,12 @@ class ToolExecutor:
 
         # 3. 执行(带重试)
         result = await self._execute_with_retry(name, args, registered.func, td.timeout_ms, td.max_retries)
+
+        # record state on breaker
+        if result.error:
+            breaker.record_failure()
+        else:
+            breaker.record_success()
 
         # 4. 执行失败 -> 降级
         if result.error and td.fallback:
