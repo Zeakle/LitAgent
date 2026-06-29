@@ -94,3 +94,8 @@ class ClaimsIndex:
                     confidence=r.payload.get("confidence", 0.5),
                 ))
         return claims
+
+
+    async def close(self) -> None:
+        """关闭Qdrant连接"""
+        await self._client.close()

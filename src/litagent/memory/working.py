@@ -63,3 +63,8 @@ class WorkingMemory:
     async def exists(self, session_id: str) -> bool:
         key = _KEY_PREFIX + session_id
         return await self._redis.exists(key) > 0
+
+
+    async def close(self) -> None:
+        """关闭Redis连接"""
+        await self._redis.close()

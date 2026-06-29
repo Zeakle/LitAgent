@@ -23,9 +23,9 @@ class AdversarialReviewWorker(Worker):
     4. 返回终稿
     """
 
-    def __init__(self, llm: BaseLLMClient, max_rounds: int = 3, pass_threshold: float = 0.8):
-        self._synthesis = SynthesisWorker(llm)
-        self._reviewer = ReviewerWorker(llm)
+    def __init__(self, llm: BaseLLMClient, synthesis: SynthesisWorker, reviewer: ReviewerWorker, max_rounds: int = 3, pass_threshold: float = 0.8):
+        self._synthesis = synthesis
+        self._reviewer = reviewer
         self._llm = llm
         self._max_rounds = max_rounds 
         self._pass_threshold = pass_threshold

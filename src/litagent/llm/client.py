@@ -20,6 +20,7 @@ class LLMResponse:
     content: str
     model: str = ""
     usage: dict = field(default_factory=dict)
+    tool_calls: list[dict] = field(default_factory=list)
 
 
 class BaseLLMClient(ABC):
@@ -69,6 +70,9 @@ class OpenAICompatibleClient(BaseLLMClient):
             if 'response_format' in kwargs:
                 create_kwargs['response_format'] = kwargs['response_format']
 
+            if 'tools' in kwargs and kwargs['tools']:
+                create_kwargs['tools'] = kwargs['tools']
+
             resp = await self._client.chat.completions.create(**create_kwargs)
             choice = resp.choices[0]
             usage = {
@@ -76,13 +80,26 @@ class OpenAICompatibleClient(BaseLLMClient):
                 'completion_tokens': resp.usage.completion_tokens if resp.usage else 0,
             }
 
+            tool_calls = []
+            if choice.message.tool_calls:
+                for tc in choice.message.tool_calls:
+                    tool_calls.append({
+                        'id': tc.id,
+                        'type': 'function',
+                        'function': {
+                            'name': tc.function.name,
+                            'arguments': tc.function.arguments,
+                        },
+                    })
+
             if self._cost_budget:
                 self._cost_budget.record(usage)
 
             return LLMResponse(
                 content=choice.message.content or "",
                 model=resp.model,
-                usage=usage
+                usage=usage,
+                tool_calls=tool_calls
             )
         except Exception as e:
             logger.error(f"LLM call failed: {e}")

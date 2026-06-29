@@ -131,5 +131,10 @@ class SemanticMemory:
         return best
 
 
+    async def close(self) -> None:
+        """关闭 PostgreSQL 连接池"""
+        await self._pool.close()
+
+
 def _vector_to_pg(vec: list[float]) -> str:
     return "[" + ",".join(str(v) for v in vec) + "]"

@@ -71,3 +71,8 @@ class ProceduralMemory:
                 WHERE id = $1""",
             procedure_id
         )
+
+
+    async def close(self) -> None:
+        """关闭PostgreSQL连接池"""
+        await self._pool.close()

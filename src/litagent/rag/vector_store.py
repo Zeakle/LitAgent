@@ -94,3 +94,7 @@ class QdrantVectorStore(VectorStore):
                 doc = Document(page_content=r.payload.get('page_content', ""), metadata=metadata)
                 scored.append(ScoredDoc(doc=doc, score=r.score if r.score else 0))
         return scored
+
+    async def close(self) -> None:
+        """关闭 Qdrant 连接。"""
+        await self._client.close()

@@ -103,3 +103,8 @@ class EpisodicMemory:
             collection_name=COLLECTION_NAME,
             points_selector=PointIdsList(points=[episode_id])
         )
+
+    
+    async def close(self) -> None:
+        """关闭Qdrant连接"""
+        await self._client.close()

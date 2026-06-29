@@ -20,7 +20,7 @@ class MemoryManager:
         self,
         working: WorkingMemory,
         episodic: EpisodicMemory,
-        semantic: SemanticMemory,
+        semantic: SemanticMemory | None = None,
         procedural: ProceduralMemory | None = None,
     ):
         self.working = working
