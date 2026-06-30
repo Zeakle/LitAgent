@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 from typing import Any
+import json
 
+from litagent.agent.react import ReActRunner
+from litagent.config import AgentConfig
 from litagent.context.pipeline import ContextPipeline, ContextLayer
 from litagent.context.budget import BudgetManager
 from litagent.memory.manager import MemoryManager
@@ -12,6 +15,7 @@ from litagent.llm.client import BaseLLMClient
 from litagent.context.compressor import TierCompressor, PaperInfo
 from litagent.context.templates import build_system_prompt, wrap_xml
 from litagent.logging import get_logger
+from litagent.tools.worker_tools import make_recall_memory_tool
 
 
 logger = get_logger('agents.synthesis')
@@ -45,6 +49,7 @@ class SynthesisWorker(Worker):
         self._compressor = TierCompressor()
         self._memory = memory
         self._budget = budget or BudgetManager(max_tokens=16000)
+        self._tools = [make_recall_memory_tool(memory)] if memory else []
 
     
     @property
@@ -72,18 +77,18 @@ class SynthesisWorker(Worker):
             role=SYNTHESIS_ROLE,
             instructions=SYNTHESIS_INSTRUCTIONS,
         )
-        resp = await self._llm.chat([
-            {'role': 'system', 'content': system},
-            {'role': 'user', 'content': user_msg},
-        ])
 
-        logger.info(f"Synthesis draft: {len(resp.content)} chars, ctx {used} tokens")
-        return {
-            'draft': resp.content,
-            'usage': resp.usage,
-        }
+        runner = ReActRunner(self._llm, tools=self._tools, config=AgentConfig(max_loops=15))
+        result = await runner.run(system_prompt=system, user_message=user_msg)
+        
+        logger.info(f'Synthesis draft: {len(result)} chars, ctx {used} tokens')
 
+        try:
+            return json.loads(result)
+        except (json.JSONDecodeError, TypeError):
+            return {'draft': result or '', 'error': 'JSON parse failed'}
     
+
     def revise(self, draft: str, review_comments: str) -> list[dict]:
         """构建修订请求的 messages（供 AdversarialLoop 调用）。"""
         system = build_system_prompt(

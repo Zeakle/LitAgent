@@ -5,6 +5,7 @@ import json
 import re
 from typing import Any
 
+from litagent.tools.worker_tools import make_lookup_claims_tool
 from litagent.orchestrator.scheduler import Worker
 from litagent.orchestrator.task_graph import SubTask
 from litagent.llm.client import BaseLLMClient
@@ -13,6 +14,8 @@ from litagent.context.pipeline import ContextPipeline, ContextLayer
 from litagent.context.budget import BudgetManager
 from litagent.logging import get_logger
 from litagent.rag.claims_index import ClaimsIndex
+from litagent.agent.react import ReActRunner
+from litagent.config import AgentConfig
 
 
 logger = get_logger('agents.reviewer')
@@ -50,6 +53,7 @@ class ReviewerWorker(Worker):
         self._llm = llm
         self._claims_index = claims_index
         self._budget = budget or BudgetManager(max_tokens=16000)
+        self._tools = [make_lookup_claims_tool(claims_index)] if claims_index else []
 
 
     @property
@@ -72,15 +76,12 @@ class ReviewerWorker(Worker):
         system = build_system_prompt(
             role=REVIEWER_ROLE,
             instructions=REVIEWER_INSTRUCTIONS + "\nCross-reference related claims from other papers against the draft for completeness.")
-        resp = await self._llm.chat(
-            [
-                {'role': 'system', 'content': system},
-                {'role': 'user', 'content': user_msg}
-            ],
-            response_format={'type': 'json_object'}
-        )
+            
+        runner = ReActRunner(self._llm, tools=self._tools,
+                             config=AgentConfig(max_loops=10))
+        result = await runner.run(system_prompt=system, user_message=user_msg)
 
-        review = self._parse_review(resp.content)
+        review = self._parse_review(result)
         logger.info(f"Review score: {review.get('score', 'N/A')}, verdict: {review.get('verdict', 'N/A')}")
         return review
 

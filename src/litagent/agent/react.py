@@ -1,13 +1,16 @@
 from typing import Literal, AsyncIterator
 import json
 
-from langchain_core.runnables import Runnable
+from langchain_core.messages import AIMessage, SystemMessage, HumanMessage
+from langchain_core.runnables import Runnable, RunnableLambda
+from langchain_core.messages import AIMessage, SystemMessage, HumanMessage
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
 
 from litagent.agent.state import AgentState
 from litagent.agent.validation import validate_tool_call
 from litagent.config import AgentConfig
+from litagent.llm.client import BaseLLMClient
 from litagent.logging import get_logger
 
 logger = get_logger('agent.react')
@@ -143,3 +146,143 @@ async def astream_tokens(graph: StateGraph, input_state: dict) -> AsyncIterator[
             chunk = event['data']['chunk']
             if hasattr(chunk, 'content') and chunk.content:
                 yield chunk.content
+
+
+def _client_to_runnable(llm_client: BaseLLMClient, tools: list | None = None):
+    """将 BaseLLMClient 包装为 LangChain Runnable。
+    
+    tools 参数: LangChain BaseTool 列表，转换为 OpenAI API tools 格式。
+               如果不传 tools，LLM 不会返回 tool_calls。
+    """
+    tools_spec = _tools_to_api_format(tools) if tools else None
+
+    async def _call(state: dict) -> dict:
+        messages = state.get('messages', [])
+        formatted = []
+        for m in messages:
+            if hasattr(m, 'content'):
+                formatted.append({'role': _lc_role(m), 'content': m.content})
+            elif isinstance(m, dict):
+                formatted.append(m)
+
+        resp = await llm_client.chat(formatted, tools=tools_spec)
+
+        ai_msg = AIMessage(content=resp.content or "")
+        result: dict = {'messages': [ai_msg]}
+
+        if resp.tool_calls and len(resp.tool_calls) > 0:
+            tc = resp.tool_calls[0]
+            ai_msg.tool_calls = [{
+                'id': tc.get('id', ''),
+                'name': tc['function']['name'],
+                'args': _parse_tool_args(tc['function']['arguments']),
+            }]
+
+            result['current_action'] = {
+                'name': tc['function']['name'],
+                'args': _parse_tool_args(tc['function']['arguments'])
+            }
+        else:
+            # 没有 tool_call：本轮就是最终答案
+            result['final_answer'] = resp.content or ''
+
+        return result
+
+    return RunnableLambda(_call)
+
+
+def _tools_to_api_format(tools: list) -> list[dict]:
+    """LangChain BaseTool -> OpenAI API tools格式"""
+    spec = []
+    for t in tools:
+        spec.append({
+            'type': 'function',
+            'function': {
+                'name': t.name,
+                'description': t.description,
+                'parameters': t.args_schema.schema() if t.args_schema else {},
+            },
+        })
+    return spec
+
+
+def _lc_role(msg) -> str:
+    """LangChain Message -> OpenAI role message"""
+    type_name = getattr(msg, 'type', 'unknown')
+    role_map = {
+        'human': 'user',
+        'ai': 'assistant',
+        'system': 'system',
+        'tool': 'tool'
+    }
+    return role_map.get(type_name, 'user')
+
+
+def _parse_tool_args(args) -> dict:
+    """解析 tool argument, API可能返回JSON字符串或dict"""
+    if isinstance(args, dict):
+        return args
+    if isinstance(args, str):
+        import json as _json
+        try:
+            return _json.loads(args)
+        except _json.JSONDecodeError:
+            return {'raw': args}
+    return {'raw': str(args)}
+
+
+class ReActRunner:
+    """ReAct Loop 封装
+
+    工作流程:
+        1. 将 LLM client 包装为 Runnable
+        2. build_react_graph(agent_node, tools, config)
+        3. compile → ainvoke（或 astream_tokens）
+        4. 返回
+    """
+
+    def __init__(self, llm_client: BaseLLMClient, tools: list | None = None, config: AgentConfig | None = None):
+        self._llm = llm_client
+        self._tools = tools or []
+        self._config = config or AgentConfig()
+
+
+    async def run(self, system_prompt: str, user_message: str) -> str:
+        """运行ReAct循环, 返回final_answer"""
+        agent_node = _client_to_runnable(self._llm, tools=self._tools) 
+
+        graph = build_react_graph(agent_node, self._tools, self._config)
+
+        compiled = graph.compile()
+        initial_state = {
+            'messages': [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_message)
+                ]
+        }
+
+        result = await compiled.ainvoke(initial_state)
+
+        return result.get('final_answer', '')
+
+
+    async def run_streaming(
+        self,
+        system_prompt: str,
+        user_message: str,
+    ):
+        """Streaming ReAct"""
+        agent_node = _client_to_runnable(self._llm, tools=self._tools)
+        graph = build_react_graph(agent_node, self._tools, self._config)
+
+        initial_state = {
+            'messages': [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_message)
+                ]
+        }
+
+        async for token in astream_tokens(graph, initial_state):
+            yield token
+
+
