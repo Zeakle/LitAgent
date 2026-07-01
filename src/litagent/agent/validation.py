@@ -12,7 +12,7 @@ logger = get_logger('agent_validation')
 _REQUIRED_FIELDS = {"name", "args"}
 
 
-def validate_tool_call(action: dict) -> dict:
+def validate_tool_call(action: dict, graph_tool_names: set[str] | None = None) -> dict:
     """校验 tool_call 的格式是否合法。"""
     from litagent.tools.registry import get_registry
     registry = get_registry()
@@ -31,8 +31,11 @@ def validate_tool_call(action: dict) -> dict:
     if 'args' in action and not isinstance(action['args'], dict):
         errors.append('Tool args must be a dict')
 
-    # 检测工具是否注册
-    if len(registry) > 0 and action.get('name', "") not in registry:
+    # 检测工具是否注册 (Registry or ReAct graph ToolNode)
+    name = action.get('name', "")
+    in_registry = len(registry) > 0 and name in registry
+    in_graph = graph_tool_names is not None and name in graph_tool_names
+    if len(registry) > 0 and not in_registry and not in_graph:
         errors.append(f"Tool {action.get('name', '')} not registered")
 
     if errors:

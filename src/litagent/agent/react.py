@@ -1,7 +1,6 @@
 from typing import Literal, AsyncIterator
 import json
 
-from langchain_core.messages import AIMessage, SystemMessage, HumanMessage
 from langchain_core.runnables import Runnable, RunnableLambda
 from langchain_core.messages import AIMessage, SystemMessage, HumanMessage
 from langgraph.graph import StateGraph, END
@@ -39,6 +38,13 @@ def build_react_graph(
         未编译的 StateGraph（binder 在 Worker 层做，这里只定义图结构）
     """
     workflow = StateGraph(AgentState)
+
+    # 兼容 LangChain BaseTool (.name) 和普通函数 (.__name__)
+    graph_tool_names: set[str] = set()
+    for t in (tools or []):
+        name = getattr(t, 'name', None) or getattr(t, '__name__', None)
+        if name:
+            graph_tool_names.add(name)
 
     # _route_after_agent 闭包捕获 config.max_loops，只读 state，返回方向
     def _route_after_agent(state: AgentState) -> Literal['validate', 'end']:
@@ -78,7 +84,7 @@ def build_react_graph(
     # 节点注册
     workflow.add_node("step", _step_node)
     workflow.add_node("agent", agent_node)
-    workflow.add_node('validate', _make_validate_node())
+    workflow.add_node('validate', _make_validate_node(graph_tool_names))
     workflow.add_node('tools', ToolNode(tools))
     workflow.set_entry_point('step')
     workflow.add_edge('step', 'agent')
@@ -118,7 +124,7 @@ def _route_after_validate(state: AgentState) -> Literal['tools', 'agent']:
     return 'tools'
 
 
-def _make_validate_node():
+def _make_validate_node(graph_tool_names: set[str] | None = None):
     """创建校验节点（retry_count 在节点内递增，不在路由函数里改 state）。"""
 
     def validate_node(state: AgentState) -> dict:
@@ -126,7 +132,7 @@ def _make_validate_node():
         if action is None:
             return {"_validation_result": {"valid": True}}
 
-        result = validate_tool_call(action)
+        result = validate_tool_call(action, graph_tool_names=graph_tool_names)
         vr = result["_validation_result"]
 
         # 校验失败：继承上次的 retry_count 并 +1（在节点里做，不在路由函数里）
@@ -161,7 +167,39 @@ def _client_to_runnable(llm_client: BaseLLMClient, tools: list | None = None):
         formatted = []
         for m in messages:
             if hasattr(m, 'content'):
-                formatted.append({'role': _lc_role(m), 'content': m.content})
+                msg = {'role': _lc_role(m), 'content': m.content}
+
+                # ToolMessage: 必须带tool_call_id
+                if hasattr(m, 'tool_call_id') and m.tool_call_id:
+                    msg['tool_call_id'] = m.tool_call_id
+
+                # AIMessage: 保留tool_calls，从 LangChain 格式 {id, name, args}
+                # 转回 OpenAI API 格式 {id, type, function: {name, arguments: json_str}}
+                if hasattr(m, 'tool_calls') and m.tool_calls:
+                    api_tool_calls = []
+                    for tc in m.tool_calls:
+                        if isinstance(tc, dict):
+                            tc_id = tc.get('id', '')
+                            tc_name = tc.get('name', '')
+                            tc_args = tc.get('args', {})
+                        else:
+                            tc_id = getattr(tc, 'id', '')
+                            tc_name = getattr(tc, 'name', '')
+                            tc_args = getattr(tc, 'args', {})
+                        api_tool_calls.append({
+                            'id': tc_id,
+                            'type': 'function',
+                            'function': {
+                                'name': tc_name,
+                                'arguments': json.dumps(tc_args) if isinstance(tc_args, dict) else str(tc_args),
+                            },
+                        })
+                    msg['tool_calls'] = api_tool_calls
+                    # OpenAI 要求 assistant turn 带 tool_calls 时 content 为 null 而非 ""
+                    if not msg['content']:
+                        msg['content'] = None
+
+                formatted.append(msg)
             elif isinstance(m, dict):
                 formatted.append(m)
 
@@ -172,15 +210,20 @@ def _client_to_runnable(llm_client: BaseLLMClient, tools: list | None = None):
 
         if resp.tool_calls and len(resp.tool_calls) > 0:
             tc = resp.tool_calls[0]
+            tc_name = tc['function']['name']
+            tc_args = _parse_tool_args(tc['function']['arguments'])
+
+            # ToolNode读 AIMessages.tool_calls 的值，需要转换为 LangChain 的格式
             ai_msg.tool_calls = [{
                 'id': tc.get('id', ''),
-                'name': tc['function']['name'],
-                'args': _parse_tool_args(tc['function']['arguments']),
+                'name': tc_name,
+                'args': tc_args,
             }]
 
+            # 将 tool_calls 转换为 current_action, ReAct Loop 需要这个字段
             result['current_action'] = {
-                'name': tc['function']['name'],
-                'args': _parse_tool_args(tc['function']['arguments'])
+                'name': tc_name,
+                'args': tc_args,
             }
         else:
             # 没有 tool_call：本轮就是最终答案

@@ -45,7 +45,6 @@ def make_recall_memory_tool(memory: MemoryManager | None):
 
 def make_lookup_claims_tool(claims_index: ClaimsIndex | None):
 
-
     @tool
     async def lookup_claims(query: str) -> str:
         """Search the claims index for related claims to cross-reference.
