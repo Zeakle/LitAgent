@@ -208,7 +208,7 @@ def _client_to_runnable(llm_client: BaseLLMClient, tools: list | None = None):
         ai_msg = AIMessage(content=resp.content or "")
         result: dict = {'messages': [ai_msg]}
 
-        if resp.tool_calls and len(resp.tool_calls) > 0:
+        if resp.tool_calls:
             tc = resp.tool_calls[0]
             tc_name = tc['function']['name']
             tc_args = _parse_tool_args(tc['function']['arguments'])
