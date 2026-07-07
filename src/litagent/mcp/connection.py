@@ -3,7 +3,7 @@
 from contextlib import AsyncExitStack
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
-from mcp.client.streamable_http import streamablehttp_client
+from mcp.client.streamable_http import streamable_http_client
 from litagent.logging import get_logger
 
 logger = get_logger('mcp_connection')
@@ -43,7 +43,10 @@ class MCPConnection:
 
     @classmethod
     def stdio(cls, command: str, args: list[str] | None = None,
-              env: dict[str, str] | None = None) -> "MCPConnection":
+              env: dict[str, str] | None = None,
+              sandboxed: bool = False,
+              sandbox_network: str = 'none',
+              image: str = 'agent-sandbox:latest') -> "MCPConnection":
         """创建 stdio 连接。
 
         Args:
@@ -51,6 +54,13 @@ class MCPConnection:
             args: 命令行参数
             env: 传给子进程的额外环境变量 (如 API_KEY=xxx)
         """ 
+        if sandboxed:
+            from litagent.sandbox.docker_cmd import build_sandbox_command
+            command, args = build_sandbox_command(
+                command, args, image=image, network=sandbox_network, env=env
+            )
+            env = {}
+
         return cls("stdio", command=command, args=args or [], env = env or {})
 
 

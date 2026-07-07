@@ -30,6 +30,7 @@ from litagent.tools.executor import ToolExecutor
 from litagent.tools.builtin.search import register_search_tools
 from litagent.tools.builtin.extract import register_extract_tools
 from litagent.context.budget import BudgetManager
+from litagent.mcp.bridge import MCPBridge
 from litagent.skills.manager import SkillManager
 from litagent.agents.extraction_strategy import (
     RegexStrategy,
@@ -143,6 +144,7 @@ class LitAgent:
         # ── Skills + Strategies ──
         self._skill_manager: SkillManager | None = None
         self._extraction_strategy: ResilientExtractionStrategy | None = None
+        self._mcp_bridge = None
 
         # ── Workers (8) ──
         self._search: SearchWorker | None = None
@@ -307,6 +309,14 @@ class LitAgent:
         # 7. Skills + Extraction Strategies
         skills_dir = str(Path(__file__).resolve().parent / 'skills' / 'extraction')
         self._skill_manager = SkillManager(skills_dir=skills_dir)
+        if cfg.mcp_servers:
+            self._mcp_bridge = MCPBridge()
+            try:
+                registered = await self._mcp_bridge.connect_all(cfg.mcp_servers)
+                logger.info("MCP: %d tools registered", len(registered))
+            except Exception as e:
+                logger.warning(f"MCP bridge failed, continuing without MCP tools: {e}")
+                self._mcp_bridge = None
 
         regex_strategy = RegexStrategy(self._executor)
         llm_strategy = LLMStrategy(self._llm, self._skill_manager)
@@ -510,6 +520,12 @@ class LitAgent:
         """关闭所有连接，释放资源"""
         self._emit('cleanup.start', {'session_id': self._session_id})
         logger.info('Cleaning up LitAgent (session %s)...', self._session_id)
+
+        if self._mcp_bridge:
+            try:
+                await self._mcp_bridge.disconnect_all()
+            except Exception as e:
+                logger.debug(f"MCP disconnect error: {e}")
 
         infra = self._infra
 

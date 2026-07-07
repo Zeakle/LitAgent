@@ -82,6 +82,8 @@ class MCPBridge:
                 command=cfg.command,
                 args=getattr(cfg, 'args', []),
                 env=getattr(cfg, 'env', None),
+                sandboxed=getattr(cfg, 'sandboxed', False),
+                sandbox_network=getattr(cfg, 'sandbox_network', 'none')
             )
         elif transport_type in ('streamable-http', 'http'):
             conn = MCPConnection.streamable_http(

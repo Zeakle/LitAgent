@@ -36,3 +36,8 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: 需要外部服务（Docker daemon 等），CI 默认跳过",
+]

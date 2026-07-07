@@ -57,6 +57,8 @@ class MCPServerConfig(BaseModel):
     url: str | None = None
     headers: dict | None = None
     enabled: bool = True
+    sandboxed: bool = False
+    sandbox_network: str = 'none'
 
 
 class SafetyConfig(BaseModel):
