@@ -30,3 +30,6 @@ tests/
 # IDE
 .vscode/
 .idea/
+
+# Langfuse
+langfuse/

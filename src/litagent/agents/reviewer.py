@@ -49,11 +49,12 @@ class ReviewerWorker(Worker):
     """
 
     def __init__(self, llm: BaseLLMClient, claims_index: ClaimsIndex | None = None,
-                 budget: BudgetManager | None = None):
+                 budget: BudgetManager | None = None, trace_hook=None):
         self._llm = llm
         self._claims_index = claims_index
         self._budget = budget or BudgetManager(max_tokens=16000)
         self._tools = [make_lookup_claims_tool(claims_index)] if claims_index else []
+        self._trace_hook = trace_hook
 
 
     @property
@@ -78,7 +79,7 @@ class ReviewerWorker(Worker):
             instructions=REVIEWER_INSTRUCTIONS + "\nCross-reference related claims from other papers against the draft for completeness.")
             
         runner = ReActRunner(self._llm, tools=self._tools,
-                             config=AgentConfig(max_loops=10))
+                             config=AgentConfig(max_loops=10), trace_hook=self._trace_hook, task_id=task.task_id)
         result = await runner.run(system_prompt=system, user_message=user_msg)
 
         review = self._parse_review(result)

@@ -15,6 +15,7 @@ LangFuse trace 预留:
 
 from __future__ import annotations
 import uuid
+import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -63,6 +64,9 @@ from litagent.rag.vector_store import QdrantVectorStore
 from litagent.rag.claims_index import ClaimsIndex
 from litagent.rag.reranker import CrossEncoderReranker
 from litagent.rag.retriever import HybridRetriever
+
+# ── Observation ──
+from litagent.observability.tracing import LangFuseTracer
 
 
 logger = get_logger('runner')
@@ -260,7 +264,17 @@ class LitAgent:
         cfg = self._config
         setup_logging(cfg.logging)
         self._emit('wire.start', {'session_id': self._session_id})
+
         logger.info("Wiring LitAgent components (session %s)...", self._session_id)
+
+        # 0. Observability（enabled 且用户没自己注入 hook → 建 LangFuseTracer）
+        obs = getattr(cfg, 'observability', None)
+        if obs and obs.enabled and self._trace_hook is None:
+            self._trace_hook = LangFuseTracer(
+                host=obs.langfuse_host,
+                public_key=os.getenv("LANGFUSE_PUBLIC_KEY", ""),
+                secret_key=os.getenv("LANGFUSE_SECRET_KEY", ""),
+            )
 
         # 1. CostBudget
         self._cost_budget = CostBudget(
@@ -295,6 +309,7 @@ class LitAgent:
             registry=self._registry,
             cb_fail_threshold=cfg.resilience.cb_fail_threshold,
             cb_cooldown_seconds=cfg.resilience.cb_cooldown_seconds,
+            trace_hook=self._trace_hook
         )
 
         # 5. BudgetManager
@@ -343,12 +358,12 @@ class LitAgent:
         workers.append(self._graph)
 
         self._synthesis = SynthesisWorker(
-            llm=self._llm, memory=self._infra.memory, budget=self._budget_manager,
+            llm=self._llm, memory=self._infra.memory, budget=self._budget_manager, trace_hook=self._trace_hook
         )
         workers.append(self._synthesis)
 
         self._reviewer = ReviewerWorker(
-            llm=self._llm, claims_index=self._infra.claims_index, budget=self._budget_manager,
+            llm=self._llm, claims_index=self._infra.claims_index, budget=self._budget_manager, trace_hook=self._trace_hook
         )
         workers.append(self._reviewer)
 
@@ -375,6 +390,7 @@ class LitAgent:
             on_complete=self._on_session_complete,
             bus=self._bus,
             cost_budget=self._cost_budget,
+            trace_hook=self._trace_hook
         )
 
         self._planner = SurveyPlanner()
@@ -461,14 +477,14 @@ class LitAgent:
                     logger.info("Infra: Created Qdrant collection '%s'", coll_name)
             
             episodic = EpisodicMemory(qdrant_client)
-            claims_index = ClaimsIndex(qdrant_client)
+            claims_index = ClaimsIndex(qdrant_client, trace_hook=self._trace_hook)
             vector_store = QdrantVectorStore(qdrant_client, 'papers')
 
             infra._qdrant_client = qdrant_client
             infra.claims_index = claims_index
 
             reranker = CrossEncoderReranker()
-            infra.retriever = HybridRetriever(vector_store, reranker)
+            infra.retriever = HybridRetriever(vector_store, reranker, trace_hook=self._trace_hook)
 
             logger.info("Infra: Qdrant connected (Episodic + Claims + Papers)")
         except Exception as e:
@@ -498,6 +514,7 @@ class LitAgent:
             infra.memory = MemoryManager(
                 working=working, episodic=episodic,
                 semantic=semantic, procedural=procedural,
+                trace_hook=self._trace_hook,
             )
             logger.info('Infra: Memory Manager assembled (4-layer)')
         elif working is not None:
@@ -520,6 +537,12 @@ class LitAgent:
         """关闭所有连接，释放资源"""
         self._emit('cleanup.start', {'session_id': self._session_id})
         logger.info('Cleaning up LitAgent (session %s)...', self._session_id)
+
+        if self._trace_hook and hasattr(self._trace_hook, 'flush'):
+            try:
+                self._trace_hook.flush()
+            except Exception as e:
+                logger.debug(f"Tracer flush error {e}")
 
         if self._mcp_bridge:
             try:

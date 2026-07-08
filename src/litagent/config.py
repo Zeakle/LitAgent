@@ -76,6 +76,11 @@ class ExtractorConfig(BaseModel):
     enable_llm: bool = True
 
 
+class ObservabilityConfig(BaseModel):
+    enabled: bool = False
+    langfuse_host: str = 'http://localhost:3000'
+
+
 class AppConfig(BaseModel):
     """应用顶层配置"""
     agent: AgentConfig
@@ -89,6 +94,7 @@ class AppConfig(BaseModel):
     safety: SafetyConfig = SafetyConfig()
     resilience: ResilienceConfig = ResilienceConfig()
     extractor: ExtractorConfig = ExtractorConfig()
+    observability: ObservabilityConfig = ObservabilityConfig()
 
 
 def _find_project_root() -> Path:

@@ -47,7 +47,7 @@ class AdversarialReviewWorker(Worker):
             # Reviewer 审稿
             if round_num == 1:
                 review_task = SubTask(
-                    task_id=f'review_r{round_num}',
+                    task_id=task.task_id,
                     description=f'Review round {round_num}',
                     agent_type='reviewer',
                     input_data={'upstream_results': {'synthesis': {'draft': draft}}},

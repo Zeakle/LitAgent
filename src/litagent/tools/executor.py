@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from litagent.errors.circuit_breaker import CircuitBreaker
+from litagent.observability.context import get_task_id
 from litagent.tools.base import ToolDefinition, RateLimitConfig, FallbackStep
 from litagent.tools.registry import ToolRegistry
 from litagent.logging import get_logger
@@ -49,7 +50,7 @@ class ToolExecutor:
     每个 session 持有一个实例（缓存和限流状态是 session 级别的）。
     """
 
-    def __init__(self, registry: ToolRegistry, cb_fail_threshold: int = 5, cb_cooldown_seconds: int = 60):
+    def __init__(self, registry: ToolRegistry, cb_fail_threshold: int = 5, cb_cooldown_seconds: int = 60, trace_hook=None):
         self._registry = registry
         self._cache: dict[str, Any] = {}  # TODO Phase 11: add TTL-based eviction
         self._rate_limits: dict[str, _RateLimitState] = {}
@@ -57,6 +58,16 @@ class ToolExecutor:
         self._breakers: dict[str, CircuitBreaker] = {}
         self._cb_fail_threshold = cb_fail_threshold
         self._cb_cooldown = cb_cooldown_seconds
+        self._trace_hook = trace_hook
+
+
+    def _emit(self, event: str, data: dict) -> None:
+        """触发 trace hook"""
+        if self._trace_hook:
+            try:
+                self._trace_hook(event, data)
+            except Exception as e:
+                logger.debug(f"Trace hook failed for '{event}': {e}")
 
 
     def _get_breaker(self, name: str) -> CircuitBreaker:
@@ -67,7 +78,26 @@ class ToolExecutor:
         return self._breakers[name]
 
 
-    async def execute(self, name: str, args: dict, session_id: str = "") -> ToolResult:
+    async def execute(self, name: str, args: dict, session_id: str = '') -> ToolResult:
+        t0 = time.monotonic()
+        result = await self._execute_inner(name, args, session_id)
+        if not result.elapsed_ms:
+            result.elapsed_ms = (time.monotonic() - t0) * 1000
+        self._emit("tool.call", {
+            "task_id": get_task_id(),
+            "name": name,
+            "args": args,
+            "success": result.error is None,
+            "error": result.error,
+            "elapsed_ms": result.elapsed_ms,
+            "from_cache": result.from_cache,
+            "from_fallback": result.from_fallback,
+            "output_size": len(result.output) if isinstance(result.output, (list, str)) else None,
+        })
+        return result
+
+
+    async def _execute_inner(self, name: str, args: dict, session_id: str = "") -> ToolResult:
         """执行一次工具调用，走完整保护链路。
 
         链路: 限流检查 → 缓存检查 → 执行(retry) → 降级(fallback)

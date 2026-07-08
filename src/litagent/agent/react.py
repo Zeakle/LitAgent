@@ -5,6 +5,7 @@ from langchain_core.runnables import Runnable, RunnableLambda
 from langchain_core.messages import AIMessage, SystemMessage, HumanMessage
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
+from qdrant_client.models import TrackerStatus
 
 from litagent.agent.state import AgentState
 from litagent.agent.validation import validate_tool_call
@@ -154,7 +155,7 @@ async def astream_tokens(graph: StateGraph, input_state: dict) -> AsyncIterator[
                 yield chunk.content
 
 
-def _client_to_runnable(llm_client: BaseLLMClient, tools: list | None = None):
+def _client_to_runnable(llm_client: BaseLLMClient, tools: list | None = None, trace_hook=None, task_id=""):
     """将 BaseLLMClient 包装为 LangChain Runnable。
     
     tools 参数: LangChain BaseTool 列表，转换为 OpenAI API tools 格式。
@@ -204,6 +205,25 @@ def _client_to_runnable(llm_client: BaseLLMClient, tools: list | None = None):
                 formatted.append(m)
 
         resp = await llm_client.chat(formatted, tools=tools_spec)
+
+        if trace_hook:
+            try:
+                usage = resp.usage or {}
+                trace_hook('llm.call', {
+                    'task_id': task_id,
+                    'model': resp.model or "",
+                    'messages': formatted,
+                    'content': resp.content or '',
+                    'prompt_tokens': usage.get('prompt_tokens', 0),
+                    'completion_tokens': usage.get('completion_tokens', 0),
+                    "total_tokens": usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0),
+                    'tool_calls': [
+                        tc.get('function', {}).get('name', '')
+                        for tc in (resp.tool_calls or [])
+                    ]
+                })
+            except Exception:
+                pass
 
         ai_msg = AIMessage(content=resp.content or "")
         result: dict = {'messages': [ai_msg]}
@@ -284,15 +304,18 @@ class ReActRunner:
         4. 返回
     """
 
-    def __init__(self, llm_client: BaseLLMClient, tools: list | None = None, config: AgentConfig | None = None):
+    def __init__(self, llm_client: BaseLLMClient, tools: list | None = None, config: AgentConfig | None = None,
+                 trace_hook=None, task_id=""):
         self._llm = llm_client
         self._tools = tools or []
         self._config = config or AgentConfig()
+        self._trace_hook = trace_hook
+        self._task_id = task_id
 
 
     async def run(self, system_prompt: str, user_message: str) -> str:
         """运行ReAct循环, 返回final_answer"""
-        agent_node = _client_to_runnable(self._llm, tools=self._tools) 
+        agent_node = _client_to_runnable(self._llm, tools=self._tools, trace_hook=self._trace_hook, task_id=self._task_id) 
 
         graph = build_react_graph(agent_node, self._tools, self._config)
 
@@ -315,7 +338,7 @@ class ReActRunner:
         user_message: str,
     ):
         """Streaming ReAct"""
-        agent_node = _client_to_runnable(self._llm, tools=self._tools)
+        agent_node = _client_to_runnable(self._llm, tools=self._tools, trace_hook=self._trace_hook, task_id=self._task_id)
         graph = build_react_graph(agent_node, self._tools, self._config)
 
         initial_state = {

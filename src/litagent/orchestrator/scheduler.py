@@ -9,6 +9,7 @@ from typing import Any, Callable
 from litagent.safety.budget import CostBudget
 from litagent.orchestrator.message_bus import AgentMessage, MessageBus, MessageType
 from litagent.orchestrator.task_graph import TaskGraph, SubTask, TaskStatus
+from litagent.observability.context import set_task_id, reset_task_id
 from litagent.logging import get_logger
 
 
@@ -68,7 +69,8 @@ class Scheduler:
         timeout_ms: int = 600000,
         on_complete: Callable | None = None,
         bus: MessageBus | None = None,
-        cost_budget: CostBudget | None = None
+        cost_budget: CostBudget | None = None,
+        trace_hook: Callable | None = None
     ):
         self._workers: dict[str, Worker] = {w.agent_type: w for w in workers}
         self._semaphore = asyncio.Semaphore(max_concurrent)  # 并发限流器--控制同时运行的任务数量
@@ -79,6 +81,16 @@ class Scheduler:
         if bus:
             bus.register('orchestrator')
         self._cost_budget = cost_budget
+        self._trace_hook = trace_hook
+
+    
+    def _emit(self, event: str, data: dict) -> None:
+        """触发 trace hook"""
+        if self._trace_hook:
+            try:
+                self._trace_hook(event, data)
+            except Exception as e:
+                logger.debug(f"Trace hook failed for '{event}': {e}")
 
     
     async def run(self, graph: TaskGraph, cancellation: CancellationToken | None = None) -> dict[str, Any]:
@@ -152,60 +164,77 @@ class Scheduler:
             self._inject_upstream_results(graph, task)
             # 将task的status改为running
             graph.mark_running(task.task_id)
+            self._emit('worker.start', {
+                'task_id': task.task_id,
+                'agent_type': task.agent_type,
+                'description': task.description
+            })
+            _ctx_token = set_task_id(task.task_id)
 
-            last_error = None
-
-            validation_attempts = 0
-            for attempt in range(task.max_retries + 1):
-                try:
-                    # wait_for: 给async操作架超时限制，超时就抛TimeoutError
-                    result = await asyncio.wait_for(
-                        worker.execute(task),
-                        timeout=task.timeout_ms / 1000,
-                    )
-
-                    if task.output_schema and 'type' in task.output_schema:
-                        from pydantic import TypeAdapter, ValidationError
-                        try:
-                            # TypeAdapter 类型校验器，给定schema判断数据是否符合schema
-                            adapter = TypeAdapter(task.output_schema)
-                            adapter.validate_python(result)
-                        except ValidationError as e:
-                            validation_attempts += 1
-                            if validation_attempts <= 3:
-                                continue
-                            last_error = f"Schema validation exhausted {e}"
-                            raise
-
-                    graph.mark_done(task.task_id, result)
-
-                    # search文档太少，replan + search
-                    if (self._bus and task.agent_type == 'search' and isinstance(result, list) and len(result) < 3):
-                        await self._bus.broadcast(
-                            AgentMessage(
-                                type=MessageType.REPLAN_REQUEST,
-                                sender='orchestrator',
-                                receiver='orchestrator',
-                                task_id=task.task_id,
-                                payload={
-                                    'query': task.input_data.get('query', ''),
-                                    'count': len(result)
-                                }
-                            )
+            try:
+                last_error = None
+                validation_attempts = 0
+                for attempt in range(task.max_retries + 1):
+                    try:
+                        # wait_for: 给async操作架超时限制，超时就抛TimeoutError
+                        result = await asyncio.wait_for(
+                            worker.execute(task),
+                            timeout=task.timeout_ms / 1000,
                         )
-                    return
-                except asyncio.TimeoutError:
-                    last_error = f'Timeout after {task.timeout_ms}ms'
-                except Exception as e:
-                    last_error = str(e)
 
-                # 指数退避重试 -- 失败后的过一段时间再试
-                if attempt < task.max_retries:
-                    wait = 2 ** attempt
-                    logger.debug(f"Retry {attempt + 1} for '{task.task_id}', waiting {wait}s")
-                    await asyncio.sleep(wait)
-            
-            graph.mark_failed(task.task_id, last_error or "Unknown error")
+                        if task.output_schema and 'type' in task.output_schema:
+                            from pydantic import TypeAdapter, ValidationError
+                            try:
+                                # TypeAdapter 类型校验器，给定schema判断数据是否符合schema
+                                adapter = TypeAdapter(task.output_schema)
+                                adapter.validate_python(result)
+                            except ValidationError as e:
+                                validation_attempts += 1
+                                if validation_attempts <= 3:
+                                    continue
+                                last_error = f"Schema validation exhausted {e}"
+                                raise
+
+                        graph.mark_done(task.task_id, result)
+                        self._emit('worker.complete', {
+                            'task_id': task.task_id,
+                            'agent_type': task.agent_type
+                        })
+
+                        # search文档太少，replan + search
+                        if (self._bus and task.agent_type == 'search' and isinstance(result, list) and len(result) < 3):
+                            await self._bus.broadcast(
+                                AgentMessage(
+                                    type=MessageType.REPLAN_REQUEST,
+                                    sender='orchestrator',
+                                    receiver='orchestrator',
+                                    task_id=task.task_id,
+                                    payload={
+                                        'query': task.input_data.get('query', ''),
+                                        'count': len(result)
+                                    }
+                                )
+                            )
+                        return
+                    except asyncio.TimeoutError:
+                        last_error = f'Timeout after {task.timeout_ms}ms'
+                    except Exception as e:
+                        last_error = str(e)
+
+                    # 指数退避重试 -- 失败后的过一段时间再试
+                    if attempt < task.max_retries:
+                        wait = 2 ** attempt
+                        logger.debug(f"Retry {attempt + 1} for '{task.task_id}', waiting {wait}s")
+                        await asyncio.sleep(wait)
+                
+                graph.mark_failed(task.task_id, last_error or "Unknown error")
+                self._emit('worker.failed', {
+                    'task_id': task.task_id,
+                    'agent_type': task.agent_type,
+                    'error': last_error or 'Unknown Error'
+                })
+            finally:
+                reset_task_id(_ctx_token)
 
 
     def _inject_upstream_results(self, graph: TaskGraph, task: SubTask) -> None:

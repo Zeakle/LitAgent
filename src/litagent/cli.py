@@ -176,3 +176,7 @@ def _format_report_markdown(report: dict) -> str:
             lines.append("")
 
     return "\n".join(lines)
+
+
+if __name__ == "__main__":
+    main()

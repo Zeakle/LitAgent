@@ -8,6 +8,7 @@ from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
 
 from litagent.config import MemoryConfig
+from litagent.observability.context import get_task_id
 from litagent.rag.embedder import get_embedder
 from litagent.logging import get_logger
 
@@ -29,8 +30,18 @@ class Claim:
 class ClaimsIndex:
     """声明级 dense 索引，供 Reviewer 交叉验证声明使用"""
 
-    def __init__(self, client: AsyncQdrantClient):
+    def __init__(self, client: AsyncQdrantClient, trace_hook=None):
         self._client = client
+        self._trace_hook = trace_hook
+
+
+    def _emit(self, event: str, data: dict) -> None:
+        """触发 trace hook"""
+        if self._trace_hook:
+            try:
+                self._trace_hook(event, data)
+            except Exception as e:
+                logger.debug(f"Trace hook failed for '{event}': {e}")
 
     
     @staticmethod
@@ -69,6 +80,7 @@ class ClaimsIndex:
             ))
         await self._client.upsert(collection_name=COLLECTION_NAME, points=points)
         logger.info(f"Indexed {len(claims)} claims")
+        self._emit("claims.op", {"task_id": get_task_id(), "op": "add", "count": len(claims)})
         return [c.claim_id for c in claims]
 
 
@@ -93,6 +105,8 @@ class ClaimsIndex:
                     entities=r.payload.get("entities", []),
                     confidence=r.payload.get("confidence", 0.5),
                 ))
+        self._emit("claims.op", {"task_id": get_task_id(), "op": "search",
+                                "query": query[:200], "count": len(results)})
         return claims
 
 

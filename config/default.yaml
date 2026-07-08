@@ -22,7 +22,7 @@ orchestrator:
   max_concurrent: 5        # 最大并行 Worker 数
 
 llm:
-  base_url: "	https://api.deepseek.com"
+  base_url: "https://api.deepseek.com"
   model: "deepseek-v4-flash"
   max_tokens: 4096
   temperature: 0.1
@@ -40,3 +40,7 @@ safety:
 resilience:
   cb_fail_threshold: 5       # 连续失败 5 次熔断
   cb_cooldown_seconds: 60    # 熔断后冷却 60 秒
+
+observability:
+  enabled: false          # 改 true 启用 LangFuse tracing（需先起 LangFuse 服务）
+  langfuse_host: "http://localhost:3000"
