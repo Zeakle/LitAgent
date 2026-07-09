@@ -198,7 +198,8 @@ class Scheduler:
                         graph.mark_done(task.task_id, result)
                         self._emit('worker.complete', {
                             'task_id': task.task_id,
-                            'agent_type': task.agent_type
+                            'agent_type': task.agent_type,
+                            'output': result,
                         })
 
                         # search文档太少，replan + search

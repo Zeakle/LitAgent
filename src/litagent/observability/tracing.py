@@ -76,6 +76,8 @@ class LangFuseTracer:
             if span:
                 if event == 'worker.failed':
                     span.update(level="ERROR", status_message=data.get("error", ""))
+                elif 'output' in data:
+                    self._safe_update_output(span, data['output'])
                 span.end()
         elif event == 'llm.call':
             tid = data.get('task_id', '')
@@ -138,6 +140,17 @@ class LangFuseTracer:
                 self._root.update(level="ERROR", status_message=data.get("error", ""))
                 self._root.end()
                 self._root = None
+
+
+    def _safe_update_output(self, span, output) -> None:
+        """填 span output，序列化失败则降级为 repr 截断。"""
+        try:
+            span.update(output=output)
+        except Exception:
+            try:
+                span.update(output={"repr": str(output)[:5000]})
+            except Exception:
+                pass   # 追踪失败绝不影响业务
 
 
     def _close_orphans(self) -> None:

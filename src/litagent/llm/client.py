@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 
 from openai import AsyncOpenAI
 
+from litagent.observability.context import get_task_id
 from litagent.safety.budget import CostBudget
 from litagent.logging import get_logger
 
@@ -42,7 +43,8 @@ class OpenAICompatibleClient(BaseLLMClient):
         model: str,
         max_tokens: int = 4096,
         temperature: float = 0.1,
-        cost_budget: CostBudget | None = None
+        cost_budget: CostBudget | None = None,
+        trace_hook=None
     ):
         api_key = os.environ.get("LLM_API_KEY") or os.environ.get("OPENAI_API_KEY", "")
         if not api_key:
@@ -52,6 +54,15 @@ class OpenAICompatibleClient(BaseLLMClient):
         self._max_tokens = max_tokens
         self._temperature = temperature
         self._cost_budget = cost_budget
+        self._trace_hook = trace_hook
+
+
+    def _emit(self, event: str, data: dict) -> None:
+        if self._trace_hook:
+            try:
+                self._trace_hook(event, data)
+            except Exception as e:
+                logger.debug(f"Trace hook failed for '{event}': {e}")
 
 
     async def chat(self, messages: list[dict], **kwargs) -> LLMResponse:
@@ -95,12 +106,26 @@ class OpenAICompatibleClient(BaseLLMClient):
             if self._cost_budget:
                 self._cost_budget.record(usage)
 
-            return LLMResponse(
+            response = LLMResponse(
                 content=choice.message.content or "",
                 model=resp.model,
                 usage=usage,
                 tool_calls=tool_calls
             )
+
+            self._emit("llm.call", {
+                "task_id": get_task_id(),
+                "model": response.model,
+                "messages": messages,
+                "content": response.content,
+                "prompt_tokens": usage.get("prompt_tokens", 0),
+                "completion_tokens": usage.get("completion_tokens", 0),
+                "total_tokens": usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0),
+                "tool_calls": [tc.get("function", {}).get("name", "") for tc in tool_calls],
+            })
+
+            return response
+
         except Exception as e:
             logger.error(f"LLM call failed: {e}")
             raise

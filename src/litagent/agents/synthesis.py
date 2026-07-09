@@ -44,14 +44,12 @@ class SynthesisWorker(Worker):
     输出：结构化综述初稿
     """
 
-    def __init__(self, llm: BaseLLMClient, memory: MemoryManager | None = None, budget: BudgetManager | None = None,
-                trace_hook=None):
+    def __init__(self, llm: BaseLLMClient, memory: MemoryManager | None = None, budget: BudgetManager | None = None):
         self._llm = llm
         self._compressor = TierCompressor()
         self._memory = memory
         self._budget = budget or BudgetManager(max_tokens=16000)
         self._tools = [make_recall_memory_tool(memory)] if memory else []
-        self._trace_hook = trace_hook
 
     
     @property
@@ -80,8 +78,7 @@ class SynthesisWorker(Worker):
             instructions=SYNTHESIS_INSTRUCTIONS,
         )
 
-        runner = ReActRunner(self._llm, tools=self._tools, config=AgentConfig(max_loops=15), 
-                            trace_hook=self._trace_hook, task_id=task.task_id)
+        runner = ReActRunner(self._llm, tools=self._tools, config=AgentConfig(max_loops=15))
         result = await runner.run(system_prompt=system, user_message=user_msg)
         
         logger.info(f'Synthesis draft: {len(result)} chars, ctx {used} tokens')

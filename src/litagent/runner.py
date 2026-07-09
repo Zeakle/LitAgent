@@ -289,7 +289,8 @@ class LitAgent:
                 model=cfg.llm.model,
                 max_tokens=cfg.llm.max_tokens,
                 temperature=cfg.llm.temperature,
-                cost_budget=self._cost_budget
+                cost_budget=self._cost_budget,
+                trace_hook=self._trace_hook
             )
             logger.info(f"LLM client: {cfg.llm.model} @ {cfg.llm.base_url}")
         except Exception as e:
@@ -358,13 +359,11 @@ class LitAgent:
         workers.append(self._graph)
 
         self._synthesis = SynthesisWorker(
-            llm=self._llm, memory=self._infra.memory, budget=self._budget_manager, trace_hook=self._trace_hook
-        )
+            llm=self._llm, memory=self._infra.memory, budget=self._budget_manager)
         workers.append(self._synthesis)
 
         self._reviewer = ReviewerWorker(
-            llm=self._llm, claims_index=self._infra.claims_index, budget=self._budget_manager, trace_hook=self._trace_hook
-        )
+            llm=self._llm, claims_index=self._infra.claims_index, budget=self._budget_manager)
         workers.append(self._reviewer)
 
         self._adversarial = AdversarialReviewWorker(
