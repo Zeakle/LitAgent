@@ -106,7 +106,7 @@ class ClaimsIndex:
                     confidence=r.payload.get("confidence", 0.5),
                 ))
         self._emit("claims.op", {"task_id": get_task_id(), "op": "search",
-                                "query": query[:200], "count": len(results)})
+                                "query": query[:200], "count": len(results.points)})
         return claims
 
 

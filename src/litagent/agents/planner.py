@@ -90,7 +90,8 @@ class SurveyPlanner(BasePlanner):
             description='Adversarial synthesis + review loop',
             agent_type='adversarial_review',
             input_data={"query": query},
-            timeout_ms=300000
+            timeout_ms=300000,
+            max_retries=0,   # 内部已有对抗循环 + 异常兜底，外层重试只会重跑同样的失败、产生重复 span
         ), depends_on=['extract', 'graph_analysis'])
 
 

@@ -198,6 +198,11 @@ def _client_to_runnable(llm_client: BaseLLMClient, tools: list | None = None):
                     # OpenAI 要求 assistant turn 带 tool_calls 时 content 为 null 而非 ""
                     if not msg['content']:
                         msg['content'] = None
+                    # deepseek thinking 模式：带 tool_calls 的历史 assistant 重发时，
+                    # 必须原样带回 reasoning_content，否则第 2 轮起 400
+                    rc = m.additional_kwargs.get('reasoning_content', '') if hasattr(m, 'additional_kwargs') else ''
+                    if rc:
+                        msg['reasoning_content'] = rc
 
                 formatted.append(msg)
             elif isinstance(m, dict):
@@ -205,7 +210,12 @@ def _client_to_runnable(llm_client: BaseLLMClient, tools: list | None = None):
 
         resp = await llm_client.chat(formatted, tools=tools_spec)
 
-        ai_msg = AIMessage(content=resp.content or "")
+        # reasoning_content 存进 additional_kwargs（LangChain 非标字段口袋），
+        # 供下一轮回传给 deepseek（thinking 模式要求带 tool_calls 的历史 assistant 原样带回）
+        ai_kwargs = {}
+        if getattr(resp, 'reasoning_content', ''):
+            ai_kwargs['reasoning_content'] = resp.reasoning_content
+        ai_msg = AIMessage(content=resp.content or "", additional_kwargs=ai_kwargs)
         result: dict = {'messages': [ai_msg]}
 
         if resp.tool_calls:

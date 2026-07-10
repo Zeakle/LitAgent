@@ -33,3 +33,7 @@ tests/
 
 # Langfuse
 langfuse/
+
+# Survey 运行调试产物
+survey_run*.log
+survey_result.md

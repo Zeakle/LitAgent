@@ -22,6 +22,7 @@ class LLMResponse:
     model: str = ""
     usage: dict = field(default_factory=dict)
     tool_calls: list[dict] = field(default_factory=list)
+    reasoning_content: str = ""   # deepseek thinking 模式：多轮回传时须原样带回，否则 400
 
 
 class BaseLLMClient(ABC):
@@ -110,7 +111,9 @@ class OpenAICompatibleClient(BaseLLMClient):
                 content=choice.message.content or "",
                 model=resp.model,
                 usage=usage,
-                tool_calls=tool_calls
+                tool_calls=tool_calls,
+                # deepseek reasoning 模型专有字段；非 reasoning 模型无此属性 → getattr 兜底空串
+                reasoning_content=getattr(choice.message, "reasoning_content", "") or "",
             )
 
             self._emit("llm.call", {

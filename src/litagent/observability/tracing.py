@@ -101,6 +101,28 @@ class LangFuseTracer:
             if tcs:
                 gen.update(metadata={"tool_calls": tcs})
             gen.end()
+        elif event == 'subspan.start':
+            # 嵌套子 span：挂到 parent_task_id 对应的 span 下（非 root）。
+            # 用于 adversarial 内部直接调用的 synthesis/reviewer，让它们的
+            # llm.call 归到各自子 span，而非全扁平挂到 adversarial。
+            parent_tid = data.get('parent_task_id', '')
+            sub_tid = data.get('task_id', '')
+            parent = self._spans.get(parent_tid) or self._root
+            if parent is None:
+                return
+            self._spans[sub_tid] = parent.start_observation(
+                name=data.get('name', sub_tid), as_type='span',
+                input={'round': data.get('round', 0)},
+            )
+        elif event == 'subspan.end':
+            sub_tid = data.get('task_id', '')
+            span = self._spans.pop(sub_tid, None)
+            if span:
+                if data.get('error'):
+                    span.update(level="ERROR", status_message=data.get('error', ''))
+                elif 'output' in data:
+                    self._safe_update_output(span, data['output'])
+                span.end()
         elif event in ("tool.call", "rag.search", "memory.recall", "memory.write", "claims.op"):
             # 底层 I/O 事件（点事件）：挂在对应 Worker span 下（get_task_id → _spans[tid]）
             # 无对应 Worker span（如 consolidate 在 worker context 外）→ fallback 到 root

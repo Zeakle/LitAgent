@@ -67,6 +67,7 @@ from litagent.rag.retriever import HybridRetriever
 
 # ── Observation ──
 from litagent.observability.tracing import LangFuseTracer
+from litagent.observability.context import set_task_id, reset_task_id
 
 
 logger = get_logger('runner')
@@ -372,6 +373,7 @@ class LitAgent:
             reviewer=self._reviewer,
             max_rounds=cfg.adversarial.max_rounds,
             pass_threshold=cfg.adversarial.pass_threshold,
+            trace_hook=self._trace_hook,
         )
         workers.append(self._adversarial)
 
@@ -427,7 +429,19 @@ class LitAgent:
                 ]
             }
             await self._infra.memory.working.set(self._session_id, state)
-            await self._infra.memory.consolidate(self._session_id, llm=self._llm)
+
+            # consolidate 在所有 worker 之后跑（on_complete），无 parent worker span。
+            # 包一层 subspan（parent 兜底到 root），让其 llm.call 归到独立节点而非扁平挂 root。
+            self._emit('subspan.start', {
+                'task_id': 'consolidate', 'parent_task_id': '',
+                'name': 'consolidate', 'round': 0,
+            })
+            token = set_task_id('consolidate')
+            try:
+                await self._infra.memory.consolidate(self._session_id, llm=self._llm)
+            finally:
+                reset_task_id(token)
+                self._emit('subspan.end', {'task_id': 'consolidate'})
             logger.info("Session %s consolidated", self._session_id)
         except Exception as e:
             logger.warning("Session consolidation skipped: %s", e)
