@@ -22,10 +22,10 @@ class LoggingConfig(BaseModel):
 
 
 class MemoryConfig(BaseModel):
-    redis_url: str = "redis://localhost:6379"
+    redis_url: str = "redis://localhost:6380"
     qdrant_url: str = "http://localhost:6333"
     working_ttl_seconds: int = 1800
-    pg_url: str = "postgresql://litagent:litagent@localhost:5432/litagent"
+    pg_url: str = "postgresql://litagent:litagent@localhost:5433/litagent"
 
 
 class ContextConfig(BaseModel):

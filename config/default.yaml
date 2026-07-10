@@ -8,10 +8,10 @@ logging:
   format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
 memory:
-  redis_url: "redis://localhost:6379"
+  redis_url: "redis://localhost:6380"   # host 6380 → 避开 LangFuse redis(6379)，与 docker-compose.yml 对齐
   qdrant_url: "http://localhost:6333"
   working_ttl_seconds: 1800  # Working Memory TTL
-  pg_url: "postgresql://litagent:litagent@localhost:5432/litagent"
+  pg_url: "postgresql://litagent:litagent@localhost:5433/litagent"   # host 5433 → 避开 LangFuse postgres(5432)
 
 context:
   max_tokens: 16000
