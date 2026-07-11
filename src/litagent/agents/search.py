@@ -38,7 +38,7 @@ class SearchWorker(Worker):
         tool_map = {
             'arxiv': 'search_arxiv',
             'semantic_scholar': 'search_semantic_scholar',
-            'paperswithcode': 'search_paperswithcode'
+            'huggingface': 'search_huggingface'
         }
         tool_name = tool_map.get(source, 'search_arxiv')  # default arxiv
 

@@ -25,7 +25,7 @@ class SurveyPlanner(BasePlanner):
     生成固定 DAG 结构（对应 Plan.md 中的综述流程）：
         search_arxiv  ──┐
         search_semsch ──┼── dedup → extract + graph (并行) → synthesis → review → report
-        search_pwc    ──┘
+        search_hf     ──┘
 
     Phase 8b+ 可替换为 LLM-based Planner，根据 query 动态生成不同的 DAG。
     """
@@ -55,10 +55,10 @@ class SurveyPlanner(BasePlanner):
         ))
 
         graph.add_task(SubTask(
-            task_id='search_pwc',
-            description=f'Search PaperWithCode for: {query}',
+            task_id='search_hf',
+            description=f'Search HuggingFace papers for: {query}',
             agent_type='search',
-            input_data={'source': 'paperswithcode', 'query': query},
+            input_data={'source': 'huggingface', 'query': query},
         ))
 
         # layer2: 搜索结果去重
@@ -67,7 +67,7 @@ class SurveyPlanner(BasePlanner):
             description='Deduplicate search results',
             agent_type='dedup',
             input_data={"query": query},
-        ), depends_on=['search_arxiv', 'search_semscholar', 'search_pwc'])
+        ), depends_on=['search_arxiv', 'search_semscholar', 'search_hf'])
 
         # layer3: 提取 + 引用分析(并行，只等dedup)
         graph.add_task(SubTask(
