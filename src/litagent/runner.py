@@ -14,6 +14,7 @@ LangFuse trace 预留:
 """
 
 from __future__ import annotations
+import asyncio
 import uuid
 import os
 import time
@@ -68,6 +69,11 @@ from litagent.rag.retriever import HybridRetriever
 # ── Observation ──
 from litagent.observability.tracing import LangFuseTracer
 from litagent.observability.context import set_task_id, reset_task_id
+
+# ── Evaluation ──
+from litagent.eval.citation import CitationEvaluator
+from litagent.eval.consistency import ConsistencyEvaluator
+from litagent.eval.ragas_eval import RagasFaithfulnessEvaluator
 
 
 logger = get_logger('runner')
@@ -166,6 +172,9 @@ class LitAgent:
         self._scheduler: Scheduler | None = None
         self._planner: SurveyPlanner | None = None
 
+        # ── Evaluator ──
+        self._evaluators = []
+
         self._wired = False
 
 
@@ -199,6 +208,8 @@ class LitAgent:
             report_data['partial'] = (
                 self._cost_budget.is_exceeded() if self._cost_budget else False
             )
+            report_data['evaluation'] = await self._evaluate(report_data['survey'], results)
+
 
             self._emit("survey.complete", {
                 "query": query,
@@ -397,6 +408,13 @@ class LitAgent:
         self._planner = SurveyPlanner()
         self._wired = True
 
+        # 10. Evaluators
+        self._evaluators = [
+            CitationEvaluator(self._llm),
+            ConsistencyEvaluator(self._llm),
+            RagasFaithfulnessEvaluator(self._config)
+        ]
+
         self._emit("wire.complete", {
             "session_id": self._session_id,
             "worker_count": len(workers),
@@ -544,7 +562,62 @@ class LitAgent:
         return get_embedder().dim
 
 
+    # ── Evaluation ──
+    async def _evaluate(self, survey: str, results: dict[str, Any]) -> dict[str, Any]:
+        """Evaluate -> return:{metric_name: {score, passed, skipped, details}"""
+        if not self._evaluators:
+            return {}
+
+        contexts = self._build_eval_context(results)
+
+        self._emit('subspan.start', {
+            'task_id': 'evaluation',
+            'parent_task_id': '',
+            'name': 'evaluation',
+            'round': 0
+        })
+        token = set_task_id('evaluation')
+        out: dict[str, Any] = {}
+
+        try:
+            evals = await asyncio.gather(
+                *[e.evaluate(survey, contexts) for e in self._evaluators],
+                return_exceptions=True
+            )
+
+            for ev, result in zip(self._evaluators, evals):
+                if isinstance(result, Exception):
+                    logger.warning(f"Evaluator {ev.metric_name} raised: {result}")
+                    continue
+                out[result.metric] = {
+                    'score': result.score,
+                    'passed': result.passed,
+                    'skipped': result.skipped,
+                    'details': result.details
+                }
+        except Exception as e:
+            logger.warning(f"Evaluation phase failed {e}")
+        finally:
+            reset_task_id(token)
+            self._emit('subspan.end', {'task_id': 'evaluation'})
+        return out
+
+
+    def _build_eval_context(self, results: dict[str, Any]) -> dict[str, Any]:
+        """从 results 里 extractor 的 extractions 组装评估 context。"""
+        from litagent.eval.base import CTX_PAPERS, CTX_CLAIMS
+        extractions: list = []
+        for result in results.values():
+            if isinstance(result, list) and result and isinstance(result[0], dict) and 'claims' in result[0]:
+                extractions = result
+                break
+
+        claims_texts = [c for ext in extractions for c in ext.get('claims', [])]
+        return {CTX_PAPERS: extractions, CTX_CLAIMS: [{'text': t} for t in claims_texts]}
+
+
     # ── Cleanup ──
+
 
     async def cleanup(self) -> None:
         """关闭所有连接，释放资源"""
