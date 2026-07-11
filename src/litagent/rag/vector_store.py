@@ -37,15 +37,31 @@ class QdrantVectorStore(VectorStore):
     async def connect(config: MemoryConfig, collection_name: str) -> "QdrantVectorStore":
         client = AsyncQdrantClient(url=config.qdrant_url)
         dim = get_embedder().dim
-        try:
-            await client.get_collection(collection_name)
-        except Exception:
+
+        async def _create() -> None:
             await client.create_collection(
                 collection_name=collection_name,
                 vectors_config={DENSE_KEY: VectorParams(size=dim, distance=Distance.COSINE)},
-                sparse_vectors_config={SPARSE_KEY: SparseVectorParams(modifier=Modifier.IDF)}
+                sparse_vectors_config={SPARSE_KEY: SparseVectorParams(modifier=Modifier.IDF)},
             )
             logger.info(f"Created dual-index collection: {collection_name} (dim={dim})")
+
+        try:
+            info = await client.get_collection(collection_name)
+        except Exception:
+            await _create()          # 不存在 → 建
+            return QdrantVectorStore(client, collection_name)
+
+        # 已存在 → 校验结构：必须是命名向量且含 DENSE_KEY，否则是旧/不兼容结构。
+        # 幂等检查只看"在不在"不够——旧版本可能建了无名默认向量，查 using=dense 会 400。
+        vectors = info.config.params.vectors
+        if not (isinstance(vectors, dict) and DENSE_KEY in vectors):
+            logger.warning(
+                f"Collection '{collection_name}' has incompatible vector schema "
+                f"(no named '{DENSE_KEY}' vector) — recreating for dual-index"
+            )
+            await client.delete_collection(collection_name)
+            await _create()
         return QdrantVectorStore(client, collection_name)
 
     
