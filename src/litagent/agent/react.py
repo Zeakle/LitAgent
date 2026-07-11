@@ -314,7 +314,13 @@ class ReActRunner:
                 ]
         }
 
-        result = await compiled.ainvoke(initial_state)
+        # recursion_limit 与 max_loops 对齐：LangGraph 数节点转换(每轮 step→agent→validate→tools
+        # 约 4 个)，默认 25 会在 max_loops 生效前先撞上（reviewer 多工具调用尤甚）。设 max_loops×5+5
+        # 让 max_loops 成为真正的终止条件，recursion_limit 只做防呆兜底。
+        result = await compiled.ainvoke(
+            initial_state,
+            config={"recursion_limit": self._config.max_loops * 5 + 5},
+        )
 
         return result.get('final_answer', '')
 

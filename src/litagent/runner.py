@@ -600,7 +600,8 @@ class LitAgent:
             logger.warning(f"Evaluation phase failed {e}")
         finally:
             reset_task_id(token)
-            self._emit('subspan.end', {'task_id': 'evaluation'})
+            # 带 out → evaluation span 显示各评估器 {score/passed/skipped/details}，供 LangFuse 检视
+            self._emit('subspan.end', {'task_id': 'evaluation', 'output': out})
         return out
 
 
