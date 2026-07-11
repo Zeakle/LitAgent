@@ -1,6 +1,7 @@
 """Search tools — arxiv / Semantic Scholar / HuggingFace papers."""
 from __future__ import annotations
 
+import os
 import httpx
 import xml.etree.ElementTree as ET
 
@@ -37,11 +38,17 @@ def _parse_arxiv_xml(xml_text: str) -> list[dict]:
 
 
 async def search_semantic_scholar(query: str = "", max_results: int = 20) -> list[dict]:
-    """Semantic Scholar 搜索。公开 API 限流严（429 常见）——优雅降级返回空，不抛异常。"""
+    """Semantic Scholar 搜索。公开 API 限流严（429 常见）——优雅降级返回空，不抛异常。
+
+    可选 API key：设 SEMANTIC_SCHOLAR_API_KEY 环境变量则带 x-api-key header 走专属
+    1 RPS 额度（稳定）；无 key 则走全球共享池（长期饱和，大概率 429 → 降级返回空）。
+    """
     url = "https://api.semanticscholar.org/graph/v1/paper/search"
     params = {"query": query, "limit": max_results, "fields": "paperId,title,abstract,citationCount,year"}
+    api_key = os.environ.get("SEMANTIC_SCHOLAR_API_KEY", "")
+    headers = {"x-api-key": api_key} if api_key else {}
     async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.get(url, params=params)
+        resp = await client.get(url, params=params, headers=headers)
     if resp.status_code != 200:
         # 429 限流 / 5xx 等：独立并行源，降级返回空，不拖累其他源
         logger.warning(f"Semantic Scholar returned {resp.status_code}, skipping (degraded)")
