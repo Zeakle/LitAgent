@@ -148,10 +148,15 @@ def _apply_env_overrides(data: dict, prefix: str = "LITAGENT_") -> dict:
             continue
 
         section, key = parts
-        if section in data:
-            # 尝试类型转换（YAML 里是 int，环境变量是 str）
-            original = data[section].get(key)
-            if isinstance(original, int):
+        # 只覆盖 YAML 里已声明的键——section/key 都要存在，否则跳过
+        # （防 typo 如 LITAGENT_AGENT_TYPO 静默创建垃圾键 agent.typo）
+        if section in data and isinstance(data[section], dict) and key in data[section]:
+            original = data[section][key]
+            # 按原值类型转换（env 值总是 str）。bool 必须在 int 之前判断——
+            # bool 是 int 的子类，否则 isinstance(True, int) 为真 → int("true") 崩溃
+            if isinstance(original, bool):
+                data[section][key] = env_val.strip().lower() in ("1", "true", "yes", "on")
+            elif isinstance(original, int):
                 data[section][key] = int(env_val)
             elif isinstance(original, float):
                 data[section][key] = float(env_val)
