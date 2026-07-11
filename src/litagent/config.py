@@ -81,6 +81,12 @@ class ObservabilityConfig(BaseModel):
     langfuse_host: str = 'http://localhost:3000'
 
 
+class EvalConfig(BaseModel):
+    # 评估器 LLM 调用的 max_tokens——比常规 4096 大：citation 枚举所有引用 + reasoning
+    # 模型 reasoning 占额度，4096/8192 易被挤空导致 content 为空。见 SUGGESTION。
+    max_tokens: int = Field(default=16384, gt=0)
+
+
 class AppConfig(BaseModel):
     """应用顶层配置"""
     agent: AgentConfig
@@ -95,6 +101,7 @@ class AppConfig(BaseModel):
     resilience: ResilienceConfig = ResilienceConfig()
     extractor: ExtractorConfig = ExtractorConfig()
     observability: ObservabilityConfig = ObservabilityConfig()
+    eval: EvalConfig = EvalConfig()
 
 
 def _find_project_root() -> Path:

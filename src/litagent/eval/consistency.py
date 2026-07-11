@@ -36,10 +36,12 @@ class ConsistencyEvaluator(Evaluator):
     LLM 挂 / JSON 解析失败 / malformed → skip（中性降级）。
     """
 
-    def __init__(self, llm: BaseLLMClient, threshold: float = 0.8, penalty: float = 0.2):
+    def __init__(self, llm: BaseLLMClient, threshold: float = 0.8, penalty: float = 0.2,
+                 max_tokens: int = 16384):
         super().__init__(threshold)
         self._llm = llm
         self._penalty = penalty
+        self._max_tokens = max_tokens
 
     
     @property
@@ -57,7 +59,8 @@ class ConsistencyEvaluator(Evaluator):
                     {'role': 'system', 'content': _CONSISTENCY_PROMPT},
                     {'role': 'user', 'content': wrap_xml('survey', survey)}
                 ],
-                response_format={'type': 'json_object'}
+                response_format={'type': 'json_object'},
+                max_tokens=self._max_tokens,   # reasoning 模型：找矛盾的 reasoning 长，需大额度免 content 被挤空
             )
             conflicts = json.loads(resp.content).get('conflicts')
         except Exception as e:

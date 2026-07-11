@@ -408,10 +408,11 @@ class LitAgent:
         self._planner = SurveyPlanner()
         self._wired = True
 
-        # 10. Evaluators
+        # 10. Evaluators（max_tokens 从 eval config 取——评估任务额度需求大）
+        eval_mt = cfg.eval.max_tokens
         self._evaluators = [
-            CitationEvaluator(self._llm),
-            ConsistencyEvaluator(self._llm),
+            CitationEvaluator(self._llm, max_tokens=eval_mt),
+            ConsistencyEvaluator(self._llm, max_tokens=eval_mt),
             RagasFaithfulnessEvaluator(self._config)
         ]
 

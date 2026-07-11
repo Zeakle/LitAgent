@@ -52,7 +52,9 @@ class RagasFaithfulnessEvaluator(Evaluator):
 
         api_key = os.environ.get("LLM_API_KEY") or os.environ.get("OPENAI_API_KEY", "")
         client = AsyncOpenAI(base_url=self._cfg.llm.base_url, api_key=api_key)
-        llm = llm_factory(self._cfg.llm.model, client=client)
+        # max_tokens 从 eval config 取：reasoning 模型下 ragas 的拆 claim + 验证 reasoning 长，
+        # 默认额度易被截断。经 llm_factory 的 **kwargs 尽力透传；若该版本不透传，ragas 仍会因截断 skip（降级保证不崩）。
+        llm = llm_factory(self._cfg.llm.model, client=client, max_tokens=self._cfg.eval.max_tokens)
         scorer = Faithfulness(llm=llm)
 
         result = await scorer.ascore(

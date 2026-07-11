@@ -37,9 +37,10 @@ class CitationEvaluator(Evaluator):
     综述未引用任何论文 → score=1.0（无幻觉可言）。
     """
 
-    def __init__(self, llm: BaseLLMClient, threshold: float = 0.8):
+    def __init__(self, llm: BaseLLMClient, threshold: float = 0.8, max_tokens: int = 16384):
         super().__init__(threshold)
         self._llm = llm
+        self._max_tokens = max_tokens
 
     @property
     def metric_name(self) -> str:
@@ -61,6 +62,7 @@ class CitationEvaluator(Evaluator):
                 [{"role": "system", "content": _CITATION_PROMPT},
                  {"role": "user", "content": user_msg}],
                 response_format={"type": "json_object"},
+                max_tokens=self._max_tokens,   # reasoning 模型：拆引用的 reasoning 长，需大额度免 content 被挤空
             )
             cited = json.loads(resp.content).get("cited")
         except Exception as e:
