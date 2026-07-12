@@ -42,6 +42,7 @@ def build_system_prompt(
     role: str,
     instructions: str,
     tools: str = "",
+    skills: str = "",
     context: str = "",
     constraints: str = "",
 ) -> str:
@@ -64,6 +65,8 @@ def build_system_prompt(
 
     if tools:
         parts.append(wrap_xml("available_tools", tools))
+    if skills:
+        parts.append(wrap_xml('available_skills', skills))
     if context:
         parts.append(wrap_xml("context", context))
     if constraints:

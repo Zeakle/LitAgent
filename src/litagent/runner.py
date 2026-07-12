@@ -335,7 +335,7 @@ class LitAgent:
         self._infra = await self._connect_infra(cfg)
 
         # 7. Skills + Extraction Strategies
-        skills_dir = str(Path(__file__).resolve().parent / 'skills' / 'extraction')
+        skills_dir = str(Path(__file__).resolve().parent / 'skills')
         self._skill_manager = SkillManager(skills_dir=skills_dir)
         if cfg.mcp_servers:
             self._mcp_bridge = MCPBridge()
@@ -371,11 +371,11 @@ class LitAgent:
         workers.append(self._graph)
 
         self._synthesis = SynthesisWorker(
-            llm=self._llm, memory=self._infra.memory, budget=self._budget_manager)
+            llm=self._llm, memory=self._infra.memory, budget=self._budget_manager, skill_manager=self._skill_manager)
         workers.append(self._synthesis)
 
         self._reviewer = ReviewerWorker(
-            llm=self._llm, claims_index=self._infra.claims_index, budget=self._budget_manager)
+            llm=self._llm, claims_index=self._infra.claims_index, budget=self._budget_manager, skill_manager=self._skill_manager)
         workers.append(self._reviewer)
 
         self._adversarial = AdversarialReviewWorker(

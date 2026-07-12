@@ -15,7 +15,8 @@ from litagent.llm.client import BaseLLMClient
 from litagent.context.compressor import TierCompressor, PaperInfo
 from litagent.context.templates import build_system_prompt, wrap_xml
 from litagent.logging import get_logger
-from litagent.tools.worker_tools import make_recall_memory_tool
+from litagent.skills.manager import SkillManager
+from litagent.tools.worker_tools import make_load_skill_tool, make_recall_memory_tool
 
 
 logger = get_logger('agents.synthesis')
@@ -44,12 +45,16 @@ class SynthesisWorker(Worker):
     输出：结构化综述初稿
     """
 
-    def __init__(self, llm: BaseLLMClient, memory: MemoryManager | None = None, budget: BudgetManager | None = None):
+    def __init__(self, llm: BaseLLMClient, memory: MemoryManager | None = None, 
+                 budget: BudgetManager | None = None, skill_manager: SkillManager | None = None):
         self._llm = llm
         self._compressor = TierCompressor()
         self._memory = memory
         self._budget = budget or BudgetManager(max_tokens=16000)
         self._tools = [make_recall_memory_tool(memory)] if memory else []
+        self._skill_manager = skill_manager
+        if skill_manager:
+            self._tools.append(make_load_skill_tool(skill_manager))
 
     
     @property
@@ -73,9 +78,13 @@ class SynthesisWorker(Worker):
             "extractions": extractions, "graph_data": graph_data, "query": query,
         })
 
+        skills_text = (self._skill_manager.to_metadata_text_for("writing a literature survey", top_k=2)
+                       if self._skill_manager else "")
+
         system = build_system_prompt(
             role=SYNTHESIS_ROLE,
             instructions=SYNTHESIS_INSTRUCTIONS,
+            skills=skills_text
         )
 
         runner = ReActRunner(self._llm, tools=self._tools, config=AgentConfig(max_loops=15))

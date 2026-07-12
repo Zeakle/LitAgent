@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from litagent.logging import get_logger
 from litagent.context.templates import wrap_xml
+from litagent.rag.embedder import get_embedder
 
 logger = get_logger("skills.manager")
 
@@ -41,6 +42,7 @@ class Skill:
     name: str
     description: str
     body: str = ""
+    embedding: list[float] | None = None
     path: Path = field(default_factory=Path)
 
 
@@ -65,7 +67,7 @@ class SkillManager:
         body = manager.get_body("cv")
     """
 
-    def __init__(self, skills_dir: str = "src/litagent/skills/extraction"):
+    def __init__(self, skills_dir: str = "src/litagent/skills"):
         self._skills: dict[str, Skill] = {}
         skill_path = _find_skills_dir(skills_dir)
         logger.debug(f"Scanning skills from: {skill_path}")
@@ -164,6 +166,50 @@ class SkillManager:
 
     # ── Level 1: 元数据（始终注入 system prompt）──
 
+    
+    def _ensure_embeddings(self) -> None:
+        """懒加载：首次检索时 batch embed 所有 skill 的 description，缓存进 skill.embedding。"""
+        missing = [s for s in self._skills.values() if s.embedding is None]
+
+        if not missing:
+            return
+        
+        embedder = get_embedder()
+        vecs = embedder.embed([s.description for s in missing])
+        for s, v in zip(missing, vecs):
+            s.embedding = v
+
+    
+    def search_skills(self, query: str, top_k: int = 3) -> list[Skill]:
+        skills = list(self._skills.values())
+        if len(skills) <= top_k:
+            return skills
+
+        self._ensure_embeddings()
+        embedder = get_embedder()
+        qv = embedder.embed(query)
+        scored = [(sum(a * b for a, b in zip(qv, s.embedding)), s) for s in skills if s.embedding]
+        scored.sort(reverse=True, key=lambda x: x[0])
+        return [s for _, s in scored[:top_k]]
+
+
+    def to_metadata_text_for(self, query: str, top_k: int = 3) -> str:
+        """L1 元数据，只列语义 top_k 相关的 skill。query 用 worker 的任务描述。"""
+        try:
+            skills = self.search_skills(query, top_k)
+        except Exception as e:
+            logger.warning(f"Semantic skill search failed ({e}), falling back to full list")
+            return self.to_metadata_text()
+        if not skills:
+            return ""
+        parts = ['## Available Skills', ""]
+        for s in skills:
+            parts.append(wrap_xml('skill', s.description, {'name': s.name}))
+            parts.append("")
+
+        return '\n'.join(parts)
+
+
     def to_metadata_text(self) -> str:
         """所有 skill 的 name + description。
 
@@ -183,6 +229,7 @@ class SkillManager:
             parts.append("")
         return "\n".join(parts)
 
+
     # ── Level 2: 完整 body（LLM 触发后注入）──
 
     def get_body(self, name: str) -> str:
@@ -193,6 +240,7 @@ class SkillManager:
         """
         skill = self.get(name)
         return skill.body
+        
 
     # ── 辅助 API ──
 

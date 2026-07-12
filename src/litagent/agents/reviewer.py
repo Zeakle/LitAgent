@@ -5,7 +5,8 @@ import json
 import re
 from typing import Any
 
-from litagent.tools.worker_tools import make_lookup_claims_tool
+from litagent.skills.manager import SkillManager
+from litagent.tools.worker_tools import make_load_skill_tool, make_lookup_claims_tool
 from litagent.orchestrator.scheduler import Worker
 from litagent.orchestrator.task_graph import SubTask
 from litagent.llm.client import BaseLLMClient
@@ -47,13 +48,15 @@ class ReviewerWorker(Worker):
     输入: 综述初稿
     输出：审稿意见(JSON)
     """
-
     def __init__(self, llm: BaseLLMClient, claims_index: ClaimsIndex | None = None,
-                 budget: BudgetManager | None = None):
+                 budget: BudgetManager | None = None, skill_manager: SkillManager | None = None):
         self._llm = llm
         self._claims_index = claims_index
         self._budget = budget or BudgetManager(max_tokens=16000)
         self._tools = [make_lookup_claims_tool(claims_index)] if claims_index else []
+        self._skill_manager = skill_manager
+        if skill_manager:
+            self._tools.append(make_load_skill_tool(skill_manager))
 
 
     @property
@@ -73,9 +76,14 @@ class ReviewerWorker(Worker):
                                         builder=self._claims_layer))
         user_msg, used = await pipeline.build({"draft": draft})
 
+        skills_text = (self._skill_manager.to_metadata_text_for('reviewing a literature survey draft', top_k=2)
+                       if self._skill_manager else "")
+
         system = build_system_prompt(
             role=REVIEWER_ROLE,
-            instructions=REVIEWER_INSTRUCTIONS + "\nCross-reference related claims from other papers against the draft for completeness.")
+            instructions=REVIEWER_INSTRUCTIONS + "\nCross-reference related claims from other papers against the draft for completeness.",
+            skills=skills_text
+        )
             
         runner = ReActRunner(self._llm, tools=self._tools, config=AgentConfig(max_loops=10))
         result = await runner.run(system_prompt=system, user_message=user_msg)

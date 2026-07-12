@@ -3,6 +3,7 @@ from langchain_core.tools import tool
 from litagent.memory.manager import MemoryManager
 from litagent.rag.claims_index import ClaimsIndex
 from litagent.logging import get_logger
+from litagent.skills.manager import SkillManager
 
 
 logger = get_logger('tools.worker')
@@ -71,3 +72,25 @@ def make_lookup_claims_tool(claims_index: ClaimsIndex | None):
         return '\n'.join(parts)
 
     return lookup_claims
+
+
+def make_load_skill_tool(skill_manager: SkillManager | None):
+
+    @tool
+    async def load_skill(name: str) -> str:
+        """Load a skill's full methodology by name when you need domain guidance.
+
+        Available skill names are listed in your system prompt under 'Available Skills'.
+
+        Args:
+            name: The skill name to load (from the Available Skills list).
+        """
+        if skill_manager is None:
+            return "Skills not available"
+
+        try:
+            return skill_manager.get_body(name)
+        except KeyError:
+            return f"Skill {name} not found"
+
+    return load_skill

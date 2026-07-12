@@ -66,7 +66,7 @@ class LLMStrategy(ExtractionStrategy):
         abstract = paper.get('abstract', '')
         system = (
             "You are an academic paper extractor.\n"
-            f"{self._skill_manager.to_metadata_text()}\n\n"
+            f"{self._skill_manager.to_metadata_text_for('extracting structured fields from a paper', top_k=2)}\n\n"
             f"{_REQUIRED_KEYS_INSTRUCTION}"
         )
         
