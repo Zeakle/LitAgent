@@ -198,7 +198,7 @@ class LitAgent:
         if not self._wired:
             await self._wire()
 
-        self._emit('survey.start', {'query': query})
+        self._emit('survey.start', {'query': query, 'session_id': self._session_id})
         logger.info(f'Starting survey: {query}')
 
         try:
@@ -209,13 +209,18 @@ class LitAgent:
                 self._cost_budget.is_exceeded() if self._cost_budget else False
             )
             report_data['evaluation'] = await self._evaluate(report_data['survey'], results)
+            quality = self._derive_quality(report_data.get('evaluation', {}))
+            report_data['quality'] = quality
 
 
             self._emit("survey.complete", {
                 "query": query,
                 "rounds": report_data.get("metadata", {}).get("total_rounds", 0),
                 "accepted": report_data.get("metadata", {}).get("accepted", False),
+                'quality_status': quality['status'],
+                'total_tokens': self._cost_budget.used if self._cost_budget else 0
             })
+
             logger.info("Survey complete: %d chars", len(report_data.get("survey", "")))
             return report_data
 
@@ -380,7 +385,7 @@ class LitAgent:
         workers.append(self._synthesis)
 
         self._reviewer = ReviewerWorker(
-            llm=self._llm, claims_index=self._infra.claims_index, budget=self._budget_manager, skill_manager=self._skill_manager)
+            llm=self._llm, claims_index=self._infra.claims_index, budget=self._budget_manager, skill_manager=self._skill_manager, config=cfg.adversarial)
         workers.append(self._reviewer)
 
         self._adversarial = AdversarialReviewWorker(
@@ -508,7 +513,7 @@ class LitAgent:
             dim = self._get_embedding_dim()
 
             # 确保三个collection存在
-            for coll_name in ['episodes', 'claims', 'papers']:
+            for coll_name in ['episodes', 'claims']:
                 try:
                     await qdrant_client.get_collection(coll_name)
                 except Exception:
@@ -520,15 +525,22 @@ class LitAgent:
             
             episodic = EpisodicMemory(qdrant_client)
             claims_index = ClaimsIndex(qdrant_client, trace_hook=self._trace_hook)
-            vector_store = QdrantVectorStore(qdrant_client, 'papers')
-
             infra._qdrant_client = qdrant_client
             infra.claims_index = claims_index
 
-            reranker = CrossEncoderReranker()
-            infra.retriever = HybridRetriever(vector_store, reranker, trace_hook=self._trace_hook)
-
-            logger.info("Infra: Qdrant connected (Episodic + Claims + Papers)")
+            # papers is a dual-index collection. Preserve Claims/Episodic if a
+            # non-empty legacy papers collection requires an explicit migration.
+            try:
+                vector_store = await QdrantVectorStore.ensure_compatible(
+                    qdrant_client, 'papers', dim
+                )
+                reranker = CrossEncoderReranker()
+                infra.retriever = HybridRetriever(
+                    vector_store, reranker, trace_hook=self._trace_hook
+                )
+                logger.info("Infra: Qdrant connected (Episodic + Claims + Papers)")
+            except ConfigError as e:
+                logger.warning("Infra: RAG disabled pending papers schema migration (%s)", e)
         except Exception as e:
             logger.warning("Infra: Qdrant unavailable — RAG/Claims/Episodic disabled (%s)", e)
             if qdrant_client:
@@ -627,6 +639,32 @@ class LitAgent:
 
         claims_texts = [c for ext in extractions for c in ext.get('claims', [])]
         return {CTX_PAPERS: extractions, CTX_CLAIMS: [{'text': t} for t in claims_texts]}
+
+
+    @staticmethod
+    def _derive_quality(evaluation: dict[str, dict]) -> dict[str, Any]:
+        required = [
+            'citation_accuracy',
+            'faithfulness'
+        ]
+        failed: list[str] = []
+        unverified: list[str] = []
+
+        for metric in required:
+            ev = evaluation.get(metric, {})
+            if not ev or ev.get('skipped', False):
+                unverified.append(metric)
+            elif not ev.get('passed', False):
+                failed.append(metric)
+
+        if failed:
+            return {"status": "failed", "failed_metrics": failed,
+                    "unverified_metrics": unverified}
+        if unverified:
+            return {"status": "unverified", "failed_metrics": [],
+                    "unverified_metrics": unverified}
+
+        return {"status": "passed", "failed_metrics": [], "unverified_metrics": []}
 
 
     # ── Cleanup ──

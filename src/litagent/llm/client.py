@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+import time
+import uuid
 
 from openai import AsyncOpenAI
 
@@ -70,6 +72,14 @@ class OpenAICompatibleClient(BaseLLMClient):
         model = kwargs.get('model', self._model)
         max_tokens = kwargs.get('max_tokens', self._max_tokens)
         temperature = kwargs.get('temperature', self._temperature)
+        op_id = uuid.uuid4().hex
+        t0 = time.perf_counter()
+
+        self._emit('llm.start', {
+            'operation_id': op_id, 'task_id': get_task_id(),
+            'model': model, 'messages': messages,
+            'max_tokens': max_tokens, 'temperature': temperature
+        })
 
         try:
             create_kwargs: dict = {
@@ -116,21 +126,28 @@ class OpenAICompatibleClient(BaseLLMClient):
                 reasoning_content=getattr(choice.message, "reasoning_content", "") or "",
             )
 
-            self._emit("llm.call", {
+            self._emit("llm.complete", {
+                'operation_id': op_id,
                 "task_id": get_task_id(),
-                "model": response.model,
+                "model": model,
                 "messages": messages,
                 "content": response.content,
                 "prompt_tokens": usage.get("prompt_tokens", 0),
                 "completion_tokens": usage.get("completion_tokens", 0),
                 "total_tokens": usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0),
+                "elapsed_ms": int((time.perf_counter() - t0) * 1000),
                 "tool_calls": [tc.get("function", {}).get("name", "") for tc in tool_calls],
             })
 
             return response
 
-        except Exception as e:
-            logger.error(f"LLM call failed: {e}")
+        except BaseException as e:
+            elapsed_ms = int((time.perf_counter() - t0) * 1000)
+            self._emit("llm.failed", {
+                "operation_id": op_id, "task_id": get_task_id(),
+                "model": model, "elapsed_ms": elapsed_ms,
+                "error_type": type(e).__name__, "error": str(e)[:512],
+            })
             raise
 
 

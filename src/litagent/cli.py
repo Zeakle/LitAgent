@@ -159,6 +159,16 @@ def _format_report_markdown(report: dict) -> str:
         lines.insert(1, "> ⚠ **Partial results** — survey was interrupted (cost/timeout).")
         lines.insert(1, "")
 
+    quality = report.get('quality', {})
+    qs = quality.get('status', 'unverified')
+    if qs == "failed":
+        lines.insert(0, f"> ⚠ **QUALITY FAILED — UNTRUSTED DRAFT** "
+                     f"(failed: {', '.join(quality.get('failed_metrics', []))})")
+        lines.insert(0, "")
+    elif qs == "unverified":
+        lines.insert(0, "> ⚠ **Quality unverified** — evaluation skipped or incomplete")
+        lines.insert(0, "")
+
     lines.extend(["", "---", "", survey_text, ""])
 
     if review_history:

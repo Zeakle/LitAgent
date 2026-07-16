@@ -96,13 +96,15 @@ class TestTracerHandlers:
         tracer._handle("worker.complete", {"task_id": "t1"})
         assert "t1" not in tracer._spans   # 关掉后从字典移除
 
-    def test_llm_call_nests_under_worker(self):
+    def test_llm_lifecycle_nests_under_worker(self):
         tracer, log = _tracer_with_mock()
         tracer._handle("worker.start", {"task_id": "t1", "agent_type": "synthesis"})
         worker_span = tracer._spans["t1"]
-        tracer._handle("llm.call", {"task_id": "t1", "model": "mock",
-                                    "messages": [{"role": "user", "content": "hi"}],
-                                    "prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15})
+        tracer._handle("llm.start", {"operation_id": "op-1", "task_id": "t1", "model": "mock",
+                                      "messages": [{"role": "user", "content": "hi"}]})
+        tracer._handle("llm.complete", {"operation_id": "op-1", "content": "hello",
+                                         "prompt_tokens": 10, "completion_tokens": 5,
+                                         "total_tokens": 15, "elapsed_ms": 12})
         # 在 worker span 下建了 generation
         starts = [k for act, k in worker_span.log if act == "start"]
         assert any(k.get("as_type") == "generation" for k in starts)
@@ -205,8 +207,8 @@ class _FakeOpenAI:
 
 class TestClientEmitsLLMCall:
     @pytest.mark.asyncio
-    async def test_client_emits_llm_call(self):
-        """client.chat() 触发 llm.call，带正确 token 和 contextvar task_id。"""
+    async def test_client_emits_llm_lifecycle(self):
+        """client.chat() emits paired lifecycle events with real timing metadata."""
         from litagent.llm.client import OpenAICompatibleClient
         events = []
         client = OpenAICompatibleClient(
@@ -219,11 +221,12 @@ class TestClientEmitsLLMCall:
             await client.chat([{"role": "user", "content": "hi"}])
         finally:
             reset_task_id(tok)
-        assert events and events[0][0] == "llm.call"
-        d = events[0][1]
+        assert [event for event, _ in events] == ["llm.start", "llm.complete"]
+        d = events[1][1]
         assert d["task_id"] == "t42"
         assert d["total_tokens"] == 15          # 10 + 5
         assert d["content"] == "hello"          # content 会映射为 span output
+        assert "elapsed_ms" in d
 
     @pytest.mark.asyncio
     async def test_client_no_trace_hook_no_crash(self):

@@ -47,6 +47,11 @@ class SurveyReport(BaseModel):
     graph_data: dict[str, Any]
     partial: bool
     evaluation: dict[str, Any] = {}
+    quality: dict[str, Any] = {
+        'status': 'unverified',
+        'failed_metrics': [],
+        'unverified_metrics': []
+    }
 
 
 # ═══════════════════════════════════════════════════════
@@ -180,5 +185,12 @@ async def get_survey_report(task_id: str):
         review_history=result.get("review_history", []),
         graph_data=result.get("graph_data", {}),
         partial=result.get("partial", False),
-        evaluation=result.get("evaluation", {})
+        evaluation=result.get("evaluation", {}),
+        quality=result.get('quality',
+            {
+                'status': 'unverified',
+                'failed_metrics': [],
+                'unverified_metrics': []
+            }
+        )
     )

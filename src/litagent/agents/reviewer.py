@@ -16,7 +16,7 @@ from litagent.context.budget import BudgetManager
 from litagent.logging import get_logger
 from litagent.rag.claims_index import ClaimsIndex
 from litagent.agent.react import ReActRunner
-from litagent.config import AgentConfig
+from litagent.config import AdversarialConfig, AgentConfig
 
 
 logger = get_logger('agents.reviewer')
@@ -42,6 +42,10 @@ Respond in JSON format:
 }"""
 
 
+_REQUIRED_REVIEW_KEYS = {"score", "strengths", "weaknesses", "issues",
+                         "missing_coverage", "verdict"}
+
+
 class ReviewerWorker(Worker):
     """审稿Worker
 
@@ -49,12 +53,14 @@ class ReviewerWorker(Worker):
     输出：审稿意见(JSON)
     """
     def __init__(self, llm: BaseLLMClient, claims_index: ClaimsIndex | None = None,
-                 budget: BudgetManager | None = None, skill_manager: SkillManager | None = None):
+                 budget: BudgetManager | None = None, skill_manager: SkillManager | None = None,
+                 config: AdversarialConfig | None = None):
         self._llm = llm
         self._claims_index = claims_index
         self._budget = budget or BudgetManager(max_tokens=16000)
         self._tools = [make_lookup_claims_tool(claims_index)] if claims_index else []
         self._skill_manager = skill_manager
+        self._config = config or AdversarialConfig()
         if skill_manager:
             self._tools.append(make_load_skill_tool(skill_manager))
 
@@ -84,12 +90,19 @@ class ReviewerWorker(Worker):
             instructions=REVIEWER_INSTRUCTIONS + "\nCross-reference related claims from other papers against the draft for completeness.",
             skills=skills_text
         )
-            
-        runner = ReActRunner(self._llm, tools=self._tools, config=AgentConfig(max_loops=10))
-        result = await runner.run(system_prompt=system, user_message=user_msg)
 
-        review = self._parse_review(result)
-        logger.info(f"Review score: {review.get('score', 'N/A')}, verdict: {review.get('verdict', 'N/A')}")
+        resp = await self._llm.chat(
+            [
+                {'role': 'system', 'content': system},
+                {'role': 'user', 'content': user_msg},
+            ],
+            response_format={'type': 'json_object'},
+            max_tokens=self._config.review_max_tokens
+        )
+
+        review = self._parse_review(resp.content)
+        logger.info(f"Review score: {review.get('score', 'N/A')}, "
+                    f"verdict: {review.get('verdict', 'N/A')}")
         return review
 
 
@@ -144,21 +157,25 @@ class ReviewerWorker(Worker):
 
 
     def _parse_review(self, content: str) -> dict:
-        """解析 JSON 审稿意见。response_format 保证输出是合法JSON"""
         try:
             parsed = json.loads(content)
-            parsed['score'] = float(parsed.get('score', 0))
+            parsed['score'] = max(0.0, min(1.0, float(parsed.get('score', 0))))
+            parsed.setdefault('strengths', [])
+            parsed.setdefault('weaknesses', [])
+            parsed.setdefault('issues', [])
+            parsed.setdefault('missing_coverage', [])
+            parsed.setdefault('verdict', 'revise')
+            missing = _REQUIRED_REVIEW_KEYS - set(parsed.keys())
+            if missing:
+                parsed['parse_error'] = f"Missing required keys: {missing}"
             return parsed
-        except (json.JSONDecodeError, ValueError, TypeError):
-            logger.warning("Failed to parse review JSON, using defaults")
-        return {
-            "score": 0.3,
-            "strengths": [],
-            "weaknesses": ["Review parsing failed"],
-            "issues": [],
-            "missing_coverage": [],
-            "verdict": "revise",
-        }
+        except (json.JSONDecodeError, ValueError, TypeError) as e:
+            return {
+                "score": 0.0, "strengths": [], "weaknesses": [],
+                "issues": [], "missing_coverage": [],
+                "verdict": "revise",
+                "parse_error": f"JSON parse failed: {e}",
+            }
 
 
     def _get_draft(self ,upstream: dict) -> str:

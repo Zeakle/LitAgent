@@ -21,9 +21,11 @@ from litagent.tools.worker_tools import make_load_skill_tool, make_recall_memory
 
 logger = get_logger('agents.synthesis')
 
+
 SYNTHESIS_ROLE = """You are an expert academic survey writer.
 Your task is to write a comprehensive, well-structured literature review
 based on the provided paper extractions and citation analysis."""
+
 
 SYNTHESIS_INSTRUCTIONS = """Write a structured survey covering:
 1. Introduction and motivation
@@ -32,7 +34,17 @@ SYNTHESIS_INSTRUCTIONS = """Write a structured survey covering:
 4. Experimental comparison
 5. Open problems and future directions
 
-Use specific paper citations. Be objective and comprehensive."""
+Use specific paper citations. Be objective and comprehensive.
+
+CRITICAL EVIDENCE BOUNDARIES:
+- Only reference papers explicitly listed in <papers> with their exact titles.
+- If evidence is insufficient (<3 papers): write a SCOPED EVIDENCE SUMMARY stating
+  the number of papers found, what conclusions they support, and what gaps remain.
+  Do NOT use "comprehensive survey" language. Do NOT fabricate authors, years, or
+  titles. For claims not supported by provided papers, write "evidence not provided".
+- If no papers are provided, output a single paragraph explaining that the search
+  returned no results, and suggest broader search terms."""
+
 
 REVISE_INSTRUCTIONS = """Revise the survey draft based on the reviewer's feedback.
 Address each criticism specifically. Keep existing good parts."""
@@ -65,6 +77,7 @@ class SynthesisWorker(Worker):
     async def execute(self, task: SubTask) -> Any:
         upstream = task.input_data.get('upstream_results', {})
         extractions = self._get_extractions(upstream)
+
         graph_data = self._get_graph_data(upstream)
         query = task.input_data.get('query', "")
 
@@ -77,6 +90,13 @@ class SynthesisWorker(Worker):
         user_msg, used = await pipeline.build({
             "extractions": extractions, "graph_data": graph_data, "query": query,
         })
+
+        if len(extractions) < 3:
+            user_msg = (
+                f"<instruction>Only {len(extractions)} papers found. "
+                f"Write a scoped evidence summary, not a comprehensive survey.</instruction>\n"
+                + user_msg
+            )
 
         skills_text = (self._skill_manager.to_metadata_text_for("writing a literature survey", top_k=2)
                        if self._skill_manager else "")

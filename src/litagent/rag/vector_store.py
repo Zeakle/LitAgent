@@ -33,11 +33,19 @@ class QdrantVectorStore(VectorStore):
         self._client = client
         self._collection = collection_name
 
-    @staticmethod
-    async def connect(config: MemoryConfig, collection_name: str) -> "QdrantVectorStore":
-        client = AsyncQdrantClient(url=config.qdrant_url)
-        dim = get_embedder().dim
 
+    @classmethod
+    async def ensure_compatible(
+        cls,
+        client: AsyncQdrantClient,
+        collection_name: str,
+        dim: int,
+    ) -> "QdrantVectorStore":
+        """Ensure a shared Qdrant client can safely use the papers schema.
+
+        Empty collections created by older versions can be recreated in place.
+        A non-empty incompatible collection is never deleted automatically.
+        """
         async def _create() -> None:
             await client.create_collection(
                 collection_name=collection_name,
@@ -50,19 +58,34 @@ class QdrantVectorStore(VectorStore):
             info = await client.get_collection(collection_name)
         except Exception:
             await _create()          # 不存在 → 建
-            return QdrantVectorStore(client, collection_name)
+            return cls(client, collection_name)
 
         # 已存在 → 校验结构：必须是命名向量且含 DENSE_KEY，否则是旧/不兼容结构。
         # 幂等检查只看"在不在"不够——旧版本可能建了无名默认向量，查 using=dense 会 400。
         vectors = info.config.params.vectors
         if not (isinstance(vectors, dict) and DENSE_KEY in vectors):
+            if info.points_count and info.points_count > 0:
+                from litagent.exceptions import ConfigError
+                raise ConfigError(
+                    f"RAG schema migration required for '{collection_name}': "
+                    f"{info.points_count} points exist with incompatible schema "
+                    f"(no named '{DENSE_KEY}' vector). "
+                    f"No automatic deletion of non-empty collection."
+                )
+
             logger.warning(
                 f"Collection '{collection_name}' has incompatible vector schema "
                 f"(no named '{DENSE_KEY}' vector) — recreating for dual-index"
             )
             await client.delete_collection(collection_name)
             await _create()
-        return QdrantVectorStore(client, collection_name)
+        return cls(client, collection_name)
+
+
+    @classmethod
+    async def connect(cls, config: MemoryConfig, collection_name: str) -> "QdrantVectorStore":
+        client = AsyncQdrantClient(url=config.qdrant_url)
+        return await cls.ensure_compatible(client, collection_name, get_embedder().dim)
 
     
     async def add(self, docs: list[Document], vectors: list[list[float]]) -> None:

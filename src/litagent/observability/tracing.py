@@ -30,6 +30,7 @@ class LangFuseTracer:
         self._client = None
         self._root = None
         self._spans: dict[str, Any] = {}  # task_id -> span
+        self._operations: dict[str, Any] = {}
 
         try:
             if not (public_key and secret_key):
@@ -59,9 +60,14 @@ class LangFuseTracer:
     def _handle(self, event: str, data: dict[str, Any]) -> None:
         if event == 'survey.start':
             self._root = self._client.start_observation(
-                name='survey', as_type='span',
+                as_type='span',
+                name='survey',
                 input={'query': data.get('query', '')},
             )
+            self._root.update_trace(
+                session_id=data.get('session_id', '')
+            )
+
         elif event == 'worker.start':
             if not self._root:
                 return 
@@ -70,6 +76,7 @@ class LangFuseTracer:
                 name=data.get('agent_type', tid), as_type='span',
                 input={'description': data.get('description', '')},
             )
+
         elif event in ('worker.complete', 'worker.failed'):
             tid = data.get('task_id', '')
             span = self._spans.pop(tid, None)
@@ -79,28 +86,47 @@ class LangFuseTracer:
                 elif 'output' in data:
                     self._safe_update_output(span, data['output'])
                 span.end()
-        elif event == 'llm.call':
-            tid = data.get('task_id', '')
-            parent = self._spans.get(tid) or self._root
-            if not parent:
+
+        elif event == 'llm.start':
+            parent = self._spans.get(data.get('task_id', '')) or self._root
+            if parent is None:
                 return
             gen = parent.start_observation(
-                name="llm.call", as_type="generation",   # generation = LLM 专用 span 类型
-                model=data.get("model", ""),
-                input=data.get("messages", []),
-                output=data.get("content", ""),
+                as_type='generation',
+                name=f"llm:{data.get('model', '')}",
+                input=data.get('messages', []),
+                model=data.get('model', ''),
             )
+            self._operations[data['operation_id']] = gen
 
-            gen.update(usage_details={
-                "input": data.get("prompt_tokens", 0),
-                "output": data.get("completion_tokens", 0),
-                "total": data.get("total_tokens", 0),
-            })
+        elif event == 'llm.complete':
+            op_id = data.get('operation_id')
+            if op_id and op_id in self._operations:
+                gen = self._operations.pop(op_id)
+                gen.update(
+                    output=data.get('content', ''),
+                    usage_details={
+                        'prompt_tokens': data.get('prompt_tokens', 0),
+                        'completion_tokens': data.get('completion_tokens', 0),
+                        'total_tokens': data.get('total_tokens', 0),
+                    },
+                    metadata={
+                        'elapsed_ms': data.get('elapsed_ms', 0)
+                    }
+                )
+                gen.end()
 
-            tcs = data.get("tool_calls", [])
-            if tcs:
-                gen.update(metadata={"tool_calls": tcs})
-            gen.end()
+        elif event == 'llm.failed':
+            op_id = data.get('operation_id')
+            if op_id and op_id in self._operations:
+                gen = self._operations.pop(op_id)
+                gen.update(
+                    level='ERROR',
+                    status_message=data.get('error', ''),
+                    metadata={'elapsed_ms': data.get('elapsed_ms', 0)},
+                )
+                gen.end()
+
         elif event == 'subspan.start':
             # 嵌套子 span：挂到 parent_task_id 对应的 span 下（非 root）。
             # 用于 adversarial 内部直接调用的 synthesis/reviewer，让它们的
@@ -114,6 +140,38 @@ class LangFuseTracer:
                 name=data.get('name', sub_tid), as_type='span',
                 input={'round': data.get('round', 0)},
             )
+
+        elif event == 'rag.search.start':
+            parent = self._spans.get(data.get('task_id', '')) or self._root
+            if parent is None:
+                return
+            span = parent.start_observation(
+                as_type='span',
+                name=f"rag:{data.get('query', '')[:50]}"
+            )
+            self._operations[data['operation_id']] = span
+
+        elif event == 'rag.search.complete':
+            op_id = data.get('operation_id')
+            if op_id and op_id in self._operations:
+                span = self._operations.pop(op_id)
+                span.update(
+                    output={'count': data.get('count', 0)},
+                    metadata={'elapsed_ms': data.get('elapsed_ms', 0)},
+                )
+                span.end()
+
+        elif event == 'rag.search.failed':
+            op_id = data.get('operation_id')
+            if op_id and op_id in self._operations:
+                span = self._operations.pop(op_id)
+                span.update(
+                    level='ERROR',
+                    status_message=data.get('error', ''),
+                    metadata={'elapsed_ms': data.get('elapsed_ms', 0)}
+                )
+                span.end()
+
         elif event == 'subspan.end':
             sub_tid = data.get('task_id', '')
             span = self._spans.pop(sub_tid, None)
@@ -123,6 +181,7 @@ class LangFuseTracer:
                 elif 'output' in data:
                     self._safe_update_output(span, data['output'])
                 span.end()
+
         elif event in ("tool.call", "rag.search", "memory.recall", "memory.write", "claims.op"):
             # 底层 I/O 事件（点事件）：挂在对应 Worker span 下（get_task_id → _spans[tid]）
             # 无对应 Worker span（如 consolidate 在 worker context 外）→ fallback 到 root
@@ -145,17 +204,22 @@ class LangFuseTracer:
             if data.get("success") is False or data.get("error"):
                 sp.update(level="ERROR", status_message=data.get("error", ""))
             sp.end()
+
         elif event == 'survey.complete':
             self._close_orphans()
             if self._root is not None:
+                quality_status = data.get('quality_status', 'unverified')
                 self._root.update(
                     output={
                         "rounds": data.get("rounds", 0),
                         "accepted": data.get("accepted", False),
+                        'quality_status': quality_status,
+                        'total_tokens': data.get('total_tokens', 0),
                     }
                 )
                 self._root.end()
                 self._root = None
+
         elif event == "survey.error":
             self._close_orphans()
             if self._root is not None:
@@ -184,6 +248,13 @@ class LangFuseTracer:
             except Exception:
                 pass
         self._spans.clear()
+        for op_id, obs in list(self._operations.items()):
+            try:
+                obs.update(level="WARNING", status_message="Orphan operation (closed by cleanup)")
+                obs.end()
+            except Exception:
+                pass
+        self._operations.clear()
 
 
     def flush(self) -> None:

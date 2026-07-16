@@ -48,6 +48,7 @@ class LLMConfig(BaseModel):
 class AdversarialConfig(BaseModel):
     max_rounds: int = Field(default=3, gt=0, le=5)
     pass_threshold: float = Field(default=0.8, gt=0, le=1.0)
+    review_max_tokens: int = Field(default=8192, gt=0)
 
 
 class PlannerConfig(BaseModel):
