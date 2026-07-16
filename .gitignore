@@ -1,4 +1,4 @@
-# 环境变量
+﻿# 环境变量
 .env
 
 # 开发计划文件 (本地开发使用，不上库)
@@ -6,6 +6,8 @@ plan/
 
 # AI 协作配置
 CLAUDE.md
+AGENTS.md
+.claude/
 
 # Python
 __pycache__/
@@ -22,8 +24,7 @@ kb/
 .venv/
 venv/
 
-# 测试
-tests/
+# 测试（测试文件已跟踪；只忽略缓存和覆盖率报告）
 .pytest_cache/
 .coverage
 
