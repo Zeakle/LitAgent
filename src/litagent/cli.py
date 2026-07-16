@@ -53,6 +53,11 @@ def main() -> None:
 
     args = parser.parse_args()
 
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
     if args.command is None:
         parser.print_help()
         sys.exit(1)

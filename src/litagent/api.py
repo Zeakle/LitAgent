@@ -46,6 +46,7 @@ class SurveyReport(BaseModel):
     review_history: list[dict[str, Any]]
     graph_data: dict[str, Any]
     partial: bool
+    evaluation: dict[str, Any] = {}
 
 
 # ═══════════════════════════════════════════════════════
@@ -179,4 +180,5 @@ async def get_survey_report(task_id: str):
         review_history=result.get("review_history", []),
         graph_data=result.get("graph_data", {}),
         partial=result.get("partial", False),
+        evaluation=result.get("evaluation", {})
     )

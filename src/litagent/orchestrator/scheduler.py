@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Callable
 
 from litagent.safety.budget import CostBudget
-from litagent.orchestrator.message_bus import AgentMessage, MessageBus, MessageType
+from litagent.orchestrator.message_bus import MessageBus
 from litagent.orchestrator.task_graph import TaskGraph, SubTask, TaskStatus
 from litagent.observability.context import set_task_id, reset_task_id
 from litagent.logging import get_logger
@@ -76,7 +76,6 @@ class Scheduler:
         self._semaphore = asyncio.Semaphore(max_concurrent)  # 并发限流器--控制同时运行的任务数量
         self._timeout_ms = timeout_ms
         self._on_complete = on_complete
-        self._replan_count = 0
         self._bus = bus
         if bus:
             bus.register('orchestrator')
@@ -132,10 +131,6 @@ class Scheduler:
                 logger.info("Cancelled by user, returning partial results")
                 return graph.get_results()
 
-            if self._bus:
-                msg = await self._bus.receive('orchestrator', timeout=0.05)
-                if msg and msg.type == MessageType.REPLAN_REQUEST:
-                    self._handle_replan(graph, msg)
             ready = graph.get_ready_tasks()
             if not ready:
                 await asyncio.sleep(0.05)  # 无就绪任务，暂停后重新获取
@@ -202,20 +197,6 @@ class Scheduler:
                             'output': result,
                         })
 
-                        # search文档太少，replan + search
-                        if (self._bus and task.agent_type == 'search' and isinstance(result, list) and len(result) < 3):
-                            await self._bus.broadcast(
-                                AgentMessage(
-                                    type=MessageType.REPLAN_REQUEST,
-                                    sender='orchestrator',
-                                    receiver='orchestrator',
-                                    task_id=task.task_id,
-                                    payload={
-                                        'query': task.input_data.get('query', ''),
-                                        'count': len(result)
-                                    }
-                                )
-                            )
                         return
                     except asyncio.TimeoutError:
                         last_error = f'Timeout after {task.timeout_ms}ms'
@@ -253,25 +234,3 @@ class Scheduler:
                 upstream[dep_id] = dep_task.result
         if upstream:
             task.input_data['upstream_results'] = upstream
-
-
-    def _handle_replan(self, graph, msg):
-        """扩展query -> 追加task -> 重连downstream dep"""
-        if self._replan_count >= 3:
-            logger.warning("Replan limit(#)")
-            return
-        
-        self._replan_count += 1
-        original = msg.payload['query']
-        parts = original.split()
-        expanded = f"{original} Or broader: {parts[0]}" if parts else original
-        new_id = f'search_replan_{hash(expanded) & 0xFFFF:04x}'
-        graph.add_task(SubTask(
-            task_id = new_id, description=f'Replan {expanded}',
-            agent_type='search', priority=0,
-            input_data={'query': expanded, 'source': 'semantic_scholar'}
-        ))
-        for tid in graph.tasks:
-            if msg.task_id in graph._deps.get(tid, set()):
-                graph.add_dependency(tid, new_id)
-        logger.info(f"Replan: added {new_id}")

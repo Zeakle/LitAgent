@@ -148,12 +148,79 @@ class MemoryManager:
 
     # -- Procedural Memory --
 
-    async def match_procedure(self, user_input: str) -> list[dict]:
-        """匹配触发词 → 返回匹配的 Procedure 模板"""
-        return await self.procedural.match(user_input) if self.procedural else []
 
-    async def record_procedure_execution(self, procedure_id: str, success: bool, duration_ms: int) -> None:
-        """记录 Procedure 执行结果"""
-        if self.procedural:
-            await self.procedural.record_execution(procedure_id, success, duration_ms)
+    async def record_search_source_execution(
+        self, subject: str, success: bool, empty_result: bool = False,
+        error_type: str | None = None, duration_ms: int = 0, result_count: int = 0,
+    ) -> None:
+        """SearchWorker 写入入口。procedural 不可用或写失败时 no-op。"""
+        if not self.procedural:
+            return
 
+        try:
+            await self.procedural.upsert_profile(
+                profile_type='search_source',
+                profile_key=f'search_source:{subject}',
+                subject=subject,
+                success=success,
+                empty_result=empty_result,
+                error_type=error_type,
+                duration_ms=duration_ms,
+                result_count=result_count
+            )
+
+            self._emit('memory.write', {
+                'task_id': get_task_id(),
+                'layer': 'procedural',
+                'success': True,
+                'source': subject,
+                'duration_ms': duration_ms
+            })
+        except Exception as e:
+            logger.warning(f"Procedural profile write failed for '{subject}': {e}")
+            self._emit("memory.write", {
+                "task_id": get_task_id(),
+                "layer": "procedural",
+                "success": False,
+                "source": subject,
+                "error": str(e),
+            })
+
+
+    async def rank_search_sources(
+        self, sources: list[str], min_samples: int = 3,
+    ) -> list[str]:
+        """按 reliability 降序排列搜索源。procedural 不可用时返回原列表。"""
+        if not self.procedural:
+            return list(sources)
+
+        try:
+            profiles = await self.procedural.get_profiles('search_source', 'global')
+            stats: dict[str, dict] = {p['subject']: p for p in profiles}
+
+            def _reliability(subject: str) -> float:
+                p = stats.get(subject)
+                if p is None or p['execution_count'] < min_samples:
+                    return 0.5
+
+                ec = p['execution_count']
+
+                raw = (
+                    (p["success_count"] + p["empty_result_count"]) / ec
+                    - (p["empty_result_count"] / ec) * 0.3
+                    - (p["rate_limit_count"] / ec) * 0.5
+                    - (p["timeout_count"] / ec) * 0.7
+                )
+                return max(0.0, min(1.0, raw))
+
+            ranked = sorted(sources, key=lambda s: -_reliability(s))
+            self._emit("memory.recall", {
+                "task_id": get_task_id(),
+                "layer": "procedural",
+                "sources": sources,
+                "ranked_sources": ranked,
+            })
+            return ranked
+        except Exception as e:
+            logger.warning(f"Source ranking failed: {e}")
+            return list(sources)

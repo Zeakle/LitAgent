@@ -19,35 +19,29 @@ CREATE TABLE IF NOT EXISTS semantic_entries (
 CREATE INDEX idx_semantic_type ON semantic_entries(entry_type);  -- 按类型筛选
 CREATE INDEX idx_semantic_key ON semantic_entries(key);          -- 按 key 精确查询
 
--- ── Procedural Memory ──
-CREATE TABLE IF NOT EXISTS procedures (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),    -- 主键
-    name VARCHAR(255) NOT NULL,                        -- Procedure 名称 (如 "CV extraction")
-    version VARCHAR(32) NOT NULL DEFAULT '1.0.0',     -- 语义版本号
-    status VARCHAR(32) NOT NULL DEFAULT 'active',      -- active | deprecated | disabled
-    description TEXT NOT NULL,                         -- 描述这个 Procedure 做什么
-    source_file VARCHAR(512),                          -- 对应 YAML 文件路径 (.claude/skills/extraction/cv.yaml)
-    trigger_embedding VECTOR(384),                    -- 触发词的 embedding (384d)
-    success_count INTEGER NOT NULL DEFAULT 0,          -- 历史成功次数
-    failure_count INTEGER NOT NULL DEFAULT 0,          -- 历史失败次数
-    avg_duration_ms INTEGER NOT NULL DEFAULT 0,        -- 平均执行耗时 (毫秒)
-    last_executed_at TIMESTAMPTZ,                      -- 上次执行时间
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),     -- 创建时间
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),     -- 最后更新时间
-    UNIQUE(name, version)                              -- 同名同版本不可重复
+-- ── Procedural Memory (13.7.1) ──
+CREATE TABLE IF NOT EXISTS procedural_profiles (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    profile_type VARCHAR(64) NOT NULL,
+    profile_key VARCHAR(255) NOT NULL,
+    subject VARCHAR(255) NOT NULL,
+    scope VARCHAR(64) NOT NULL DEFAULT 'global',
+    success_count INTEGER NOT NULL DEFAULT 0,
+    failure_count INTEGER NOT NULL DEFAULT 0,
+    empty_result_count INTEGER NOT NULL DEFAULT 0,
+    rate_limit_count INTEGER NOT NULL DEFAULT 0,
+    timeout_count INTEGER NOT NULL DEFAULT 0,
+    execution_count INTEGER NOT NULL DEFAULT 0,
+    avg_duration_ms DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+    avg_result_count REAL NOT NULL DEFAULT 0.0,
+    last_executed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(profile_type, profile_key, scope)
 );
 
-CREATE TABLE IF NOT EXISTS trigger_patterns (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),    -- 主键
-    procedure_id UUID NOT NULL                        -- 关联的 Procedure
-        REFERENCES procedures(id) ON DELETE CASCADE,  -- Procedure 删了，触发词自动删
-    pattern VARCHAR(512) NOT NULL,                    -- 触发词文本 (如 "extract CV paper")
-    locale VARCHAR(10) DEFAULT 'en',                  -- 语言: en | zh-CN
-    weight REAL NOT NULL DEFAULT 1.0,                 -- 匹配权重，高频触发词设高权重
-    UNIQUE(procedure_id, pattern)                     -- 同 Procedure 不重复
-);
-
-CREATE INDEX idx_triggers_procedure ON trigger_patterns(procedure_id);  -- 按 Procedure 查触发词
+CREATE INDEX IF NOT EXISTS idx_profiles_type_scope
+    ON procedural_profiles(profile_type, scope);
 
 -- schema.sql 追加（HNSW 索引）
 CREATE INDEX IF NOT EXISTS idx_semantic_hnsw

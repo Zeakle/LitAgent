@@ -47,3 +47,11 @@ observability:
 
 eval:
   max_tokens: 16384       # 评估器 LLM 调用额度——比常规大，citation 枚举引用 + reasoning 占额度
+
+planner:
+  decompose_enabled: true   # LLM 把 query 扩展成 2-3 子 query（多路召回）；false 退回单 query
+  max_sub_queries: 3        # 子 query 上限（含原始），防 N×源 组合爆炸
+  max_tokens: 4096          # 分解调用额度（reasoning 模型留余量）
+  temperature: 0.3          # 略高促子 query 多样化
+  use_procedural_profiles: false      # 13.7.1：开关开启后 planner 用画像重排 source
+  procedural_min_samples: 3           # 样本数不足不排

@@ -225,11 +225,15 @@ class LitAgent:
         
     
     def _extract_report(self, results: dict[str, Any], query: str) -> dict[str, Any]:
-        """从 Scheduler 的 {task_id: result} 中提取最终报告。"""
-        survey_text = ''
-        review_history: list[dict] = []
-        graph_data: dict[str, Any] = {}
-        metadata: dict[str, Any] = {
+        """从 Scheduler 的 {task_id: result} 中按 DAG 契约提取最终报告。
+
+        信任 DAG 的固定 task_id 作为契约——直接键查找，不遍历、不 duck-typing。
+        Priority: results["report"] > adversarial_review.final_draft > incomplete
+        """
+        graph_result = results.get('graph_analysis')
+        graph_data = graph_result if isinstance(graph_result, dict) else {}
+
+        base_metadata: dict[str, Any] = {
             "query": query,
             "generated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
             "total_rounds": 0,
@@ -237,35 +241,36 @@ class LitAgent:
             "accepted": False,
         }
 
-        for task_id, result in results.items():
-            if not isinstance(result, dict):
-                continue
+        # ① 最高优先级：ReportWorker 产出
+        report_result = results.get('report')
+        if isinstance(report_result, dict) and report_result.get('survey'):
+            return {
+                'survey': report_result['survey'],
+                'metadata': {**base_metadata, **report_result.get('metadata', {}), 'query': query},
+                'review_history': report_result.get('review_history', []),
+                'graph_data': graph_data
+            }
 
-            if 'final_draft' in result:
-                survey_text = result.get("final_draft", "")
-                metadata["total_rounds"] = result.get("total_rounds", 0)
-                metadata["final_score"] = result.get("final_score", 0.0)
-                metadata["accepted"] = result.get("accepted", False)
-                if result.get("rounds"):
-                    review_history = result["rounds"]
-
-            if 'nodes' in result or 'edges' in result:
-                graph_data = result
-
-            if 'draft' in result and 'final_draft' not in result:
-                if not survey_text:
-                    survey_text = result.get("draft", "")
-        
-        if not survey_text:
-            survey_text = f"Survey incomplete. Partial results from {len(results)} tasks."
+        # ② 对抗审查输出：final_draft
+        adv_result = results.get('adversarial_review')
+        if isinstance(adv_result, dict) and adv_result.get('final_draft'):
+            metadata = {**base_metadata}
+            metadata["total_rounds"] = adv_result.get("total_rounds", 0)
+            metadata["final_score"] = adv_result.get("final_score", 0.0)
+            metadata["accepted"] = adv_result.get("accepted", False)
+            return {
+                "survey": adv_result["final_draft"],
+                "metadata": metadata,
+                "review_history": adv_result.get("rounds", []),
+                "graph_data": graph_data,
+            }
 
         return {
-            "survey": survey_text,
-            "metadata": metadata,
-            "review_history": review_history,
+            "survey": f"Survey incomplete. Partial results from {len(results)} tasks.",
+            "metadata": base_metadata,
+            "review_history": [],
             "graph_data": graph_data,
         }
-
 
 
     async def _wire(self) -> None:
@@ -353,7 +358,7 @@ class LitAgent:
         # 8. Workers
         workers: list[Worker] = []
 
-        self._search = SearchWorker(executor=self._executor, retriever=self._infra.retriever)
+        self._search = SearchWorker(executor=self._executor, retriever=self._infra.retriever, memory_manager=self._infra.memory)
         workers.append(self._search)
 
         self._dedup = DedupWorker()
@@ -405,7 +410,12 @@ class LitAgent:
             trace_hook=self._trace_hook
         )
 
-        self._planner = SurveyPlanner()
+        self._planner = SurveyPlanner(
+            llm=self._llm,
+            config=cfg.planner,
+            trace_hook=self._trace_hook,
+            memory_manager=self._infra.memory
+        )
         self._wired = True
 
         # 10. Evaluators（max_tokens 从 eval config 取——评估任务额度需求大）
@@ -477,7 +487,6 @@ class LitAgent:
         """
         mem_cfg= cfg.memory
         infra = Infra()
-        dim = self._get_embedding_dim()
 
         # ── Redis → WorkingMemory ──
         try:
@@ -496,6 +505,7 @@ class LitAgent:
             from qdrant_client.models import Distance, VectorParams
 
             qdrant_client = AsyncQdrantClient(url=mem_cfg.qdrant_url)
+            dim = self._get_embedding_dim()
 
             # 确保三个collection存在
             for coll_name in ['episodes', 'claims', 'papers']:
@@ -536,6 +546,7 @@ class LitAgent:
             pg_pool = await asyncpg.create_pool(mem_cfg.pg_url, min_size=2, max_size=10)
             semantic = SemanticMemory(pg_pool)
             procedural = ProceduralMemory(pg_pool)
+            await procedural.ensure_tables()
             infra._pg_pool = pg_pool
             logger.info("Infra: PostgreSQL connected (Semantic + Procedural)")
         except Exception as e:
