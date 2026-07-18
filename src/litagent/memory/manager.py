@@ -14,6 +14,10 @@ from litagent.logging import get_logger
 
 logger = get_logger('memory.manager')
 
+LAYER_EPISODIC = 'episodic'
+LAYER_SEMANTIC = 'semantic'
+LAYER_PROCEDURAL = 'procedural'
+
 
 class MemoryManager:
     """四层Memory 统一入口"""
@@ -99,7 +103,7 @@ class MemoryManager:
         
         eid = None
         try:
-            async with traced_io(self._emit, 'memory.write', {'layer': 'eepisodic'}) as outcome:
+            async with traced_io(self._emit, 'memory.write', {'layer': LAYER_EPISODIC}) as outcome:
                 eid = await self.episodic.store(episode)
                 outcome['episode_id'] = eid
             episode.episode_id = eid
@@ -110,7 +114,7 @@ class MemoryManager:
         # ── 写 Semantic（eid 可能为 None——episodic 失败时 fact 无 episode 关联）──
         written = 0
         if episode.extracted_facts and self.semantic:
-            async with traced_io(self._emit, 'memory.write', {'layer': 'semantic'}) as outcome:
+            async with traced_io(self._emit, 'memory.write', {'layer': LAYER_SEMANTIC}) as outcome:
                 for fact in episode.extracted_facts:
                     if not isinstance(fact, dict) or 'key' not in fact:
                         continue
@@ -146,7 +150,7 @@ class MemoryManager:
 
         try:
             async with traced_io(self._emit, 'memory.write',
-                                 {'layer': 'procedural', 'source': subject}) as outcome:
+                                 {'layer': LAYER_PROCEDURAL, 'source': subject}) as outcome:
                 await self.procedural.upsert_profile(
                     profile_type='search_source',
                     profile_key=f'search_source:{subject}',
@@ -172,7 +176,7 @@ class MemoryManager:
 
         try:
             async with traced_io(self._emit, 'memory.recall',
-                                 {'layer': 'procedural'}) as outcome:
+                                 {'layer': LAYER_PROCEDURAL}) as outcome:
                 profiles = await self.procedural.get_profiles('search_source', 'global')
                 stats: dict[str, dict] = {p['subject']: p for p in profiles}
 

@@ -42,6 +42,7 @@ ragas = [
 where = ["src"]
 
 [tool.pytest.ini_options]
+addopts = "-m \"not integration\""
 markers = [
-    "integration: 需要外部服务（Docker daemon 等），CI 默认跳过",
+    "integration: requires explicitly configured isolated Redis/Qdrant/PostgreSQL services",
 ]

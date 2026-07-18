@@ -35,15 +35,63 @@ class TestSanitizeInput:
         assert "token" not in out
         assert out["query"] == "q"
 
-    def test_passes_scalars_and_flattens_containers(self):
-        out = sanitize_input({"top_k": 20, "flags": [1, 2]})
-        assert out["top_k"] == 20
-        assert out["flags"] == "[1, 2]"     # 容器统一 repr 压平（防嵌套长文本/密钥）
+    def test_none_returns_empty_dict(self):
+        assert sanitize_input(None) == {}
 
-    def test_container_repr_truncated(self):
-        out = sanitize_input({"big": ["x" * 100] * 50})
-        assert isinstance(out["big"], str)
-        assert len(out["big"]) <= 203       # _MAX_STR + '...'
+    def test_scalars_kept_containers_recursed(self):
+        """R1：容器不再 repr 压平——递归清洗、保留结构。"""
+        out = sanitize_input({"top_k": 20, "flags": [1, 2], "ok": True, "none": None})
+        assert out["top_k"] == 20
+        assert out["flags"] == [1, 2]
+        assert out["ok"] is True
+        assert out["none"] is None
+
+    def test_nested_secrets_dropped_at_any_depth(self):
+        """R1：嵌套 Authorization / cookies / list 内 token 一律不出现。"""
+        out = sanitize_input({
+            "headers": {"Authorization": "Bearer sk-live", "Accept": "application/json"},
+            "cookies": {"session_token": "abc"},
+            "batch": [{"api_key": "sk-1", "query": "safe q"}],
+        })
+        flat = repr(out)
+        assert "sk-live" not in flat
+        assert "abc" not in flat
+        assert "sk-1" not in flat
+        # 安全嵌套值保留可诊断结构
+        assert out["headers"]["Accept"] == "application/json"
+        assert "cookies" not in out                     # 键名含 cookie → 整体剔除
+        assert out["batch"][0]["query"] == "safe q"
+        assert "api_key" not in out["batch"][0]
+
+    def test_depth_limit_bounds_nesting(self):
+        d: dict = {"v": "leaf"}
+        for _ in range(10):
+            d = {"nest": d}
+        out = sanitize_input(d)
+        assert "depth-limit" in repr(out)               # 深层被占位符封顶
+        assert "leaf" not in repr(out)
+
+    def test_item_limit_bounds_collections(self):
+        big_list = list(range(200))
+        big_dict = {f"k{i}": i for i in range(200)}
+        out = sanitize_input({"lst": big_list, "map": big_dict})
+        assert len(out["lst"]) <= 51                    # 50 + 省略标注
+        assert any("omitted" in str(x) for x in out["lst"])
+        assert "_truncated" in out["map"]
+
+    def test_cyclic_structure_does_not_raise(self):
+        d: dict = {"q": "ok"}
+        d["self"] = d                                   # 环——靠深度上限收敛
+        out = sanitize_input(d)
+        assert out["q"] == "ok"
+
+    def test_custom_object_becomes_type_placeholder(self):
+        class Weird:
+            def __repr__(self):
+                raise RuntimeError("repr must not be called")
+
+        out = sanitize_input({"obj": Weird()})
+        assert out["obj"] == "<Weird>"                  # 占位而非 repr
 
 
 # ═══════════════════════════════════════════════════
@@ -73,8 +121,9 @@ class TestTracedIO:
                 raise ValueError("boom")
         assert [e for e, _ in events] == ["memory.write.start", "memory.write.failed"]
         failed = events[1][1]
+        assert failed["error_code"] == "io_failed"
         assert failed["error_type"] == "ValueError"
-        assert "boom" in failed["error"]
+        assert "error" not in failed             # R5：原始异常文本不进入 trace
         assert "elapsed_ms" in failed
 
     @pytest.mark.asyncio
@@ -104,6 +153,53 @@ class TestTracedIO:
         start = events[0][1]
         assert "api_key" not in start
         assert len(start["query"]) < 500
+
+    @pytest.mark.asyncio
+    async def test_complete_sanitizes_outcome_and_preserves_framework_fields(self):
+        events = []
+        async with traced_io(lambda event, data: events.append((event, data)),
+                             "claims.add") as outcome:
+            outcome.update({
+                "headers": {"Authorization": "Bearer should-not-appear"},
+                "batch": [{"token": "should-not-appear", "count": 2}],
+                "operation_id": "attacker-value",
+                "elapsed_ms": -1,
+            })
+        complete = events[-1][1]
+        assert "should-not-appear" not in repr(complete)
+        assert complete["batch"] == [{"count": 2}]
+        assert complete["operation_id"] != "attacker-value"
+        assert complete["elapsed_ms"] >= 0
+
+    @pytest.mark.asyncio
+    async def test_failed_terminal_never_contains_exception_text(self):
+        events = []
+        with pytest.raises(RuntimeError):
+            async with traced_io(lambda event, data: events.append((event, data)),
+                                 "claims.search"):
+                raise RuntimeError("Authorization: Bearer should-not-appear")
+        failed = events[-1][1]
+        assert failed["error_code"] == "io_failed"
+        assert failed["error_type"] == "RuntimeError"
+        assert "should-not-appear" not in repr(failed)
+
+    @pytest.mark.asyncio
+    async def test_hostile_input_does_not_block_wrapped_io(self):
+        """R1：cyclic/怪对象输入 → trace 不崩，被包裹的业务 I/O 照常执行。"""
+        ran = []
+        cyclic: dict = {}
+        cyclic["self"] = cyclic
+
+        class Weird:
+            def __repr__(self):
+                raise RuntimeError("no repr")
+
+        events = []
+        async with traced_io(lambda e, d: events.append((e, d)),
+                             "tool", {"cyc": cyclic, "obj": Weird()}):
+            ran.append(True)
+        assert ran == [True]
+        assert [e for e, _ in events] == ["tool.start", "tool.complete"]
 
 
 # ═══════════════════════════════════════════════════
@@ -289,11 +385,12 @@ class TestTracerIOLifecycle:
                                             "count": 3})
         tracer._handle("claims.add.failed", {"operation_id": "op2", "task_id": "",
                                              "elapsed_ms": 5,
+                                             "error_code": "io_failed",
                                              "error_type": "RuntimeError",
-                                             "error": "qdrant down"})
+                                             "error": "Authorization: Bearer should-not-appear"})
         assert tracer._operations == {}
         updates = [k for act, k in log if act == "update"]
-        assert any(k.get("level") == "ERROR" and k.get("status_message") == "qdrant down"
+        assert any(k.get("level") == "ERROR" and k.get("status_message") == "io_failed"
                    for k in updates)
         # error_type 进 metadata（dashboard 分诊用）
         assert any(k.get("metadata", {}).get("error_type") == "RuntimeError"
@@ -451,3 +548,62 @@ class TestMemoryManagerProducer:
         assert [e for e, _ in events] == ["memory.write.start", "memory.write.complete"]
         assert events[1][1]["source"] == "arxiv"
         assert events[1][1]["duration_ms"] == 42
+
+
+class TestMemoryLayerCanonical:
+    """R2：memory trace-layer 常量化——episodic 不再是手打 'eepisodic'。"""
+
+    @staticmethod
+    def _mm_for_consolidate(events, store_side_effect=None, monkeypatch=None):
+        import litagent.memory.manager as mgr_mod
+        from litagent.memory.manager import MemoryManager
+
+        episode = MagicMock()
+        episode.extracted_facts = []                    # 跳过 semantic 写入分支
+
+        async def fake_consolidate_session(state, session_id, llm=None):
+            return episode
+
+        monkeypatch.setattr(mgr_mod, "consolidate_session", fake_consolidate_session)
+
+        working = MagicMock()
+        working.get = AsyncMock(return_value={"messages": [{"type": "ai", "content": "x"}]})
+        episodic = MagicMock()
+        episodic.store = AsyncMock(return_value="ep1", side_effect=store_side_effect)
+        return MemoryManager(working=working, episodic=episodic,
+                             trace_hook=lambda e, d: events.append((e, d)))
+
+    def test_layer_constants_are_canonical(self):
+        from litagent.memory.manager import LAYER_EPISODIC, LAYER_SEMANTIC, LAYER_PROCEDURAL
+        assert LAYER_EPISODIC == "episodic"
+        assert LAYER_SEMANTIC == "semantic"
+        assert LAYER_PROCEDURAL == "procedural"
+
+    @pytest.mark.asyncio
+    async def test_consolidate_success_emits_episodic_pair(self, monkeypatch):
+        events = []
+        mm = self._mm_for_consolidate(events, monkeypatch=monkeypatch)
+        await mm.consolidate("s1")
+        writes = [(e, d) for e, d in events if e.startswith("memory.write")]
+        assert [e for e, _ in writes] == ["memory.write.start", "memory.write.complete"]
+        assert writes[0][1]["layer"] == "episodic"      # 绝不是 'eepisodic'
+
+    @pytest.mark.asyncio
+    async def test_consolidate_store_failure_emits_failed_with_canonical_layer(self, monkeypatch):
+        events = []
+        mm = self._mm_for_consolidate(events, store_side_effect=RuntimeError("qdrant down"),
+                                      monkeypatch=monkeypatch)
+        result = await mm.consolidate("s1")             # 降级不抛
+        assert result is not None
+        writes = [(e, d) for e, d in events if e.startswith("memory.write")]
+        assert [e for e, _ in writes] == ["memory.write.start", "memory.write.failed"]
+        assert writes[0][1]["layer"] == "episodic"
+
+    def test_tracer_span_name_uses_canonical_layer(self):
+        """消费端整链核对：layer=episodic → span 名 memory.write.episodic。"""
+        tracer, log = _tracer_with_mock()
+        tracer._handle("memory.write.start", {"operation_id": "opL", "task_id": "",
+                                              "layer": "episodic"})
+        starts = [k for act, k in log if act == "start"]
+        assert any(k.get("name") == "memory.write.episodic" for k in starts)
+        assert not any("eepisodic" in str(k.get("name", "")) for k in starts)

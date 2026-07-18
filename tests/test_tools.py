@@ -1,4 +1,6 @@
 import asyncio
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 from litagent.tools.base import ToolDefinition, ToolCategory, RateLimitConfig, FallbackStep
 from litagent.tools.registry import ToolRegistry, get_registry, reset_registry
@@ -133,7 +135,36 @@ class TestBuiltinEcho:
 
 class TestBuiltinSearch:
     @pytest.mark.asyncio
-    async def test_search_arxiv_placeholder(self):
-        from litagent.tools.builtin.search import search_arxiv
-        result = await search_arxiv("few-shot learning")
-        assert isinstance(result, list)
+    async def test_search_arxiv_parses_response_without_network(self, monkeypatch):
+        from litagent.tools.builtin import search
+
+        response = MagicMock()
+        response.text = """<?xml version='1.0'?>
+        <feed xmlns='http://www.w3.org/2005/Atom'>
+          <entry>
+            <id>http://arxiv.org/abs/2401.01234</id>
+            <title>Few-shot Learning</title>
+            <summary> A test abstract. </summary>
+          </entry>
+        </feed>"""
+        response.raise_for_status = MagicMock()
+        client = MagicMock()
+        client.get = AsyncMock(return_value=response)
+
+        class FakeAsyncClient:
+            async def __aenter__(self):
+                return client
+
+            async def __aexit__(self, exc_type, exc, traceback):
+                return None
+
+        monkeypatch.setattr(search.httpx, "AsyncClient", lambda **_: FakeAsyncClient())
+
+        result = await search.search_arxiv("few-shot learning", max_results=1)
+        assert result == [{
+            "paper_id": "2401.01234",
+            "title": "Few-shot Learning",
+            "abstract": "A test abstract.",
+            "source": "arxiv",
+        }]
+        client.get.assert_awaited_once()

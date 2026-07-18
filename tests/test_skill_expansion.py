@@ -3,6 +3,32 @@ from litagent.skills.manager import SkillManager
 from litagent.tools.worker_tools import make_load_skill_tool
 
 
+class _OfflineSkillEmbedder:
+    """Deterministic embeddings for ranking tests; never downloads a model."""
+
+    @staticmethod
+    def _embed_one(text: str) -> list[float]:
+        normalized = text.lower()
+        if "writing a literature survey" in normalized:
+            return [1.0, 0.0]
+        if "reviewing" in normalized and "critiquing" in normalized:
+            return [0.0, 1.0]
+        return [0.0, 0.0]
+
+    def embed(self, texts: str | list[str]) -> list[float] | list[list[float]]:
+        if isinstance(texts, str):
+            return self._embed_one(texts)
+        return [self._embed_one(text) for text in texts]
+
+
+@pytest.fixture(autouse=True)
+def offline_skill_embedder(monkeypatch):
+    monkeypatch.setattr(
+        "litagent.skills.manager.get_embedder",
+        lambda: _OfflineSkillEmbedder(),
+    )
+
+
 def _mgr():
     return SkillManager()   # 默认扫 src/litagent/skills（扁平全部）
 

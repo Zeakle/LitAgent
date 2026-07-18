@@ -701,80 +701,98 @@ class LitAgent:
         }
 
 
-    async def _attempt_evidence_rewrite(self, report_data: dict[str, Any],
-                                        results: dict[str, Any]) -> bool:
-        """quality failed 时的一次性 evidence rewrite。返回 True=已替换 survey。
-
-        触发条件（全部满足）：faithfulness 诊断出非空 unsupported_claims、
-        对抗轮次有剩余。规则校验：改写稿所有 [E:*] 必须在 ledger 内；
-        校验失败/LLM 失败 → 保留原 draft，记录原因（delivery 维持 blocked）。
-        """
-        rewrite_meta: dict[str, Any] = {'attempted': False, 'accepted': False, 'reason': ''}
-        report_data.setdefault('metadata', {})['evidence_rewrite'] = rewrite_meta
-        
-        diag = (report_data.get('evaluation', {}).get('faithfulness', {}).get('details', {}).get('unsupported_claims'))
-
-        if not diag:
-            rewrite_meta['reason'] = 'no unsupported_claims diagnostic'
+    async def _attempt_evidence_rewrite(
+        self, report_data: dict[str, Any], results: dict[str, Any]
+    ) -> bool:
+        """quality failed 时的一次性证据修复——至多一次，预算独立于对抗轮次。"""
+        existing = report_data.get("metadata", {}).get("evidence_rewrite")
+        if existing and existing.get("attempted"):
             return False
 
-        rounds_used = report_data.get('metadata', {}).get('total_rounds', 0)
-        if rounds_used >= self._config.adversarial.max_rounds:
-            rewrite_meta['reason'] = 'no adversarial rounds left'
+        rewrite_meta: dict[str, Any] = {
+            "attempted": False,
+            "accepted": False,
+            "reason": "",
+        }
+        report_data.setdefault("metadata", {})["evidence_rewrite"] = rewrite_meta
+
+        diagnostics = (
+            report_data.get("evaluation", {})
+            .get("faithfulness", {})
+            .get("details", {})
+            .get("unsupported_claims")
+        )
+        if not diagnostics:
+            rewrite_meta["reason"] = "no_unsupported_claims"
             return False
 
         ledger = collect_ledger(self._collect_extractions(results))
         if not ledger:
-            rewrite_meta['reason'] = 'empty evidence ledger'
+            rewrite_meta["reason"] = "empty_evidence_ledger"
             return False
 
-        rewrite_meta['attempted'] = True
+        rewrite_meta["attempted"] = True
         messages = self._synthesis.rewrite_with_evidence(
-            report_data['survey'],
-            format_ledger(ledger, max_chars=20000),   # prompt 场景截断，防 ledger 无界
-            json.dumps(diag, ensure_ascii=False, indent=2),
+            report_data["survey"],
+            format_ledger(ledger, max_chars=20000),
+            json.dumps(diagnostics, ensure_ascii=False, indent=2),
         )
 
         accepted = False
-        new_draft = ''
-        reason = ''
-        self._emit('subspan.start', {
-            'task_id': 'evidence_rewrite', 'parent_task_id': '',
-            'name': 'evidence_rewrite', 'round': 0,
+        reason = "llm_call_failed"
+        error_type: str | None = None
+        new_draft = ""
+        self._emit("subspan.start", {
+            "task_id": "evidence_rewrite",
+            "parent_task_id": "",
+            "name": "evidence_rewrite",
+            "round": 0,
         })
-        token = set_task_id('evidence_rewrite')
-        
+        token = set_task_id("evidence_rewrite")
+
         try:
-            resp = await self._llm.chat(messages, max_tokens=self._config.eval.max_tokens)
-            new_draft = (resp.content or '').strip()
+            response = await self._llm.chat(
+                messages, max_tokens=self._config.eval.max_tokens
+            )
+            new_draft = (response.content or "").strip()
             if not new_draft:
-                reason = 'rewrite returned empty draft'
-            elif len(new_draft) < 0.5 * len(report_data['survey']):
-                # 防截断守卫：改写只删/降级/绑证据，不应腰斩全文
-                reason = 'rewrite suspiciously short (possible truncation)'
+                reason = "empty_draft"
+            elif len(new_draft) < 0.5 * len(report_data["survey"]):
+                reason = "draft_too_short"
+            elif find_unknown_refs(new_draft, ledger):
+                reason = "unknown_evidence_refs"
             else:
-                unknown = find_unknown_refs(new_draft, ledger)
-                if unknown:
-                    reason = f'rewrite cites unknown evidence ids: {unknown[:5]}'
-                else:
-                    # 引用合法性只是规则底线；防幻觉的真正后盾是接受后的强制重评估
-                    accepted = True
-        except Exception as e:
-            reason = f'rewrite llm failed: {e}'
+                accepted = True
+                reason = "accepted"
+        except asyncio.CancelledError:
+            reason = "cancelled"
+            error_type = "CancelledError"
+            raise
+        except Exception as exc:
+            reason = "llm_call_failed"
+            error_type = type(exc).__name__
         finally:
+            rewrite_meta["accepted"] = accepted
+            rewrite_meta["reason"] = reason
+            if error_type is not None:
+                rewrite_meta["error_type"] = error_type
             reset_task_id(token)
-            self._emit('subspan.end', {
-                'task_id': 'evidence_rewrite',
-                'output': {'accepted': accepted, 'reason': reason}
+            trace_output: dict[str, Any] = {
+                "accepted": accepted,
+                "reason": reason,
+            }
+            if error_type is not None:
+                trace_output["error_type"] = error_type
+            self._emit("subspan.end", {
+                "task_id": "evidence_rewrite",
+                "output": trace_output,
             })
 
-        rewrite_meta['accepted'] = accepted
-        rewrite_meta['reason'] = reason or 'accepted'
         if not accepted:
-            logger.warning(f"Evidence rewrite rejected: {reason}")
-            return False        # 保底 draft 不被覆盖
+            logger.warning("Evidence rewrite rejected: %s", reason)
+            return False
 
-        report_data['survey'] = new_draft
+        report_data["survey"] = new_draft
         return True
         
 

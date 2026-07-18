@@ -683,12 +683,74 @@ class TestEvidenceRewrite:
         assert kwargs.get("max_tokens") == agent._config.eval.max_tokens
 
     @pytest.mark.asyncio
-    async def test_no_rounds_left_skips_rewrite(self):
-        agent = self._agent_with_stub("whatever")
+    async def test_exhausted_adversarial_rounds_still_attempts_rewrite(self):
+        """R3：轮次耗尽不阻断 rewrite——评估后修复预算独立于对抗循环。"""
+        agent = self._agent_with_stub("revised bounded draft [E:p1:claim:0]")
         report, results = self._report_and_results(rounds_used=1)  # == max_rounds
+        assert await agent._attempt_evidence_rewrite(report, results) is True
+        assert report["survey"] == "revised bounded draft [E:p1:claim:0]"
+        assert report["metadata"]["evidence_rewrite"]["attempted"] is True
+
+    @pytest.mark.asyncio
+    async def test_second_invocation_returns_false_without_llm_call(self):
+        """R3：同一 report 二次调用 → attempted 已耗，不调 LLM 也不重置记录。"""
+        agent = self._agent_with_stub("revised bounded draft [E:p1:claim:0]")
+        report, results = self._report_and_results(rounds_used=0)
+        # 第一次成功
+        assert await agent._attempt_evidence_rewrite(report, results) is True
+        assert agent._llm.chat.call_count == 1
+        # 第二次直接返回 False
         assert await agent._attempt_evidence_rewrite(report, results) is False
-        assert report["metadata"]["evidence_rewrite"]["attempted"] is False
-        agent._llm.chat.assert_not_called()
+        assert agent._llm.chat.call_count == 1           # LLM 不再被调
+        # 记录未重置
+        assert report["metadata"]["evidence_rewrite"]["attempted"] is True
+        assert report["metadata"]["evidence_rewrite"]["accepted"] is True
+
+    @pytest.mark.asyncio
+    async def test_llm_exception_consumes_budget(self):
+        """R3/R6：LLM 异常 → attempted 已消耗，reason 用稳定码不含异常文本。"""
+        events = []
+        agent = self._agent_with_stub("unused")
+        agent._trace_hook = lambda event, data: events.append((event, data))
+        agent._llm.chat = AsyncMock(
+            side_effect=RuntimeError("Authorization: Bearer should-not-appear")
+        )
+        report, results = self._report_and_results(rounds_used=0)
+        assert await agent._attempt_evidence_rewrite(report, results) is False
+        assert report["survey"] == "original draft"
+        meta = report["metadata"]["evidence_rewrite"]
+        assert meta["attempted"] is True
+        assert meta["accepted"] is False
+        assert meta["reason"] == "llm_call_failed"
+        assert meta["error_type"] == "RuntimeError"
+        assert "should-not-appear" not in repr(meta)
+        assert "should-not-appear" not in repr(events)
+
+    @pytest.mark.asyncio
+    async def test_llm_cancellation_consumes_budget_and_reraises(self):
+        events = []
+        agent = self._agent_with_stub("unused")
+        agent._trace_hook = lambda event, data: events.append((event, data))
+        agent._llm.chat = AsyncMock(side_effect=asyncio.CancelledError())
+        report, results = self._report_and_results(rounds_used=0)
+
+        with pytest.raises(asyncio.CancelledError):
+            await agent._attempt_evidence_rewrite(report, results)
+
+        meta = report["metadata"]["evidence_rewrite"]
+        assert meta["attempted"] is True
+        assert meta["accepted"] is False
+        assert meta["reason"] == "cancelled"
+        assert meta["error_type"] == "CancelledError"
+        endings = [data for event, data in events if event == "subspan.end"]
+        assert endings == [{
+            "task_id": "evidence_rewrite",
+            "output": {
+                "accepted": False,
+                "reason": "cancelled",
+                "error_type": "CancelledError",
+            },
+        }]
 
     @pytest.mark.asyncio
     async def test_no_diagnostic_skips_rewrite(self):

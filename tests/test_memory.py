@@ -1,69 +1,136 @@
+import os
+from uuid import uuid4
+
 import pytest
 import pytest_asyncio
-from qdrant_client import AsyncQdrantClient
 from langchain_core.messages import HumanMessage, AIMessage
 
 from litagent.memory.working import WorkingMemory
-from litagent.memory.episodic import EpisodicMemory, COLLECTION_NAME
+from litagent.memory.episodic import EpisodicMemory
 from litagent.memory.models import Episode
 from litagent.memory.manager import MemoryManager
 from litagent.config import MemoryConfig
+
+
+def _require_isolated_service_url(env_name: str, default_url: str) -> str:
+    """Require an explicitly configured endpoint distinct from the dev default."""
+    url = os.environ.get(env_name)
+    if not url:
+        pytest.skip(f"{env_name} not set")
+    if url.rstrip("/") == default_url.rstrip("/"):
+        pytest.fail(f"{env_name} must not target the developer runtime endpoint")
+    return url
+
+
+def _test_redis_url() -> str:
+    return _require_isolated_service_url("TEST_REDIS_URL", MemoryConfig().redis_url)
+
+
+def _test_qdrant_url() -> str:
+    return _require_isolated_service_url("TEST_QDRANT_URL", MemoryConfig().qdrant_url)
+
+
+def _test_session_id() -> str:
+    return f"test_memory_{uuid4().hex}"
 
 
 # ── Working Memory Tests ──
 
 @pytest_asyncio.fixture
 async def working():
-    config = MemoryConfig(redis_url="redis://localhost:6379", working_ttl_seconds=60)
-    wm = await WorkingMemory.connect(config)
-    yield wm
-    await wm.delete("test_session")
+    redis_url = _test_redis_url()
+    config = MemoryConfig(redis_url=redis_url, working_ttl_seconds=60)
+    try:
+        wm = await WorkingMemory.connect(config)
+        await wm.get("__redis_probe__")
+    except Exception as e:
+        pytest.skip(f"Redis unavailable at {redis_url}: {e}")
+
+    created_session_ids: set[str] = set()
+    original_set = wm.set
+
+    async def tracked_set(session_id: str, state: dict):
+        created_session_ids.add(session_id)
+        return await original_set(session_id, state)
+
+    wm.set = tracked_set
+    try:
+        yield wm
+    finally:
+        for session_id in created_session_ids:
+            await wm.delete(session_id)
+        await wm.close()
 
 
+@pytest.mark.integration
 class TestWorkingMemory:
     @pytest.mark.asyncio
     async def test_set_and_get(self, working):
+        session_id = _test_session_id()
         state = {"messages": [], "loop_count": 3, "final_answer": "done"}
-        await working.set("test_session", state)
-        result = await working.get("test_session")
+        await working.set(session_id, state)
+        result = await working.get(session_id)
         assert result is not None
         assert result["loop_count"] == 3
 
     @pytest.mark.asyncio
     async def test_get_nonexistent(self, working):
-        assert await working.get("no_such_session") is None
+        assert await working.get(_test_session_id()) is None
 
     @pytest.mark.asyncio
     async def test_delete(self, working):
-        await working.set("test_session", {"data": 1})
-        await working.delete("test_session")
-        assert await working.get("test_session") is None
+        session_id = _test_session_id()
+        await working.set(session_id, {"data": 1})
+        await working.delete(session_id)
+        assert await working.get(session_id) is None
 
     @pytest.mark.asyncio
     async def test_exists(self, working):
-        await working.set("test_session", {"data": 1})
-        assert await working.exists("test_session") is True
+        session_id = _test_session_id()
+        await working.set(session_id, {"data": 1})
+        assert await working.exists(session_id) is True
 
 
 # ── Episodic Memory Tests ──
 
 @pytest_asyncio.fixture
 async def episodic():
-    client = AsyncQdrantClient(url="http://localhost:6333")
-    em = await EpisodicMemory.connect(MemoryConfig(qdrant_url="http://localhost:6333"))
-    yield em
-    # cleanup: 清空整个 collection
-    from qdrant_client.models import PointIdsList
-    records, _ = await client.scroll(collection_name=COLLECTION_NAME, limit=100)
-    if records:
-        await client.delete(collection_name=COLLECTION_NAME,
-                           points_selector=PointIdsList(points=[r.id for r in records]))
+    qdrant_url = _test_qdrant_url()
+    try:
+        em = await EpisodicMemory.connect(MemoryConfig(qdrant_url=qdrant_url))
+    except Exception as e:
+        pytest.skip(f"Qdrant unavailable at {qdrant_url}: {e}")
+
+    created_episode_ids: set[str] = set()
+    original_store = em.store
+    original_delete = em.delete
+
+    async def tracked_store(episode: Episode) -> str:
+        episode_id = await original_store(episode)
+        created_episode_ids.add(episode_id)
+        return episode_id
+
+    async def tracked_delete(episode_id: str) -> None:
+        try:
+            await original_delete(episode_id)
+        finally:
+            created_episode_ids.discard(episode_id)
+
+    em.store = tracked_store
+    em.delete = tracked_delete
+    try:
+        yield em
+    finally:
+        for episode_id in created_episode_ids:
+            await original_delete(episode_id)
+        await em.close()
 
 
+@pytest.mark.integration
 class TestEpisodicMemory:
     @pytest.mark.asyncio
     async def test_store_and_search(self, episodic):
-        ep = Episode(summary="survey on few-shot learning", intent="literature_review", session_id="s1")
+        ep = Episode(summary="survey on few-shot learning", intent="literature_review", session_id=_test_session_id())
         eid = await episodic.store(ep)
         assert eid
         results = await episodic.search("few-shot learning")
@@ -71,10 +138,11 @@ class TestEpisodicMemory:
 
     @pytest.mark.asyncio
     async def test_delete(self, episodic):
-        ep = Episode(summary="test delete", intent="general", session_id="s1")
+        marker = _test_subject("delete_")
+        ep = Episode(summary=f"test {marker}", intent="general", session_id=_test_session_id())
         eid = await episodic.store(ep)
         await episodic.delete(eid)
-        results = await episodic.search("delete")
+        results = await episodic.search(marker)
         assert len(results) == 0
 
 
@@ -85,12 +153,14 @@ async def mm(working, episodic, semantic):
     return MemoryManager(working, episodic, semantic)
 
 
+@pytest.mark.integration
 class TestMemoryManager:
     @pytest.mark.asyncio
     async def test_save_get_consolidate_recall(self, mm):
         messages = [HumanMessage(content="survey few-shot learning"), AIMessage(content="ok")]
-        await mm.save_state("session_1", {"messages": messages, "loop_count": 1})
-        ep = await mm.consolidate("session_1")
+        session_id = _test_session_id()
+        await mm.save_state(session_id, {"messages": messages, "loop_count": 1})
+        ep = await mm.consolidate(session_id)
         assert ep is not None
         assert "few-shot" in ep.summary.lower()
         results = await mm.recall("few-shot")
@@ -98,8 +168,9 @@ class TestMemoryManager:
 
     @pytest.mark.asyncio
     async def test_consolidate_empty_session(self, mm):
-        await mm.save_state("empty_session", {"messages": [], "loop_count": 0})
-        ep = await mm.consolidate("empty_session")
+        session_id = _test_session_id()
+        await mm.save_state(session_id, {"messages": [], "loop_count": 0})
+        ep = await mm.consolidate(session_id)
         assert ep is None
 
 
@@ -107,47 +178,66 @@ class TestMemoryManager:
 
 @pytest_asyncio.fixture
 async def semantic():
+    pg_url = _test_pg_url()
     import asyncpg
-    pool = await asyncpg.create_pool("postgresql://litagent:litagent@localhost:5432/litagent")
+    try:
+        pool = await asyncpg.create_pool(pg_url)
+    except Exception as e:
+        pytest.skip(f"PostgreSQL unavailable at TEST_PG_URL: {e}")
     from litagent.memory.semantic import SemanticMemory
     sm = SemanticMemory(pool)
-    yield sm
-    await pool.execute("DELETE FROM semantic_entries")
-    await pool.close()
+    created_keys: set[str] = set()
+    original_upsert = sm.upsert
+
+    async def tracked_upsert(key: str, *args, **kwargs):
+        created_keys.add(key)
+        return await original_upsert(key, *args, **kwargs)
+
+    sm.upsert = tracked_upsert
+    try:
+        yield sm
+    finally:
+        if created_keys:
+            await pool.execute(
+                "DELETE FROM semantic_entries WHERE key = ANY($1::text[])",
+                list(created_keys),
+            )
+        await pool.close()
 
 
+@pytest.mark.integration
 class TestSemanticMemory:
     @pytest.mark.asyncio
     async def test_upsert_and_get(self, semantic):
-        await semantic.upsert("test_key", {"answer": 42})
-        result = await semantic.get("test_key")
+        key = _test_subject("test_key_")
+        await semantic.upsert(key, {"answer": 42})
+        result = await semantic.get(key)
         assert result is not None
         assert result["value"]["answer"] == 42
 
     @pytest.mark.asyncio
     async def test_search_fallback(self, semantic):
-        await semantic.upsert("few_shot_benchmarks", {"list": ["miniImageNet"]})
+        await semantic.upsert(_test_subject("few_shot_benchmarks_"), {"list": ["miniImageNet"]})
         results = await semantic.search("few_shot")
         assert len(results) >= 1
 
     @pytest.mark.asyncio
     async def test_upsert_overwrites_same_key(self, semantic):
-        await semantic.upsert("dup_key", {"v": 1})
-        await semantic.upsert("dup_key", {"v": 2})
-        result = await semantic.get("dup_key")
+        key = _test_subject("dup_key_")
+        await semantic.upsert(key, {"v": 1})
+        await semantic.upsert(key, {"v": 2})
+        result = await semantic.get(key)
         assert result["value"]["v"] == 2
 
 
 # ── 13.7.1 Procedural Memory Profile Tests ──
 
-import os as _os
 from urllib.parse import urlparse
-from uuid import uuid4
 
 
 def _test_pg_url() -> str:
     """Return the explicitly isolated PostgreSQL URL used by integration tests."""
-    pg_url = _os.environ.get("TEST_PG_URL")
+    pg_url = os.environ.get("TEST_PG_URL")
     if not pg_url:
         pytest.skip("TEST_PG_URL not set")
     if urlparse(pg_url).path.rstrip("/") != "/litagent_test":
@@ -361,19 +451,22 @@ async def mm_with_semantic(working, episodic, semantic):
     return MemoryManager(working, episodic, semantic)
 
 
+@pytest.mark.integration
 class TestMemoryManagerWithSemantic:
     @pytest.mark.asyncio
     async def test_recall_returns_dict(self, mm_with_semantic):
-        await mm_with_semantic.semantic.upsert("test_fact", {"x": 1})
-        result = await mm_with_semantic.recall("test_fact")
+        key = _test_subject("test_fact_")
+        await mm_with_semantic.semantic.upsert(key, {"x": 1})
+        result = await mm_with_semantic.recall(key)
         assert isinstance(result, dict)
         assert "episodes" in result
         assert "facts" in result
 
     @pytest.mark.asyncio
     async def test_recall_semantic(self, mm_with_semantic):
-        await mm_with_semantic.semantic.upsert("test_key", {"data": "hello"})
-        facts = await mm_with_semantic.recall_semantic("test_key")
+        key = _test_subject("test_key_")
+        await mm_with_semantic.semantic.upsert(key, {"data": "hello"})
+        facts = await mm_with_semantic.recall_semantic(key)
         assert len(facts) >= 1
 
 

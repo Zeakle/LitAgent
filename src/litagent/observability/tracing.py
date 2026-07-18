@@ -253,20 +253,25 @@ class LangFuseTracer:
         if not obs:
             return
 
-        if phase == 'failed':
+        if phase == "failed":
+            # 只消费稳定码和异常类名，不复读 raw error 字段
+            status = data.get("error_code") or data.get("error_type") or "io_failed"
             obs.update(
-                level='ERROR',
-                status_message=data.get('error', ''),
+                level="ERROR",
+                status_message=status,
                 metadata={
-                    'elapsed_ms': data.get('elapsed_ms', 0),
-                    'error_type': data.get('error_type', '')
+                    "elapsed_ms": data.get("elapsed_ms", 0),
+                    "error_type": data.get("error_type", ""),
+                    "error_code": data.get("error_code", "io_failed"),
                 },
             )
         else:
             obs.update(
-                output={k: v for k, v in data.items()
-                        if k not in ('operation_id', 'task_id', 'elapsed_ms')},
-                metadata={'elapsed_ms': data.get('elapsed_ms', 0)},
+                output={
+                    key: value for key, value in data.items()
+                    if key not in ("operation_id", "task_id", "elapsed_ms")
+                },
+                metadata={"elapsed_ms": data.get("elapsed_ms", 0)},
             )
         obs.end()
 
@@ -278,7 +283,7 @@ class LangFuseTracer:
             span.update(output=output)
         except Exception:
             try:
-                span.update(output={"repr": str(output)[:5000]})
+                span.update(output={"serialization_error": type(output).__name__})
             except Exception:
                 pass   # 追踪失败绝不影响业务
 
