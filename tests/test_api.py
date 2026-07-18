@@ -309,3 +309,82 @@ class TestQualityAPI:
         resp = client.get("/survey/old2/report")
         assert resp.status_code == 200
         assert resp.json()["quality"]["status"] == "unverified"
+
+
+# ═══════════════════════════════════════════════════════════
+# 13.7.3.3 — Delivery API 契约
+# ═══════════════════════════════════════════════════════════
+
+class TestDeliveryAPI:
+    """status 提供 delivery_status；report 提供 delivery；两端映射一致。"""
+
+    @staticmethod
+    def _blocked_result():
+        return {
+            "survey": "untrusted draft", "metadata": {}, "review_history": [],
+            "graph_data": {}, "partial": False,
+            "quality": {"status": "failed", "failed_metrics": ["faithfulness"],
+                        "unverified_metrics": []},
+            "delivery": {"status": "blocked", "publishable": False,
+                         "reason_codes": ["quality_failed"]},
+        }
+
+    def test_status_carries_delivery_status_when_completed(self):
+        app.state.tasks["d1"] = {
+            "status": "completed", "progress": "done", "error": None,
+            "result": self._blocked_result(), "_created_at": 0,
+        }
+        resp = client.get("/survey/d1")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["status"] == "completed"          # 技术上完成
+        assert body["delivery_status"] == "blocked"   # 但交付被拦
+
+    def test_status_delivery_none_while_running(self):
+        app.state.tasks["d2"] = {
+            "status": "running", "progress": "search", "error": None,
+            "result": None, "_created_at": 0,
+        }
+        resp = client.get("/survey/d2")
+        assert resp.json()["delivery_status"] is None
+
+    def test_report_carries_delivery_and_stays_readable(self):
+        """blocked draft 仍可读取用于诊断，但 publishable=False 显式携带。"""
+        app.state.tasks["d3"] = {
+            "status": "completed", "progress": "done", "error": None,
+            "result": self._blocked_result(), "_created_at": 0,
+        }
+        resp = client.get("/survey/d3/report")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["survey"] == "untrusted draft"    # 可读（诊断用）
+        assert body["delivery"]["status"] == "blocked"
+        assert body["delivery"]["publishable"] is False
+
+    def test_status_and_report_derive_consistently_for_legacy(self):
+        """legacy result 无 delivery → 两端都经 derive_delivery 派生，结论一致。"""
+        legacy = {
+            "survey": "old", "metadata": {}, "review_history": [],
+            "graph_data": {}, "partial": False,
+            "quality": {"status": "failed", "failed_metrics": ["citation_accuracy"],
+                        "unverified_metrics": []},
+        }
+        app.state.tasks["d4"] = {
+            "status": "completed", "progress": "done", "error": None,
+            "result": legacy, "_created_at": 0,
+        }
+        status_body = client.get("/survey/d4").json()
+        report_body = client.get("/survey/d4/report").json()
+        assert status_body["delivery_status"] == "blocked"
+        assert report_body["delivery"]["status"] == "blocked"
+
+    def test_unverified_legacy_maps_to_needs_review(self):
+        app.state.tasks["d5"] = {
+            "status": "completed", "progress": "done", "error": None,
+            "result": {
+                "survey": "s", "metadata": {}, "review_history": [],
+                "graph_data": {}, "partial": False,
+            },
+            "_created_at": 0,
+        }
+        assert client.get("/survey/d5").json()["delivery_status"] == "needs_review"

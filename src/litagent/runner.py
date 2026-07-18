@@ -17,12 +17,14 @@ from __future__ import annotations
 import asyncio
 import uuid
 import os
+import json
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
 from litagent.config import AppConfig
+from litagent.eval.base import CTX_EVIDENCE
 from litagent.exceptions import ConfigError
 from litagent.llm.client import BaseLLMClient, OpenAICompatibleClient
 from litagent.safety.budget import CostBudget
@@ -40,6 +42,7 @@ from litagent.agents.extraction_strategy import (
     ResilientExtractionStrategy
 )
 from litagent.agents.search import SearchWorker
+from litagent.agents.recall import RecallWorker
 from litagent.agents.extractor import ExtractorWorker
 from litagent.agents.dedup import DedupWorker
 from litagent.agents.graph import GraphWorker
@@ -75,8 +78,42 @@ from litagent.eval.citation import CitationEvaluator
 from litagent.eval.consistency import ConsistencyEvaluator
 from litagent.eval.ragas_eval import RagasFaithfulnessEvaluator
 
+from litagent.evidence import collect_ledger, format_ledger, find_unknown_refs
+
 
 logger = get_logger('runner')
+
+
+def derive_delivery(partial: bool, quality: dict[str, Any] | None) -> dict[str, Any]:
+    """partial + quality → 交付语义的唯一集中映射（纯函数）。
+
+    partial=执行中断；quality=评估结论；accepted=reviewer 结论——三者独立，
+    本函数只读不回写。partial 优先级最高（结果本身不完整，谈不上质量放行）。
+    """
+    q_status = (quality or {}).get('status', 'unverified')
+
+    reason_codes: list[str] = []
+    if partial:
+        reason_codes.append('partial_execution')
+    if q_status == 'failed':
+        reason_codes.append('quality_failed')
+    elif q_status == 'unverified':
+        reason_codes.append('quality_unverified')
+
+    if partial:
+        status = 'partial'
+    elif q_status == 'failed':
+        status = 'blocked'
+    elif q_status == 'unverified':
+        status = 'needs_review'
+    else:
+        status = 'ready'
+
+    return {
+        'status': status,
+        'publishable': status == 'ready',
+        'reason_codes': reason_codes,
+    }
 
 
 # ═══════════════════════════════════════════════════════════
@@ -212,14 +249,22 @@ class LitAgent:
             quality = self._derive_quality(report_data.get('evaluation', {}))
             report_data['quality'] = quality
 
+            if quality['status'] == 'failed' and await self._attempt_evidence_rewrite(report_data, results):
+                report_data['evaluation'] = await self._evaluate(report_data['survey'], results)
+                quality = self._derive_quality(report_data['evaluation'])
+                report_data['quality'] = quality
+
+            report_data['delivery'] = derive_delivery(report_data['partial'], quality)
 
             self._emit("survey.complete", {
                 "query": query,
                 "rounds": report_data.get("metadata", {}).get("total_rounds", 0),
                 "accepted": report_data.get("metadata", {}).get("accepted", False),
                 'quality_status': quality['status'],
-                'total_tokens': self._cost_budget.used if self._cost_budget else 0
+                'total_tokens': self._cost_budget.used if self._cost_budget else 0,
+                'delivery_status': report_data['delivery']['status']
             })
+
 
             logger.info("Survey complete: %d chars", len(report_data.get("survey", "")))
             return report_data
@@ -363,8 +408,11 @@ class LitAgent:
         # 8. Workers
         workers: list[Worker] = []
 
-        self._search = SearchWorker(executor=self._executor, retriever=self._infra.retriever, memory_manager=self._infra.memory)
+        self._search = SearchWorker(executor=self._executor, memory_manager=self._infra.memory)
         workers.append(self._search)
+
+        self._recall = RecallWorker(retriever=self._infra.retriever)
+        workers.append(self._recall)
 
         self._dedup = DedupWorker()
         workers.append(self._dedup)
@@ -428,7 +476,7 @@ class LitAgent:
         self._evaluators = [
             CitationEvaluator(self._llm, max_tokens=eval_mt),
             ConsistencyEvaluator(self._llm, max_tokens=eval_mt),
-            RagasFaithfulnessEvaluator(self._config)
+            RagasFaithfulnessEvaluator(self._config, llm=self._llm)
         ]
 
         self._emit("wire.complete", {
@@ -628,6 +676,14 @@ class LitAgent:
         return out
 
 
+    @staticmethod
+    def _collect_extractions(results: dict[str, Any]) -> list[dict]:
+        for result in results.values():
+            if isinstance(result, list) and result and isinstance(result[0], dict) and 'claims' in result[0]:
+                return result
+        return []
+
+
     def _build_eval_context(self, results: dict[str, Any]) -> dict[str, Any]:
         """从 results 里 extractor 的 extractions 组装评估 context。"""
         from litagent.eval.base import CTX_PAPERS, CTX_CLAIMS
@@ -638,8 +694,89 @@ class LitAgent:
                 break
 
         claims_texts = [c for ext in extractions for c in ext.get('claims', [])]
-        return {CTX_PAPERS: extractions, CTX_CLAIMS: [{'text': t} for t in claims_texts]}
+        return {
+            CTX_PAPERS: extractions, 
+            CTX_CLAIMS: [{'text': t} for t in claims_texts],
+            CTX_EVIDENCE: collect_ledger(extractions)
+        }
 
+
+    async def _attempt_evidence_rewrite(self, report_data: dict[str, Any],
+                                        results: dict[str, Any]) -> bool:
+        """quality failed 时的一次性 evidence rewrite。返回 True=已替换 survey。
+
+        触发条件（全部满足）：faithfulness 诊断出非空 unsupported_claims、
+        对抗轮次有剩余。规则校验：改写稿所有 [E:*] 必须在 ledger 内；
+        校验失败/LLM 失败 → 保留原 draft，记录原因（delivery 维持 blocked）。
+        """
+        rewrite_meta: dict[str, Any] = {'attempted': False, 'accepted': False, 'reason': ''}
+        report_data.setdefault('metadata', {})['evidence_rewrite'] = rewrite_meta
+        
+        diag = (report_data.get('evaluation', {}).get('faithfulness', {}).get('details', {}).get('unsupported_claims'))
+
+        if not diag:
+            rewrite_meta['reason'] = 'no unsupported_claims diagnostic'
+            return False
+
+        rounds_used = report_data.get('metadata', {}).get('total_rounds', 0)
+        if rounds_used >= self._config.adversarial.max_rounds:
+            rewrite_meta['reason'] = 'no adversarial rounds left'
+            return False
+
+        ledger = collect_ledger(self._collect_extractions(results))
+        if not ledger:
+            rewrite_meta['reason'] = 'empty evidence ledger'
+            return False
+
+        rewrite_meta['attempted'] = True
+        messages = self._synthesis.rewrite_with_evidence(
+            report_data['survey'],
+            format_ledger(ledger, max_chars=20000),   # prompt 场景截断，防 ledger 无界
+            json.dumps(diag, ensure_ascii=False, indent=2),
+        )
+
+        accepted = False
+        new_draft = ''
+        reason = ''
+        self._emit('subspan.start', {
+            'task_id': 'evidence_rewrite', 'parent_task_id': '',
+            'name': 'evidence_rewrite', 'round': 0,
+        })
+        token = set_task_id('evidence_rewrite')
+        
+        try:
+            resp = await self._llm.chat(messages, max_tokens=self._config.eval.max_tokens)
+            new_draft = (resp.content or '').strip()
+            if not new_draft:
+                reason = 'rewrite returned empty draft'
+            elif len(new_draft) < 0.5 * len(report_data['survey']):
+                # 防截断守卫：改写只删/降级/绑证据，不应腰斩全文
+                reason = 'rewrite suspiciously short (possible truncation)'
+            else:
+                unknown = find_unknown_refs(new_draft, ledger)
+                if unknown:
+                    reason = f'rewrite cites unknown evidence ids: {unknown[:5]}'
+                else:
+                    # 引用合法性只是规则底线；防幻觉的真正后盾是接受后的强制重评估
+                    accepted = True
+        except Exception as e:
+            reason = f'rewrite llm failed: {e}'
+        finally:
+            reset_task_id(token)
+            self._emit('subspan.end', {
+                'task_id': 'evidence_rewrite',
+                'output': {'accepted': accepted, 'reason': reason}
+            })
+
+        rewrite_meta['accepted'] = accepted
+        rewrite_meta['reason'] = reason or 'accepted'
+        if not accepted:
+            logger.warning(f"Evidence rewrite rejected: {reason}")
+            return False        # 保底 draft 不被覆盖
+
+        report_data['survey'] = new_draft
+        return True
+        
 
     @staticmethod
     def _derive_quality(evaluation: dict[str, dict]) -> dict[str, Any]:

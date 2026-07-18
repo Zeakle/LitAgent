@@ -9,6 +9,7 @@ from qdrant_client.models import Distance, VectorParams, PointStruct
 
 from litagent.config import MemoryConfig
 from litagent.observability.context import get_task_id
+from litagent.observability.lifecycle import traced_io
 from litagent.rag.embedder import get_embedder
 from litagent.logging import get_logger
 
@@ -78,9 +79,12 @@ class ClaimsIndex:
                     'confidence': c.confidence,
                 },
             ))
-        await self._client.upsert(collection_name=COLLECTION_NAME, points=points)
+        
+        async with traced_io(self._emit, 'claims.add', {'count': len(points)}) as outcome:
+            await self._client.upsert(collection_name=COLLECTION_NAME, points=points)
+            outcome['count'] = len(points)
+
         logger.info(f"Indexed {len(claims)} claims")
-        self._emit("claims.op", {"task_id": get_task_id(), "op": "add", "count": len(claims)})
         return [c.claim_id for c in claims]
 
 
@@ -88,12 +92,15 @@ class ClaimsIndex:
         """语义搜索claims.按文本相似度排序"""
         embedder = get_embedder()
         query_vec = embedder.embed(query)
-        results = await self._client.query_points(
-            collection_name=COLLECTION_NAME,
-            query=query_vec,
-            limit=top_k,
-            with_payload=True
-        )
+
+        async with traced_io(self._emit, 'claims.search', {'query': query[:200], 'top_k': top_k}) as outcome:
+            results = await self._client.query_points(
+                collection_name=COLLECTION_NAME,
+                query=query_vec,
+                limit=top_k,
+                with_payload=True
+            )
+            outcome['count'] = len(results.points)
 
         claims = []
         for r in results.points:
@@ -105,8 +112,6 @@ class ClaimsIndex:
                     entities=r.payload.get("entities", []),
                     confidence=r.payload.get("confidence", 0.5),
                 ))
-        self._emit("claims.op", {"task_id": get_task_id(), "op": "search",
-                                "query": query[:200], "count": len(results.points)})
         return claims
 
 

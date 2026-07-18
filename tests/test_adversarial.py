@@ -85,13 +85,15 @@ class TestReviewerWorker:
 
     @pytest.mark.asyncio
     async def test_handles_invalid_json(self):
+        """13.7.2 契约更新：无效 JSON → score 0.0 + parse_error 诊断（不再静默 0.3）。"""
         llm = MockLLMClient(responses=["This is not JSON"])
         w = ReviewerWorker(llm)
         task = SubTask(task_id="review", description="test", agent_type="reviewer",
                        input_data={"upstream_results": {"synthesis": {"draft": "test"}}})
         result = await w.execute(task)
-        assert result["score"] == 0.3
+        assert result["score"] == 0.0
         assert result["verdict"] == "revise"
+        assert "parse_error" in result
 
 
 class TestAdversarialReviewWorker:

@@ -10,6 +10,7 @@ from litagent.agents.extraction_strategy import ExtractionStrategy
 from litagent.rag.claims_index import ClaimsIndex, Claim
 from litagent.logging import get_logger
 from litagent.safety.injection import InjectionDetector, InjectionRisk
+from litagent.evidence import build_evidence_items
 
 logger = get_logger("agents.extractor")
 
@@ -58,6 +59,8 @@ class ExtractorWorker(Worker):
                 'citation_count': paper.get('citation_count', 0),
                 'source': paper.get('source', ''),
             })
+
+            r['evidence_items'] = build_evidence_items(r)
             extractions.append(r)
 
         if self._claims_index:

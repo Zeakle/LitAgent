@@ -7,8 +7,9 @@ from litagent.memory.semantic import SemanticMemory
 from litagent.memory.procedural import ProceduralMemory
 from litagent.memory.models import Episode
 from litagent.memory.consolidate import consolidate_session
-from litagent.logging import get_logger
 from litagent.observability.context import get_task_id
+from litagent.observability.lifecycle import traced_io
+from litagent.logging import get_logger
 
 
 logger = get_logger('memory.manager')
@@ -71,13 +72,12 @@ class MemoryManager:
 
     async def recall(self, query: str, top_k: int = 5) -> dict:
         """跨层召回。Phase 4 只查 Episodic，Phase 5 合并 Semantic。"""
-        episodes = await self.recall_episode(query, top_k)
-        facts = await self.recall_semantic(query, top_k)
-        self._emit("memory.recall", {
-            "task_id": get_task_id(),
-            "episodes": len(episodes),
-            "facts": len(facts),
-        })
+        async with traced_io(self._emit, 'memory.recall', {'query': query[:200], 'top_k': top_k}) as outcome:
+            episodes = await self.recall_episode(query, top_k)
+            facts = await self.recall_semantic(query, top_k)
+            outcome['episodes'] = len(episodes)
+            outcome['facts'] = len(facts)
+
         return {
             'episodes': episodes,
             'facts': facts
@@ -99,52 +99,39 @@ class MemoryManager:
         
         eid = None
         try:
-            eid = await self.episodic.store(episode)
+            async with traced_io(self._emit, 'memory.write', {'layer': 'eepisodic'}) as outcome:
+                eid = await self.episodic.store(episode)
+                outcome['episode_id'] = eid
             episode.episode_id = eid
             logger.info(f"Consolidated session '{session_id}' → episode '{eid}'")
-            self._emit("memory.write", {
-                "task_id": get_task_id(),
-                "layer": "episodic",
-                "success": True,
-                "episode_id": eid,
-            })
         except Exception as e:
             logger.warning(f"Episodic store failed during consolidate: {e}")
-            self._emit("memory.write", {
-                "task_id": get_task_id(),
-                "layer": "episodic",
-                "success": False,
-                "error": str(e),
-            })
 
         # ── 写 Semantic（eid 可能为 None——episodic 失败时 fact 无 episode 关联）──
         written = 0
-        for fact in episode.extracted_facts:
-            if not isinstance(fact, dict) or 'key' not in fact:
-                continue
-            try:
-                await self.semantic.upsert(
-                    key=fact['key'],
-                    value=fact.get('value', {}),
-                    entry_type=fact.get('type', 'domain_knowledge'),
-                    source='extracted',
-                    confidence=fact.get('confidence', 0.5),
-                    episode_id=eid,
-                )
-                written += 1
-            except Exception as e:
-             logger.warning(f"Semantic upsert failed for key '{fact.get('key')}': {e}")
+        if episode.extracted_facts and self.semantic:
+            async with traced_io(self._emit, 'memory.write', {'layer': 'semantic'}) as outcome:
+                for fact in episode.extracted_facts:
+                    if not isinstance(fact, dict) or 'key' not in fact:
+                        continue
+                    try:
+                        await self.semantic.upsert(
+                            key=fact['key'],
+                            value=fact.get('value', {}),
+                            entry_type=fact.get('type', 'domain_knowledge'),
+                            source='extracted',
+                            confidence=fact.get('confidence', 0.5),
+                            episode_id=eid,
+                        )
+                        written += 1
+                    except Exception as e:
+                        logger.warning(f"Semantic upsert failed for key '{fact.get('key')}': {e}")
 
-        if episode.extracted_facts:
-            logger.info(f"Extracted {written}/{len(episode.extracted_facts)} facts → Semantic Memory")
-        self._emit("memory.write", {
-            "task_id": get_task_id(),
-            "layer": "semantic",
-            "success": True,
-            "facts": written,
-        })
+                outcome['facts'] = written
+            logger.info(f'Extracted {written}/{len(episode.extracted_facts)} facts -> Semantic Memory')
 
         return episode
+
 
     # -- Procedural Memory --
 
@@ -158,33 +145,22 @@ class MemoryManager:
             return
 
         try:
-            await self.procedural.upsert_profile(
-                profile_type='search_source',
-                profile_key=f'search_source:{subject}',
-                subject=subject,
-                success=success,
-                empty_result=empty_result,
-                error_type=error_type,
-                duration_ms=duration_ms,
-                result_count=result_count
-            )
-
-            self._emit('memory.write', {
-                'task_id': get_task_id(),
-                'layer': 'procedural',
-                'success': True,
-                'source': subject,
-                'duration_ms': duration_ms
-            })
+            async with traced_io(self._emit, 'memory.write',
+                                 {'layer': 'procedural', 'source': subject}) as outcome:
+                await self.procedural.upsert_profile(
+                    profile_type='search_source',
+                    profile_key=f'search_source:{subject}',
+                    subject=subject,
+                    success=success,
+                    empty_result=empty_result,
+                    error_type=error_type,
+                    duration_ms=duration_ms,
+                    result_count=result_count
+                )
+                outcome['source'] = subject
+                outcome['duration_ms'] = duration_ms
         except Exception as e:
             logger.warning(f"Procedural profile write failed for '{subject}': {e}")
-            self._emit("memory.write", {
-                "task_id": get_task_id(),
-                "layer": "procedural",
-                "success": False,
-                "source": subject,
-                "error": str(e),
-            })
 
 
     async def rank_search_sources(
@@ -195,32 +171,28 @@ class MemoryManager:
             return list(sources)
 
         try:
-            profiles = await self.procedural.get_profiles('search_source', 'global')
-            stats: dict[str, dict] = {p['subject']: p for p in profiles}
+            async with traced_io(self._emit, 'memory.recall',
+                                 {'layer': 'procedural'}) as outcome:
+                profiles = await self.procedural.get_profiles('search_source', 'global')
+                stats: dict[str, dict] = {p['subject']: p for p in profiles}
 
-            def _reliability(subject: str) -> float:
-                p = stats.get(subject)
-                if p is None or p['execution_count'] < min_samples:
-                    return 0.5
+                def _reliability(subject: str) -> float:
+                    p = stats.get(subject)
+                    if p is None or p['execution_count'] < min_samples:
+                        return 0.5
 
-                ec = p['execution_count']
+                    ec = p['execution_count']
 
-                raw = (
-                    (p["success_count"] + p["empty_result_count"]) / ec
-                    - (p["empty_result_count"] / ec) * 0.3
-                    - (p["rate_limit_count"] / ec) * 0.5
-                    - (p["timeout_count"] / ec) * 0.7
-                )
-                return max(0.0, min(1.0, raw))
+                    raw = (
+                        (p["success_count"] + p["empty_result_count"]) / ec
+                        - (p["empty_result_count"] / ec) * 0.3
+                        - (p["rate_limit_count"] / ec) * 0.5
+                        - (p["timeout_count"] / ec) * 0.7
+                    )
+                    return max(0.0, min(1.0, raw))
 
-            ranked = sorted(sources, key=lambda s: -_reliability(s))
-            self._emit("memory.recall", {
-                "task_id": get_task_id(),
-                "layer": "procedural",
-                "sources": sources,
-                "ranked_sources": ranked,
-            })
-            return ranked
+                ranked = sorted(sources, key=lambda s: -_reliability(s))
+                return ranked
         except Exception as e:
             logger.warning(f"Source ranking failed: {e}")
             return list(sources)

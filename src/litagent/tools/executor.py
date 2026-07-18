@@ -4,11 +4,13 @@ import json
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
+import uuid
 
 from litagent.errors.circuit_breaker import CircuitBreaker
 from litagent.observability.context import get_task_id
 from litagent.tools.base import ToolDefinition, RateLimitConfig, FallbackStep
 from litagent.tools.registry import ToolRegistry
+from litagent.observability.lifecycle import sanitize_input
 from litagent.logging import get_logger
 
 logger = get_logger('tools.executor')
@@ -79,23 +81,43 @@ class ToolExecutor:
 
 
     async def execute(self, name: str, args: dict, session_id: str = '') -> ToolResult:
+        op_id = uuid.uuid4().hex
         t0 = time.monotonic()
-        result = await self._execute_inner(name, args, session_id)
+        self._emit('tool.start', {
+            'operation_id': op_id,
+            'task_id': get_task_id(),
+            'name': name,
+            'args': sanitize_input(args),
+        })
+        try:
+            result = await self._execute_inner(name, args, session_id)
+        except BaseException as e:   # CancelledError 也要关闭 observation
+            self._emit('tool.failed', {
+                'operation_id': op_id, 'task_id': get_task_id(), 'name': name,
+                'elapsed_ms': (time.monotonic() - t0) * 1000,
+                'error_type': type(e).__name__, 'error': str(e)[:512],
+            })
+            raise
+
         if not result.elapsed_ms:
             result.elapsed_ms = (time.monotonic() - t0) * 1000
-        self._emit("tool.call", {
-            "task_id": get_task_id(),
-            "name": name,
-            "args": args,
-            "success": result.error is None,
-            "error": result.error,
-            "elapsed_ms": result.elapsed_ms,
-            "from_cache": result.from_cache,
-            "from_fallback": result.from_fallback,
-            "output_size": len(result.output) if isinstance(result.output, (list, str)) else None,
-        })
-        return result
 
+        if result.error is not None:
+            self._emit('tool.failed', {
+                'operation_id': op_id, 'task_id': get_task_id(), 'name': name,
+                'elapsed_ms': result.elapsed_ms,
+                'error_type': 'tool_error', 'error': result.error[:512],
+            })
+        else:
+            self._emit('tool.complete', {
+                'operation_id': op_id, 'task_id': get_task_id(), 'name': name,
+                'elapsed_ms': result.elapsed_ms,
+                'from_cache': result.from_cache,
+                'from_fallback': result.from_fallback,
+                'output_size': len(result.output) if isinstance(result.output, (list, str)) else None,
+            })
+
+        return result
 
     async def _execute_inner(self, name: str, args: dict, session_id: str = "") -> ToolResult:
         """执行一次工具调用，走完整保护链路。

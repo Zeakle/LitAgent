@@ -14,7 +14,7 @@ import json
 import sys
 
 from litagent.config import load_config
-from litagent.runner import LitAgent
+from litagent.runner import LitAgent, derive_delivery
 
 
 def main() -> None:
@@ -75,6 +75,13 @@ async def _dispatch_async(args: argparse.Namespace) -> None:
         _cmd_tools(args)
 
 
+def _delivery_exit_code(report: dict) -> int:
+    """publishable → 0；blocked/needs_review/partial → 1。报告照常输出，只改 exit code。"""
+    delivery = report.get("delivery") or derive_delivery(
+        report.get("partial", False), report.get("quality"))
+    return 0 if delivery.get("publishable", False) else 1
+
+
 async def _cmd_survey(args: argparse.Namespace) -> None:
     """运行完整 survey → 格式化输出。"""
     config = load_config(args.config)
@@ -95,6 +102,15 @@ async def _cmd_survey(args: argparse.Namespace) -> None:
         print(f"Report saved to {args.output}")
     else:
         print(output)
+
+    # 交付语义：报告始终输出（可诊断），但不可发布时返回非零 exit code
+    code = _delivery_exit_code(report)
+    if code:
+        delivery = report.get("delivery") or derive_delivery(
+            report.get("partial", False), report.get("quality"))
+        print(f"\nDelivery: {delivery.get('status', 'unknown')} — not publishable",
+              file=sys.stderr)
+        sys.exit(code)
 
 
 def _cmd_config(args: argparse.Namespace) -> None:
@@ -155,18 +171,22 @@ def _format_report_markdown(report: dict) -> str:
         f"**Accepted**: {metadata.get('accepted', False)}",
     ]
 
-    if report.get("partial"):
-        lines.insert(1, "> ⚠ **Partial results** — survey was interrupted (cost/timeout).")
-        lines.insert(1, "")
+    # banner 依据 delivery 而非裸 quality/partial——与 exit code 用同一映射
+    delivery = report.get("delivery") or derive_delivery(
+        report.get("partial", False), report.get("quality"))
+    quality = report.get("quality") or {}
 
-    quality = report.get('quality', {})
-    qs = quality.get('status', 'unverified')
-    if qs == "failed":
-        lines.insert(0, f"> ⚠ **QUALITY FAILED — UNTRUSTED DRAFT** "
-                     f"(failed: {', '.join(quality.get('failed_metrics', []))})")
-        lines.insert(0, "")
-    elif qs == "unverified":
-        lines.insert(0, "> ⚠ **Quality unverified** — evaluation skipped or incomplete")
+    banner = None
+    if delivery["status"] == "partial":
+        banner = ("> ⚠ **Partial results — NOT PUBLISHABLE** — "
+                  "survey was interrupted (cost/timeout).")
+    elif delivery["status"] == "blocked":
+        banner = ("> ⚠ **QUALITY FAILED — UNTRUSTED DRAFT, NOT PUBLISHABLE** "
+                  f"(failed: {', '.join(quality.get('failed_metrics', []))})")
+    elif delivery["status"] == "needs_review":
+        banner = "> ⚠ **Quality unverified — needs review before publishing**"
+    if banner:
+        lines.insert(0, banner)
         lines.insert(0, "")
 
     lines.extend(["", "---", "", survey_text, ""])

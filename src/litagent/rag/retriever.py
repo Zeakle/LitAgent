@@ -35,7 +35,7 @@ class HybridRetriever(Retriever):
 
     async def search(self, query: str, top_k: int = 20) -> list[ScoredDoc]:
         op_id = uuid.uuid4().hex
-        t0 = time.monotonic()
+        t0 = time.perf_counter()
         self._emit('rag.search.start', {
             'operation_id': op_id, 'task_id': get_task_id(),
             'query': query, 'top_k': top_k
@@ -55,7 +55,7 @@ class HybridRetriever(Retriever):
                 "elapsed_ms": elapsed_ms
             })
             return results
-        except Exception as e:
+        except BaseException as e:
             elapsed_ms = int((time.perf_counter() - t0) * 1000)
             self._emit('rag.search.failed', {
                 'operation_id': op_id, 'task_id': get_task_id(),

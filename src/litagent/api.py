@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 
 from litagent.config import load_config
 from litagent.logging import get_logger
-from litagent.runner import LitAgent
+from litagent.runner import LitAgent, derive_delivery
 
 logger = get_logger("api")
 
@@ -37,6 +37,7 @@ class SurveyStatus(BaseModel):
     status: str
     progress: str = ""
     error: str | None = None
+    delivery_status: str | None = None
 
 
 class SurveyReport(BaseModel):
@@ -52,6 +53,7 @@ class SurveyReport(BaseModel):
         'failed_metrics': [],
         'unverified_metrics': []
     }
+    delivery: dict[str, Any] = {}
 
 
 # ═══════════════════════════════════════════════════════
@@ -156,13 +158,22 @@ async def _run_survey(task_id: str, query: str, config_path: str | None) -> None
 
 @app.get("/survey/{task_id}", response_model=SurveyStatus)
 async def get_survey_status(task_id: str):
-    """查询任务状态。"""
+    """查询任务状态"""
     task = app.state.tasks.get(task_id)
     if not task:
         raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
+
+    delivery_status = None
+    if task["status"] == "completed":
+        result = task.get("result") or {}
+        d = result.get("delivery") or derive_delivery(
+            result.get("partial", False), result.get("quality"))
+        delivery_status = d.get("status")
+
     return SurveyStatus(
         task_id=task_id, status=task["status"],
         progress=task.get("progress", ""), error=task.get("error"),
+        delivery_status=delivery_status,
     )
 
 
@@ -192,5 +203,7 @@ async def get_survey_report(task_id: str):
                 'failed_metrics': [],
                 'unverified_metrics': []
             }
-        )
+        ),
+        delivery=result.get('delivery') or derive_delivery(
+            result.get('partial', False), result.get('quality')),
     )

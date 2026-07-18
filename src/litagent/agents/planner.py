@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 import os
+import re
 import json
+from enum import Enum
 from typing import Callable
 from abc import ABC, abstractmethod
 
@@ -16,6 +18,32 @@ from litagent.logging import get_logger
 from litagent.safety.injection import InjectionDetector, InjectionRisk
 
 logger = get_logger("agents.planner")
+
+
+class QueryIntent(str, Enum):
+    TOPIC = 'topic'
+    ARXIV_ID = 'arxiv_id'
+    DOI = 'doi'
+    URL = 'url'
+
+
+_ARXIV_NEW_RE = re.compile(r'^(arxiv:)?\d{4}\.\d{4,5}(v\d+)?$', re.IGNORECASE)
+_ARXIV_LEGACY_RE = re.compile(r'^(arxiv:)?[a-z-]+(\.[a-z]{2})?/\d{7}(v\d+)?$', re.IGNORECASE)
+_DOI_RE = re.compile(r'^(doi:)?10\.\d{4,9}/\S+$', re.IGNORECASE)
+
+_RECALL_TOP_K = 20
+
+
+def classify_query_intent(query: str) -> QueryIntent:
+    """纯规则判定 query 意图——无网络、无 LLM"""
+    q = (query or "").strip()
+    if q.lower().startswith(('http://', 'https://')):
+        return QueryIntent.URL
+    if _ARXIV_NEW_RE.match(q) or _ARXIV_LEGACY_RE.match(q):
+        return QueryIntent.ARXIV_ID
+    if _DOI_RE.match(q):
+        return QueryIntent.DOI
+    return QueryIntent.TOPIC
 
 
 _DECOMPOSE_SYSTEM = """You are a query planning assistant for an academic literature survey system.
@@ -67,10 +95,21 @@ class SurveyPlanner(BasePlanner):
         graph = TaskGraph()
 
         # layer0: query扩展
-        if self._config.decompose_enabled and self._llm:
+        intent = classify_query_intent(query)
+        if intent == QueryIntent.TOPIC and self._config.decompose_enabled and self._llm:
             sub_queries = await self._decompose_traced(query)
         else:
             sub_queries = [query]
+
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for q in sub_queries:
+            qs = q.strip()
+            k = qs.lower()
+            if qs and k not in seen:
+                seen.add(k)
+                normalized.append(qs)
+        sub_queries = normalized or [query]
 
         sources = ["arxiv", "huggingface"]
         if os.environ.get("SEMANTIC_SCHOLAR_API_KEY"):
@@ -87,7 +126,6 @@ class SurveyPlanner(BasePlanner):
 
         # layer1: 搜索
         search_ids: list[str] = []
-        search_ids: list[str] = []
         for rank_idx, source in enumerate(sources):
             for i, sub_query in enumerate(sub_queries):
                 tid = f'search_{source}_q{i}'
@@ -96,9 +134,21 @@ class SurveyPlanner(BasePlanner):
                     description=f"Search {source} for: {sub_query}",
                     agent_type='search',
                     priority=rank_idx,
-                    input_data={"source": source, "query": sub_query}
+                    input_data={'mode': 'external', "source": source, "query": sub_query}
                 ))
                 search_ids.append(tid)
+
+        # RAG call
+        recall_ids: list[str] = []
+        for i, sub_query in enumerate(sub_queries):
+            tid = f'recall_q{i}'
+            graph.add_task(SubTask(
+                task_id=tid,
+                description=f'RAG recall for: {sub_query}',
+                agent_type='recall',
+                input_data={'query': sub_query, 'top_k': _RECALL_TOP_K, 'query_index': i},
+            ))
+            recall_ids.append(tid)
 
         # layer2: 搜索结果去重
         graph.add_task(SubTask(
@@ -106,7 +156,7 @@ class SurveyPlanner(BasePlanner):
             description='Deduplicate search results',
             agent_type='dedup',
             input_data={"query": query},
-        ), depends_on=search_ids)
+        ), depends_on=search_ids + recall_ids)
 
         # layer3: 提取 + 引用分析(并行，只等dedup)
         graph.add_task(SubTask(
@@ -202,7 +252,7 @@ class SurveyPlanner(BasePlanner):
             sub_queries = await self._decompose(query)
             return sub_queries
         finally:
-            reset_task_id(token)             # set 后必 finally reset（SUGGESTION line 47）
+            reset_task_id(token)
             self._emit("subspan.end", {
                 "task_id": "query_decomposition",
                 "output": {"sub_queries": sub_queries},

@@ -46,7 +46,8 @@ class TestTracerNoOp:
         tracer = LangFuseTracer(host="", public_key="", secret_key="")
         tracer("survey.start", {"query": "x"})
         tracer("worker.start", {"task_id": "t1", "agent_type": "search"})
-        tracer("tool.call", {"task_id": "t1", "name": "search_arxiv", "success": True})
+        tracer("tool.start", {"operation_id": "op", "task_id": "t1",
+                              "name": "search_arxiv", "args": {}})
         tracer("survey.complete", {})
         tracer.flush()   # 全程无异常
 
@@ -109,21 +110,30 @@ class TestTracerHandlers:
         starts = [k for act, k in worker_span.log if act == "start"]
         assert any(k.get("as_type") == "generation" for k in starts)
 
-    def test_tool_call_emits_tool_span(self):
+    def test_tool_lifecycle_emits_tool_span(self):
+        """13.7.3.2：tool.start/complete 配对——挂对应 worker span，as_type=tool。"""
         tracer, log = _tracer_with_mock()
         tracer._handle("worker.start", {"task_id": "t1", "agent_type": "search"})
         worker_span = tracer._spans["t1"]
-        tracer._handle("tool.call", {"task_id": "t1", "name": "search_arxiv",
-                                     "success": True, "elapsed_ms": 20})
+        tracer._handle("tool.start", {"operation_id": "op-t", "task_id": "t1",
+                                      "name": "search_arxiv", "args": {}})
+        assert "op-t" in tracer._operations
+        tracer._handle("tool.complete", {"operation_id": "op-t", "task_id": "t1",
+                                         "name": "search_arxiv", "elapsed_ms": 20})
+        assert "op-t" not in tracer._operations
         starts = [k for act, k in worker_span.log if act == "start"]
         assert any(k.get("as_type") == "tool" for k in starts)
 
     def test_io_event_orphan_falls_back_to_root(self):
         """task_id 无对应 Worker span（如 consolidate）→ fallback 到 root，不崩。"""
         tracer, log = _tracer_with_mock()
-        tracer._handle("memory.write", {"task_id": "", "layer": "episodic", "success": True})
+        tracer._handle("memory.write.start", {"operation_id": "op-m", "task_id": "",
+                                              "layer": "episodic"})
         # root 上建了 span（fallback）
         assert any(act == "start" for act, _ in log)
+        tracer._handle("memory.write.complete", {"operation_id": "op-m", "task_id": "",
+                                                 "elapsed_ms": 5, "episode_id": "e1"})
+        assert tracer._operations == {}
 
     def test_orphan_spans_closed_on_survey_complete(self):
         """worker.start 后没等到 complete（模拟取消）→ survey.complete 清扫。"""
@@ -140,6 +150,16 @@ class TestTracerHandlers:
         tracer._handle("survey.complete", {"rounds": 3, "accepted": True})
         assert root.ended
         assert tracer._root is None
+
+    def test_survey_complete_output_includes_quality_and_delivery(self):
+        """13.7.3.3：root output 同时携带 quality_status 和 delivery_status。"""
+        tracer, log = _tracer_with_mock()
+        tracer._handle("survey.complete", {"rounds": 1, "accepted": True,
+                                           "quality_status": "passed",
+                                           "delivery_status": "ready"})
+        updates = [k for act, k in log if act == "update"]
+        assert any(k.get("output", {}).get("quality_status") == "passed" for k in updates)
+        assert any(k.get("output", {}).get("delivery_status") == "ready" for k in updates)
 
     def test_subspan_nests_under_parent_worker(self):
         """subspan.start 挂到 parent_task_id 对应的 span 下，不是 root（方案 A）。"""

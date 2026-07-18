@@ -1,6 +1,8 @@
 from __future__ import annotations
 from typing import Any
 
+from numpy.polynomial.legendre import legval
+
 from litagent.logging import get_logger
 
 
@@ -182,28 +184,8 @@ class LangFuseTracer:
                     self._safe_update_output(span, data['output'])
                 span.end()
 
-        elif event in ("tool.call", "rag.search", "memory.recall", "memory.write", "claims.op"):
-            # 底层 I/O 事件（点事件）：挂在对应 Worker span 下（get_task_id → _spans[tid]）
-            # 无对应 Worker span（如 consolidate 在 worker context 外）→ fallback 到 root
-            tid = data.get("task_id", "")
-            parent = self._spans.get(tid) or self._root
-            if parent is None:
-                return
-            name = {
-                "tool.call": data.get("name", "tool"),
-                "rag.search": "rag.search",
-                "memory.recall": "memory.recall",
-                "memory.write": f"memory.write.{data.get('layer', '')}",
-                "claims.op": f"claims.{data.get('op', '')}",
-            }[event]
-            sp = parent.start_observation(
-                name=name,
-                as_type="tool" if event == "tool.call" else "span",
-                input={k: v for k, v in data.items() if k != "task_id"},
-            )
-            if data.get("success") is False or data.get("error"):
-                sp.update(level="ERROR", status_message=data.get("error", ""))
-            sp.end()
+        elif self._is_io_lifecycle(event):
+            self._handle_io_event(event, data)
 
         elif event == 'survey.complete':
             self._close_orphans()
@@ -215,6 +197,7 @@ class LangFuseTracer:
                         "accepted": data.get("accepted", False),
                         'quality_status': quality_status,
                         'total_tokens': data.get('total_tokens', 0),
+                        'delivery_status': data.get('delivery_status', '')
                     }
                 )
                 self._root.end()
@@ -226,6 +209,67 @@ class LangFuseTracer:
                 self._root.update(level="ERROR", status_message=data.get("error", ""))
                 self._root.end()
                 self._root = None
+
+    
+    _IO_NAMESPACES = ('tool', 'claims', 'memory')
+
+    
+    def _is_io_lifecycle(self, event: str) -> bool:
+        root = event.split('.', 1)[0]
+        return (root in self._IO_NAMESPACES and event.endswith(('.start', '.complete', '.failed')))
+
+
+    def _handle_io_event(self, event: str, data: dict[str, Any]) -> None:
+        namespace, phase = event.rsplit('.', 1)
+        op_id = data.get('operation_id')
+        if not op_id:
+            return
+
+        if phase == 'start':
+            parent = self._spans.get(data.get('task_id', '')) or self._root
+            if not parent:
+                return
+
+            if namespace == 'tool':
+                name = f"tool:{data.get('name', '')}"
+                as_type = 'tool'
+            elif namespace == 'memory.write':
+                name = f"memory.write.{data.get('layer', '')}"
+                as_type = 'span'
+            else:
+                name = namespace
+                as_type = 'span'
+            
+            self._operations[op_id] = parent.start_observation(
+                as_type=as_type,
+                name=name,
+                input={k: v for k, v in data.items() if k not in ('operation_id', 'task_id')},
+            )
+
+            return
+        
+        obs = self._operations.pop(op_id, None)
+
+        if not obs:
+            return
+
+        if phase == 'failed':
+            obs.update(
+                level='ERROR',
+                status_message=data.get('error', ''),
+                metadata={
+                    'elapsed_ms': data.get('elapsed_ms', 0),
+                    'error_type': data.get('error_type', '')
+                },
+            )
+        else:
+            obs.update(
+                output={k: v for k, v in data.items()
+                        if k not in ('operation_id', 'task_id', 'elapsed_ms')},
+                metadata={'elapsed_ms': data.get('elapsed_ms', 0)},
+            )
+        obs.end()
+
 
 
     def _safe_update_output(self, span, output) -> None:

@@ -11,6 +11,7 @@ from typing import Any
 # 用常量而非裸字符串，防止生产端/消费端拼写漂移（见 SUGGESTION：emit/consume 字段名对齐）。
 CTX_PAPERS = "papers"     # 源论文列表（citation 验存在性、ragas 验忠实度）
 CTX_CLAIMS = "claims"     # 源 claims 列表（ragas 可选用）
+CTX_EVIDENCE = 'evidence'
 
 
 @dataclass

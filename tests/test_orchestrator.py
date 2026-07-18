@@ -220,7 +220,7 @@ class TestMessageBus:
 
 class TestSurveyPlanner:
     """无 llm 构造 → _decompose 降级到单 query。这里验证「规则/降级骨架」；
-    完整 LLM 分解形态见 tests/test_planner_decompose.py。"""
+    完整 LLM 分解 + recall task 形态见 tests/test_agents.py::TestPlannerRecallTasks。"""
 
     @pytest.fixture(autouse=True)
     def _no_ss_key(self, monkeypatch):
@@ -231,8 +231,8 @@ class TestSurveyPlanner:
     async def test_plan_creates_dag(self):
         planner = SurveyPlanner()
         graph = await planner.plan("few-shot learning in CV")
-        # 降级单 query × 2 源 = 2 search + 5 下游(dedup/extract/graph/adversarial/report)
-        assert len(graph.tasks) == 7
+        # 降级单 query × 2 源 = 2 search + 1 recall + 5 下游(dedup/extract/graph/adversarial/report)
+        assert len(graph.tasks) == 8
 
     @pytest.mark.asyncio
     async def test_search_tasks_are_parallel(self):
@@ -240,7 +240,9 @@ class TestSurveyPlanner:
         graph = await planner.plan("test query")
         ready = graph.get_ready_tasks()
         search_tasks = [t for t in ready if t.agent_type == "search"]
+        recall_tasks = [t for t in ready if t.agent_type == "recall"]
         assert len(search_tasks) == 2   # arxiv+hf，单 query
+        assert len(recall_tasks) == 1   # 每个规范化 sub-query 恰好一个 recall
 
     @pytest.mark.asyncio
     async def test_adversarial_review_depends_on_extract_and_graph(self):

@@ -17,6 +17,7 @@ from litagent.context.templates import build_system_prompt, wrap_xml
 from litagent.logging import get_logger
 from litagent.skills.manager import SkillManager
 from litagent.tools.worker_tools import make_load_skill_tool, make_recall_memory_tool
+from litagent.evidence import collect_ledger, format_ledger
 
 
 logger = get_logger('agents.synthesis')
@@ -43,11 +44,31 @@ CRITICAL EVIDENCE BOUNDARIES:
   Do NOT use "comprehensive survey" language. Do NOT fabricate authors, years, or
   titles. For claims not supported by provided papers, write "evidence not provided".
 - If no papers are provided, output a single paragraph explaining that the search
-  returned no results, and suggest broader search terms."""
+  returned no results, and suggest broader search terms.
+  
+EVIDENCE CITATION RULES:
+- An <evidence_ledger> block lists every available evidence item as "[E:<id>] (<title>) <text>" lines.
+- Every factual/empirical sentence MUST cite its supporting evidence inline with the
+  exact marker, e.g. "ProtoNet reaches 93% on miniImageNet [E:1703.05175:claim:0]".
+- Only use [E:...] ids that appear in the ledger — NEVER invent ids.
+- Section titles, transitions, and hedged/general statements need no marker.
+- Content with no supporting ledger item must be phrased as a known gap, not as fact."""
 
 
 REVISE_INSTRUCTIONS = """Revise the survey draft based on the reviewer's feedback.
-Address each criticism specifically. Keep existing good parts."""
+Address each criticism specifically. Keep existing good parts.
+Never add new papers, titles, authors, or evidence ids to address missing coverage —
+state it as a known gap instead. Keep all existing [E:...] markers accurate."""
+
+
+REWRITE_INSTRUCTIONS = """Rewrite the survey to remove unsupported claims.
+For each item in <unsupported_claims> you may ONLY do one of:
+1. delete the claim, or
+2. downgrade it to an explicit known gap ("evidence not provided"), or
+3. bind it to an EXISTING ledger item by appending its exact [E:<id>] marker.
+NEVER add new paper titles, authors, years, or evidence ids not in <evidence_ledger>.
+Keep supported content and overall structure intact.
+Return ONLY the rewritten survey text (no JSON, no commentary)."""
 
 
 class SynthesisWorker(Worker):
@@ -85,8 +106,11 @@ class SynthesisWorker(Worker):
         pipeline = ContextPipeline(self._budget)
         pipeline.add_layer(ContextLayer("papers", priority=0, max_tokens=12000,
                                         builder=self._papers_layer))
-        pipeline.add_layer(ContextLayer("memory", priority=1, max_tokens=2000,
+        pipeline.add_layer(ContextLayer('evidence_ledger', priority=1, max_tokens=5000,
+                                        builder=self._ledger_layer))
+        pipeline.add_layer(ContextLayer("memory", priority=2, max_tokens=2000,
                                         builder=self._memory_layer))
+
         user_msg, used = await pipeline.build({
             "extractions": extractions, "graph_data": graph_data, "query": query,
         })
@@ -128,6 +152,26 @@ class SynthesisWorker(Worker):
         return [
             {'role': 'system', 'content': system},
             {'role': 'user', 'content': '\n\n'.join([wrap_xml('current_draft', draft), wrap_xml('reviewer_feedback', review_comments)])}
+        ]
+
+    
+    def rewrite_with_evidence(self, draft: str, ledger_text: str,
+                              diagnostics_text: str) -> list[dict]:
+        """构建 bounded rewrite 的 messages（供 runner 一次性调用）。"""
+        system = build_system_prompt(
+            role=SYNTHESIS_ROLE,
+            instructions=REWRITE_INSTRUCTIONS
+        )
+
+        return [
+            {'role': 'system', 'content': system},
+            {
+                'role': 'user', 'content': '\n\n'.join([
+                    wrap_xml('current_draft', draft),
+                    wrap_xml('evidence_ledger', ledger_text),
+                    wrap_xml('unsupported_claims', diagnostics_text),
+                ])
+            }
         ]
 
 
@@ -185,6 +229,11 @@ class SynthesisWorker(Worker):
     async def _papers_layer(self, state: dict) -> str:
         ctx = self._build_papers_context(state["extractions"], state["graph_data"])
         return wrap_xml('papers', ctx) if ctx else ""
+
+    
+    async def _ledger_layer(self, state: dict) -> str:
+        text = format_ledger(collect_ledger(state['extractions']))
+        return wrap_xml('evidence_ledger', text) if text else ''
 
 
     async def _memory_layer(self, state: dict) -> str:

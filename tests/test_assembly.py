@@ -493,3 +493,215 @@ class TestQualityGate:
         from litagent.runner import LitAgent
         q = LitAgent._derive_quality({})
         assert q["status"] == "unverified"
+
+
+# ═══════════════════════════════════════════════════════════
+# 13.7.3.3 — derive_delivery 纯函数 + CLI 交付语义
+# ═══════════════════════════════════════════════════════════
+
+class TestDeriveDelivery:
+    """partial + quality → delivery 的四种映射。"""
+
+    def test_partial_wins_over_quality(self):
+        from litagent.runner import derive_delivery
+        d = derive_delivery(True, {"status": "failed"})
+        assert d["status"] == "partial"
+        assert d["publishable"] is False
+        assert "partial_execution" in d["reason_codes"]
+        assert "quality_failed" in d["reason_codes"]     # 原因全记录
+
+    def test_quality_failed_blocks(self):
+        from litagent.runner import derive_delivery
+        d = derive_delivery(False, {"status": "failed"})
+        assert d["status"] == "blocked"
+        assert d["publishable"] is False
+        assert d["reason_codes"] == ["quality_failed"]
+
+    def test_quality_unverified_needs_review(self):
+        from litagent.runner import derive_delivery
+        d = derive_delivery(False, {"status": "unverified"})
+        assert d["status"] == "needs_review"
+        assert d["publishable"] is False
+        assert d["reason_codes"] == ["quality_unverified"]
+
+    def test_passed_and_complete_is_ready(self):
+        from litagent.runner import derive_delivery
+        d = derive_delivery(False, {"status": "passed"})
+        assert d["status"] == "ready"
+        assert d["publishable"] is True
+        assert d["reason_codes"] == []
+
+    def test_missing_quality_treated_as_unverified(self):
+        from litagent.runner import derive_delivery
+        d = derive_delivery(False, None)
+        assert d["status"] == "needs_review"
+
+
+class TestCLIDeliveryContract:
+    """CLI 始终输出报告；exit code 与 banner 依据 delivery。"""
+
+    @staticmethod
+    def _report(delivery_status, publishable, **extra):
+        return {
+            "survey": "survey body",
+            "metadata": {"query": "q"},
+            "review_history": [],
+            "partial": extra.pop("partial", False),
+            "quality": extra.pop("quality", {"status": "passed",
+                                             "failed_metrics": [],
+                                             "unverified_metrics": []}),
+            "delivery": {"status": delivery_status, "publishable": publishable,
+                         "reason_codes": extra.pop("reason_codes", [])},
+        }
+
+    def test_exit_code_zero_when_ready(self):
+        from litagent.cli import _delivery_exit_code
+        assert _delivery_exit_code(self._report("ready", True)) == 0
+
+    def test_exit_code_nonzero_when_blocked(self):
+        from litagent.cli import _delivery_exit_code
+        assert _delivery_exit_code(self._report("blocked", False)) != 0
+
+    def test_exit_code_nonzero_when_needs_review(self):
+        from litagent.cli import _delivery_exit_code
+        assert _delivery_exit_code(self._report("needs_review", False)) != 0
+
+    def test_exit_code_derives_for_legacy_report(self):
+        """旧 report 无 delivery → 按 partial/quality 派生同一映射。"""
+        from litagent.cli import _delivery_exit_code
+        legacy = {"survey": "x", "partial": False,
+                  "quality": {"status": "failed", "failed_metrics": ["faithfulness"],
+                              "unverified_metrics": []}}
+        assert _delivery_exit_code(legacy) != 0
+
+    def test_banner_blocked(self):
+        from litagent.cli import _format_report_markdown
+        report = self._report("blocked", False,
+                              quality={"status": "failed",
+                                       "failed_metrics": ["faithfulness"],
+                                       "unverified_metrics": []})
+        out = _format_report_markdown(report)
+        assert "NOT PUBLISHABLE" in out
+        assert "faithfulness" in out
+        assert "survey body" in out        # 报告本体照常输出（可诊断）
+
+    def test_banner_needs_review(self):
+        from litagent.cli import _format_report_markdown
+        out = _format_report_markdown(self._report(
+            "needs_review", False,
+            quality={"status": "unverified", "failed_metrics": [],
+                     "unverified_metrics": ["faithfulness"]}))
+        assert "Quality unverified" in out
+
+    def test_banner_partial(self):
+        from litagent.cli import _format_report_markdown
+        out = _format_report_markdown(self._report("partial", False, partial=True))
+        assert "Partial results" in out
+
+    def test_no_banner_when_ready(self):
+        from litagent.cli import _format_report_markdown
+        out = _format_report_markdown(self._report("ready", True))
+        assert "⚠" not in out
+
+
+# ═══════════════════════════════════════════════════════════
+# 13.7.3.4 — Evidence Rewrite（bounded，一次，规则校验）
+# ═══════════════════════════════════════════════════════════
+
+class TestEvidenceRewrite:
+    @staticmethod
+    def _agent_with_stub(rewrite_response: str):
+        config = _minimal_config()          # adversarial.max_rounds=1
+        agent = LitAgent(config)
+        agent._llm = MagicMock(spec=BaseLLMClient)
+        agent._llm.chat = AsyncMock(return_value=LLMResponse(
+            content=rewrite_response, model="stub"))
+        agent._synthesis = MagicMock()
+        agent._synthesis.rewrite_with_evidence = MagicMock(
+            return_value=[{"role": "user", "content": "rewrite request"}])
+        return agent
+
+    @staticmethod
+    def _report_and_results(rounds_used=0, with_diag=True):
+        from litagent.evidence import build_evidence_items
+        ext = {"paper_id": "p1", "title": "T", "abstract": "abs",
+               "claims": ["claim one"]}
+        ext["evidence_items"] = build_evidence_items(ext)
+        details = {"unsupported_claims": [
+            {"claim_text": "bad claim", "evidence_ids": [], "reason": "no support"}
+        ]} if with_diag else {}
+        report = {
+            "survey": "original draft",
+            "metadata": {"total_rounds": rounds_used},
+            "evaluation": {"faithfulness": {"score": 0.1, "passed": False,
+                                            "skipped": False, "details": details}},
+        }
+        return report, {"extract": [ext]}
+
+    @pytest.mark.asyncio
+    async def test_valid_rewrite_replaces_survey(self):
+        agent = self._agent_with_stub("revised draft [E:p1:claim:0]")
+        report, results = self._report_and_results(rounds_used=0)
+        assert await agent._attempt_evidence_rewrite(report, results) is True
+        assert report["survey"] == "revised draft [E:p1:claim:0]"
+        meta = report["metadata"]["evidence_rewrite"]
+        assert meta["attempted"] is True
+        assert meta["accepted"] is True
+
+    @pytest.mark.asyncio
+    async def test_unknown_evidence_ref_rejected_keeps_draft(self):
+        """越界 [E:*] → 拒绝改写，保底 draft 不被覆盖。"""
+        agent = self._agent_with_stub("revised bounded draft [E:fake:claim:9]")
+        report, results = self._report_and_results(rounds_used=0)
+        assert await agent._attempt_evidence_rewrite(report, results) is False
+        assert report["survey"] == "original draft"
+        meta = report["metadata"]["evidence_rewrite"]
+        assert meta["attempted"] is True
+        assert meta["accepted"] is False
+        assert "unknown" in meta["reason"]
+
+    @pytest.mark.asyncio
+    async def test_truncated_rewrite_rejected_keeps_draft(self):
+        """疑似截断稿（长度 < 原稿一半）→ 拒绝，即使引用全部合法。
+
+        reasoning 模型 max_tokens 被 reasoning 吃掉时 content 会被腰斩——
+        截断稿引用可能恰好全合法，仅靠 [E:*] 校验会漏放行。
+        """
+        agent = self._agent_with_stub("ok")            # 2 字符 << 原稿一半
+        report, results = self._report_and_results(rounds_used=0)
+        assert await agent._attempt_evidence_rewrite(report, results) is False
+        assert report["survey"] == "original draft"
+        assert "short" in report["metadata"]["evidence_rewrite"]["reason"]
+
+    @pytest.mark.asyncio
+    async def test_rewrite_uses_eval_max_tokens(self):
+        """rewrite 的 llm.chat 必须显式传 eval.max_tokens（防 reasoning 挤空 content）。"""
+        agent = self._agent_with_stub("revised bounded draft [E:p1:claim:0]")
+        report, results = self._report_and_results(rounds_used=0)
+        await agent._attempt_evidence_rewrite(report, results)
+        kwargs = agent._llm.chat.call_args.kwargs
+        assert kwargs.get("max_tokens") == agent._config.eval.max_tokens
+
+    @pytest.mark.asyncio
+    async def test_no_rounds_left_skips_rewrite(self):
+        agent = self._agent_with_stub("whatever")
+        report, results = self._report_and_results(rounds_used=1)  # == max_rounds
+        assert await agent._attempt_evidence_rewrite(report, results) is False
+        assert report["metadata"]["evidence_rewrite"]["attempted"] is False
+        agent._llm.chat.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_no_diagnostic_skips_rewrite(self):
+        """诊断缺失/为空 → 不触发 rewrite（诊断是 rewrite 的前提输入）。"""
+        agent = self._agent_with_stub("whatever")
+        report, results = self._report_and_results(rounds_used=0, with_diag=False)
+        assert await agent._attempt_evidence_rewrite(report, results) is False
+        agent._llm.chat.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_llm_failure_keeps_draft(self):
+        agent = self._agent_with_stub("unused")
+        agent._llm.chat = AsyncMock(side_effect=RuntimeError("api down"))
+        report, results = self._report_and_results(rounds_used=0)
+        assert await agent._attempt_evidence_rewrite(report, results) is False
+        assert report["survey"] == "original draft"
