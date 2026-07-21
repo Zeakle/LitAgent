@@ -4,7 +4,6 @@ from typing import Any
 
 from litagent.orchestrator.task_graph import TaskGraph, SubTask, TaskStatus
 from litagent.orchestrator.scheduler import Scheduler, Worker
-from litagent.orchestrator.message_bus import MessageBus, AgentMessage, MessageType
 from litagent.agents.planner import SurveyPlanner
 
 
@@ -164,60 +163,6 @@ class TestScheduler:
         assert "fast" in results
 
 
-class TestMessageBus:
-    @pytest.mark.asyncio
-    async def test_send_and_receive(self):
-        bus = MessageBus()
-        bus.register("worker_1")
-        msg = AgentMessage(
-            type=MessageType.TASK_ASSIGN, sender="orchestrator", receiver="worker_1",
-            task_id="t1", payload={"query": "test"},
-        )
-        await bus.send(msg)
-        received = await bus.receive("worker_1", timeout=1.0)
-        assert received is not None
-        assert received.task_id == "t1"
-
-    @pytest.mark.asyncio
-    async def test_receive_timeout(self):
-        bus = MessageBus()
-        bus.register("worker_1")
-        received = await bus.receive("worker_1", timeout=0.1)
-        assert received is None
-
-    @pytest.mark.asyncio
-    async def test_send_to_unregistered(self):
-        bus = MessageBus()
-        msg = AgentMessage(type=MessageType.TASK_ASSIGN, sender="orch", receiver="ghost")
-        await bus.send(msg)
-
-    @pytest.mark.asyncio
-    async def test_broadcast(self):
-        bus = MessageBus()
-        bus.register("w1")
-        bus.register("w2")
-        bus.register("sender")
-        msg = AgentMessage(
-            type=MessageType.SHARED_DISCOVERY, sender="sender", receiver="",
-            payload={"finding": "important"},
-        )
-        await bus.broadcast(msg)
-        r1 = await bus.receive("w1", timeout=0.5)
-        r2 = await bus.receive("w2", timeout=0.5)
-        r_sender = await bus.receive("sender", timeout=0.1)
-        assert r1 is not None
-        assert r2 is not None
-        assert r_sender is None
-
-    @pytest.mark.asyncio
-    async def test_pending_count(self):
-        bus = MessageBus()
-        bus.register("w1")
-        assert bus.pending_count("w1") == 0
-        await bus.send(AgentMessage(type=MessageType.TASK_ASSIGN, sender="orch", receiver="w1"))
-        assert bus.pending_count("w1") == 1
-
-
 class TestSurveyPlanner:
     """无 llm 构造 → _decompose 降级到单 query。这里验证「规则/降级骨架」；
     完整 LLM 分解 + recall task 形态见 tests/test_agents.py::TestPlannerRecallTasks。"""
@@ -231,8 +176,10 @@ class TestSurveyPlanner:
     async def test_plan_creates_dag(self):
         planner = SurveyPlanner()
         graph = await planner.plan("few-shot learning in CV")
-        # 降级单 query × 2 源 = 2 search + 1 recall + 5 下游(dedup/extract/graph/adversarial/report)
-        assert len(graph.tasks) == 8
+        # 单 query × 2 源 = 2 search + 1 recall + 4 下游(dedup/extract/graph/adversarial)
+        assert len(graph.tasks) == 7
+        assert "report" not in graph.tasks
+        assert graph.tasks["adversarial_review"].agent_type == "adversarial_review"
 
     @pytest.mark.asyncio
     async def test_search_tasks_are_parallel(self):

@@ -6,7 +6,6 @@ import re
 import json
 from enum import Enum
 from typing import Callable
-from abc import ABC, abstractmethod
 
 from litagent.config import PlannerConfig
 from litagent.context.templates import wrap_xml
@@ -54,15 +53,7 @@ Do NOT drift to unrelated topics. Keep each sub-query concise (a search-engine q
 Respond ONLY with JSON: {"sub_queries": ["...", "..."]}"""
 
 
-class BasePlanner(ABC):
-    """Planner 接口 """
-
-    @abstractmethod
-    async def plan(self, query: str) -> TaskGraph:
-        ...
-
-
-class SurveyPlanner(BasePlanner):
+class SurveyPlanner:
     """标准综述流程的规则 Planner。"""
     def __init__(
         self,
@@ -173,7 +164,7 @@ class SurveyPlanner(BasePlanner):
             input_data={"query": query},
         ), depends_on=['dedup'])
 
-        # layer4-6: 综合 -> 审稿 -> 报告(串行)
+        # layer4-5: 综合 -> 审稿(串行)
         graph.add_task(SubTask(
             task_id='adversarial_review',
             description='Adversarial synthesis + review loop',
@@ -182,15 +173,6 @@ class SurveyPlanner(BasePlanner):
             timeout_ms=300000,
             max_retries=0,   # 内部已有对抗循环 + 异常兜底，外层重试只会重跑同样的失败、产生重复 span
         ), depends_on=['extract', 'graph_analysis'])
-
-
-        graph.add_task(SubTask(
-            task_id='report',
-            description='Generate final report',
-            agent_type='report',
-            input_data={"query": query},
-        ), depends_on=['adversarial_review'])
-
         logger.info(f"Planned {len(graph.tasks)} tasks for query {query}")
         return graph
 

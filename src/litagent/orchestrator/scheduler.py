@@ -7,7 +7,6 @@ from abc import ABC, abstractmethod
 from typing import Any, Callable
 
 from litagent.safety.budget import CostBudget
-from litagent.orchestrator.message_bus import MessageBus
 from litagent.orchestrator.task_graph import TaskGraph, SubTask, TaskStatus
 from litagent.observability.context import set_task_id, reset_task_id
 from litagent.logging import get_logger
@@ -68,7 +67,6 @@ class Scheduler:
         max_concurrent: int = 5,
         timeout_ms: int = 600000,
         on_complete: Callable | None = None,
-        bus: MessageBus | None = None,
         cost_budget: CostBudget | None = None,
         trace_hook: Callable | None = None
     ):
@@ -76,9 +74,6 @@ class Scheduler:
         self._semaphore = asyncio.Semaphore(max_concurrent)  # 并发限流器--控制同时运行的任务数量
         self._timeout_ms = timeout_ms
         self._on_complete = on_complete
-        self._bus = bus
-        if bus:
-            bus.register('orchestrator')
         self._cost_budget = cost_budget
         self._trace_hook = trace_hook
 
@@ -157,6 +152,11 @@ class Scheduler:
                 return
 
             self._inject_upstream_results(graph, task)
+            self._emit('worker.input', {
+                'task_id': task.task_id,
+                'agent_type': task.agent_type,
+                'input': task.input_data,
+            })
             # 将task的status改为running
             graph.mark_running(task.task_id)
             self._emit('worker.start', {

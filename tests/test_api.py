@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, patch, MagicMock
 from fastapi.testclient import TestClient
 
 from litagent.api import app, SurveyRequest, SurveyStatus, SurveyReport
+from litagent.observability.recorder import ArchiveRepository
 
 
 # ═══════════════════════════════════════════════════
@@ -99,6 +100,34 @@ class TestHealth:
         resp = client.get("/health")
         assert resp.status_code == 200
         assert resp.json() == {"status": "ok"}
+
+
+class TestFlowDemo:
+    def test_serves_replay_page(self):
+        response = client.get("/flow-demo")
+
+        assert response.status_code == 200
+        assert "Actual DAG" in response.text
+
+    def test_starts_fixed_live_demo(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(app.state, "flow_repository", ArchiveRepository(tmp_path))
+        with patch("litagent.api._run_flow_demo", new_callable=AsyncMock):
+            response = client.post("/flow-demo/runs")
+        assert response.status_code == 201
+        assert response.json()["query"] == "few-shot learning in computer vision"
+
+    def test_reads_persisted_archive_and_downloads_it(self, tmp_path, monkeypatch):
+        repository = ArchiveRepository(tmp_path)
+        repository.save({"run_id": "flow-1", "query": "few-shot", "completed_at": "2026-07-18T00:00:00+00:00"})
+        monkeypatch.setattr(app.state, "flow_repository", repository)
+        monkeypatch.setattr(app.state, "flow_runs", {})
+        monkeypatch.setattr(app.state, "flow_archive_index", {})
+
+        assert client.get("/flow-demo/runs").json()[0]["run_id"] == "flow-1"
+        assert client.get("/flow-demo/runs/flow-1").json()["query"] == "few-shot"
+        download = client.get("/flow-demo/runs/flow-1/download")
+        assert download.status_code == 200
+        assert download.json()["run_id"] == "flow-1"
 
 
 class TestCreateSurvey:

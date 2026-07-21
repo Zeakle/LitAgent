@@ -3,7 +3,7 @@ from litagent.context.budget import BudgetManager, CharBasedCounter, TokenCounte
 from litagent.context.pipeline import ContextPipeline, ContextLayer
 from litagent.context.compressor import TierCompressor, PaperInfo
 from litagent.context.templates import (
-    wrap_xml, build_system_prompt, wrap_user_input, wrap_papers, wrap_memory,
+    wrap_xml, build_system_prompt,
 )
 
 
@@ -229,18 +229,3 @@ class TestTemplates:
         result = build_system_prompt(role="Agent", instructions="Do stuff")
         assert "<role>" in result
         assert "<available_tools>" not in result
-
-    def test_wrap_user_input(self):
-        result = wrap_user_input("survey few-shot learning")
-        assert "<user_input>" in result
-        assert "survey few-shot learning" in result
-
-    def test_wrap_papers(self):
-        result = wrap_papers("paper data", source="rag")
-        assert '<papers source="rag">' in result
-        assert "paper data" in result
-
-    def test_wrap_memory(self):
-        result = wrap_memory("memory data", layer="episodic")
-        assert '<memory layer="episodic">' in result
-        assert "memory data" in result

@@ -1,15 +1,14 @@
 import pytest
 from litagent.exceptions import (
-    LitAgentError, ConfigError, ToolError, AgentError, MemoryStoreError
+    LitAgentError, ConfigError, MCPError, SafetyError
 )
 
 
 class TestExceptionHierarchy:
     def test_all_inherit_from_base(self):
         assert issubclass(ConfigError, LitAgentError)
-        assert issubclass(ToolError, LitAgentError)
-        assert issubclass(AgentError, LitAgentError)
-        assert issubclass(MemoryStoreError, LitAgentError)
+        assert issubclass(MCPError, LitAgentError)
+        assert issubclass(SafetyError, LitAgentError)
 
     def test_catch_by_parent(self):
         with pytest.raises(LitAgentError):

@@ -7,18 +7,29 @@ Swagger UI: http://localhost:8000/docs
 
 from __future__ import annotations
 import asyncio as _asyncio
+import json
+import os
 import time
 import uuid
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, BackgroundTasks, HTTPException
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from litagent.config import load_config
 from litagent.logging import get_logger
 from litagent.runner import LitAgent, derive_delivery
+from litagent.observability.recorder import (
+    ArchiveRepository,
+    CompositeTraceHook,
+    RedactingTraceHook,
+    RunRecorder,
+)
+from litagent.observability.tracing import LangFuseTracer
 
 logger = get_logger("api")
 
@@ -62,6 +73,8 @@ class SurveyReport(BaseModel):
 
 _TASK_TTL_SECONDS = 3600   # 1 小时后清理旧任务
 _CLEANUP_INTERVAL = 600    # 每 10 分钟检查一次
+FLOW_DEMO_QUERY = "few-shot learning in computer vision"
+FLOW_DEMO_STATIC = Path("static/flow-demo/index.html")
 
 
 async def _cleanup_old_tasks() -> None:
@@ -87,6 +100,9 @@ async def _cleanup_old_tasks() -> None:
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     # startup: 启动 TTL 清理协程
+    _app.state.flow_archive_index = {
+        artifact["run_id"]: artifact for artifact in _app.state.flow_repository.list()
+    }
     cleanup_task = _asyncio.create_task(_cleanup_old_tasks())
     logger.info("LitAgent API started, TTL cleanup running")
     yield
@@ -112,6 +128,11 @@ app = FastAPI(
 
 # In-memory 任务状态（必须在 lifespan 外初始化，否则 TestClient 不可见）
 app.state.tasks: dict[str, dict[str, Any]] = {}
+app.state.flow_repository = ArchiveRepository()
+app.state.flow_runs: dict[str, dict[str, Any]] = {}
+app.state.flow_archive_index = {
+    artifact["run_id"]: artifact for artifact in app.state.flow_repository.list()
+}
 
 # Phase 14 前端静态文件预留
 try:
@@ -127,6 +148,137 @@ except RuntimeError:
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.get("/flow-demo", include_in_schema=False)
+async def flow_demo_page():
+    return FileResponse(FLOW_DEMO_STATIC)
+
+
+@app.post("/flow-demo/runs", status_code=201)
+async def create_flow_demo(background_tasks: BackgroundTasks):
+    """Start the fixed, live survey without changing the general /survey API."""
+    run_id = f"flow-{uuid.uuid4().hex[:12]}"
+    recorder = RunRecorder(run_id, FLOW_DEMO_QUERY, app.state.flow_repository)
+    app.state.flow_runs[run_id] = {
+        "status": "running",
+        "recorder": recorder,
+        "error": None,
+        "_created_at": time.time(),
+    }
+    background_tasks.add_task(_run_flow_demo, run_id, recorder)
+    return {"run_id": run_id, "query": FLOW_DEMO_QUERY, "status": "running"}
+
+
+async def _run_flow_demo(run_id: str, recorder: RunRecorder) -> None:
+    """Persist the complete real-run timeline after cleanup has emitted its events."""
+    entry = app.state.flow_runs[run_id]
+    try:
+        config = load_config()
+        trace_hook: Any = recorder
+        if config.observability.enabled:
+            langfuse = LangFuseTracer(
+                host=config.observability.langfuse_host,
+                public_key=os.getenv("LANGFUSE_PUBLIC_KEY", ""),
+                secret_key=os.getenv("LANGFUSE_SECRET_KEY", ""),
+            )
+            trace_hook = CompositeTraceHook(recorder, RedactingTraceHook(langfuse))
+        async with LitAgent(config, trace_hook=trace_hook) as agent:
+            report = await agent.run(FLOW_DEMO_QUERY)
+        artifact = recorder.finalize(report=report)
+        entry.update(status="completed", artifact=artifact)
+        app.state.flow_archive_index[run_id] = artifact
+    except Exception as exc:
+        error = f"{type(exc).__name__}: {exc}"
+        artifact = recorder.finalize(error=error)
+        entry.update(status="failed", error=error, artifact=artifact)
+        app.state.flow_archive_index[run_id] = artifact
+        logger.exception("Flow demo %s failed", run_id)
+
+
+def _flow_artifact(run_id: str) -> dict[str, Any] | None:
+    entry = app.state.flow_runs.get(run_id)
+    if entry:
+        return entry["recorder"].snapshot()
+    artifact = app.state.flow_archive_index.get(run_id)
+    if artifact is not None:
+        return artifact
+    artifact = app.state.flow_repository.get(run_id)
+    if artifact is not None:
+        app.state.flow_archive_index[run_id] = artifact
+    return artifact
+
+
+def _flow_summary(artifact: dict[str, Any]) -> dict[str, Any]:
+    report = artifact.get("report") or {}
+    return {
+        "run_id": artifact["run_id"],
+        "query": artifact.get("query", ""),
+        "status": artifact.get("status", "unknown"),
+        "started_at": artifact.get("started_at"),
+        "completed_at": artifact.get("completed_at"),
+        "error": artifact.get("error"),
+        "quality": report.get("quality"),
+        "delivery": report.get("delivery"),
+    }
+
+
+@app.get("/flow-demo/runs")
+async def list_flow_demo_runs():
+    artifacts = dict(app.state.flow_archive_index)
+    artifacts.update({item["run_id"]: item for item in app.state.flow_repository.list()})
+    for run_id in app.state.flow_runs:
+        artifact = _flow_artifact(run_id)
+        if artifact:
+            artifacts[run_id] = artifact
+    return [_flow_summary(item) for item in sorted(
+        artifacts.values(),
+        key=lambda item: item.get("completed_at") or item.get("started_at", ""),
+        reverse=True,
+    )]
+
+
+@app.get("/flow-demo/runs/{run_id}")
+async def get_flow_demo_run(run_id: str):
+    artifact = _flow_artifact(run_id)
+    if artifact is None:
+        raise HTTPException(status_code=404, detail=f"Flow run '{run_id}' not found")
+    return artifact
+
+
+@app.get("/flow-demo/runs/{run_id}/events")
+async def stream_flow_demo_events(run_id: str):
+    if _flow_artifact(run_id) is None:
+        raise HTTPException(status_code=404, detail=f"Flow run '{run_id}' not found")
+
+    async def event_stream():
+        offset = 0
+        while True:
+            artifact = _flow_artifact(run_id)
+            if artifact is None:
+                return
+            events = artifact.get("events", [])
+            for event in events[offset:]:
+                yield f"event: trace\ndata: {json.dumps(event, ensure_ascii=False, default=str)}\n\n"
+            offset = len(events)
+            if artifact.get("status") in {"completed", "failed"}:
+                yield f"event: done\ndata: {json.dumps(_flow_summary(artifact), ensure_ascii=False)}\n\n"
+                return
+            await _asyncio.sleep(0.3)
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@app.get("/flow-demo/runs/{run_id}/download")
+async def download_flow_demo_run(run_id: str):
+    artifact = app.state.flow_repository.get(run_id)
+    if artifact is None:
+        raise HTTPException(status_code=404, detail=f"Completed flow run '{run_id}' not found")
+    return FileResponse(
+        app.state.flow_repository.path_for(run_id),
+        media_type="application/json",
+        filename=f"{run_id}.json",
+    )
 
 
 @app.post("/survey", status_code=201, response_model=SurveyStatus)

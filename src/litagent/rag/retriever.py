@@ -3,14 +3,14 @@
 import time
 import uuid
 
-from litagent.rag.interfaces import Retriever, ScoredDoc, Reranker, VectorStore
+from litagent.rag.interfaces import ScoredDoc, Reranker, VectorStore
 from litagent.observability.context import get_task_id
 from litagent.logging import get_logger
 
 logger = get_logger('rag.retriever')
 
 
-class HybridRetriever(Retriever):
+class HybridRetriever:
     """Qdrant dual-index hybrid search + cross-encoder rerank。
 
     Qdrant 内部已做 RRF fusion——这里只负责：

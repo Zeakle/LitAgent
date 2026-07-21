@@ -78,14 +78,16 @@ class SynthesisWorker(Worker):
     输出：结构化综述初稿
     """
 
-    def __init__(self, llm: BaseLLMClient, memory: MemoryManager | None = None, 
-                 budget: BudgetManager | None = None, skill_manager: SkillManager | None = None):
+    def __init__(self, llm: BaseLLMClient, memory: MemoryManager | None = None,
+                 budget: BudgetManager | None = None, skill_manager: SkillManager | None = None,
+                 agent_config: AgentConfig | None = None):
         self._llm = llm
         self._compressor = TierCompressor()
         self._memory = memory
         self._budget = budget or BudgetManager(max_tokens=16000)
         self._tools = [make_recall_memory_tool(memory)] if memory else []
         self._skill_manager = skill_manager
+        self._agent_config = agent_config or AgentConfig()
         if skill_manager:
             self._tools.append(make_load_skill_tool(skill_manager))
 
@@ -131,7 +133,7 @@ class SynthesisWorker(Worker):
             skills=skills_text
         )
 
-        runner = ReActRunner(self._llm, tools=self._tools, config=AgentConfig(max_loops=15))
+        runner = ReActRunner(self._llm, tools=self._tools, config=self._agent_config)
         result = await runner.run(system_prompt=system, user_message=user_msg)
         
         logger.info(f'Synthesis draft: {len(result)} chars, ctx {used} tokens')

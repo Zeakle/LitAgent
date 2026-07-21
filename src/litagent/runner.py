@@ -37,6 +37,7 @@ from litagent.context.budget import BudgetManager
 from litagent.mcp.bridge import MCPBridge
 from litagent.skills.manager import SkillManager
 from litagent.agents.extraction_strategy import (
+    ExtractionStrategy,
     RegexStrategy,
     LLMStrategy,
     ResilientExtractionStrategy
@@ -49,10 +50,8 @@ from litagent.agents.graph import GraphWorker
 from litagent.agents.synthesis import SynthesisWorker
 from litagent.agents.reviewer import ReviewerWorker
 from litagent.agents.adversarial import AdversarialReviewWorker
-from litagent.agents.report import ReportWorker
 from litagent.agents.planner import SurveyPlanner
 from litagent.orchestrator.scheduler import Scheduler, Worker
-from litagent.orchestrator.message_bus import MessageBus
 from litagent.orchestrator.task_graph import TaskGraph
 from litagent.logging import get_logger, setup_logging
 
@@ -191,10 +190,10 @@ class LitAgent:
 
         # ── Skills + Strategies ──
         self._skill_manager: SkillManager | None = None
-        self._extraction_strategy: ResilientExtractionStrategy | None = None
+        self._extraction_strategy: ExtractionStrategy | None = None
         self._mcp_bridge = None
 
-        # ── Workers (8) ──
+        # ── Workers ──
         self._search: SearchWorker | None = None
         self._dedup: DedupWorker | None = None
         self._extractor: ExtractorWorker | None = None
@@ -202,10 +201,8 @@ class LitAgent:
         self._synthesis: SynthesisWorker | None = None
         self._reviewer: ReviewerWorker | None = None
         self._adversarial: AdversarialReviewWorker | None = None
-        self._report: ReportWorker | None = None
 
         # ── Orchestrator ──
-        self._bus: MessageBus | None = None
         self._scheduler: Scheduler | None = None
         self._planner: SurveyPlanner | None = None
 
@@ -240,6 +237,8 @@ class LitAgent:
 
         try:
             graph = await self._planner.plan(query)
+            if hasattr(self._trace_hook, "capture_graph"):
+                self._trace_hook.capture_graph(graph)
             results = await self._scheduler.run(graph)
             report_data = self._extract_report(results, query)
             report_data['partial'] = (
@@ -278,7 +277,7 @@ class LitAgent:
         """从 Scheduler 的 {task_id: result} 中按 DAG 契约提取最终报告。
 
         信任 DAG 的固定 task_id 作为契约——直接键查找，不遍历、不 duck-typing。
-        Priority: results["report"] > adversarial_review.final_draft > incomplete
+        The adversarial review task is the single successful report source.
         """
         graph_result = results.get('graph_analysis')
         graph_data = graph_result if isinstance(graph_result, dict) else {}
@@ -291,27 +290,17 @@ class LitAgent:
             "accepted": False,
         }
 
-        # ① 最高优先级：ReportWorker 产出
-        report_result = results.get('report')
-        if isinstance(report_result, dict) and report_result.get('survey'):
-            return {
-                'survey': report_result['survey'],
-                'metadata': {**base_metadata, **report_result.get('metadata', {}), 'query': query},
-                'review_history': report_result.get('review_history', []),
-                'graph_data': graph_data
-            }
-
-        # ② 对抗审查输出：final_draft
         adv_result = results.get('adversarial_review')
         if isinstance(adv_result, dict) and adv_result.get('final_draft'):
             metadata = {**base_metadata}
+            metadata["generated_at"] = time.time()
             metadata["total_rounds"] = adv_result.get("total_rounds", 0)
             metadata["final_score"] = adv_result.get("final_score", 0.0)
             metadata["accepted"] = adv_result.get("accepted", False)
             return {
                 "survey": adv_result["final_draft"],
                 "metadata": metadata,
-                "review_history": adv_result.get("rounds", []),
+                "review_history": self._format_review_history(adv_result.get("rounds", [])),
                 "graph_data": graph_data,
             }
 
@@ -321,6 +310,20 @@ class LitAgent:
             "review_history": [],
             "graph_data": graph_data,
         }
+
+    @staticmethod
+    def _format_review_history(rounds: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        history = []
+        for item in rounds:
+            review = item.get("review", {})
+            history.append({
+                "round": item.get("round", 0),
+                "score": review.get("score", 0),
+                "verdict": review.get("verdict", "unknown"),
+                "weaknesses": review.get("weaknesses", []),
+                "issue_count": len(review.get("issues", [])),
+            })
+        return history
 
 
     async def _wire(self) -> None:
@@ -402,8 +405,11 @@ class LitAgent:
                 self._mcp_bridge = None
 
         regex_strategy = RegexStrategy(self._executor)
-        llm_strategy = LLMStrategy(self._llm, self._skill_manager)
-        self._extraction_strategy = ResilientExtractionStrategy(llm_strategy, regex_strategy)
+        if cfg.extractor.enable_llm:
+            llm_strategy = LLMStrategy(self._llm, self._skill_manager)
+            self._extraction_strategy = ResilientExtractionStrategy(llm_strategy, regex_strategy)
+        else:
+            self._extraction_strategy = regex_strategy
 
         # 8. Workers
         workers: list[Worker] = []
@@ -429,7 +435,12 @@ class LitAgent:
         workers.append(self._graph)
 
         self._synthesis = SynthesisWorker(
-            llm=self._llm, memory=self._infra.memory, budget=self._budget_manager, skill_manager=self._skill_manager)
+            llm=self._llm,
+            memory=self._infra.memory,
+            budget=self._budget_manager,
+            skill_manager=self._skill_manager,
+            agent_config=cfg.agent,
+        )
         workers.append(self._synthesis)
 
         self._reviewer = ReviewerWorker(
@@ -446,19 +457,14 @@ class LitAgent:
         )
         workers.append(self._adversarial)
 
-        self._report = ReportWorker()
-        workers.append(self._report)
-
         logger.info("Workers: %d registered", len(workers))
 
-        # 9. MessageBus + Scheduler + Planner
-        self._bus = MessageBus()
+        # 9. Scheduler + Planner
         self._scheduler = Scheduler(
             workers=workers,
             max_concurrent=cfg.orchestrator.max_concurrent,
             timeout_ms=cfg.orchestrator.timeout_ms,
             on_complete=self._on_session_complete,
-            bus=self._bus,
             cost_budget=self._cost_budget,
             trace_hook=self._trace_hook
         )

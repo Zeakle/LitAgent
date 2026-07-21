@@ -49,9 +49,3 @@ class Reranker(ABC):
     @abstractmethod
     def rerank(self, query: str, docs: list[ScoredDoc]) -> list[ScoredDoc]:
         ...
-
-
-class Retriever(ABC):
-    @abstractmethod
-    async def search(self, query: str, top_k: int = 20) -> list[ScoredDoc]:
-        ...

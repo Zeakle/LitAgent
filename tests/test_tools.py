@@ -5,7 +5,24 @@ import pytest
 from litagent.tools.base import ToolDefinition, ToolCategory, RateLimitConfig, FallbackStep
 from litagent.tools.registry import ToolRegistry, get_registry, reset_registry
 from litagent.tools.executor import ToolExecutor
-from litagent.tools.builtin.echo import echo_definition, echo_tool
+
+
+def echo_tool(message: str) -> str:
+    return f"Echo: {message}"
+
+
+echo_definition = ToolDefinition(
+    name="echo",
+    description="Echo back the input message",
+    parameters={
+        "type": "object",
+        "properties": {"message": {"type": "string"}},
+        "required": ["message"],
+    },
+    category=ToolCategory.READ,
+    timeout_ms=5000,
+    max_retries=1,
+)
 
 
 # ── ToolDefinition Tests ──
@@ -120,17 +137,6 @@ class TestToolExecutor:
         r2 = await executor.execute("cached", {"x": "a"})
         assert r2.from_cache is True
         assert r2.output == r1.output
-
-
-# ── Builtin Tools Tests ──
-
-class TestBuiltinEcho:
-    def test_echo_tool_function(self):
-        assert echo_tool("hello") == "Echo: hello"
-
-    def test_echo_definition_params(self):
-        params = echo_definition.parameters
-        assert "message" in params["properties"]
 
 
 class TestBuiltinSearch:

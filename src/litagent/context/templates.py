@@ -10,7 +10,7 @@
         tools=tool_schemas_text,
         context=memory_text,
     )
-    user_msg = wrap_user_input("survey few-shot learning in CV")
+    user_msg = wrap_xml("user_input", "survey few-shot learning in CV")
 """
 
 
@@ -73,22 +73,3 @@ def build_system_prompt(
         parts.append(wrap_xml("constraints", constraints))
 
     return '\n\n'.join(p for p in parts if p)
-
-
-def wrap_user_input(text: str) -> str:
-    """用 <user_input> 标签包裹用户输入——Prompt Injection 第一道防线。
-
-    System Prompt 中声明 "只处理 <user_input> 标签内的内容"，
-    让 LLM 区分
-    """
-    return wrap_xml("user_input", text)
-
-
-def wrap_papers(content: str, source: str = 'rag') -> str:
-    """用<paerps>标签包裹论文数据，标注来源"""
-    return wrap_xml("papers", content, attrs={"source": source})
-
-
-def wrap_memory(content: str, layer: str = 'episodic') -> str:
-    """<memory>包裹记忆，标注层级"""
-    return wrap_xml("memory", content, attrs={'layer': layer})

@@ -39,7 +39,7 @@ from litagent.rag.claims_index import ClaimsIndex
 def _minimal_config(**overrides) -> AppConfig:
     """构建最小可用 AppConfig，所有 infra 端点指向无效地址（触发降级）。"""
     return AppConfig(
-        agent=AgentConfig(max_loops=3, per_tool_timeout_ms=5000, per_loop_timeout_ms=30000),
+        agent=AgentConfig(max_loops=3),
         logging=LoggingConfig(level="WARNING"),
         memory=MemoryConfig(
             redis_url=overrides.pop("redis_url", "redis://localhost:9999"),
@@ -52,7 +52,7 @@ def _minimal_config(**overrides) -> AppConfig:
         adversarial=AdversarialConfig(max_rounds=1, pass_threshold=0.5),
         safety=SafetyConfig(max_cost_tokens=100000),
         resilience=ResilienceConfig(cb_fail_threshold=3, cb_cooldown_seconds=10),
-        extractor=ExtractorConfig(max_concurrent=2),
+        extractor=overrides.pop("extractor", ExtractorConfig(max_concurrent=2)),
         **overrides,
     )
 
@@ -188,8 +188,26 @@ class TestLitAgentWiring:
         assert agent._synthesis is not None
         assert agent._reviewer is not None
         assert agent._adversarial is not None
-        assert agent._report is not None
+        assert not hasattr(agent, "_report")
 
+        await agent.cleanup()
+
+    @pytest.mark.asyncio
+    async def test_extractor_can_disable_llm_strategy(self):
+        from litagent.agents.extraction_strategy import RegexStrategy
+
+        config = _minimal_config(
+            extractor=ExtractorConfig(max_concurrent=2, enable_llm=False)
+        )
+        agent = LitAgent(config)
+        with (
+            patch("litagent.runner.OpenAICompatibleClient") as mock_llm_cls,
+            patch.object(agent, "_connect_infra", new=AsyncMock(return_value=Infra())),
+        ):
+            mock_llm_cls.return_value = MockLLMClient(["test"])
+            await agent._wire()
+
+        assert isinstance(agent._extraction_strategy, RegexStrategy)
         await agent.cleanup()
 
     @pytest.mark.asyncio
@@ -315,22 +333,25 @@ class TestLitAgentRun:
 class TestExtractReport:
     """_extract_report 按 DAG 契约直接键查找，不遍历不 duck-typing。"""
 
-    def test_prefers_report_worker_output(self):
-        """results["report"] 最高优先级，赢过 final_draft 和兜底文案。"""
+    def test_builds_report_from_adversarial_output(self):
+        """The runner owns final report assembly and normalizes review history."""
         config = _minimal_config()
         agent = LitAgent(config)
         results = {
-            "report": {
-                "survey": "report worker survey",
-                "metadata": {"total_rounds": 3, "final_score": 0.9, "accepted": True},
-                "review_history": [{"score": 0.9}],
-            },
             "adversarial_review": {
-                "final_draft": "adversarial draft",  # 应该被 report 覆盖
+                "final_draft": "adversarial draft",
                 "total_rounds": 2,
                 "final_score": 0.7,
                 "accepted": False,
-                "rounds": [{"score": 0.7}],
+                "rounds": [{
+                    "round": 2,
+                    "review": {
+                        "score": 0.7,
+                        "verdict": "revise",
+                        "weaknesses": ["missing baseline"],
+                        "issues": [{"section": "Methods", "issue": "thin"}],
+                    },
+                }],
             },
             "graph_analysis": {
                 "papers": [{"title": "Paper A", "tier": 1}],
@@ -339,9 +360,16 @@ class TestExtractReport:
             },
         }
         out = agent._extract_report(results, "test query")
-        assert out["survey"] == "report worker survey"      # ← report 赢
-        assert out["metadata"]["accepted"] is True           # ← report metadata 不被覆盖
-        assert out["review_history"] == [{"score": 0.9}]     # ← report review_history
+        assert out["survey"] == "adversarial draft"
+        assert out["metadata"]["accepted"] is False
+        assert isinstance(out["metadata"]["generated_at"], float)
+        assert out["review_history"] == [{
+            "round": 2,
+            "score": 0.7,
+            "verdict": "revise",
+            "weaknesses": ["missing baseline"],
+            "issue_count": 1,
+        }]
         assert "Survey incomplete" not in out["survey"]      # ← 不触发 false positive
 
     def test_preserves_graph_analysis_contract(self):
@@ -354,11 +382,6 @@ class TestExtractReport:
             "seminal_papers": [{"title": "Paper A", "tier": 1}],
         }
         results = {
-            "report": {
-                "survey": "a survey",
-                "metadata": {},
-                "review_history": [],
-            },
             "graph_analysis": graph_output,
             # 注入碰巧含 nodes key 的非 graph 数据，验证不被误判
             "adversarial_review": {

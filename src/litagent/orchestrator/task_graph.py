@@ -150,3 +150,8 @@ class TaskGraph:
     @property
     def tasks(self) -> dict[str, SubTask]:
         return self._tasks
+
+    @property
+    def dependencies(self) -> dict[str, set[str]]:
+        """Read-only graph dependency view for observability and replay."""
+        return self._deps

@@ -13,21 +13,6 @@ class ConfigError(LitAgentError):
     pass
 
 
-class ToolError(LitAgentError):
-    """工具执行失败（Phase 3 开始使用）。"""
-    pass
-
-
-class AgentError(LitAgentError):
-    """Agent 执行失败（Phase 2 开始使用）。"""
-    pass
-
-
-class MemoryStoreError(LitAgentError):
-    """Memory 层操作失败（Phase 4 开始使用）。不用 MemoryError 因为会覆盖 Python 内置 OOM 异常。"""
-    pass
-
-
 class MCPError(LitAgentError):
     """MCP 连接或调用失败"""
     pass

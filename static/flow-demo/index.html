@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LitAgent Flow Replay</title>
+  <link rel="stylesheet" href="/static/flow-demo/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">LITAGENT / LIVE EXECUTION REPLAY</p>
+      <h1>few-shot learning in computer vision</h1>
+    </div>
+    <div class="controls">
+      <select id="archive-select" aria-label="Archived runs"><option>Loading archive...</option></select>
+      <button id="new-run" title="Start one real survey">Run live survey</button>
+      <a id="download" class="disabled" download>Download JSON</a>
+    </div>
+  </header>
+  <section class="summary" id="summary">
+    <span>Run <strong id="run-id">No run selected</strong></span>
+    <span>Status <strong id="run-status">-</strong></span>
+    <span>Tokens <strong id="total-tokens">0</strong></span>
+    <span>Elapsed <strong id="total-elapsed">-</strong></span>
+    <span>Quality <strong id="quality">-</strong></span>
+    <span>Delivery <strong id="delivery">-</strong></span>
+  </section>
+  <main class="workspace">
+    <section class="panel dag-panel">
+      <div class="panel-title"><h2>Actual DAG</h2><span id="dag-count">0 tasks</span></div>
+      <p class="hint">Planner output and scheduler state. Dependency arrows point to prerequisites.</p>
+      <div id="dag" class="dag"></div>
+    </section>
+    <section class="panel timeline-panel">
+      <div class="panel-title"><h2>Execution timeline</h2><span id="event-count">0 events</span></div>
+      <p class="hint">Scheduler completion is followed by memory consolidation, evaluation, quality and delivery.</p>
+      <div id="timeline" class="timeline"></div>
+    </section>
+    <aside class="panel inspector-panel">
+      <div class="panel-title"><h2>Node inspector</h2><span id="node-kind">Select a node</span></div>
+      <div id="inspector" class="inspector empty">Choose a DAG task or execution node to inspect its complete local payload.</div>
+    </aside>
+  </main>
+  <template id="node-template">
+    <button class="node" type="button"><span class="node-name"></span><small></small></button>
+  </template>
+  <script type="module" src="/static/flow-demo/app.js"></script>
+</body>
+</html>

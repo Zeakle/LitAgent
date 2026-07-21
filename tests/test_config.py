@@ -13,8 +13,6 @@ def temp_project(tmp_path):
     config_file.write_text("""
 agent:
   max_loops: 15
-  per_tool_timeout_ms: 30000
-  per_loop_timeout_ms: 600000
 logging:
   level: INFO
   format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -32,7 +30,6 @@ class TestLoadConfig:
             cfg = load_config(str(cfg_file))
             assert cfg.agent.max_loops == 15
             assert cfg.logging.level == "INFO"
-            assert cfg.agent.per_tool_timeout_ms == 30000
         finally:
             os.chdir(old_cwd)
 

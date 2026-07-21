@@ -10,9 +10,7 @@ load_dotenv()
 
 class AgentConfig(BaseModel):
     """Agent配置"""
-    max_loops: int = 15
-    per_tool_timeout_ms: int = 30000
-    per_loop_timeout_ms: int = 600000
+    max_loops: int = Field(default=15, gt=0)
 
 
 class LoggingConfig(BaseModel):

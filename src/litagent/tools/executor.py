@@ -115,6 +115,7 @@ class ToolExecutor:
                 'from_cache': result.from_cache,
                 'from_fallback': result.from_fallback,
                 'output_size': len(result.output) if isinstance(result.output, (list, str)) else None,
+                'output': result.output,
             })
 
         return result

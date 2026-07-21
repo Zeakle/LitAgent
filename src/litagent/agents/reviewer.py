@@ -6,7 +6,6 @@ import re
 from typing import Any
 
 from litagent.skills.manager import SkillManager
-from litagent.tools.worker_tools import make_load_skill_tool, make_lookup_claims_tool
 from litagent.orchestrator.scheduler import Worker
 from litagent.orchestrator.task_graph import SubTask
 from litagent.llm.client import BaseLLMClient
@@ -15,8 +14,7 @@ from litagent.context.pipeline import ContextPipeline, ContextLayer
 from litagent.context.budget import BudgetManager
 from litagent.logging import get_logger
 from litagent.rag.claims_index import ClaimsIndex
-from litagent.agent.react import ReActRunner
-from litagent.config import AdversarialConfig, AgentConfig
+from litagent.config import AdversarialConfig
 
 
 logger = get_logger('agents.reviewer')
@@ -58,11 +56,8 @@ class ReviewerWorker(Worker):
         self._llm = llm
         self._claims_index = claims_index
         self._budget = budget or BudgetManager(max_tokens=16000)
-        self._tools = [make_lookup_claims_tool(claims_index)] if claims_index else []
         self._skill_manager = skill_manager
         self._config = config or AdversarialConfig()
-        if skill_manager:
-            self._tools.append(make_load_skill_tool(skill_manager))
 
 
     @property

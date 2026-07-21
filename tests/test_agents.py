@@ -6,7 +6,6 @@ from litagent.agents.search import SearchWorker
 from litagent.agents.dedup import DedupWorker
 from litagent.agents.extractor import ExtractorWorker
 from litagent.agents.graph import GraphWorker
-from litagent.agents.report import ReportWorker
 from litagent.tools.executor import ToolExecutor, ToolResult
 from litagent.tools.registry import ToolRegistry
 
@@ -136,55 +135,11 @@ class TestGraphWorker:
         assert w.agent_type == "graph"
 
 
-class TestReportWorker:
-    @pytest.mark.asyncio
-    async def test_generates_report(self):
-        w = ReportWorker()
-        task = SubTask(
-            task_id="report", description="report", agent_type="report",
-            input_data={"upstream_results": {
-                "adversarial_review": {
-                    "final_draft": "This is the final survey.",
-                    "rounds": [
-                        {"round": 1, "review": {"score": 0.5, "verdict": "revise", "weaknesses": ["incomplete"], "issues": []}},
-                        {"round": 2, "review": {"score": 0.9, "verdict": "accept", "weaknesses": [], "issues": []}},
-                    ],
-                    "total_rounds": 2,
-                    "final_score": 0.9,
-                    "accepted": True,
-                },
-            }},
-        )
-        result = await w.execute(task)
-        assert result["survey"] == "This is the final survey."
-        assert result["metadata"]["accepted"] is True
-        assert result["metadata"]["total_rounds"] == 2
-        assert len(result["review_history"]) == 2
-        assert result["review_history"][0]["score"] == 0.5
-        assert result["review_history"][1]["verdict"] == "accept"
-
-    @pytest.mark.asyncio
-    async def test_empty_upstream(self):
-        w = ReportWorker()
-        task = SubTask(
-            task_id="report", description="report", agent_type="report",
-            input_data={"upstream_results": {}},
-        )
-        result = await w.execute(task)
-        assert result["survey"] == ""
-        assert result["metadata"]["accepted"] is False
-
-    @pytest.mark.asyncio
-    async def test_agent_type(self):
-        w = ReportWorker()
-        assert w.agent_type == "report"
-
-
 # ═══════════════════════════════════════════════════════════
 # 13.7.1 — SearchWorker profile 写入
 # ═══════════════════════════════════════════════════════════
 
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import MagicMock, AsyncMock, patch
 from litagent.tools.executor import ToolResult
 
 
@@ -379,6 +334,26 @@ class TestSynthesisEvidenceBoundary:
         assert "SCOPED EVIDENCE SUMMARY" in SYNTHESIS_INSTRUCTIONS
         assert "evidence not provided" in SYNTHESIS_INSTRUCTIONS
         assert "fabricate" in SYNTHESIS_INSTRUCTIONS
+
+    @pytest.mark.asyncio
+    async def test_execute_uses_configured_react_loop_limit(self):
+        from litagent.agents.synthesis import SynthesisWorker
+        from litagent.config import AgentConfig
+
+        react = MagicMock()
+        react.run = AsyncMock(return_value='{"draft": "ok"}')
+        with patch("litagent.agents.synthesis.ReActRunner", return_value=react) as runner_cls:
+            worker = SynthesisWorker(
+                llm=MagicMock(), agent_config=AgentConfig(max_loops=2)
+            )
+            await worker.execute(SubTask(
+                task_id="synthesis",
+                description="synthesize",
+                agent_type="synthesis",
+                input_data={"query": "few-shot", "upstream_results": {}},
+            ))
+
+        assert runner_cls.call_args.kwargs["config"].max_loops == 2
 
 
 class TestReviewerStructuredOutput:
