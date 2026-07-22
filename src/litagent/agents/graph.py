@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 from typing import Any
-
-import httpx
+from collections.abc import Mapping
 
 from litagent.orchestrator.scheduler import Worker
 from litagent.orchestrator.task_graph import SubTask
@@ -26,9 +25,17 @@ class GraphWorker(Worker):
     TIER1_THRESHOLD = 500
     TIER2_THRESHOLD = 50
 
+    def __init__(self, max_papers: int = 50) -> None:
+        if max_papers <= 0:
+            raise ValueError("max_papers must be positive")
+
+        self._max_papers = max_papers
+
+
     @property
     def agent_type(self) -> str:
         return 'graph'
+
 
     async def execute(self, task: SubTask) -> Any:
         upstream = task.input_data.get('upstream_results', {})
@@ -49,10 +56,18 @@ class GraphWorker(Worker):
 
 
     def _get_papers_from_upstream(self, upstream: dict) -> list[dict]:
-        for task_id, result in upstream.items():
-            if isinstance(result, list) and result:
-                return result
-        return []
+        if not isinstance(upstream, Mapping):
+            return []
+
+        if 'relevance_gate' in upstream:
+            candidates = upstream['relevance_gate']
+        else:
+            candidates = upstream.get('dedup', [])
+
+        if not isinstance(candidates, list):
+            return []
+
+        return [paper for paper in candidates if isinstance(paper, dict)][:self._max_papers]
 
     
     def _assign_tiers(self, papers: list[dict]) -> list[dict]:

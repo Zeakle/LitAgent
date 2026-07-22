@@ -31,6 +31,8 @@ from litagent.memory.episodic import EpisodicMemory
 from litagent.memory.semantic import SemanticMemory
 from litagent.memory.procedural import ProceduralMemory
 from litagent.rag.claims_index import ClaimsIndex
+from litagent.rag.interfaces import Reranker, ScoredDoc, VectorStore
+from litagent.rag.retriever import HybridRetriever
 from litagent.orchestrator.task_graph import TaskGraph, SubTask
 from litagent.observability.recorder import RedactingTraceHook
 
@@ -682,6 +684,89 @@ class TestCLIDeliveryContract:
 # ═══════════════════════════════════════════════════════════
 # 13.7.3.4 — Evidence Rewrite（bounded，一次，规则校验）
 # ═══════════════════════════════════════════════════════════
+
+# ═══════════════════════════════════════════════════════════
+# 13.8 — RelevanceGate wiring + ExtractorConfig 边界
+# ═══════════════════════════════════════════════════════════
+
+class TestRelevanceGateWiring:
+    """Runner 共享 reranker 实例。"""
+
+    @pytest.mark.asyncio
+    async def test_reranker_shared_with_retriever_and_gate(self):
+        config = _minimal_config()
+        agent = LitAgent(config)
+        fake_reranker = MagicMock(spec=Reranker)
+        fake_store = MagicMock(spec=VectorStore)
+        infra = Infra(
+            reranker=fake_reranker,
+            retriever=HybridRetriever(fake_store, fake_reranker),
+        )
+        with (
+            patch("litagent.runner.OpenAICompatibleClient") as mock_llm_cls,
+            patch.object(agent, "_connect_infra", new=AsyncMock(return_value=infra)),
+        ):
+            mock_llm_cls.return_value = MockLLMClient(["test"])
+            await agent._wire()
+        assert agent._infra.reranker is fake_reranker
+        assert agent._infra.retriever._reranker is fake_reranker
+        assert agent._relevance_gate._reranker is fake_reranker
+        await agent.cleanup()
+
+    @pytest.mark.asyncio
+    async def test_wiring_succeeds_when_reranker_fails(self):
+        config = _minimal_config()
+        agent = LitAgent(config)
+        with patch(
+            "litagent.runner.CrossEncoderReranker",
+            side_effect=RuntimeError("model load failed"),
+        ):
+            assert agent._create_reranker() is None
+
+        with (
+            patch("litagent.runner.OpenAICompatibleClient") as mock_llm_cls,
+            patch.object(agent, "_connect_infra", new=AsyncMock(return_value=Infra())),
+        ):
+            mock_llm_cls.return_value = MockLLMClient(["test"])
+            await agent._wire()
+        assert agent._relevance_gate is not None
+        assert agent._relevance_gate._reranker is None
+        assert agent._wired is True
+        await agent.cleanup()
+
+    @pytest.mark.asyncio
+    async def test_retriever_without_reranker_returns_vector_top_k(self):
+        from langchain_core.documents import Document
+
+        store = MagicMock(spec=VectorStore)
+        store.search = AsyncMock(return_value=[
+            ScoredDoc(Document(page_content=f"doc-{index}"), float(index))
+            for index in range(4)
+        ])
+        retriever = HybridRetriever(store, reranker=None)
+        result = await retriever.search("query", top_k=2)
+        assert [item.doc.page_content for item in result] == ["doc-0", "doc-1"]
+
+
+class TestExtractorConfig:
+    """max_papers / per_paper_timeout_ms 默认值。"""
+
+    def test_extractor_config_defaults(self):
+        from litagent.config import ExtractorConfig
+        cfg = ExtractorConfig()
+        assert cfg.max_papers == 50
+        assert cfg.per_paper_timeout_ms == 20000
+
+    def test_extractor_config_rejects_zero_max_papers(self):
+        from litagent.config import ExtractorConfig
+        with pytest.raises(Exception):
+            ExtractorConfig(max_papers=0)
+
+    def test_per_paper_timeout_rejects_negative(self):
+        from litagent.config import ExtractorConfig
+        with pytest.raises(Exception):
+            ExtractorConfig(per_paper_timeout_ms=-1)
+
 
 class TestEvidenceRewrite:
     @staticmethod

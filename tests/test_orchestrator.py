@@ -225,8 +225,8 @@ class TestSurveyPlanner:
     async def test_plan_creates_dag(self):
         planner = SurveyPlanner()
         graph = await planner.plan("few-shot learning in CV")
-        # 单 query × 2 源 = 2 search + 1 recall + 4 下游(dedup/extract/graph/adversarial)
-        assert len(graph.tasks) == 7
+        # 单 query × 2 源 = 2 search + 1 recall + 5 下游(dedup/gate/extract/graph/adversarial)
+        assert len(graph.tasks) == 8
         assert "report" not in graph.tasks
         assert graph.tasks["adversarial_review"].agent_type == "adversarial_review"
 
@@ -258,6 +258,52 @@ class TestSurveyPlanner:
 # ═══════════════════════════════════════════════════════════
 # 13.7.1-B — Scheduler 按 priority 调度
 # ═══════════════════════════════════════════════════════════
+
+# ═══════════════════════════════════════════════════════════
+# 13.8 — DAG 增加 relevance_gate 节点
+# ═══════════════════════════════════════════════════════════
+
+class TestRelevanceGateDAG:
+    """13.8：Planner DAG 含 relevance_gate，extract/graph 依赖它。"""
+
+    @pytest.fixture(autouse=True)
+    def _no_ss_key(self, monkeypatch):
+        monkeypatch.delenv("SEMANTIC_SCHOLAR_API_KEY", raising=False)
+
+    @pytest.mark.asyncio
+    async def test_dag_contains_relevance_gate(self):
+        from litagent.agents.planner import SurveyPlanner
+        planner = SurveyPlanner()
+        graph = await planner.plan("test query")
+        rg = graph.get_task("relevance_gate")
+        assert rg is not None
+        assert rg.agent_type == "relevance_gate"
+
+    @pytest.mark.asyncio
+    async def test_relevance_gate_depends_only_on_dedup(self):
+        from litagent.agents.planner import SurveyPlanner
+        planner = SurveyPlanner()
+        graph = await planner.plan("test")
+        deps = graph._deps.get("relevance_gate", set())
+        assert deps == {"dedup"}
+
+    @pytest.mark.asyncio
+    async def test_extract_and_graph_depend_on_relevance_gate(self):
+        from litagent.agents.planner import SurveyPlanner
+        planner = SurveyPlanner()
+        graph = await planner.plan("test")
+        assert graph._deps.get("extract") == {"relevance_gate"}
+        assert graph._deps.get("graph_analysis") == {"relevance_gate"}
+
+    @pytest.mark.asyncio
+    async def test_extract_has_zero_retries(self):
+        from litagent.agents.planner import SurveyPlanner
+        planner = SurveyPlanner()
+        graph = await planner.plan("test")
+        extract = graph.get_task("extract")
+        assert extract.max_retries == 0
+        assert extract.timeout_ms == 300000
+
 
 class TestSchedulerPriority:
     """Scheduler 在 max_concurrent=1 时启动更低 priority task。"""

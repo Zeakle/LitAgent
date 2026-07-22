@@ -46,6 +46,7 @@ from litagent.agents.search import SearchWorker
 from litagent.agents.recall import RecallWorker
 from litagent.agents.extractor import ExtractorWorker
 from litagent.agents.dedup import DedupWorker
+from litagent.agents.relevance_gate import RelevanceGateWorker
 from litagent.agents.graph import GraphWorker
 from litagent.agents.synthesis import SynthesisWorker
 from litagent.agents.reviewer import ReviewerWorker
@@ -63,6 +64,7 @@ from litagent.memory.procedural import ProceduralMemory
 from litagent.memory.manager import MemoryManager
 
 # ── RAG infrastructure ──
+from litagent.rag.interfaces import Reranker
 from litagent.rag.vector_store import QdrantVectorStore
 from litagent.rag.claims_index import ClaimsIndex
 from litagent.rag.reranker import CrossEncoderReranker
@@ -126,6 +128,7 @@ class Infra:
     memory: MemoryManager | None = None
     claims_index: ClaimsIndex | None = None
     retriever: HybridRetriever | None = None
+    reranker: Reranker | None = None
 
     _qdrant_client: Any = None
     _redis_client: Any = None
@@ -197,6 +200,7 @@ class LitAgent:
         # ── Workers ──
         self._search: SearchWorker | None = None
         self._dedup: DedupWorker | None = None
+        self._relevance_gate: RelevanceGateWorker | None = None
         self._extractor: ExtractorWorker | None = None
         self._graph: GraphWorker | None = None
         self._synthesis: SynthesisWorker | None = None
@@ -450,7 +454,11 @@ class LitAgent:
         regex_strategy = RegexStrategy(self._executor)
         if cfg.extractor.enable_llm:
             llm_strategy = LLMStrategy(self._llm, self._skill_manager)
-            self._extraction_strategy = ResilientExtractionStrategy(llm_strategy, regex_strategy)
+            self._extraction_strategy = ResilientExtractionStrategy(
+                llm_strategy,
+                regex_strategy,
+                per_paper_timeout_ms=cfg.extractor.per_paper_timeout_ms,
+            )
         else:
             self._extraction_strategy = regex_strategy
 
@@ -466,15 +474,22 @@ class LitAgent:
         self._dedup = DedupWorker()
         workers.append(self._dedup)
 
+        self._relevance_gate = RelevanceGateWorker(
+            reranker=self._infra.reranker,
+            max_papers=cfg.extractor.max_papers,
+        )
+        workers.append(self._relevance_gate)
+
         self._extractor = ExtractorWorker(
             strategy=self._extraction_strategy,
             claims_index=self._infra.claims_index,
             max_concurrent=cfg.extractor.max_concurrent,
             detector=InjectionDetector(),
+            max_papers=cfg.extractor.max_papers,
         )
         workers.append(self._extractor)
 
-        self._graph = GraphWorker()
+        self._graph = GraphWorker(max_papers=cfg.extractor.max_papers)
         workers.append(self._graph)
 
         self._synthesis = SynthesisWorker(
@@ -580,6 +595,17 @@ class LitAgent:
 
     # ── Infrastructure connection ──
 
+    @staticmethod
+    def _create_reranker() -> Reranker | None:
+        try:
+            return CrossEncoderReranker()
+        except Exception as exc:
+            logger.warning(
+                f'CrossEncoder unavailable reason=model_init_failed error_type = {type(exc).__name__}'
+            )
+
+            return None
+
     async def _connect_infra(self, cfg: AppConfig) -> Infra:
         """连接基础设施，失败组件设为 None。
 
@@ -631,9 +657,9 @@ class LitAgent:
                 vector_store = await QdrantVectorStore.ensure_compatible(
                     qdrant_client, 'papers', dim
                 )
-                reranker = CrossEncoderReranker()
+                infra.reranker = self._create_reranker()
                 infra.retriever = HybridRetriever(
-                    vector_store, reranker, trace_hook=self._trace_hook
+                    vector_store, infra.reranker, trace_hook=self._trace_hook
                 )
                 logger.info("Infra: Qdrant connected (Episodic + Claims + Papers)")
             except ConfigError as e:
@@ -675,13 +701,11 @@ class LitAgent:
             logger.warning("Infra: MemoryManager skipped — Working unavailable (Redis)")
 
         return infra
-        
 
     @staticmethod
     def _get_embedding_dim() -> int:
         from litagent.rag.embedder import get_embedder
         return get_embedder().dim
-
 
     # ── Evaluation ──
     async def _evaluate(self, survey: str, results: dict[str, Any]) -> dict[str, Any]:

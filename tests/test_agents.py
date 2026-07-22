@@ -1,3 +1,6 @@
+import asyncio
+import json
+
 import pytest
 from typing import Any
 
@@ -767,6 +770,354 @@ class TestFaithfulnessDiagnostic:
         ev2 = RagasFaithfulnessEvaluator(self._cfg(), llm=MagicMock())
         out2 = await ev2._diagnose("survey", {CTX_EVIDENCE: {}})   # 无 ledger
         assert "diagnostic_skipped" in out2
+
+
+# ═══════════════════════════════════════════════════════════
+# 13.8 — RelevanceGateWorker + Extractor 弹性
+# ═══════════════════════════════════════════════════════════
+
+
+class TestRelevanceGateWorker:
+    """13.8：CrossEncoder 排序裁剪 + lexical fallback。"""
+
+    @staticmethod
+    def _papers(n: int = 10):
+        return [
+            {"paper_id": f"p{i}", "title": f"Paper {i}",
+             "abstract": f"abstract text {i}"}
+            for i in range(n)
+        ]
+
+    class _FakeReranker:
+        """返回逆序分数——验证结果按 score 降序。"""
+        def rerank(self, query, docs):
+            assert query
+            assert all(hasattr(item.doc, "page_content") for item in docs)
+            for index, item in enumerate(docs):
+                item.score = float(index)
+            return sorted(docs, key=lambda item: item.score, reverse=True)
+
+    @pytest.mark.asyncio
+    async def test_cross_encoder_sorts_and_caps(self):
+        from litagent.agents.relevance_gate import RelevanceGateWorker
+        w = RelevanceGateWorker(reranker=self._FakeReranker(), max_papers=5)
+        result = await w.execute(SubTask(
+            task_id="rg", description="t", agent_type="relevance_gate",
+            input_data={"query": "test", "upstream_results": {"dedup": self._papers(10)}}))
+        assert len(result) == 5
+        assert [paper["paper_id"] for paper in result] == [
+            "p9", "p8", "p7", "p6", "p5",
+        ]
+        assert result[0]["relevance_score"] >= result[-1]["relevance_score"]
+        assert result[0]["relevance_method"] == "cross_encoder"
+        assert "relevance_rank" in result[0]
+        assert result[0]["relevance_rank"] == 0
+
+    @pytest.mark.asyncio
+    async def test_ignores_other_upstream_keys(self):
+        from litagent.agents.relevance_gate import RelevanceGateWorker
+        w = RelevanceGateWorker(reranker=self._FakeReranker(), max_papers=50)
+        result = await w.execute(SubTask(
+            task_id="rg", description="t", agent_type="relevance_gate",
+            input_data={"query": "test", "upstream_results": {
+                "dedup": self._papers(3),
+                "search_arxiv_q0": [{"title": "should be ignored"}],
+            }}))
+        assert len(result) == 3
+
+    @pytest.mark.asyncio
+    async def test_reranker_error_falls_back_to_lexical(self):
+        class _BadReranker:
+            def rerank(self, query, docs):
+                raise RuntimeError("model load failed")
+
+        from litagent.agents.relevance_gate import RelevanceGateWorker
+        w = RelevanceGateWorker(reranker=_BadReranker(), max_papers=50)
+        result = await w.execute(SubTask(
+            task_id="rg", description="t", agent_type="relevance_gate",
+            input_data={"query": "paper", "upstream_results": {"dedup": self._papers(5)}}))
+        assert len(result) <= 5
+        assert result[0]["relevance_method"] == "lexical_fallback"
+
+    @pytest.mark.asyncio
+    async def test_reranker_error_respects_configured_cap(self):
+        class _BadReranker:
+            def rerank(self, query, docs):
+                raise RuntimeError("model load failed")
+
+        from litagent.agents.relevance_gate import RelevanceGateWorker
+        worker = RelevanceGateWorker(reranker=_BadReranker(), max_papers=3)
+        result = await worker.execute(SubTask(
+            task_id="rg", description="t", agent_type="relevance_gate",
+            input_data={"query": "paper", "upstream_results": {
+                "dedup": self._papers(10),
+            }},
+        ))
+        assert len(result) == 3
+        assert all(item["relevance_method"] == "lexical_fallback" for item in result)
+
+    @pytest.mark.asyncio
+    async def test_lexical_fallback_stable(self):
+        from litagent.agents.relevance_gate import RelevanceGateWorker
+        w = RelevanceGateWorker(reranker=None, max_papers=50)
+        a = await w.execute(SubTask(
+            task_id="rg", description="t", agent_type="relevance_gate",
+            input_data={"query": "paper 0", "upstream_results": {"dedup": self._papers(5)}}))
+        b = await w.execute(SubTask(
+            task_id="rg", description="t", agent_type="relevance_gate",
+            input_data={"query": "paper 0", "upstream_results": {"dedup": self._papers(5)}}))
+        assert len(a) == len(b)
+        assert [p["paper_id"] for p in a] == [p["paper_id"] for p in b]
+        assert a[0]["relevance_method"] == "lexical_fallback"
+
+    @pytest.mark.asyncio
+    async def test_empty_papers_returns_empty(self):
+        from litagent.agents.relevance_gate import RelevanceGateWorker
+        w = RelevanceGateWorker(reranker=None)
+        result = await w.execute(SubTask(
+            task_id="rg", description="t", agent_type="relevance_gate",
+            input_data={"query": "t", "upstream_results": {"dedup": []}}))
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_no_title_or_abstract_filtered(self):
+        from litagent.agents.relevance_gate import RelevanceGateWorker
+        w = RelevanceGateWorker(reranker=None)
+        papers = [
+            {"paper_id": "p1"},                       # 无 title 无 abstract → 过滤
+            {"paper_id": "p2", "title": "T"},          # 有 title → 保留
+        ]
+        result = await w.execute(SubTask(
+            task_id="rg", description="t", agent_type="relevance_gate",
+            input_data={"query": "t", "upstream_results": {"dedup": papers}}))
+        assert len(result) == 1
+        assert result[0]["paper_id"] == "p2"
+
+    @pytest.mark.asyncio
+    async def test_non_dict_candidates_are_filtered(self):
+        from litagent.agents.relevance_gate import RelevanceGateWorker
+        worker = RelevanceGateWorker(reranker=None)
+        result = await worker.execute(SubTask(
+            task_id="rg", description="t", agent_type="relevance_gate",
+            input_data={"query": "t", "upstream_results": {
+                "dedup": [None, "bad", ["bad"], {"paper_id": "p2", "title": "T"}],
+            }},
+        ))
+        assert [paper["paper_id"] for paper in result] == ["p2"]
+
+    @pytest.mark.asyncio
+    async def test_empty_query_uses_lexical(self):
+        from litagent.agents.relevance_gate import RelevanceGateWorker
+        w = RelevanceGateWorker(reranker=self._FakeReranker(), max_papers=50)
+        result = await w.execute(SubTask(
+            task_id="rg", description="t", agent_type="relevance_gate",
+            input_data={"query": "", "upstream_results": {"dedup": self._papers(5)}}))
+        assert result[0]["relevance_method"] == "lexical_fallback"
+
+    def test_rejects_non_positive_max_papers(self):
+        from litagent.agents.relevance_gate import RelevanceGateWorker
+        with pytest.raises(ValueError):
+            RelevanceGateWorker(reranker=None, max_papers=0)
+
+
+class TestExtractorResilience:
+    """13.8：Extractor 上游选择 + max_papers + 单篇弹性。"""
+
+    @pytest.mark.asyncio
+    async def test_reads_relevance_gate_first(self):
+        from litagent.agents.extractor import ExtractorWorker
+        strategy = MagicMock()
+        strategy.extract = AsyncMock(return_value={"claims": [], "metrics": {}})
+        w = ExtractorWorker(strategy=strategy, max_papers=50)
+        papers = [{"paper_id": "p1", "title": "T", "abstract": "A"}]
+        result = await w.execute(SubTask(
+            task_id="extract", description="e", agent_type="extractor",
+            input_data={"upstream_results": {
+                "relevance_gate": papers,
+                "dedup": [{"paper_id": "should_not_be_used"}],
+            }}))
+        assert isinstance(result, list)
+        assert len(result) == 1
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_dedup(self):
+        from litagent.agents.extractor import ExtractorWorker
+        strategy = MagicMock()
+        strategy.extract = AsyncMock(return_value={"claims": [], "metrics": {}})
+        w = ExtractorWorker(strategy=strategy, max_papers=50)
+        papers = [{"paper_id": "d1", "title": "D", "abstract": "a"}]
+        result = await w.execute(SubTask(
+            task_id="extract", description="e", agent_type="extractor",
+            input_data={"upstream_results": {"dedup": papers}}))
+        assert len(result) == 1
+
+    @pytest.mark.asyncio
+    async def test_ignores_unrelated_list_keys(self):
+        from litagent.agents.extractor import ExtractorWorker
+        strategy = MagicMock()
+        strategy.extract = AsyncMock(return_value={"claims": [], "metrics": {}})
+        w = ExtractorWorker(strategy=strategy, max_papers=50)
+        result = await w.execute(SubTask(
+            task_id="extract", description="e", agent_type="extractor",
+            input_data={"upstream_results": {
+                "search_arxiv_q0": [{"title": "irrelevant"}],
+            }}))
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_max_papers_caps_extractor_calls(self):
+        from litagent.agents.extractor import ExtractorWorker
+        strategy = MagicMock()
+        strategy.extract = AsyncMock(return_value={"claims": [], "metrics": {}})
+        w = ExtractorWorker(strategy=strategy, max_papers=3)
+        papers = [{"paper_id": f"p{i}", "title": f"P{i}", "abstract": "a"}
+                  for i in range(10)]
+        await w.execute(SubTask(
+            task_id="extract", description="e", agent_type="extractor",
+            input_data={"upstream_results": {"relevance_gate": papers}}))
+        assert strategy.extract.await_count == 3
+
+    @pytest.mark.asyncio
+    async def test_empty_gate_does_not_fall_back_to_dedup(self):
+        strategy = MagicMock()
+        strategy.extract = AsyncMock(return_value={"claims": [], "metrics": {}})
+        worker = ExtractorWorker(strategy=strategy)
+        result = await worker.execute(SubTask(
+            task_id="extract", description="e", agent_type="extractor",
+            input_data={"upstream_results": {
+                "relevance_gate": [],
+                "dedup": [{"paper_id": "must-not-return", "title": "T"}],
+            }},
+        ))
+        assert result == []
+        strategy.extract.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_graph_and_extractor_preserve_gate_order(self):
+        papers = [
+            {"paper_id": "p2", "title": "Second", "citation_count": 2},
+            {"paper_id": "p1", "title": "First", "citation_count": 1},
+        ]
+        upstream = {"relevance_gate": papers, "dedup": list(reversed(papers))}
+        strategy = MagicMock()
+        strategy.extract = AsyncMock(
+            side_effect=lambda _paper: {"claims": [], "metrics": {}},
+        )
+
+        extractor_result = await ExtractorWorker(strategy=strategy).execute(SubTask(
+            task_id="extract", description="e", agent_type="extractor",
+            input_data={"upstream_results": upstream},
+        ))
+        graph_result = await GraphWorker().execute(SubTask(
+            task_id="graph", description="g", agent_type="graph",
+            input_data={"upstream_results": upstream},
+        ))
+
+        assert [paper["paper_id"] for paper in extractor_result] == ["p2", "p1"]
+        assert [paper["paper_id"] for paper in graph_result["papers"]] == ["p2", "p1"]
+
+    @pytest.mark.asyncio
+    async def test_graph_empty_gate_does_not_fall_back_to_dedup(self):
+        result = await GraphWorker().execute(SubTask(
+            task_id="graph", description="g", agent_type="graph",
+            input_data={"upstream_results": {
+                "relevance_gate": [],
+                "dedup": [{"paper_id": "must-not-return", "title": "T"}],
+            }},
+        ))
+        assert result["papers"] == []
+
+    @pytest.mark.asyncio
+    async def test_worker_propagates_cancelled_error(self):
+        strategy = MagicMock()
+        strategy.extract = AsyncMock(side_effect=asyncio.CancelledError())
+        worker = ExtractorWorker(strategy=strategy)
+        with pytest.raises(asyncio.CancelledError):
+            await worker.execute(SubTask(
+                task_id="extract", description="e", agent_type="extractor",
+                input_data={"upstream_results": {
+                    "relevance_gate": [{"paper_id": "p1", "title": "T"}],
+                }},
+            ))
+
+    def test_workers_reject_non_positive_max_papers(self):
+        with pytest.raises(ValueError):
+            ExtractorWorker(strategy=MagicMock(), max_papers=0)
+        with pytest.raises(ValueError):
+            GraphWorker(max_papers=0)
+
+    @pytest.mark.asyncio
+    async def test_agent_type(self):
+        from litagent.agents.extractor import ExtractorWorker
+        w = ExtractorWorker(strategy=MagicMock())
+        assert w.agent_type == "extractor"
+
+
+class TestResilientExtractionStrategy:
+    @staticmethod
+    def _strategy(llm_extract, regex_result=None, timeout_ms=100):
+        from litagent.agents.extraction_strategy import ResilientExtractionStrategy
+
+        llm = MagicMock()
+        llm.extract = AsyncMock(side_effect=llm_extract)
+        regex = MagicMock()
+        regex.extract = AsyncMock(return_value=regex_result or {
+            "claims": [], "metrics": {}, "methods": [], "datasets": [],
+        })
+        return ResilientExtractionStrategy(llm, regex, timeout_ms), llm, regex
+
+    @pytest.mark.asyncio
+    async def test_success_calls_llm_once(self):
+        strategy, llm, regex = self._strategy(None)
+        llm.extract.side_effect = None
+        llm.extract.return_value = {"claims": [], "metrics": {}}
+        result = await strategy.extract({"paper_id": "p1"})
+        assert llm.extract.await_count == 1
+        regex.extract.assert_not_awaited()
+        assert result["extraction_mode"] == "llm"
+
+    @pytest.mark.asyncio
+    async def test_timeout_calls_llm_once_and_falls_back(self):
+        async def slow_extract(_paper):
+            await asyncio.sleep(1)
+
+        strategy, llm, regex = self._strategy(slow_extract, timeout_ms=1)
+        result = await strategy.extract({"paper_id": "p1"})
+        assert llm.extract.await_count == 1
+        assert regex.extract.await_count == 1
+        assert result["degradation_reason"] == "llm_timeout"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("error", "reason"),
+        [
+            (json.JSONDecodeError("bad", "x", 0), "invalid_llm_output"),
+            (RuntimeError("provider unavailable"), "llm_error"),
+        ],
+    )
+    async def test_errors_fall_back_with_stable_reason(self, error, reason):
+        strategy, llm, regex = self._strategy(error)
+        result = await strategy.extract({"paper_id": "p1"})
+        assert llm.extract.await_count == 1
+        assert regex.extract.await_count == 1
+        assert result["extraction_mode"] == "regex_fallback"
+        assert result["degradation_reason"] == reason
+
+    @pytest.mark.asyncio
+    async def test_cancelled_error_propagates_without_fallback(self):
+        strategy, llm, regex = self._strategy(asyncio.CancelledError())
+        with pytest.raises(asyncio.CancelledError):
+            await strategy.extract({"paper_id": "p1"})
+        assert llm.extract.await_count == 1
+        regex.extract.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_provider_error_text_is_not_logged(self, caplog):
+        strategy, _, _ = self._strategy(RuntimeError("secret-value-must-not-leak"))
+        with caplog.at_level("WARNING"):
+            await strategy.extract({"paper_id": "p1"})
+        assert "secret-value-must-not-leak" not in caplog.text
+        assert "error_type=RuntimeError" in caplog.text
 
 
 class TestExtractorEvidenceItems:

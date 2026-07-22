@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 import json
+import asyncio
 from abc import ABC, abstractmethod
 
 from litagent.llm.client import BaseLLMClient
@@ -89,15 +90,50 @@ class LLMStrategy(ExtractionStrategy):
 class ResilientExtractionStrategy(ExtractionStrategy):
     """LLM extract -> 单篇降级 regex"""
 
-    def __init__(self, llm_strategy: LLMStrategy, regex_strategy: RegexStrategy):
+    def __init__(self, llm_strategy: LLMStrategy, regex_strategy: RegexStrategy, per_paper_timeout_ms: int = 20000):
         self._llm = llm_strategy
         self._regex_strategy = regex_strategy
 
+        if per_paper_timeout_ms <= 0:
+            raise ValueError("per_paper_timeout_ms must be positive")
+        self._timeout_seconds = per_paper_timeout_ms / 1000.0
+
     
     async def extract(self, paper: dict) -> dict:
+        paper_id = paper.get('paper_id', '?')
         try:
-            return await self._llm.extract(paper)
-        except Exception as e:
-            pid = paper.get('paper_id', '?')
-            logger.warning(f'LLM extract failed for {pid}: {e}, falling back to regex')
-            return await self._regex_strategy.extract(paper)
+            result = await asyncio.wait_for(
+                self._llm.extract(paper),
+                timeout=self._timeout_seconds
+            )
+
+            result['extraction_mode'] = 'llm'
+            return result
+        except asyncio.CancelledError:
+            raise
+        except asyncio.TimeoutError:
+            return await self._fallback(paper, paper_id, 'llm_timeout', 'TimeoutError')
+        except json.JSONDecodeError as exc:
+            return await self._fallback(paper, paper_id, 'invalid_llm_output', type(exc).__name__)
+        except Exception as exc:
+            return await self._fallback(paper, paper_id, 'llm_error', type(exc).__name__)
+
+
+    async def _fallback(
+        self,
+        paper: dict,
+        paper_id: str,
+        reason: str,
+        error_type: str
+    ) -> dict:
+        logger.warning(
+            "LLM extract degraded for paper=%s reason=%s error_type=%s",
+            paper_id,
+            reason,
+            error_type,
+        )
+
+        result = await self._regex_strategy.extract(paper)
+        result['extraction_mode'] = 'regex_fallback'
+        result['degradation_reason'] = reason
+        return result

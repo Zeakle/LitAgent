@@ -278,7 +278,7 @@ class RunRecorder:
         if lifecycle == "complete":
             node["status"] = "completed"
             node["completed_at"] = at
-            node["elapsed_ms"] = data.get("elapsed_ms")
+            node["elapsed_ms"] = _event_elapsed_ms(data, node["started_at"], at)
             node["output"] = _event_output(event, data)
             node["metadata"] = _event_metadata(event, data)
             if event == "llm.complete":
@@ -291,7 +291,7 @@ class RunRecorder:
         if lifecycle in {"failed", "error", "cancelled"}:
             node["status"] = "cancelled" if lifecycle == "cancelled" else "failed"
             node["completed_at"] = at
-            node["elapsed_ms"] = data.get("elapsed_ms")
+            node["elapsed_ms"] = _event_elapsed_ms(data, node["started_at"], at)
             node["error"] = data.get("error") or data.get("error_type") or "unknown_error"
 
     def _close_unfinished_nodes(self) -> None:
@@ -300,6 +300,9 @@ class RunRecorder:
             if node["status"] in {"pending", "running"}:
                 node["status"] = "cancelled"
                 node["completed_at"] = completed_at
+                node["elapsed_ms"] = _event_elapsed_ms(
+                    {}, node.get("started_at"), completed_at
+                )
                 node["error"] = "terminal_event_missing"
 
 
@@ -344,7 +347,11 @@ def _event_output(event: str, data: dict[str, Any]) -> Any:
     if "output" in data:
         return data["output"]
     if event == "llm.complete":
-        return data.get("content", "")
+        content = data.get("content", "")
+        tool_calls = data.get("tool_calls", [])
+        if tool_calls:
+            return {"content": content, "tool_calls": tool_calls}
+        return content
     ignored = {
         "operation_id", "task_id", "name", "agent_type", "model",
         "elapsed_ms", "prompt_tokens", "completion_tokens", "total_tokens",
@@ -362,6 +369,24 @@ def _event_metadata(event: str, data: dict[str, Any]) -> dict[str, Any]:
         }
         return {key: value for key, value in data.items() if key not in ignored}
     return {}
+
+
+def _event_elapsed_ms(
+    data: dict[str, Any],
+    started_at: str | None,
+    completed_at: str | None,
+) -> int | None:
+    explicit = data.get("elapsed_ms")
+    if explicit is not None:
+        return int(explicit)
+    if not started_at or not completed_at:
+        return None
+    try:
+        started = datetime.fromisoformat(started_at)
+        completed = datetime.fromisoformat(completed_at)
+    except (TypeError, ValueError):
+        return None
+    return max(0, int((completed - started).total_seconds() * 1000))
 
 
 def _json_default(value: Any) -> Any:

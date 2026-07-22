@@ -111,6 +111,43 @@ def test_recorder_maps_rag_memory_and_usage_payloads(tmp_path):
     assert artifact["elapsed_ms"] >= 0
 
 
+def test_worker_elapsed_is_derived_when_terminal_event_omits_it(tmp_path):
+    recorder = RunRecorder("run-worker-time", "query", ArchiveRepository(tmp_path))
+    recorder._apply_event(
+        "worker.start",
+        {"task_id": "extract", "agent_type": "extractor"},
+        "2026-07-22T07:00:00.000000+00:00",
+    )
+    recorder._apply_event(
+        "worker.complete",
+        {"task_id": "extract", "agent_type": "extractor", "output": []},
+        "2026-07-22T07:00:01.250000+00:00",
+    )
+
+    assert recorder.snapshot()["nodes"]["worker:extract"]["elapsed_ms"] == 1250
+
+
+def test_tool_call_llm_completion_is_recorded_as_output(tmp_path):
+    recorder = RunRecorder("run-tool-call", "query", ArchiveRepository(tmp_path))
+    tool_calls = [{
+        "id": "call-1",
+        "type": "function",
+        "function": {"name": "load_skill", "arguments": {"name": "cv"}},
+    }]
+    recorder("llm.start", {
+        "operation_id": "llm-tool", "task_id": "synthesis", "model": "model",
+        "messages": [{"role": "user", "content": "query"}],
+    })
+    recorder("llm.complete", {
+        "operation_id": "llm-tool", "task_id": "synthesis", "model": "model",
+        "content": "", "tool_calls": tool_calls, "prompt_tokens": 3,
+        "completion_tokens": 2, "total_tokens": 5, "elapsed_ms": 10,
+    })
+
+    node = recorder.snapshot()["nodes"]["llm:llm-tool"]
+    assert node["output"] == {"content": "", "tool_calls": tool_calls}
+
+
 def test_repository_reads_legacy_v1_archive_without_rewriting(tmp_path):
     repository = ArchiveRepository(tmp_path)
     legacy = {"version": 1, "run_id": "legacy", "events": [], "completed_at": "2026-01-01"}
@@ -185,3 +222,23 @@ def test_redacting_sink_removes_session_tokens_but_keeps_token_metrics():
     assert captured[0]["nested"] == {}
     assert captured[0]["max_tokens"] == 100
     assert captured[0]["total_tokens"] == 50
+
+
+def test_redacting_sink_redacts_structured_tool_call_arguments():
+    captured = []
+    hook = RedactingTraceHook(lambda event, data: captured.append(data))
+
+    hook("llm.complete", {
+        "tool_calls": [{
+            "id": "call-1",
+            "type": "function",
+            "function": {
+                "name": "search",
+                "arguments": {"query": "few shot", "api_key": "secret"},
+            },
+        }],
+    })
+
+    arguments = captured[0]["tool_calls"][0]["function"]["arguments"]
+    assert arguments["query"] == "few shot"
+    assert "api_key" not in arguments

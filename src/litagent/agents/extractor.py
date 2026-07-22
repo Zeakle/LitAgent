@@ -3,6 +3,7 @@
 from __future__ import annotations
 import asyncio
 from typing import Any
+from collections.abc import Mapping
 
 from litagent.orchestrator.scheduler import Worker
 from litagent.orchestrator.task_graph import SubTask
@@ -18,11 +19,23 @@ logger = get_logger("agents.extractor")
 class ExtractorWorker(Worker):
     """提取 Worker——从论文列表中提取结构化信息。
     """
-    def __init__(self, strategy: ExtractionStrategy, claims_index: ClaimsIndex | None = None, max_concurrent: int = 5, detector: InjectionDetector = None):
+    def __init__(
+        self,
+        strategy: ExtractionStrategy,
+        claims_index: ClaimsIndex | None = None,
+        max_concurrent: int = 5,
+        detector: InjectionDetector = None,
+        max_papers: int = 50,
+    ):
+        if max_papers <= 0:
+            raise ValueError("max_papers must be positive")
+
         self._strategy = strategy
         self._claims_index = claims_index
         self._sem = asyncio.Semaphore(max_concurrent)
         self._detector = detector
+        self._max_papers = max_papers
+
 
     @property
     def agent_type(self) -> str:
@@ -48,9 +61,15 @@ class ExtractorWorker(Worker):
 
         extractions = []
         for paper, r in zip(papers, results):
+            if isinstance(r, asyncio.CancelledError):
+                raise r
+
             if isinstance(r, BaseException):
-                logger.warning(f"Extraction fully failed for {paper.get('paper_id','?')}: {r}")
+                logger.warning(
+                    f"Extraction fully failed for paper={paper.get('paper_id', '?')} error_type={type(r).__name__}",
+                )
                 continue
+
             # 补齐权威元信息（策略只产出提取字段，不产出 paper_id/title 等）
             r.update({
                 'paper_id': paper.get('paper_id', ""),
@@ -78,11 +97,19 @@ class ExtractorWorker(Worker):
 
 
     def _get_papers_from_upstream(self, upstream: dict) -> list[dict]:
-        """从上游结果中获取论文列表(dedup的输出)"""
-        for task_id, result in upstream.items():
-            if isinstance(result, list) and result:
-                return result
-        return []
+        """Use the explicit DAG contract; dedup is a migration/test fallback only."""
+        if not isinstance(upstream, Mapping):
+            return []
+
+        if 'relevance_gate' in upstream:
+            candidates = upstream['relevance_gate']
+        else:
+            candidates = upstream.get('dedup', [])
+
+        if not isinstance(candidates, list):
+            return []
+
+        return [paper for paper in candidates if isinstance(paper, dict)][:self._max_papers]
 
 
     async def _extract_one(self, paper: dict) -> dict:

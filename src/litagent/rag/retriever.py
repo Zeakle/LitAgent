@@ -18,7 +18,7 @@ class HybridRetriever:
     2. 可选 rerank
     """
 
-    def __init__(self, store: VectorStore, reranker: Reranker, trace_hook=None):
+    def __init__(self, store: VectorStore, reranker: Reranker | None = None, trace_hook=None):
         self._store = store
         self._reranker = reranker
         self._trace_hook = trace_hook
@@ -43,7 +43,7 @@ class HybridRetriever:
 
         try:
             results = await self._store.search(query, top_k * 2)
-            if len(results) > top_k:
+            if len(results) > top_k and self._reranker is not None:
                 results = self._reranker.rerank(query, results)
             results = results[:top_k]
 

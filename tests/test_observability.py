@@ -1,6 +1,8 @@
 """Phase 13.0 LangFuse observability tests（不需真 LangFuse）。"""
 
 import asyncio
+from unittest.mock import AsyncMock
+
 import pytest
 
 from litagent.observability.context import set_task_id, get_task_id, reset_task_id
@@ -132,6 +134,31 @@ class TestTracerHandlers:
         updates = [k for act, k in worker_span.log if act == "update"]
         assert any(k.get("output") == "hello" for k in updates)
         assert any(k.get("usage_details", {}).get("total_tokens") == 15 for k in updates)
+
+    def test_tool_call_generation_has_structured_output(self):
+        tracer, _ = _tracer_with_mock()
+        tracer._handle("worker.start", {"task_id": "t1", "agent_type": "synthesis"})
+        worker_span = tracer._spans["t1"]
+        tracer._handle("llm.start", {
+            "operation_id": "op-tool", "task_id": "t1", "model": "mock",
+            "messages": [{"role": "user", "content": "load skill"}],
+        })
+        tool_calls = [{
+            "id": "call-1",
+            "type": "function",
+            "function": {"name": "load_skill", "arguments": {"name": "cv"}},
+        }]
+        tracer._handle("llm.complete", {
+            "operation_id": "op-tool", "content": "", "tool_calls": tool_calls,
+            "prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15,
+            "elapsed_ms": 12,
+        })
+
+        updates = [kwargs for action, kwargs in worker_span.log if action == "update"]
+        assert any(
+            kwargs.get("output") == {"content": "", "tool_calls": tool_calls}
+            for kwargs in updates
+        )
 
     def test_rag_span_has_full_input_and_output(self):
         tracer, log = _tracer_with_mock()
@@ -285,6 +312,50 @@ class TestClientEmitsLLMCall:
         assert d["total_tokens"] == 15          # 10 + 5
         assert d["content"] == "hello"          # content 会映射为 span output
         assert "elapsed_ms" in d
+
+    @pytest.mark.asyncio
+    async def test_client_emits_full_structured_tool_calls(self):
+        from types import SimpleNamespace
+        from litagent.llm.client import OpenAICompatibleClient
+
+        message = SimpleNamespace(
+            content=None,
+            tool_calls=[SimpleNamespace(
+                id="call-1",
+                function=SimpleNamespace(
+                    name="load_skill",
+                    arguments='{"name":"cv","api_key":"secret"}',
+                ),
+            )],
+        )
+        completion = SimpleNamespace(
+            model="deepseek-v4-flash",
+            choices=[SimpleNamespace(message=message)],
+            usage=_FakeUsage(),
+        )
+        fake_openai = SimpleNamespace(
+            chat=SimpleNamespace(
+                completions=SimpleNamespace(create=AsyncMock(return_value=completion)),
+            ),
+        )
+        events = []
+        client = OpenAICompatibleClient(
+            base_url="x", model="m",
+            trace_hook=lambda event, data: events.append((event, data)),
+        )
+        client._client = fake_openai
+
+        response = await client.chat([{"role": "user", "content": "load skill"}])
+
+        assert response.tool_calls[0]["function"]["arguments"] == (
+            '{"name":"cv","api_key":"secret"}'
+        )
+        emitted = events[-1][1]["tool_calls"][0]
+        assert emitted["id"] == "call-1"
+        assert emitted["function"] == {
+            "name": "load_skill",
+            "arguments": {"name": "cv", "api_key": "secret"},
+        }
 
     @pytest.mark.asyncio
     async def test_client_no_trace_hook_no_crash(self):

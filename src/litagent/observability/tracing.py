@@ -112,8 +112,14 @@ class LangFuseTracer:
             op_id = data.get('operation_id')
             if op_id and op_id in self._operations:
                 gen = self._operations.pop(op_id)
+                output: Any = data.get('content', '')
+                if data.get('tool_calls'):
+                    output = {
+                        'content': data.get('content', ''),
+                        'tool_calls': data['tool_calls'],
+                    }
                 gen.update(
-                    output=data.get('content', ''),
+                    output=output,
                     usage_details={
                         'prompt_tokens': data.get('prompt_tokens', 0),
                         'completion_tokens': data.get('completion_tokens', 0),

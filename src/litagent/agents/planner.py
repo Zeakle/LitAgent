@@ -149,22 +149,32 @@ class SurveyPlanner:
             input_data={"query": query},
         ), depends_on=search_ids + recall_ids)
 
-        # layer3: 提取 + 引用分析(并行，只等dedup)
+        # layer3: Relevance重排
+        graph.add_task(SubTask(
+            task_id="relevance_gate",
+            description="Rank papers by relevance to query",
+            agent_type="relevance_gate",
+            input_data={"query": query},
+        ), depends_on=["dedup"])
+
+        # layer4: 提取 + 引用分析（并行，只等 relevance_gate）
         graph.add_task(SubTask(
             task_id='extract',
             description='Extract structure info from papers',
             agent_type='extractor',
             input_data={"query": query},
-        ), depends_on=['dedup'])
+            timeout_ms=300000,
+            max_retries=0,
+        ), depends_on=['relevance_gate'])
 
         graph.add_task(SubTask(
             task_id='graph_analysis',
             description='Analyze citation network',
             agent_type='graph',
             input_data={"query": query},
-        ), depends_on=['dedup'])
+        ), depends_on=['relevance_gate'])
 
-        # layer4-5: 综合 -> 审稿(串行)
+        # layer5: 综合 -> 审稿(串行)
         graph.add_task(SubTask(
             task_id='adversarial_review',
             description='Adversarial synthesis + review loop',

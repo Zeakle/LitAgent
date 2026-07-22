@@ -2,6 +2,8 @@
 
 
 from __future__ import annotations
+
+import json
 import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -136,7 +138,7 @@ class OpenAICompatibleClient(BaseLLMClient):
                 "completion_tokens": usage.get("completion_tokens", 0),
                 "total_tokens": usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0),
                 "elapsed_ms": int((time.perf_counter() - t0) * 1000),
-                "tool_calls": [tc.get("function", {}).get("name", "") for tc in tool_calls],
+                "tool_calls": _tool_calls_for_trace(tool_calls),
             })
 
             return response
@@ -149,6 +151,26 @@ class OpenAICompatibleClient(BaseLLMClient):
                 "error_type": type(e).__name__, "error": str(e)[:512],
             })
             raise
+
+
+def _tool_calls_for_trace(tool_calls: list[dict]) -> list[dict]:
+    """Copy tool calls and parse JSON arguments for recursive trace redaction."""
+    traced: list[dict] = []
+    for tool_call in tool_calls:
+        function = dict(tool_call.get("function", {}))
+        arguments = function.get("arguments", {})
+        if isinstance(arguments, str):
+            try:
+                arguments = json.loads(arguments)
+            except json.JSONDecodeError:
+                arguments = {"raw": arguments}
+        function["arguments"] = arguments
+        traced.append({
+            "id": tool_call.get("id", ""),
+            "type": tool_call.get("type", "function"),
+            "function": function,
+        })
+    return traced
 
 
 class MockLLMClient(BaseLLMClient):

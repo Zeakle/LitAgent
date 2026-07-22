@@ -84,6 +84,8 @@ class ResilienceConfig(BaseModel):
 class ExtractorConfig(BaseModel):
     max_concurrent: int = Field(default=5, gt=0)
     enable_llm: bool = True
+    max_papers: int = Field(default=50, gt=0, le=200)
+    per_paper_timeout_ms: int = Field(default=20000, ge=1000, le=120000)
 
 
 class ObservabilityConfig(BaseModel):
