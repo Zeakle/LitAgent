@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import copy
+import dataclasses
 import json
 import os
+import re
 import tempfile
 import time
 from datetime import datetime, timezone
@@ -33,6 +34,12 @@ class CompositeTraceHook:
             if capture:
                 capture(graph)
 
+    def capture_graph_state(self, graph: Any) -> None:
+        for hook in self._hooks:
+            capture = getattr(hook, "capture_graph_state", None)
+            if capture:
+                capture(graph)
+
     def flush(self) -> None:
         for hook in self._hooks:
             flush = getattr(hook, "flush", None)
@@ -41,19 +48,30 @@ class CompositeTraceHook:
 
 
 class RedactingTraceHook:
-    """Forwards only operational metadata to a remote observability sink."""
+    """Forward trace payloads after recursively removing credentials."""
 
     _ALLOWED_FIELDS = {
         "operation_id", "task_id", "agent_type", "model", "elapsed_ms",
         "usage", "error", "status", "attempt", "output_size", "top_k",
         "candidate_count", "result_count", "score", "quality", "delivery",
+        "prompt_tokens", "completion_tokens", "total_tokens", "error_type",
+        "error_code", "name", "layer", "source", "count",
     }
 
-    def __init__(self, sink: Any) -> None:
+    def __init__(self, sink: Any, payload_mode: str = "full_redacted") -> None:
         self._sink = sink
+        self._payload_mode = payload_mode
 
     def __call__(self, event: str, data: dict[str, Any]) -> None:
-        self._sink(event, {key: value for key, value in data.items() if key in self._ALLOWED_FIELDS})
+        if self._payload_mode == "metadata_only":
+            payload = {
+                key: _redact_trace_value(value)
+                for key, value in data.items()
+                if key in self._ALLOWED_FIELDS
+            }
+        else:
+            payload = _redact_trace_value(data)
+        self._sink(event, payload)
 
     def flush(self) -> None:
         flush = getattr(self._sink, "flush", None)
@@ -114,15 +132,27 @@ class RunRecorder:
 
     def __init__(self, run_id: str, query: str, repository: ArchiveRepository) -> None:
         now = _now()
+        self._started_monotonic = time.perf_counter()
         self.run_id = run_id
         self._repository = repository
         self._artifact: dict[str, Any] = {
-            "version": 1,
+            "version": 2,
             "run_id": run_id,
             "query": query,
             "status": "running",
             "started_at": now,
             "completed_at": None,
+            "elapsed_ms": None,
+            "session_id": None,
+            "config": {},
+            "usage": {
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "total_tokens": 0,
+            },
+            "task_statuses": {},
+            "quality": None,
+            "delivery": None,
             "events": [],
             "nodes": {},
             "graph": {"tasks": {}, "dependencies": {}},
@@ -134,7 +164,16 @@ class RunRecorder:
         payload = _snapshot(data)
         record = {"sequence": len(self._artifact["events"]), "at": _now(), "event": event, "data": payload}
         self._artifact["events"].append(record)
+        if event == "survey.start":
+            self._artifact["session_id"] = payload.get("session_id")
+        if event == "llm.complete":
+            usage = self._artifact["usage"]
+            for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+                usage[key] += int(payload.get(key, 0) or 0)
         self._apply_event(event, payload, record["at"])
+
+    def set_config_summary(self, summary: dict[str, Any]) -> None:
+        self._artifact["config"] = _snapshot(summary)
 
     def capture_graph(self, graph: Any) -> None:
         tasks = getattr(graph, "tasks", {})
@@ -150,17 +189,56 @@ class RunRecorder:
                     "priority": task.priority,
                     "timeout_ms": task.timeout_ms,
                     "max_retries": task.max_retries,
+                    "error": task.error,
                 }
                 for task_id, task in tasks.items()
             },
             "dependencies": {task_id: sorted(values) for task_id, values in dependencies.items()},
         }
 
+    def capture_graph_state(self, graph: Any) -> None:
+        if not self._artifact["graph"]["tasks"]:
+            self.capture_graph(graph)
+            return
+        for task_id, task in getattr(graph, "tasks", {}).items():
+            target = self._artifact["graph"]["tasks"].setdefault(task_id, {
+                "task_id": task.task_id,
+                "description": task.description,
+                "agent_type": task.agent_type,
+                "input": _snapshot(task.input_data),
+                "priority": task.priority,
+                "timeout_ms": task.timeout_ms,
+                "max_retries": task.max_retries,
+            })
+            target["status"] = str(
+                task.status.value if hasattr(task.status, "value") else task.status
+            )
+            target["error"] = task.error
+
     def finalize(self, report: dict[str, Any] | None = None, error: str | None = None) -> dict[str, Any]:
         self._artifact["status"] = "failed" if error else "completed"
         self._artifact["completed_at"] = _now()
+        self._artifact["elapsed_ms"] = int(
+            (time.perf_counter() - self._started_monotonic) * 1000
+        )
         self._artifact["report"] = _snapshot(report) if report is not None else None
         self._artifact["error"] = error
+        report_data = report or {}
+        self._artifact["quality"] = _snapshot(report_data.get("quality"))
+        self._artifact["delivery"] = _snapshot(report_data.get("delivery"))
+        statuses: dict[str, int] = {}
+        unfinished_graph_tasks: list[str] = []
+        for task in self._artifact["graph"]["tasks"].values():
+            status = task.get("status", "unknown")
+            statuses[status] = statuses.get(status, 0) + 1
+            if status in {"pending", "running"}:
+                unfinished_graph_tasks.append(task.get("task_id", ""))
+        self._artifact["task_statuses"] = statuses
+        if not error and unfinished_graph_tasks:
+            self._artifact["status"] = "failed"
+            self._artifact["error"] = "incomplete_graph_state"
+        if not error:
+            self._close_unfinished_nodes()
         self._repository.save(self._artifact)
         return self.snapshot()
 
@@ -185,6 +263,7 @@ class RunRecorder:
             "error": None,
             "elapsed_ms": None,
             "usage": None,
+            "metadata": {},
         })
         if event == "worker.input":
             node["input"] = data.get("input", {})
@@ -192,13 +271,16 @@ class RunRecorder:
         if lifecycle == "start":
             node["status"] = "running"
             node["started_at"] = at
-            node["input"] = data.get("input", data.get("messages", data.get("args", node["input"])))
+            event_input = _event_input(event, data)
+            if event_input is not None:
+                node["input"] = event_input
             return
         if lifecycle == "complete":
             node["status"] = "completed"
             node["completed_at"] = at
             node["elapsed_ms"] = data.get("elapsed_ms")
-            node["output"] = data.get("output", data.get("content", data.get("result", data.get("output_size"))))
+            node["output"] = _event_output(event, data)
+            node["metadata"] = _event_metadata(event, data)
             if event == "llm.complete":
                 node["usage"] = {
                     "prompt_tokens": data.get("prompt_tokens", 0),
@@ -206,11 +288,19 @@ class RunRecorder:
                     "total_tokens": data.get("total_tokens", 0),
                 }
             return
-        if lifecycle in {"failed", "error"}:
-            node["status"] = "failed"
+        if lifecycle in {"failed", "error", "cancelled"}:
+            node["status"] = "cancelled" if lifecycle == "cancelled" else "failed"
             node["completed_at"] = at
             node["elapsed_ms"] = data.get("elapsed_ms")
             node["error"] = data.get("error") or data.get("error_type") or "unknown_error"
+
+    def _close_unfinished_nodes(self) -> None:
+        completed_at = self._artifact["completed_at"]
+        for node in self._artifact["nodes"].values():
+            if node["status"] in {"pending", "running"}:
+                node["status"] = "cancelled"
+                node["completed_at"] = completed_at
+                node["error"] = "terminal_event_missing"
 
 
 def _node_identity(event: str, data: dict[str, Any]) -> tuple[str | None, str | None]:
@@ -234,15 +324,97 @@ def _now() -> str:
 
 
 def _snapshot(value: Any) -> Any:
-    try:
-        return copy.deepcopy(value)
-    except Exception:
-        return _json_default(value)
+    return json.loads(json.dumps(value, ensure_ascii=False, default=_json_default))
+
+
+def _event_input(event: str, data: dict[str, Any]) -> Any:
+    if event == "worker.start":
+        return None
+    if event == "llm.start":
+        return {key: data[key] for key in ("model", "messages", "max_tokens", "temperature")
+                if key in data}
+    if event == "tool.start":
+        return data.get("args", {})
+    ignored = {"operation_id", "task_id", "elapsed_ms"}
+    payload = {key: value for key, value in data.items() if key not in ignored}
+    return payload or None
+
+
+def _event_output(event: str, data: dict[str, Any]) -> Any:
+    if "output" in data:
+        return data["output"]
+    if event == "llm.complete":
+        return data.get("content", "")
+    ignored = {
+        "operation_id", "task_id", "name", "agent_type", "model",
+        "elapsed_ms", "prompt_tokens", "completion_tokens", "total_tokens",
+    }
+    payload = {key: value for key, value in data.items() if key not in ignored}
+    return payload or None
+
+
+def _event_metadata(event: str, data: dict[str, Any]) -> dict[str, Any]:
+    if event == "llm.complete":
+        return {"tool_calls": data.get("tool_calls", [])}
+    if "output" in data:
+        ignored = {
+            "operation_id", "task_id", "name", "agent_type", "output", "elapsed_ms",
+        }
+        return {key: value for key, value in data.items() if key not in ignored}
+    return {}
 
 
 def _json_default(value: Any) -> Any:
+    if dataclasses.is_dataclass(value):
+        return dataclasses.asdict(value)
     if hasattr(value, "model_dump"):
         return value.model_dump()
     if hasattr(value, "value"):
         return value.value
     return f"<{type(value).__name__}>"
+
+
+_SECRET_KEYS = {
+    "authorization", "proxy_authorization", "cookie", "set_cookie",
+    "password", "passwd", "secret", "client_secret", "api_key", "apikey",
+    "access_token", "refresh_token", "auth_token", "private_key",
+    "token", "session_token",
+}
+_SECRET_VALUE_RE = re.compile(
+    r"(?i)(?:authorization\s*[:=]\s*bearer\s+\S+|bearer\s+[a-z0-9._-]{8,}|"
+    r"(?:sk|rk|pk)-[a-z0-9_-]{8,}|"
+    r"(?:api[_-]?key|access[_-]?token|refresh[_-]?token|session[_-]?token|"
+    r"auth[_-]?token|password|secret)\s*[:=]\s*\S+|"
+    r"-----BEGIN [A-Z ]*PRIVATE KEY-----)"
+)
+
+
+def _normalized_key(key: Any) -> str:
+    return str(key).strip().lower().replace("-", "_")
+
+
+def _is_secret_key(key: Any) -> bool:
+    normalized = _normalized_key(key)
+    return normalized in _SECRET_KEYS or any(
+        normalized.endswith(f"_{suffix}")
+        for suffix in (
+            "api_key", "access_token", "refresh_token", "session_token",
+            "auth_token", "client_secret",
+        )
+    )
+
+
+def _redact_trace_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            str(key): _redact_trace_value(item)
+            for key, item in value.items()
+            if not _is_secret_key(key)
+        }
+    if isinstance(value, (list, tuple)):
+        return [_redact_trace_value(item) for item in value]
+    if isinstance(value, str) and _SECRET_VALUE_RE.search(value):
+        return "<redacted>"
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    return _redact_trace_value(_snapshot(value))

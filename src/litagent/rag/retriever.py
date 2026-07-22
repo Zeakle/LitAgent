@@ -52,6 +52,14 @@ class HybridRetriever:
                 'operation_id': op_id,
                 "task_id": get_task_id(),
                 "count": len(results),
+                "results": [
+                    {
+                        "content": item.doc.page_content,
+                        "metadata": item.doc.metadata,
+                        "score": item.score,
+                    }
+                    for item in results
+                ],
                 "elapsed_ms": elapsed_ms
             })
             return results

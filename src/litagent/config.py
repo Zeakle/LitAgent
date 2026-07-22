@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from typing import Literal
 from dotenv import load_dotenv
 
 import yaml
@@ -88,6 +89,7 @@ class ExtractorConfig(BaseModel):
 class ObservabilityConfig(BaseModel):
     enabled: bool = False
     langfuse_host: str = 'http://localhost:3000'
+    payload_mode: Literal['full_redacted', 'metadata_only'] = 'full_redacted'
 
 
 class EvalConfig(BaseModel):

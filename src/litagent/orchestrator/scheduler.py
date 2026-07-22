@@ -99,6 +99,7 @@ class Scheduler:
             )
         except asyncio.TimeoutError:
             logger.warning("Orchestration timeout, returning partial results")
+            self._finalize_incomplete(graph, "orchestration_timeout")
             return graph.get_results()
         finally:
             if self._on_complete:
@@ -120,10 +121,12 @@ class Scheduler:
                     f"Cost budget exceeded ({self._cost_budget.used} tokens), "
                     f"stopping dispatch, returning partial results"
                 )
+                self._finalize_incomplete(graph, "cost_budget_exceeded")
                 return graph.get_results()
 
             if cancellation and cancellation.is_cancelled:
                 logger.info("Cancelled by user, returning partial results")
+                self._finalize_incomplete(graph, "user_cancelled")
                 return graph.get_results()
 
             ready = graph.get_ready_tasks()
@@ -140,6 +143,17 @@ class Scheduler:
             await asyncio.gather(*coros, return_exceptions=True)
 
         return graph.get_results()
+
+
+    def _finalize_incomplete(self, graph: TaskGraph, reason: str) -> None:
+        transitions = graph.finalize_incomplete(reason)
+        for task_id in transitions["cancelled"]:
+            task = graph.get_task(task_id)
+            self._emit("worker.cancelled", {
+                "task_id": task_id,
+                "agent_type": task.agent_type if task else "",
+                "error": reason,
+            })
 
     
     async def _dispatch(self, graph: TaskGraph, task: SubTask) -> None:

@@ -90,6 +90,26 @@ def _tracer_with_mock():
 
 
 class TestTracerHandlers:
+    def test_worker_input_is_attached_and_cancel_closes_span(self):
+        tracer, log = _tracer_with_mock()
+        worker_input = {"query": "few-shot", "papers": [{"title": "Paper"}]}
+
+        tracer._handle("worker.input", {
+            "task_id": "t1", "agent_type": "extractor", "input": worker_input,
+        })
+        tracer._handle("worker.start", {
+            "task_id": "t1", "agent_type": "extractor", "description": "extract",
+        })
+        span = tracer._spans["t1"]
+        starts = [kwargs for action, kwargs in log if action == "start"]
+        assert starts[-1]["input"] == worker_input
+
+        tracer._handle("worker.cancelled", {
+            "task_id": "t1", "agent_type": "extractor", "error": "user_cancelled",
+        })
+        assert span.ended
+        assert "t1" not in tracer._spans
+
     def test_worker_span_nests_and_closes(self):
         tracer, log = _tracer_with_mock()
         tracer._handle("worker.start", {"task_id": "t1", "agent_type": "search"})
@@ -109,6 +129,24 @@ class TestTracerHandlers:
         # 在 worker span 下建了 generation
         starts = [k for act, k in worker_span.log if act == "start"]
         assert any(k.get("as_type") == "generation" for k in starts)
+        updates = [k for act, k in worker_span.log if act == "update"]
+        assert any(k.get("output") == "hello" for k in updates)
+        assert any(k.get("usage_details", {}).get("total_tokens") == 15 for k in updates)
+
+    def test_rag_span_has_full_input_and_output(self):
+        tracer, log = _tracer_with_mock()
+        tracer._handle("rag.search.start", {
+            "operation_id": "rag-1", "task_id": "", "query": "few shot", "top_k": 5,
+        })
+        tracer._handle("rag.search.complete", {
+            "operation_id": "rag-1", "task_id": "", "count": 1,
+            "results": [{"title": "Paper"}], "elapsed_ms": 7,
+        })
+
+        starts = [k for act, k in log if act == "start"]
+        updates = [k for act, k in log if act == "update"]
+        assert starts[-1]["input"] == {"query": "few shot", "top_k": 5}
+        assert updates[-1]["output"]["results"] == [{"title": "Paper"}]
 
     def test_tool_lifecycle_emits_tool_span(self):
         """13.7.3.2：tool.start/complete 配对——挂对应 worker span，as_type=tool。"""

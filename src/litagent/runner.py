@@ -70,6 +70,7 @@ from litagent.rag.retriever import HybridRetriever
 
 # ── Observation ──
 from litagent.observability.tracing import LangFuseTracer
+from litagent.observability.recorder import RedactingTraceHook
 from litagent.observability.context import set_task_id, reset_task_id
 
 # ── Evaluation ──
@@ -240,10 +241,21 @@ class LitAgent:
             if hasattr(self._trace_hook, "capture_graph"):
                 self._trace_hook.capture_graph(graph)
             results = await self._scheduler.run(graph)
+            if hasattr(self._trace_hook, "capture_graph_state"):
+                self._trace_hook.capture_graph_state(graph)
             report_data = self._extract_report(results, query)
-            report_data['partial'] = (
-                self._cost_budget.is_exceeded() if self._cost_budget else False
+            execution = self._derive_execution(
+                graph,
+                budget_exceeded=(
+                    self._cost_budget.is_exceeded() if self._cost_budget else False
+                ),
+                final_output_present=bool(
+                    isinstance(results.get("adversarial_review"), dict)
+                    and results["adversarial_review"].get("final_draft")
+                ),
             )
+            report_data["partial"] = execution["partial"]
+            report_data.setdefault("metadata", {})["execution"] = execution
             report_data['evaluation'] = await self._evaluate(report_data['survey'], results)
             quality = self._derive_quality(report_data.get('evaluation', {}))
             report_data['quality'] = quality
@@ -271,6 +283,34 @@ class LitAgent:
         except Exception as e:
             self._emit('survey.error', {'query': query, 'error': str(e)})
             raise
+
+
+    @staticmethod
+    def _derive_execution(
+        graph: TaskGraph,
+        budget_exceeded: bool,
+        final_output_present: bool,
+    ) -> dict[str, Any]:
+        summary = graph.execution_summary()
+        reason_codes: list[str] = []
+        if budget_exceeded:
+            reason_codes.append("cost_budget_exceeded")
+        if summary["failed_task_ids"]:
+            reason_codes.append("task_failed")
+        if summary["cancelled_task_ids"]:
+            reason_codes.append("task_cancelled")
+        if summary["skipped_task_ids"]:
+            reason_codes.append("task_skipped")
+        if not final_output_present:
+            reason_codes.append("final_output_missing")
+
+        partial = bool(reason_codes)
+        return {
+            **summary,
+            "status": "incomplete" if partial else "complete",
+            "partial": partial,
+            "reason_codes": reason_codes,
+        }
         
     
     def _extract_report(self, results: dict[str, Any], query: str) -> dict[str, Any]:
@@ -340,10 +380,13 @@ class LitAgent:
         # 0. Observability（enabled 且用户没自己注入 hook → 建 LangFuseTracer）
         obs = getattr(cfg, 'observability', None)
         if obs and obs.enabled and self._trace_hook is None:
-            self._trace_hook = LangFuseTracer(
+            langfuse = LangFuseTracer(
                 host=obs.langfuse_host,
                 public_key=os.getenv("LANGFUSE_PUBLIC_KEY", ""),
                 secret_key=os.getenv("LANGFUSE_SECRET_KEY", ""),
+            )
+            self._trace_hook = RedactingTraceHook(
+                langfuse, payload_mode=obs.payload_mode,
             )
 
         # 1. CostBudget

@@ -106,6 +106,34 @@ class TestTaskGraph:
         ready = g.get_ready_tasks()
         assert ready[0].task_id == "high"
 
+    def test_finalize_incomplete_cancels_running_and_skips_pending(self):
+        g = TaskGraph()
+        g.add_task(SubTask(task_id="running", description="a", agent_type="search"))
+        g.add_task(SubTask(task_id="pending", description="b", agent_type="extract"),
+                   depends_on=["running"])
+        g.mark_running("running")
+
+        transitions = g.finalize_incomplete("orchestration_timeout")
+
+        assert transitions == {"cancelled": ["running"], "skipped": ["pending"]}
+        assert g.get_task("running").status == TaskStatus.CANCELLED
+        assert g.get_task("running").error == "orchestration_timeout"
+        assert g.get_task("pending").status == TaskStatus.SKIPPED
+        assert g.is_complete()
+
+    def test_execution_summary_reports_non_done_tasks(self):
+        g = TaskGraph()
+        g.add_task(SubTask(task_id="done", description="a", agent_type="search"))
+        g.add_task(SubTask(task_id="failed", description="b", agent_type="extract"))
+        g.mark_done("done", {})
+        g.mark_failed("failed", "worker_timeout")
+
+        summary = g.execution_summary()
+
+        assert summary["status"] == "incomplete"
+        assert summary["counts"] == {"done": 1, "failed": 1}
+        assert summary["failed_task_ids"] == ["failed"]
+
 
 class TestScheduler:
     @pytest.mark.asyncio
@@ -161,6 +189,27 @@ class TestScheduler:
         )
         results = await scheduler.run(g)
         assert "fast" in results
+        assert g.get_task("slow").status == TaskStatus.FAILED
+
+    @pytest.mark.asyncio
+    async def test_global_timeout_cancels_running_and_emits_terminal(self):
+        g = TaskGraph()
+        g.add_task(SubTask(task_id="slow", description="a", agent_type="slow",
+                           timeout_ms=5000, max_retries=0))
+        events = []
+        scheduler = Scheduler(
+            workers=[MockWorker("slow", delay=5)],
+            timeout_ms=20,
+            trace_hook=lambda event, data: events.append((event, data)),
+        )
+
+        assert await scheduler.run(g) == {}
+        assert g.get_task("slow").status == TaskStatus.CANCELLED
+        cancelled = [data for event, data in events if event == "worker.cancelled"]
+        assert cancelled == [{
+            "task_id": "slow", "agent_type": "slow",
+            "error": "orchestration_timeout",
+        }]
 
 
 class TestSurveyPlanner:

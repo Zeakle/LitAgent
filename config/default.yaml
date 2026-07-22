@@ -43,6 +43,7 @@ resilience:
 observability:
   enabled: false          # 改 true 启用 LangFuse tracing（需先起 LangFuse 服务）
   langfuse_host: "http://localhost:3000"
+  payload_mode: "full_redacted"  # 上传完整非密钥 I/O；密钥和认证值递归剔除
 
 eval:
   max_tokens: 16384       # 评估器 LLM 调用额度——比常规大，citation 枚举引用 + reasoning 占额度

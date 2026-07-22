@@ -1,7 +1,11 @@
 import os
 import pytest
-from litagent.config import load_config
+from litagent.config import ObservabilityConfig, load_config
 from litagent.exceptions import ConfigError
+
+
+def test_observability_defaults_to_full_redacted_payloads():
+    assert ObservabilityConfig().payload_mode == "full_redacted"
 
 
 @pytest.fixture

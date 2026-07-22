@@ -18,6 +18,7 @@ class TaskStatus(str, Enum):
     DONE = 'done'
     FAILED = 'failed'
     SKIPPED = 'skipped'
+    CANCELLED = 'cancelled'
 
 
 @dataclass
@@ -122,6 +123,47 @@ class TaskGraph:
         self._skip_downstream(task_id)
 
 
+    def finalize_incomplete(self, reason: str) -> dict[str, list[str]]:
+        """Put every unfinished task into a stable terminal state."""
+        cancelled: list[str] = []
+        skipped: list[str] = []
+        for task_id, task in self._tasks.items():
+            if task.status == TaskStatus.RUNNING:
+                task.status = TaskStatus.CANCELLED
+                task.error = reason
+                cancelled.append(task_id)
+            elif task.status == TaskStatus.PENDING:
+                task.status = TaskStatus.SKIPPED
+                task.error = reason
+                skipped.append(task_id)
+        return {"cancelled": cancelled, "skipped": skipped}
+
+
+    def execution_summary(self) -> dict[str, Any]:
+        """Return the canonical execution status consumed by runner and replay."""
+        counts: dict[str, int] = {}
+        task_ids: dict[str, list[str]] = {
+            "failed": [], "cancelled": [], "skipped": [],
+        }
+        for task_id, task in self._tasks.items():
+            status = task.status.value
+            counts[status] = counts.get(status, 0) + 1
+            if status in task_ids:
+                task_ids[status].append(task_id)
+        incomplete = any(task_ids.values()) or any(
+            task.status not in {TaskStatus.DONE, TaskStatus.FAILED,
+                                TaskStatus.SKIPPED, TaskStatus.CANCELLED}
+            for task in self._tasks.values()
+        )
+        return {
+            "status": "incomplete" if incomplete else "complete",
+            "counts": counts,
+            "failed_task_ids": task_ids["failed"],
+            "cancelled_task_ids": task_ids["cancelled"],
+            "skipped_task_ids": task_ids["skipped"],
+        }
+
+
     def _skip_downstream(self, failed_id: str) -> None:
         """递归跳过所有依赖与failed_id的任务"""
         for tid, deps in self._deps.items():
@@ -134,7 +176,10 @@ class TaskGraph:
     
     def is_complete(self) -> bool:
         """所有任务都终结(DONE/FAILED/SKIPPED)"""
-        terminal = {TaskStatus.DONE, TaskStatus.FAILED, TaskStatus.SKIPPED}
+        terminal = {
+            TaskStatus.DONE, TaskStatus.FAILED,
+            TaskStatus.SKIPPED, TaskStatus.CANCELLED,
+        }
         return all(t.status in terminal for t in self._tasks.values())
 
 

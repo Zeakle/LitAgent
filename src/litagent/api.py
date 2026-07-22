@@ -175,6 +175,17 @@ async def _run_flow_demo(run_id: str, recorder: RunRecorder) -> None:
     entry = app.state.flow_runs[run_id]
     try:
         config = load_config()
+        recorder.set_config_summary({
+            "llm": {"model": config.llm.model, "base_url": config.llm.base_url},
+            "orchestrator": config.orchestrator.model_dump(),
+            "extractor": config.extractor.model_dump(),
+            "planner": config.planner.model_dump(),
+            "observability": {
+                "enabled": config.observability.enabled,
+                "langfuse_host": config.observability.langfuse_host,
+                "payload_mode": config.observability.payload_mode,
+            },
+        })
         trace_hook: Any = recorder
         if config.observability.enabled:
             langfuse = LangFuseTracer(
@@ -182,11 +193,16 @@ async def _run_flow_demo(run_id: str, recorder: RunRecorder) -> None:
                 public_key=os.getenv("LANGFUSE_PUBLIC_KEY", ""),
                 secret_key=os.getenv("LANGFUSE_SECRET_KEY", ""),
             )
-            trace_hook = CompositeTraceHook(recorder, RedactingTraceHook(langfuse))
+            trace_hook = CompositeTraceHook(
+                recorder,
+                RedactingTraceHook(langfuse, payload_mode=config.observability.payload_mode),
+            )
         async with LitAgent(config, trace_hook=trace_hook) as agent:
             report = await agent.run(FLOW_DEMO_QUERY)
         artifact = recorder.finalize(report=report)
-        entry.update(status="completed", artifact=artifact)
+        entry.update(
+            status=artifact["status"], error=artifact.get("error"), artifact=artifact,
+        )
         app.state.flow_archive_index[run_id] = artifact
     except Exception as exc:
         error = f"{type(exc).__name__}: {exc}"

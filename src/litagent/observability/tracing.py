@@ -1,8 +1,6 @@
 from __future__ import annotations
 from typing import Any
 
-from numpy.polynomial.legendre import legval
-
 from litagent.logging import get_logger
 
 
@@ -33,6 +31,7 @@ class LangFuseTracer:
         self._root = None
         self._spans: dict[str, Any] = {}  # task_id -> span
         self._operations: dict[str, Any] = {}
+        self._worker_inputs: dict[str, Any] = {}
 
         try:
             if not (public_key and secret_key):
@@ -70,21 +69,29 @@ class LangFuseTracer:
                 session_id=data.get('session_id', '')
             )
 
+        elif event == 'worker.input':
+            self._worker_inputs[data.get('task_id', '')] = data.get('input', {})
+
         elif event == 'worker.start':
             if not self._root:
                 return 
             tid = data.get('task_id', '')
+            worker_input = self._worker_inputs.pop(tid, None)
             self._spans[tid] = self._root.start_observation(
                 name=data.get('agent_type', tid), as_type='span',
-                input={'description': data.get('description', '')},
+                input=(worker_input if worker_input is not None else {
+                    'description': data.get('description', '')
+                }),
             )
 
-        elif event in ('worker.complete', 'worker.failed'):
+        elif event in ('worker.complete', 'worker.failed', 'worker.cancelled'):
             tid = data.get('task_id', '')
             span = self._spans.pop(tid, None)
             if span:
                 if event == 'worker.failed':
                     span.update(level="ERROR", status_message=data.get("error", ""))
+                elif event == 'worker.cancelled':
+                    span.update(level="WARNING", status_message=data.get("error", "cancelled"))
                 elif 'output' in data:
                     self._safe_update_output(span, data['output'])
                 span.end()
@@ -149,7 +156,11 @@ class LangFuseTracer:
                 return
             span = parent.start_observation(
                 as_type='span',
-                name=f"rag:{data.get('query', '')[:50]}"
+                name="rag.search",
+                input={
+                    "query": data.get("query", ""),
+                    "top_k": data.get("top_k", 0),
+                },
             )
             self._operations[data['operation_id']] = span
 
@@ -158,7 +169,10 @@ class LangFuseTracer:
             if op_id and op_id in self._operations:
                 span = self._operations.pop(op_id)
                 span.update(
-                    output={'count': data.get('count', 0)},
+                    output={
+                        'count': data.get('count', 0),
+                        'results': data.get('results', []),
+                    },
                     metadata={'elapsed_ms': data.get('elapsed_ms', 0)},
                 )
                 span.end()
@@ -297,6 +311,7 @@ class LangFuseTracer:
             except Exception:
                 pass
         self._spans.clear()
+        self._worker_inputs.clear()
         for op_id, obs in list(self._operations.items()):
             try:
                 obs.update(level="WARNING", status_message="Orphan operation (closed by cleanup)")

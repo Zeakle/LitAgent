@@ -19,7 +19,8 @@ import pytest
 
 from litagent.config import AppConfig, AgentConfig, LoggingConfig, MemoryConfig
 from litagent.config import ContextConfig, OrchestratorConfig, LLMConfig
-from litagent.config import AdversarialConfig, SafetyConfig, ResilienceConfig, ExtractorConfig
+from litagent.config import (AdversarialConfig, SafetyConfig, ResilienceConfig,
+                             ExtractorConfig, ObservabilityConfig)
 from litagent.llm.client import BaseLLMClient, LLMResponse, MockLLMClient
 from litagent.agents.synthesis import SynthesisWorker
 from litagent.agents.reviewer import ReviewerWorker
@@ -30,6 +31,8 @@ from litagent.memory.episodic import EpisodicMemory
 from litagent.memory.semantic import SemanticMemory
 from litagent.memory.procedural import ProceduralMemory
 from litagent.rag.claims_index import ClaimsIndex
+from litagent.orchestrator.task_graph import TaskGraph, SubTask
+from litagent.observability.recorder import RedactingTraceHook
 
 
 # ═══════════════════════════════════════════════════════════
@@ -208,6 +211,27 @@ class TestLitAgentWiring:
             await agent._wire()
 
         assert isinstance(agent._extraction_strategy, RegexStrategy)
+        await agent.cleanup()
+
+    @pytest.mark.asyncio
+    async def test_automatic_langfuse_uses_redacting_boundary(self):
+        config = _minimal_config(
+            observability=ObservabilityConfig(
+                enabled=True, payload_mode="full_redacted"
+            )
+        )
+        agent = LitAgent(config)
+        with (
+            patch("litagent.runner.LangFuseTracer") as tracer_cls,
+            patch("litagent.runner.OpenAICompatibleClient") as llm_cls,
+            patch.object(agent, "_connect_infra", new=AsyncMock(return_value=Infra())),
+        ):
+            llm_cls.return_value = MockLLMClient(["test"])
+            await agent._wire()
+
+        assert isinstance(agent._trace_hook, RedactingTraceHook)
+        assert agent._trace_hook._sink is tracer_cls.return_value
+        assert agent._trace_hook._payload_mode == "full_redacted"
         await agent.cleanup()
 
     @pytest.mark.asyncio
@@ -516,6 +540,34 @@ class TestQualityGate:
         from litagent.runner import LitAgent
         q = LitAgent._derive_quality({})
         assert q["status"] == "unverified"
+
+
+class TestExecutionSummary:
+    def test_failed_task_marks_report_partial(self):
+        graph = TaskGraph()
+        graph.add_task(SubTask(task_id="extract", description="e", agent_type="extractor"))
+        graph.mark_failed("extract", "worker_timeout")
+
+        execution = LitAgent._derive_execution(graph, budget_exceeded=False,
+                                                final_output_present=False)
+
+        assert execution["partial"] is True
+        assert execution["status"] == "incomplete"
+        assert execution["failed_task_ids"] == ["extract"]
+        assert execution["reason_codes"] == ["task_failed", "final_output_missing"]
+
+    def test_quality_does_not_affect_execution_completeness(self):
+        graph = TaskGraph()
+        graph.add_task(SubTask(task_id="adversarial_review", description="a",
+                               agent_type="adversarial_review"))
+        graph.mark_done("adversarial_review", {"final_draft": "draft"})
+
+        execution = LitAgent._derive_execution(graph, budget_exceeded=False,
+                                                final_output_present=True)
+
+        assert execution["partial"] is False
+        assert execution["status"] == "complete"
+        assert execution["reason_codes"] == []
 
 
 # ═══════════════════════════════════════════════════════════
