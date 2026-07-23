@@ -4,7 +4,7 @@ from typing import Literal
 from dotenv import load_dotenv
 
 import yaml
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, model_validator
 
 load_dotenv()
 
@@ -30,6 +30,37 @@ class MemoryConfig(BaseModel):
 class ContextConfig(BaseModel):
     max_tokens: int = Field(default=16000, gt=0)
     compact_threshold: float = Field(default=0.7, gt=0, le=1.0)
+    synthesis_evidence_max_tokens: int = Field(default=8000, ge=1000, le=32000)
+    synthesis_papers_max_tokens: int = Field(default=5000, ge=500, le=16000)
+    evidence_top_k_per_section: int = Field(default=12, ge=1, le=30)
+    evidence_max_items: int = Field(default=60, ge=5, le=150)
+    evidence_per_paper_cap: int = Field(default=3, ge=1, le=10)
+    review_evidence_max_tokens: int = Field(default=7000, ge=1000, le=32000)
+    review_draft_max_tokens: int = Field(default=8000, ge=1000, le=32000)
+    review_feedback_max_tokens: int = Field(default=1000, ge=200, le=8000)
+
+    @model_validator(mode='after')
+    def _check_synthesis_budget_fits(self):
+        if (self.synthesis_evidence_max_tokens + self.synthesis_papers_max_tokens > self.max_tokens):
+            raise ValueError(
+                f"synthesis_evidence_max_tokens ({self.synthesis_evidence_max_tokens}) "
+                f"+ synthesis_papers_max_tokens ({self.synthesis_papers_max_tokens}) "
+                f"exceeds max_tokens ({self.max_tokens})"
+            )
+        return self
+
+    @model_validator(mode='after')
+    def _check_review_budget_fits(self):
+        if (self.review_evidence_max_tokens + self.review_draft_max_tokens
+                + self.review_feedback_max_tokens
+                > self.max_tokens):
+            raise ValueError(
+                f"review_evidence_max_tokens ({self.review_evidence_max_tokens}) "
+                f"+ review_draft_max_tokens ({self.review_draft_max_tokens}) "
+                f"+ review_feedback_max_tokens ({self.review_feedback_max_tokens}) "
+                f"exceeds max_tokens ({self.max_tokens})"
+            )
+        return self
 
 
 class OrchestratorConfig(BaseModel):

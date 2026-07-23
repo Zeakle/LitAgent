@@ -22,7 +22,7 @@ def make_recall_memory_tool(memory: MemoryManager | None):
         """
         if not memory:
             return "Memory not available (Redis/Qdrant not connected)."
-        
+
         recalled = await memory.recall(query)
         facts = recalled.get('facts', [])
         episodes = recalled.get('episodes', [])
@@ -32,7 +32,7 @@ def make_recall_memory_tool(memory: MemoryManager | None):
             parts.append("## Past Episodes")
             for ep in episodes[:3]:
                 parts.append(f"- {ep.summary}")
-        
+
         if facts:
             parts.append("## Domain Knowledge")
             for f in facts[:5]:
@@ -41,6 +41,8 @@ def make_recall_memory_tool(memory: MemoryManager | None):
         return '\n'.join(parts) if parts else 'No relevant knowledge found'
 
     return recall_memory
+
+
 def make_load_skill_tool(skill_manager: SkillManager | None):
 
     @tool

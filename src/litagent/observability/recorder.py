@@ -311,7 +311,7 @@ def _node_identity(event: str, data: dict[str, Any]) -> tuple[str | None, str | 
         return f"worker:{data.get('task_id', '')}", None
     if event.startswith("worker."):
         return f"worker:{data.get('task_id', '')}", event.rsplit(".", 1)[-1]
-    if event.startswith(("llm.", "tool.", "rag.search.", "memory.", "claims.")):
+    if event.startswith(("llm.", "tool.", "rag.search.", "memory.", "claims.", 'evidence.retrieve')):
         operation_id = data.get("operation_id")
         if operation_id:
             return f"{event.rsplit('.', 1)[0]}:{operation_id}", event.rsplit(".", 1)[-1]

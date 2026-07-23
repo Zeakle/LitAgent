@@ -231,7 +231,7 @@ class LangFuseTracer:
                 self._root = None
 
     
-    _IO_NAMESPACES = ('tool', 'claims', 'memory')
+    _IO_NAMESPACES = ('tool', 'claims', 'memory', 'evidence')
 
     
     def _is_io_lifecycle(self, event: str) -> bool:

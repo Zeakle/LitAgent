@@ -3,6 +3,7 @@
 from __future__ import annotations
 from contextlib import asynccontextmanager
 from typing import Any
+from collections.abc import Mapping
 
 from litagent.orchestrator.scheduler import Worker
 from litagent.orchestrator.task_graph import SubTask
@@ -10,7 +11,9 @@ from litagent.llm.client import BaseLLMClient
 from litagent.agents.synthesis import SynthesisWorker
 from litagent.agents.reviewer import ReviewerWorker
 from litagent.observability.context import set_task_id, reset_task_id
+from litagent.context.evidence_selector import EvidenceSelection
 from litagent.logging import get_logger
+
 
 logger = get_logger("agents.adversarial")
 
@@ -83,80 +86,185 @@ class AdversarialReviewWorker(Worker):
         async with self._sub_span(task.task_id, 'synthesis', 1):
             synthesis_result = await self._synthesis.execute(task)
         draft = synthesis_result['draft']          # 保底稿：后续任何步骤失败都返回它
+        if not isinstance(draft, str) or not draft.strip():
+            raise ValueError("synthesis returned an empty draft")
+        draft = draft.strip()
+
+        selection_raw = synthesis_result.get('evidence_selection')
+        evidence_selection: EvidenceSelection | None = None
+        evidence_selection_valid = True
+
+        if isinstance(selection_raw, Mapping):
+            try:
+                evidence_selection = EvidenceSelection.from_dict(selection_raw)
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Malformed evidence_selection from synthesis: {e}")
+                evidence_selection_valid = False
+        else:
+            evidence_selection_valid = False
+
+        if evidence_selection is None:
+            evidence_selection = EvidenceSelection(
+                candidate_count=0, selected_items={},
+                section_evidence_ids={}, method_by_section={},
+                omitted_count=0, estimated_tokens=0,
+            )
+
+        logger.info(
+            "Adversarial start: draft=%d chars selection_items=%d/%d",
+            len(draft), len(evidence_selection.selected_items),
+            evidence_selection.candidate_count,
+        )
 
         rounds: list[dict] = []
 
-        # 对抗循环（reviewer + revision）整体包 try：任何一步失败只是"没优化成"，
-        # 不该丢弃已生成的初稿。异常 → 记录 → 退出循环 → 返回当前最好的 draft。
         try:
             for round_num in range(1, self._max_rounds + 1):
-                # Reviewer 审稿
-                async with self._sub_span(task.task_id, 'reviewer', round_num):
+                async with self._sub_span(task.task_id, "reviewer", round_num):
                     if round_num == 1:
                         review_task = SubTask(
                             task_id=task.task_id,
-                            description=f'Review round {round_num}',
-                            agent_type='reviewer',
-                            input_data={'upstream_results': {'synthesis': {'draft': draft}}},
+                            description=f"Review round {round_num}",
+                            agent_type="reviewer",
+                            input_data={"upstream_results": {
+                                "synthesis": {
+                                    "draft": draft,
+                                    "evidence_selection": evidence_selection.to_dict(),
+                                },
+                            }},
                         )
-
                         review = await self._reviewer.execute(review_task)
                     else:
-                        review = await self._reviewer.review_revision(draft, rounds[-1]['review'])
+                        review = await self._reviewer.review_revision(
+                            draft, rounds[-1]["review"], evidence_selection,
+                        )
 
                 rounds.append({
-                    'round': round_num,
-                    'review': review,
-                    'draft_length': len(draft),
+                    'round': round_num, 'review': review, 'draft_length': len(draft)
                 })
 
                 score = review.get('score', 0)
                 verdict = review.get('verdict', 'revise')
-                logger.info(f"Round {round_num}: score={score}, verdict={verdict}")
 
-                # 通过或达到最大轮次
-                if score >= self._pass_threshold or verdict == 'accept':
+                ev_passed = (
+                    review.get('evidence_compliance', {}).get('passed', False)
+                    if isinstance(review.get('evidence_compliance'), dict)
+                    else False
+                )
+                logger.info(
+                    f"Round {round_num}: score={score}, verdict={verdict}, "
+                    f"evidence_passed={ev_passed}"
+                )
+
+                if self._review_passes(review):
                     logger.info(f"Accepted at round {round_num}")
                     break
 
                 if round_num < self._max_rounds:
-                    # Synthesis修订(llm失败时保留当前draft,循环自然退出)
                     review_text = self._format_review_for_revision(review)
-                    messages = self._synthesis.revise(draft, review_text)
                     try:
-                        async with self._sub_span(task.task_id, 'synthesis', round_num + 1):
+                        messages = self._synthesis.revise(
+                            draft, review_text, evidence_selection
+                        )
+                    except (ValueError, TypeError) as e:
+                        logger.warning(f"revise rejected malformed selection: {e}")
+                        break
+
+                    try:
+                        async with self._sub_span(task.task_id, "synthesis", round_num + 1):
                             resp = await self._llm.chat(messages)
-                        draft = resp.content
+
+                        new_draft = (resp.content or '').strip()
+                        if not new_draft:
+                            logger.warning(
+                                "Revision LLM returned empty content, keeping current draft"
+                            )
+                            break
+                        draft = new_draft
                     except Exception as e:
                         logger.warning(f"Revision LLM call failed: {e}, keeping current draft")
                         break
                     logger.info(f"Revision {round_num}: {len(draft)} chars")
         except Exception as e:
-            # 对抗循环中断（如 reviewer ReAct 因 reasoning_content 400）——保底返回初稿。
             logger.warning(f"Adversarial loop aborted ({e}), returning current draft as fallback")
 
-        # rounds 可能为空（reviewer 首轮就崩）→ 防 rounds[-1] 越界
-        last_review = rounds[-1]["review"] if rounds else {}
-        return {
-            'final_draft': draft,
-            'rounds': rounds,
-            'total_rounds': len(rounds),
-            "final_score": last_review.get("score", 0),
-            "accepted": (last_review.get("verdict") == "accept"
-                        or last_review.get("score", 0) >= self._pass_threshold),
+        last_review = rounds[-1]['review'] if rounds else {}
+
+        #selection_summary
+        sel_summary = {
+            "valid": evidence_selection_valid,
+            "candidate_count": evidence_selection.candidate_count,
+            "selected_count": len(evidence_selection.selected_items),
+            "section_evidence_ids": evidence_selection.section_evidence_ids,
+            "method_by_section": evidence_selection.method_by_section,
+            "omitted_count": evidence_selection.omitted_count,
+            "estimated_tokens": evidence_selection.estimated_tokens,
         }
 
-    
+        return {
+            "final_draft": draft,
+            "rounds": rounds,
+            "total_rounds": len(rounds),
+            "final_score": last_review.get("score", 0),
+            "accepted": (
+                self._review_passes(last_review)
+                if last_review else False
+            ),
+            "evidence_selection": sel_summary,
+        }
+
+    def _review_passes(self, review: dict[str, Any]) -> bool:
+        """Single accept-gate helper — AND semantics: score + verdict + evidence.
+
+        Used by both the loop break and final return to prevent condition drift.
+        """
+        compliance = review.get('evidence_compliance')
+        return (
+            review.get('score', 0) >= self._pass_threshold
+            and review.get('verdict') == 'accept'
+            and isinstance(compliance, dict)
+            and compliance.get('passed') is True
+        )
+
     def _format_review_for_revision(self, review: dict) -> str:
-        """将结构化 review 转为 Synthesis 可读的文本。"""
-        parts = []
+        """Convert structured review to revision-readable text.
+
+        Includes evidence_compliance unsupported_claims and unknown_evidence_ids
+        so Synthesis revision knows exactly what to delete/downgrade/bind.
+        """
+        parts: list[str] = []
         if review.get("weaknesses"):
-            parts.append("Weaknesses:\n" + "\n".join(f"- {w}" for w in review["weaknesses"]))
+            parts.append("Weaknesses:\n" + "\n".join(
+                f"- {w}" for w in review["weaknesses"]
+            ))
         if review.get("issues"):
             parts.append("Issues:\n" + "\n".join(
                 f"- [{i.get('severity', 'minor')}] {i.get('section', '')}: {i.get('issue', '')}"
                 for i in review["issues"]
             ))
         if review.get("missing_coverage"):
-            parts.append("Missing:\n" + "\n".join(f"- {m}" for m in review["missing_coverage"]))
+            parts.append("Missing:\n" + "\n".join(
+                f"- {m}" for m in review["missing_coverage"]
+            ))
+
+        # Evidence compliance — tell synthesis exactly what to fix
+        compliance = review.get("evidence_compliance")
+        if isinstance(compliance, dict):
+            unknown = compliance.get("unknown_evidence_ids", [])
+            if isinstance(unknown, list) and unknown:
+                parts.append(
+                    "Unknown evidence IDs (remove or rebind these):\n"
+                    + "\n".join(f"- [E:{eid}]" for eid in unknown)
+                )
+            unsupported = compliance.get("unsupported_claims", [])
+            if isinstance(unsupported, list) and unsupported:
+                safe_claims = [c for c in unsupported if isinstance(c, Mapping)]
+                if safe_claims:
+                    parts.append("Unsupported claims:\n" + "\n".join(
+                        f"- [{c.get('section', '?')}] {c.get('claim', '')}"
+                        f"  reason: {c.get('reason', '')}"
+                        f"  action: {c.get('action', 'delete')}"
+                        for c in safe_claims
+                    ))
+
         return "\n\n".join(parts) if parts else "No specific feedback."

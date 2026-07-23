@@ -336,7 +336,7 @@ class TestSynthesisEvidenceBoundary:
         from litagent.agents.synthesis import SYNTHESIS_INSTRUCTIONS
         assert "SCOPED EVIDENCE SUMMARY" in SYNTHESIS_INSTRUCTIONS
         assert "evidence not provided" in SYNTHESIS_INSTRUCTIONS
-        assert "fabricate" in SYNTHESIS_INSTRUCTIONS
+        assert "NEVER invent evidence IDs" in SYNTHESIS_INSTRUCTIONS
 
     @pytest.mark.asyncio
     async def test_execute_uses_configured_react_loop_limit(self):
@@ -676,7 +676,7 @@ class TestSynthesisEvidenceCitation:
 
     def test_instructions_contain_citation_rules(self):
         from litagent.agents.synthesis import SYNTHESIS_INSTRUCTIONS
-        assert "EVIDENCE CITATION RULES" in SYNTHESIS_INSTRUCTIONS
+        assert "EVIDENCE BOUNDARIES" in SYNTHESIS_INSTRUCTIONS
         assert "[E:" in SYNTHESIS_INSTRUCTIONS
         assert "NEVER invent" in SYNTHESIS_INSTRUCTIONS
 
@@ -685,15 +685,26 @@ class TestSynthesisEvidenceCitation:
         assert "known gap" in REVISE_INSTRUCTIONS
 
     @pytest.mark.asyncio
-    async def test_ledger_layer_renders_evidence(self):
+    async def test_evidence_layer_renders_in_execute(self):
         from litagent.agents.synthesis import SynthesisWorker
         from litagent.evidence import build_evidence_items
+        from litagent.llm.client import MockLLMClient
         ext = {"paper_id": "p1", "title": "T", "abstract": "abs", "claims": ["c"]}
         ext["evidence_items"] = build_evidence_items(ext)
-        w = SynthesisWorker(llm=MagicMock())
-        out = await w._ledger_layer({"extractions": [ext]})
-        assert "<evidence_ledger>" in out
-        assert "[E:p1:claim:0]" in out
+        llm = MockLLMClient(responses=["Survey draft."])
+        fake_sel = FakeEvidenceSelector()
+        w = SynthesisWorker(llm=llm, evidence_selector=fake_sel)
+        task = SubTask(
+            task_id="synthesis", description="s", agent_type="synthesis",
+            input_data={"query": "test", "upstream_results": {
+                "extract": [ext],
+                "graph_analysis": {"papers": [], "tier_counts": {}},
+            }},
+        )
+        result = await w.execute(task)
+        assert "<evidence_ledger>" not in result["draft"]
+        assert "evidence_selection" in result
+        assert len(result["evidence_selection"]["selected_items"]) > 0
 
     def test_rewrite_messages_carry_draft_ledger_diagnostics(self):
         from litagent.agents.synthesis import SynthesisWorker, REWRITE_INSTRUCTIONS
@@ -1138,3 +1149,581 @@ class TestExtractorEvidenceItems:
         ids = [it["evidence_id"] for it in result[0]["evidence_items"]]
         assert "p1:claim:0" in ids
         assert "p1:abstract" in ids
+
+
+# ═══════════════════════════════════════════════════════════
+# 13.8 — Evidence-grounded Synthesis + Reviewer evidence compliance
+# ═══════════════════════════════════════════════════════════
+
+from litagent.context.evidence_selector import EvidenceSelection, EvidenceSelector
+
+
+class FakeEvidenceSelector:
+    """确定性 fake：返回真实 EvidenceSelection 对象，不调 reranker。"""
+
+    def __init__(self, selection=None):
+        self._selection = selection or EvidenceSelection(
+            candidate_count=2,
+            selected_items={
+                "p1:claim:0": {
+                    "evidence_id": "p1:claim:0", "paper_id": "p1",
+                    "paper_title": "ProtoNet", "text": "achieves SOTA",
+                    "source_locator": "extracted_claim", "confidence": None,
+                },
+                "p1:claim:1": {
+                    "evidence_id": "p1:claim:1", "paper_id": "p1",
+                    "paper_title": "ProtoNet", "text": "uses episodic training",
+                    "source_locator": "extracted_claim", "confidence": None,
+                },
+            },
+            section_evidence_ids={
+                "introduction": ["p1:claim:0"],
+                "methods": ["p1:claim:1"],
+                "taxonomy": [],
+                "experiments": [],
+                "open_problems": [],
+            },
+            method_by_section={
+                "introduction": "cross_encoder", "methods": "cross_encoder",
+                "taxonomy": "lexical_fallback",
+                "experiments": "lexical_fallback",
+                "open_problems": "lexical_fallback",
+            },
+            omitted_count=0,
+            estimated_tokens=120,
+        )
+        self.select_call_count = 0
+
+    async def select(self, query, ledger, sections=None, *, max_tokens):
+        self.select_call_count += 1
+        return self._selection
+
+
+class _ExplodingSelector:
+    async def select(self, query, ledger, sections=None, *, max_tokens):
+        raise RuntimeError("selector crash")
+
+
+class TestSynthesisEvidencePipeline:
+    """13.8：Synthesis pipeline evidence 优先 + paper catalog 无原始文本 + 无 memory 层。"""
+
+    @staticmethod
+    def _task():
+        return SubTask(
+            task_id="synthesis", description="synthesize", agent_type="synthesis",
+            input_data={"query": "few-shot learning", "upstream_results": {
+                "extract": [
+                    {
+                        "paper_id": "p1", "title": "ProtoNet",
+                        "abstract": "Few-shot classification.",
+                        "claims": ["achieves SOTA"],
+                        "metrics": {"accuracy": "93.2%"},
+                        "evidence_items": [
+                            {
+                                "evidence_id": "p1:claim:0", "paper_id": "p1",
+                                "paper_title": "ProtoNet", "text": "achieves SOTA",
+                                "source_locator": "extracted_claim", "confidence": None,
+                            },
+                        ],
+                    },
+                ],
+                "graph_analysis": {
+                    "papers": [{"paper_id": "p1", "tier": 1, "citation_count": 1000}],
+                    "tier_counts": {"tier1": 1, "tier2": 0, "tier3": 0},
+                },
+            }},
+        )
+
+    @pytest.mark.asyncio
+    async def test_execute_returns_draft_and_evidence_selection(self):
+        from litagent.agents.synthesis import SynthesisWorker
+        from litagent.llm.client import MockLLMClient
+
+        llm = MockLLMClient(responses=["This is a survey about few-shot learning."])
+        fake_sel = FakeEvidenceSelector()
+        w = SynthesisWorker(llm=llm, evidence_selector=fake_sel)
+        result = await w.execute(self._task())
+
+        assert "draft" in result
+        assert "evidence_selection" in result
+        assert fake_sel.select_call_count == 1
+        # evidence_selection 是 JSON-safe dict，可通过 from_dict 还原
+        ev = result["evidence_selection"]
+        restored = EvidenceSelection.from_dict(ev)
+        assert restored.candidate_count >= 0
+        assert len(restored.selected_items) > 0
+
+    @pytest.mark.asyncio
+    async def test_selector_failure_returns_empty_selection_and_error(self):
+        from litagent.agents.synthesis import SynthesisWorker
+        from litagent.llm.client import MockLLMClient
+
+        llm = MockLLMClient(responses=["Scoped evidence summary."])
+        w = SynthesisWorker(llm=llm, evidence_selector=_ExplodingSelector())
+        result = await w.execute(self._task())
+
+        assert "draft" in result
+        assert result.get("error") == "evidence_selection_failed"
+        assert "degradation_reasons" in result
+        ev = result["evidence_selection"]
+        # 统计诚实：candidate_count 反映真实 ledger 大小
+        restored = EvidenceSelection.from_dict(ev)
+        assert restored.candidate_count > 0
+        assert restored.omitted_count == restored.candidate_count
+        assert restored.selected_items == {}
+
+    @pytest.mark.asyncio
+    async def test_no_selector_records_unavailable_degradation(self):
+        from litagent.agents.synthesis import SynthesisWorker
+        from litagent.llm.client import MockLLMClient
+
+        llm = MockLLMClient(responses=["Survey draft."])
+        w = SynthesisWorker(llm=llm)  # 无 evidence_selector
+        result = await w.execute(self._task())
+
+        assert "evidence_selection" in result
+        assert "degradation_reasons" in result
+        assert "evidence_selector_unavailable" in result["degradation_reasons"]
+        restored = EvidenceSelection.from_dict(result["evidence_selection"])
+        assert restored.candidate_count > 0
+        assert restored.omitted_count == restored.candidate_count
+
+    @pytest.mark.asyncio
+    async def test_plain_text_draft_not_json_parse_error(self):
+        """普通文本是合法 draft，不标 JSON parse error。"""
+        from litagent.agents.synthesis import SynthesisWorker
+        from litagent.llm.client import MockLLMClient
+
+        llm = MockLLMClient(responses=["A plain text survey about few-shot learning."])
+        fake_sel = FakeEvidenceSelector()
+        w = SynthesisWorker(llm=llm, evidence_selector=fake_sel)
+        result = await w.execute(self._task())
+
+        assert result["draft"] == "A plain text survey about few-shot learning."
+        assert "JSON parse" not in result.get("error", "")
+        assert "JSON parse" not in str(result.get("degradation_reasons", []))
+
+    @pytest.mark.asyncio
+    async def test_llm_forged_evidence_selection_is_overwritten(self):
+        """LLM 返回的 evidence_selection 字段被 Selector 结果覆盖。"""
+        import json as _json
+        from litagent.agents.synthesis import SynthesisWorker
+        from litagent.llm.client import MockLLMClient
+
+        # LLM 返回 JSON object，draft 字段提取 + 伪造的 evidence_selection
+        fake_llm_output = _json.dumps({
+            "draft": "Trusted draft text.",
+            "evidence_selection": {"candidate_count": 9999},  # 伪造
+        })
+        llm = MockLLMClient(responses=[fake_llm_output])
+        fake_sel = FakeEvidenceSelector()
+        w = SynthesisWorker(llm=llm, evidence_selector=fake_sel)
+        result = await w.execute(self._task())
+
+        assert result["draft"] == "Trusted draft text."
+        ev = result["evidence_selection"]
+        assert ev["candidate_count"] != 9999  # 被覆盖为 Selector 的真实结果
+
+    def test_paper_catalog_excludes_claims_metrics_abstract(self):
+        """Paper catalog 只含 paper_id/title/tier/selected evidence IDs，不含原始文本。"""
+        from litagent.agents.synthesis import SynthesisWorker
+        from litagent.llm.client import MockLLMClient
+
+        w = SynthesisWorker(llm=MockLLMClient())
+        extractions = [
+            {
+                "paper_id": "p1", "title": "Test Paper",
+                "abstract": "should not appear",
+                "claims": ["should not appear"],
+                "metrics": {"should": "not appear"},
+                "evidence_items": [
+                    {"evidence_id": "p1:claim:0", "paper_id": "p1",
+                     "paper_title": "Test Paper", "text": "valid evidence"},
+                ],
+            },
+        ]
+        sel = EvidenceSelection(
+            candidate_count=1,
+            selected_items={
+                "p1:claim:0": {
+                    "evidence_id": "p1:claim:0", "paper_id": "p1",
+                    "paper_title": "Test Paper", "text": "valid evidence",
+                },
+            },
+            section_evidence_ids={"introduction": ["p1:claim:0"]},
+            method_by_section={"introduction": "cross_encoder"},
+            omitted_count=0, estimated_tokens=30,
+        )
+        ctx = w._build_papers_context(
+            extractions, {"papers": [{"paper_id": "p1", "tier": 2}]}, sel,
+        )
+        assert "paper_id=p1" in ctx
+        assert "tier=2" in ctx
+        assert "Test Paper" in ctx
+        assert "[E:p1:claim:0]" in ctx
+        assert "should not appear" not in ctx
+
+    def test_paper_catalog_no_title_hash_cross_wire(self):
+        """两篇缺 paper_id 的论文不因 title-hash 前缀 't' 共享 evidence。"""
+        from litagent.agents.synthesis import SynthesisWorker
+        from litagent.llm.client import MockLLMClient
+
+        w = SynthesisWorker(llm=MockLLMClient())
+        # 两篇都缺 paper_id，evidence ID 使用 title hash
+        extractions = [
+            {
+                "paper_id": "", "title": "Paper A",
+                "evidence_items": [
+                    {"evidence_id": "tA:claim:0", "paper_id": "",
+                     "paper_title": "Paper A", "text": "evidence from A"},
+                ],
+            },
+            {
+                "paper_id": "", "title": "Paper B",
+                "evidence_items": [
+                    {"evidence_id": "tB:claim:0", "paper_id": "",
+                     "paper_title": "Paper B", "text": "evidence from B"},
+                ],
+            },
+        ]
+        sel = EvidenceSelection(
+            candidate_count=2,
+            selected_items={
+                "tA:claim:0": {"evidence_id": "tA:claim:0", "paper_id": "",
+                               "paper_title": "Paper A", "text": "evidence from A"},
+                "tB:claim:0": {"evidence_id": "tB:claim:0", "paper_id": "",
+                               "paper_title": "Paper B", "text": "evidence from B"},
+            },
+            section_evidence_ids={"introduction": ["tA:claim:0", "tB:claim:0"]},
+            method_by_section={"introduction": "cross_encoder"},
+            omitted_count=0, estimated_tokens=60,
+        )
+        ctx = w._build_papers_context(extractions, {}, sel)
+        # Paper A 只获得自己的 evidence，不含 tB
+        assert "[E:tA:claim:0]" in ctx
+        assert "[E:tB:claim:0]" in ctx
+        assert "Paper A" in ctx
+        assert "Paper B" in ctx
+
+    def test_revise_includes_evidence(self):
+        from litagent.agents.synthesis import SynthesisWorker
+        from litagent.llm.client import MockLLMClient
+
+        w = SynthesisWorker(llm=MockLLMClient())
+        sel = EvidenceSelection(
+            candidate_count=1,
+            selected_items={
+                "p1:claim:0": {
+                    "evidence_id": "p1:claim:0",
+                    "paper_title": "T", "text": "some evidence",
+                },
+            },
+            section_evidence_ids={"introduction": ["p1:claim:0"]},
+            method_by_section={"introduction": "cross_encoder"},
+            omitted_count=0, estimated_tokens=30,
+        )
+        messages = w.revise("draft text", "needs more support", evidence_selection=sel)
+        user = messages[1]["content"]
+        assert "draft text" in user
+        assert "needs more support" in user
+        assert "<evidence_plan>" in user
+        assert "[E:p1:claim:0]" in user
+
+    def test_revise_malformed_dict_raises(self):
+        """revise 接受 malformed dict → EvidenceSelection.from_dict 抛 ValueError。"""
+        from litagent.agents.synthesis import SynthesisWorker
+        from litagent.llm.client import MockLLMClient
+
+        w = SynthesisWorker(llm=MockLLMClient())
+        with pytest.raises(ValueError):
+            w.revise("draft", "feedback", evidence_selection={"candidate_count": -1})
+
+    def test_revise_accepts_dict_evidence_selection(self):
+        """revise 接受 EvidenceSelection.to_dict() 格式。"""
+        from litagent.agents.synthesis import SynthesisWorker
+        from litagent.llm.client import MockLLMClient
+
+        w = SynthesisWorker(llm=MockLLMClient())
+        sel_dict = EvidenceSelection(
+            candidate_count=1,
+            selected_items={
+                "p1:claim:0": {
+                    "evidence_id": "p1:claim:0",
+                    "paper_title": "T", "text": "ev",
+                },
+            },
+            section_evidence_ids={"introduction": ["p1:claim:0"]},
+            method_by_section={"introduction": "cross_encoder"},
+            omitted_count=0, estimated_tokens=30,
+        ).to_dict()
+        messages = w.revise("draft", "feedback", evidence_selection=sel_dict)
+        assert "<evidence_plan>" in messages[1]["content"]
+
+
+class TestReviewerEvidenceCompliance:
+    """13.8：Reviewer 证据合规——fail closed + 确定性检查 + 禁止 Ledger 外建议。"""
+
+    @staticmethod
+    def _selection():
+        return EvidenceSelection(
+            candidate_count=2,
+            selected_items={
+                "p1:claim:0": {
+                    "evidence_id": "p1:claim:0", "paper_id": "p1",
+                    "paper_title": "ProtoNet", "text": "achieves SOTA",
+                },
+                "p1:claim:1": {
+                    "evidence_id": "p1:claim:1", "paper_id": "p1",
+                    "paper_title": "ProtoNet", "text": "uses episodic training",
+                },
+            },
+            section_evidence_ids={
+                "introduction": ["p1:claim:0"],
+                "methods": ["p1:claim:1"],
+            },
+            method_by_section={
+                "introduction": "cross_encoder", "methods": "cross_encoder",
+            },
+            omitted_count=0, estimated_tokens=80,
+        )
+
+    @pytest.mark.asyncio
+    async def test_execute_reads_evidence_selection_from_upstream(self):
+        import json as _json
+        from litagent.agents.reviewer import ReviewerWorker
+        from litagent.llm.client import MockLLMClient
+
+        review_json = _json.dumps({
+            "score": 0.85, "strengths": ["good"], "weaknesses": [],
+            "issues": [], "missing_coverage": [],
+            "verdict": "accept",
+            "evidence_compliance": {
+                "passed": True, "unsupported_claims": [], "unknown_evidence_ids": [],
+            },
+        })
+        llm = MockLLMClient(responses=[review_json])
+        w = ReviewerWorker(llm=llm)
+        task = SubTask(
+            task_id="review", description="test", agent_type="reviewer",
+            input_data={"upstream_results": {"synthesis": {
+                "draft": "test draft [E:p1:claim:0]",
+                "evidence_selection": self._selection().to_dict(),
+            }}},
+        )
+        result = await w.execute(task)
+        assert "evidence_compliance" in result
+        assert result["evidence_compliance"]["passed"] is True
+
+    @pytest.mark.asyncio
+    async def test_missing_evidence_selection_flags_and_caps_score(self):
+        import json as _json
+        from litagent.agents.reviewer import ReviewerWorker
+        from litagent.llm.client import MockLLMClient
+
+        review_json = _json.dumps({
+            "score": 0.95, "strengths": ["great"], "weaknesses": [],
+            "issues": [], "missing_coverage": [],
+            "verdict": "accept",
+        })
+        llm = MockLLMClient(responses=[review_json])
+        w = ReviewerWorker(llm=llm)
+        task = SubTask(
+            task_id="review", description="test", agent_type="reviewer",
+            input_data={"upstream_results": {"synthesis": {
+                "draft": "test draft",  # 无 evidence_selection
+            }}},
+        )
+        result = await w.execute(task)
+        assert result.get("evidence_context_missing") is True
+        assert result["score"] <= 0.79
+        assert result["verdict"] != "accept"
+
+    @pytest.mark.asyncio
+    async def test_draft_unknown_ref_forces_fail_closed(self):
+        """draft 引用不存在于 ledger 的 [E:*] → evidence_compliance.passed=false。"""
+        import json as _json
+        from litagent.agents.reviewer import ReviewerWorker
+        from litagent.llm.client import MockLLMClient
+
+        review_json = _json.dumps({
+            "score": 0.95, "strengths": ["good"], "weaknesses": [],
+            "issues": [], "missing_coverage": [],
+            "verdict": "accept",
+            "evidence_compliance": {
+                "passed": True, "unsupported_claims": [], "unknown_evidence_ids": [],
+            },
+        })
+        llm = MockLLMClient(responses=[review_json])
+        w = ReviewerWorker(llm=llm)
+        task = SubTask(
+            task_id="review", description="test", agent_type="reviewer",
+            input_data={"upstream_results": {"synthesis": {
+                "draft": "Great results [E:p99:claim:99].",
+                "evidence_selection": self._selection().to_dict(),
+            }}},
+        )
+        result = await w.execute(task)
+        assert result["evidence_compliance"]["passed"] is False
+        assert "p99:claim:99" in result["evidence_compliance"]["unknown_evidence_ids"]
+        assert result["score"] < 0.8
+        assert result["verdict"] != "accept"
+
+    @pytest.mark.asyncio
+    async def test_model_reports_unknown_ids_forces_fail(self):
+        import json as _json
+        from litagent.agents.reviewer import ReviewerWorker
+        from litagent.llm.client import MockLLMClient
+
+        review_json = _json.dumps({
+            "score": 0.9, "strengths": ["good"], "weaknesses": [],
+            "issues": [], "missing_coverage": [],
+            "verdict": "accept",
+            "evidence_compliance": {
+                "passed": True,
+                "unsupported_claims": [],
+                "unknown_evidence_ids": ["p99:claim:0"],
+            },
+        })
+        llm = MockLLMClient(responses=[review_json])
+        w = ReviewerWorker(llm=llm)
+        task = SubTask(
+            task_id="review", description="test", agent_type="reviewer",
+            input_data={"upstream_results": {"synthesis": {
+                "draft": "test [E:p1:claim:0]",
+                "evidence_selection": self._selection().to_dict(),
+            }}},
+        )
+        result = await w.execute(task)
+        assert result["evidence_compliance"]["passed"] is False
+        assert "p99:claim:0" in result["evidence_compliance"]["unknown_evidence_ids"]
+
+    @pytest.mark.asyncio
+    async def test_missing_evidence_compliance_field_fails_closed(self):
+        import json as _json
+        from litagent.agents.reviewer import ReviewerWorker
+        from litagent.llm.client import MockLLMClient
+
+        review_json = _json.dumps({
+            "score": 0.95, "strengths": ["great"], "weaknesses": [],
+            "issues": [], "missing_coverage": [],
+            "verdict": "accept",
+        })
+        llm = MockLLMClient(responses=[review_json])
+        w = ReviewerWorker(llm=llm)
+        task = SubTask(
+            task_id="review", description="test", agent_type="reviewer",
+            input_data={"upstream_results": {"synthesis": {
+                "draft": "test [E:p1:claim:0]",
+                "evidence_selection": self._selection().to_dict(),
+            }}},
+        )
+        result = await w.execute(task)
+        assert result["evidence_compliance"]["passed"] is False
+
+    @pytest.mark.asyncio
+    async def test_unsupported_claims_forces_fail(self):
+        import json as _json
+        from litagent.agents.reviewer import ReviewerWorker
+        from litagent.llm.client import MockLLMClient
+
+        review_json = _json.dumps({
+            "score": 0.9, "strengths": [], "weaknesses": [],
+            "issues": [], "missing_coverage": [],
+            "verdict": "accept",
+            "evidence_compliance": {
+                "passed": True,
+                "unsupported_claims": [
+                    {"section": "intro", "claim": "SOTA", "reason": "no evidence",
+                     "action": "delete"},
+                ],
+                "unknown_evidence_ids": [],
+            },
+        })
+        llm = MockLLMClient(responses=[review_json])
+        w = ReviewerWorker(llm=llm)
+        task = SubTask(
+            task_id="review", description="test", agent_type="reviewer",
+            input_data={"upstream_results": {"synthesis": {
+                "draft": "test [E:p1:claim:0]",
+                "evidence_selection": self._selection().to_dict(),
+            }}},
+        )
+        result = await w.execute(task)
+        assert result["evidence_compliance"]["passed"] is False
+        assert len(result["evidence_compliance"]["unsupported_claims"]) >= 1
+
+    @pytest.mark.asyncio
+    async def test_review_revision_receives_same_evidence(self):
+        import json as _json
+        from litagent.agents.reviewer import ReviewerWorker
+        from litagent.llm.client import MockLLMClient
+
+        review_json = _json.dumps({
+            "score": 0.85, "strengths": ["fixed"], "weaknesses": [],
+            "issues": [], "missing_coverage": [],
+            "verdict": "accept",
+            "evidence_compliance": {
+                "passed": True, "unsupported_claims": [], "unknown_evidence_ids": [],
+            },
+        })
+        llm = MockLLMClient(responses=[review_json])
+        w = ReviewerWorker(llm=llm)
+        result = await w.review_revision(
+            revised_draft="revised [E:p1:claim:0]",
+            previous_review={"score": 0.5, "verdict": "revise"},
+            evidence_selection=self._selection(),
+        )
+        assert result["evidence_compliance"]["passed"] is True
+
+    @pytest.mark.asyncio
+    async def test_review_revision_accepts_dict_selection(self):
+        import json as _json
+        from litagent.agents.reviewer import ReviewerWorker
+        from litagent.llm.client import MockLLMClient
+
+        review_json = _json.dumps({
+            "score": 0.8, "strengths": [], "weaknesses": [],
+            "issues": [], "missing_coverage": [],
+            "verdict": "accept",
+            "evidence_compliance": {
+                "passed": True, "unsupported_claims": [], "unknown_evidence_ids": [],
+            },
+        })
+        llm = MockLLMClient(responses=[review_json])
+        w = ReviewerWorker(llm=llm)
+        result = await w.review_revision(
+            "draft v2", {"score": 0.5},
+            evidence_selection=self._selection().to_dict(),
+        )
+        assert "score" in result
+
+    def test_reviewer_prompt_forbids_ledger_external_suggestions(self):
+        from litagent.agents.reviewer import REVIEWER_INSTRUCTIONS
+        assert "ONLY describe evidence present in the" in REVIEWER_INSTRUCTIONS
+        assert "MUST NOT" in REVIEWER_INSTRUCTIONS
+
+    def test_reviewer_prompt_contains_evidence_compliance_schema(self):
+        from litagent.agents.reviewer import REVIEWER_INSTRUCTIONS
+        assert "evidence_compliance" in REVIEWER_INSTRUCTIONS
+        assert '"passed"' in REVIEWER_INSTRUCTIONS
+        assert "unknown_evidence_ids" in REVIEWER_INSTRUCTIONS
+        assert "unsupported_claims" in REVIEWER_INSTRUCTIONS
+
+    def test_reviewer_prompt_declares_evidence_untrusted(self):
+        from litagent.agents.reviewer import REVIEWER_INSTRUCTIONS
+        assert "UNTRUSTED DATA" in REVIEWER_INSTRUCTIONS
+
+    def test_synthesis_prompt_contains_evidence_boundary(self):
+        from litagent.agents.synthesis import SYNTHESIS_INSTRUCTIONS
+        assert "EVIDENCE BOUNDARIES" in SYNTHESIS_INSTRUCTIONS
+        assert "ONLY allowed fact source" in SYNTHESIS_INSTRUCTIONS
+        assert "NEVER invent evidence IDs" in SYNTHESIS_INSTRUCTIONS
+
+    def test_synthesis_prompt_declares_evidence_untrusted(self):
+        from litagent.agents.synthesis import SYNTHESIS_INSTRUCTIONS
+        assert "UNTRUSTED DATA" in SYNTHESIS_INSTRUCTIONS
+
+    def test_revise_prompt_mentions_same_evidence(self):
+        from litagent.agents.synthesis import REVISE_INSTRUCTIONS
+        assert "SAME" in REVISE_INSTRUCTIONS
+        assert "known gap" in REVISE_INSTRUCTIONS

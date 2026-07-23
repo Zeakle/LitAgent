@@ -12,8 +12,17 @@ memory:
   pg_url: "postgresql://litagent:litagent@localhost:5433/litagent"   # host 5433 → 避开 LangFuse postgres(5432)
 
 context:
-  max_tokens: 16000
+  max_tokens: 32000
   compact_threshold: 0.7
+  # ── Phase 13.8 evidence-grounded synthesis ──
+  synthesis_evidence_max_tokens: 16000   # evidence plan + selected ledger
+  synthesis_papers_max_tokens: 10000     # structural paper catalog
+  evidence_top_k_per_section: 12        # per-section rerank top-k
+  evidence_max_items: 60                # global selected items cap
+  evidence_per_paper_cap: 4             # max evidence items per paper
+  review_evidence_max_tokens: 8000      # reviewer evidence layer
+  review_draft_max_tokens: 16000         # reviewer draft layer
+  review_feedback_max_tokens: 2000      # bounded previous-review feedback
 
 extractor:
   max_concurrent: 5
@@ -28,7 +37,7 @@ orchestrator:
 llm:
   base_url: "https://api.deepseek.com"
   model: "deepseek-v4-flash"
-  max_tokens: 4096
+  max_tokens: 20000
   temperature: 0.1
 
 adversarial:
@@ -52,7 +61,7 @@ observability:
   payload_mode: "full_redacted"  # 上传完整非密钥 I/O；密钥和认证值递归剔除
 
 eval:
-  max_tokens: 16384       # 评估器 LLM 调用额度——比常规大，citation 枚举引用 + reasoning 占额度
+  max_tokens: 20000       # 评估器 LLM 调用额度——比常规大，citation 枚举引用 + reasoning 占额度
 
 planner:
   decompose_enabled: true   # LLM 把 query 扩展成 2-3 子 query（多路召回）；false 退回单 query

@@ -51,7 +51,7 @@ def _minimal_config(**overrides) -> AppConfig:
             qdrant_url=overrides.pop("qdrant_url", "http://localhost:9999"),
             pg_url=overrides.pop("pg_url", "postgresql://none:none@localhost:9999/none"),
         ),
-        context=ContextConfig(max_tokens=8000),
+        context=ContextConfig(max_tokens=16000),
         orchestrator=OrchestratorConfig(timeout_ms=30000, max_concurrent=3),
         llm=LLMConfig(base_url="https://api.deepseek.com", model="deepseek-v4-flash"),
         adversarial=AdversarialConfig(max_rounds=1, pass_threshold=0.5),
@@ -391,10 +391,12 @@ class TestExtractReport:
         assert isinstance(out["metadata"]["generated_at"], float)
         assert out["review_history"] == [{
             "round": 2,
-            "score": 0.7,
-            "verdict": "revise",
-            "weaknesses": ["missing baseline"],
-            "issue_count": 1,
+            "review": {
+                "score": 0.7,
+                "verdict": "revise",
+                "weaknesses": ["missing baseline"],
+                "issues": [{"section": "Methods", "issue": "thin"}],
+            },
         }]
         assert "Survey incomplete" not in out["survey"]      # ← 不触发 false positive
 

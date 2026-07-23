@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from litagent.config import AppConfig
+from litagent.context.evidence_selector import EvidenceSelector
 from litagent.eval.base import CTX_EVIDENCE
 from litagent.exceptions import ConfigError
 from litagent.llm.client import BaseLLMClient, OpenAICompatibleClient
@@ -203,6 +204,7 @@ class LitAgent:
         self._relevance_gate: RelevanceGateWorker | None = None
         self._extractor: ExtractorWorker | None = None
         self._graph: GraphWorker | None = None
+        self._evidence_selector: EvidenceSelector | None = None
         self._synthesis: SynthesisWorker | None = None
         self._reviewer: ReviewerWorker | None = None
         self._adversarial: AdversarialReviewWorker | None = None
@@ -362,10 +364,12 @@ class LitAgent:
             review = item.get("review", {})
             history.append({
                 "round": item.get("round", 0),
-                "score": review.get("score", 0),
-                "verdict": review.get("verdict", "unknown"),
-                "weaknesses": review.get("weaknesses", []),
-                "issue_count": len(review.get("issues", [])),
+                "review": {
+                    "score": review.get("score", 0),
+                    "verdict": review.get("verdict", "unknown"),
+                    "weaknesses": review.get("weaknesses", []),
+                    "issues": review.get("issues", []),
+                },
             })
         return history
 
@@ -491,18 +495,34 @@ class LitAgent:
 
         self._graph = GraphWorker(max_papers=cfg.extractor.max_papers)
         workers.append(self._graph)
+        self._evidence_selector = EvidenceSelector(
+            reranker=self._infra.reranker,
+            budget=self._budget_manager,
+            top_k_per_section=cfg.context.evidence_top_k_per_section,
+            max_items=cfg.context.evidence_max_items,
+            per_paper_cap=cfg.context.evidence_per_paper_cap,
+            trace_hook=self._trace_hook
+        )
 
         self._synthesis = SynthesisWorker(
             llm=self._llm,
-            memory=self._infra.memory,
+            memory=self._infra.memory,          # 保留构造兼容，但当前不注入 memory tool
             budget=self._budget_manager,
             skill_manager=self._skill_manager,
             agent_config=cfg.agent,
+            evidence_selector=self._evidence_selector,
+            context_config=cfg.context,
         )
         workers.append(self._synthesis)
 
         self._reviewer = ReviewerWorker(
-            llm=self._llm, claims_index=self._infra.claims_index, budget=self._budget_manager, skill_manager=self._skill_manager, config=cfg.adversarial)
+            llm=self._llm,
+            claims_index=self._infra.claims_index,  # 保留构造兼容，但不注入 claims layer
+            budget=self._budget_manager,
+            skill_manager=self._skill_manager,
+            config=cfg.adversarial,
+            context_config=cfg.context,
+        )
         workers.append(self._reviewer)
 
         self._adversarial = AdversarialReviewWorker(
