@@ -1,24 +1,26 @@
-"""Search tools — arxiv / Semantic Scholar / HuggingFace papers."""
+"""Search arXiv, Semantic Scholar, and Hugging Face papers."""
+
 from __future__ import annotations
 
 import os
-import httpx
 import xml.etree.ElementTree as ET
+
+import httpx
 
 from litagent.logging import get_logger
 from litagent.tools.base import FallbackStep, ToolDefinition, ToolCategory
 from litagent.tools.registry import get_registry
 
-
 logger = get_logger("tools.search")
 
 
 async def search_arxiv(query: str = "", max_results: int = 20) -> list[dict]:
+    """Search arXiv and return normalized paper records."""
     url = "https://export.arxiv.org/api/query"
     params = {"search_query": f"all:{query}", "start": 0, "max_results": max_results}
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.get(url, params=params)
-        resp.raise_for_status()   # 主源 + fallback 链起点：失败抛异常触发 fallback
+        resp.raise_for_status()
     return _parse_arxiv_xml(resp.text)
 
 
@@ -31,47 +33,69 @@ def _parse_arxiv_xml(xml_text: str) -> list[dict]:
         summary_el = entry.find("atom:summary", ns)
         id_el = entry.find("atom:id", ns)
         title = title_el.text.strip() if title_el is not None and title_el.text else ""
-        abstract = summary_el.text.strip() if summary_el is not None and summary_el.text else ""
-        arxiv_id = id_el.text.strip().split("/")[-1] if id_el is not None and id_el.text else ""
-        papers.append({"paper_id": arxiv_id, "title": title, "abstract": abstract, "source": "arxiv"})
+        abstract = (
+            summary_el.text.strip()
+            if summary_el is not None and summary_el.text
+            else ""
+        )
+        arxiv_id = (
+            id_el.text.strip().split("/")[-1]
+            if id_el is not None and id_el.text
+            else ""
+        )
+        papers.append(
+            {
+                "paper_id": arxiv_id,
+                "title": title,
+                "abstract": abstract,
+                "source": "arxiv",
+            }
+        )
     return papers
 
 
 async def search_semantic_scholar(query: str = "", max_results: int = 20) -> list[dict]:
-    """Semantic Scholar 搜索。公开 API 限流严（429 常见）——优雅降级返回空，不抛异常。
-
-    可选 API key：设 SEMANTIC_SCHOLAR_API_KEY 环境变量则带 x-api-key header 走专属
-    1 RPS 额度（稳定）；无 key 则走全球共享池（长期饱和，大概率 429 → 降级返回空）。
-    """
+    """Search Semantic Scholar, returning no results for a non-200 response."""
     url = "https://api.semanticscholar.org/graph/v1/paper/search"
-    params = {"query": query, "limit": max_results, "fields": "paperId,title,abstract,citationCount,year"}
+    params = {
+        "query": query,
+        "limit": max_results,
+        "fields": "paperId,title,abstract,citationCount,year",
+    }
     api_key = os.environ.get("SEMANTIC_SCHOLAR_API_KEY", "")
     headers = {"x-api-key": api_key} if api_key else {}
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.get(url, params=params, headers=headers)
     if resp.status_code != 200:
-        # 429 限流 / 5xx 等：独立并行源，降级返回空，不拖累其他源
-        logger.warning(f"Semantic Scholar returned {resp.status_code}, skipping (degraded)")
+
+        logger.warning(
+            f"Semantic Scholar returned {resp.status_code}, skipping (degraded)"
+        )
         return []
-    data = resp.json().get('data', []) or []
-    return [{"paper_id": item.get("paperId", ""), "title": item.get("title", ""),
-            "abstract": item.get("abstract", "") or "", "citation_count": item.get("citationCount", 0),
-            "year": item.get("year"), "source": "semantic_scholar"} for item in data]
+    data = resp.json().get("data", []) or []
+    return [
+        {
+            "paper_id": item.get("paperId", ""),
+            "title": item.get("title", ""),
+            "abstract": item.get("abstract", "") or "",
+            "citation_count": item.get("citationCount", 0),
+            "year": item.get("year"),
+            "source": "semantic_scholar",
+        }
+        for item in data
+    ]
 
 
 async def search_huggingface(query: str = "", max_results: int = 20) -> list[dict]:
-    """HuggingFace papers 搜索（替代已关停的 PapersWithCode API）。
-
-    PapersWithCode 的 API 已下线（302 重定向到 huggingface.co），HF 接管并提供
-    等价的 papers 检索。返回结构：[{"paper": {id, title, summary, ...}}, ...]。
-    非 200 → 优雅降级返回空。
-    """
+    """Search Hugging Face papers, returning no results for a non-200 response."""
     url = "https://huggingface.co/api/papers/search"
     params = {"q": query}
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.get(url, params=params)
     if resp.status_code != 200:
-        logger.warning(f"HuggingFace papers returned {resp.status_code}, skipping (degraded)")
+        logger.warning(
+            f"HuggingFace papers returned {resp.status_code}, skipping (degraded)"
+        )
         return []
     items = resp.json() or []
     papers = []
@@ -79,25 +103,57 @@ async def search_huggingface(query: str = "", max_results: int = 20) -> list[dic
         p = entry.get("paper", {}) if isinstance(entry, dict) else {}
         if not p:
             continue
-        papers.append({
-            "paper_id": p.get("id", ""),
-            "title": p.get("title", ""),
-            "abstract": p.get("summary", "") or "",
-            "citation_count": p.get("upvotes", 0),   # HF 无引用数，用 upvotes 近似热度
-            "source": "huggingface",
-        })
+        papers.append(
+            {
+                "paper_id": p.get("id", ""),
+                "title": p.get("title", ""),
+                "abstract": p.get("summary", "") or "",
+                "citation_count": p.get("upvotes", 0),
+                "source": "huggingface",
+            }
+        )
     return papers
 
 
 def register_search_tools():
+    """Register paper-search tools and their fallback chain."""
     r = get_registry()
-    r.register(ToolDefinition(name="search_arxiv", description="Search arxiv by keyword",
-              category=ToolCategory.READ, timeout_ms=30000, max_retries=2, fallback=[
-                FallbackStep(type="alternative_tool", alternative_tool="search_semantic_scholar"),
-                FallbackStep(type="alternative_tool", alternative_tool="search_huggingface"),
-                FallbackStep(type="skip"),   # 全挂了就跳过，返回空
-              ]), search_arxiv)
-    r.register(ToolDefinition(name="search_semantic_scholar", description="Search Semantic Scholar",
-              category=ToolCategory.READ, timeout_ms=30000, max_retries=2), search_semantic_scholar)
-    r.register(ToolDefinition(name="search_huggingface", description="Search HuggingFace papers",
-              category=ToolCategory.READ, timeout_ms=30000, max_retries=2), search_huggingface)
+    r.register(
+        ToolDefinition(
+            name="search_arxiv",
+            description="Search arxiv by keyword",
+            category=ToolCategory.READ,
+            timeout_ms=30000,
+            max_retries=2,
+            fallback=[
+                FallbackStep(
+                    type="alternative_tool", alternative_tool="search_semantic_scholar"
+                ),
+                FallbackStep(
+                    type="alternative_tool", alternative_tool="search_huggingface"
+                ),
+                FallbackStep(type="skip"),
+            ],
+        ),
+        search_arxiv,
+    )
+    r.register(
+        ToolDefinition(
+            name="search_semantic_scholar",
+            description="Search Semantic Scholar",
+            category=ToolCategory.READ,
+            timeout_ms=30000,
+            max_retries=2,
+        ),
+        search_semantic_scholar,
+    )
+    r.register(
+        ToolDefinition(
+            name="search_huggingface",
+            description="Search HuggingFace papers",
+            category=ToolCategory.READ,
+            timeout_ms=30000,
+            max_retries=2,
+        ),
+        search_huggingface,
+    )

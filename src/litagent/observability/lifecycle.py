@@ -1,10 +1,7 @@
-"""I/O lifecycle 追踪辅助——统一 *.start / *.complete / *.failed 配对契约。
-
-所有 await 型 I/O 在调用前 emit start，成功或失败路径只 emit 一次终态。
-BaseException 捕获保证 CancelledError 也能关闭 observation。
-"""
+"""Sanitize trace payloads and emit paired asynchronous I/O events."""
 
 from __future__ import annotations
+
 import re
 import time
 import uuid
@@ -13,14 +10,26 @@ from typing import Any, Callable, Mapping
 
 from litagent.observability.context import get_task_id
 
+_SENSITIVE_KEY_TOKENS = (
+    "key",
+    "token",
+    "secret",
+    "password",
+    "authorization",
+    "cookie",
+    "session",
+)
 
-_SENSITIVE_KEY_TOKENS = ('key', 'token', 'secret', 'password',
-                         'authorization', 'cookie', 'session')
 
-
-_RESERVED_FIELDS = frozenset({
-    "operation_id", "task_id", "elapsed_ms", "error_code", "error_type",
-})
+_RESERVED_FIELDS = frozenset(
+    {
+        "operation_id",
+        "task_id",
+        "elapsed_ms",
+        "error_code",
+        "error_type",
+    }
+)
 
 
 _SECRET_VALUE_RE = re.compile(
@@ -35,14 +44,14 @@ _MAX_ITEMS = 50
 
 
 def sanitize_input(data: Mapping[str, Any] | None) -> dict[str, Any]:
-    """递归清洗——返回有界、可序列化的 trace payload，不含敏感值。"""
+    """Return a bounded trace-safe mapping with sensitive data removed."""
     if data is None:
         return {}
     return _sanitize_mapping(data, depth=0)
 
 
 def _safe_key(key: Any) -> str:
-    """避免对非字符串键调用 __str__（可能触发用户代码）。"""
+    """Normalize a mapping key without invoking user-defined string methods."""
     return key if isinstance(key, str) else f"<{type(key).__name__}>"
 
 
@@ -56,7 +65,7 @@ def _sanitize_mapping(d: Mapping[str, Any], depth: int) -> dict[str, Any]:
     out: dict[str, Any] = {}
     for i, (k, v) in enumerate(d.items()):
         if i >= _MAX_ITEMS:
-            out['_truncated'] = f'{len(d) - _MAX_ITEMS} more keys omitted'
+            out["_truncated"] = f"{len(d) - _MAX_ITEMS} more keys omitted"
             break
 
         safe_key = _safe_key(k)
@@ -82,30 +91,30 @@ def _sanitize_value(v: Any, depth: int) -> Any:
 
     if isinstance(v, Mapping):
         if depth >= _MAX_DEPTH:
-            return f'<{type(v).__name__} depth-limit>'
+            return f"<{type(v).__name__} depth-limit>"
         return _sanitize_mapping(v, depth + 1)
 
     if isinstance(v, (list, tuple, set)):
         if depth >= _MAX_DEPTH:
-            return f'<{type(v).__name__} depth-limit>'
+            return f"<{type(v).__name__} depth-limit>"
 
         items: list[Any] = []
         for i, item in enumerate(v):
             if i >= _MAX_ITEMS:
-                items.append(f'<{len(v) - _MAX_ITEMS} more items omitted>')
+                items.append(f"<{len(v) - _MAX_ITEMS} more items omitted>")
                 break
             items.append(_sanitize_value(item, depth + 1))
         return items
 
-    # Unknown data type
+    # Avoid invoking repr or str on arbitrary untrusted objects.
     try:
-        return f'<{type(v).__name__}>'
+        return f"<{type(v).__name__}>"
     except Exception:
-        return '<unknown>'
+        return "<unknown>"
 
 
 def _sanitize_unreserved(data: Mapping[str, Any] | None) -> dict[str, Any]:
-    """清洗后剔除框架保留字段——防 producer 注入同名键覆盖。"""
+    """Sanitize data and remove fields owned by the lifecycle protocol."""
     return {
         key: value
         for key, value in sanitize_input(data).items()
@@ -114,8 +123,12 @@ def _sanitize_unreserved(data: Mapping[str, Any] | None) -> dict[str, Any]:
 
 
 @asynccontextmanager
-async def traced_io(emit: Callable[[str, dict], None], namespace: str, input_data: dict[str, Any] | None = None):
-    """Tracing一次真实外部 I/O"""
+async def traced_io(
+    emit: Callable[[str, dict], None],
+    namespace: str,
+    input_data: dict[str, Any] | None = None,
+):
+    """Emit one start event and exactly one terminal event around async I/O."""
     operation_id = uuid.uuid4().hex
     task_id = get_task_id()
     started = time.perf_counter()
@@ -128,13 +141,16 @@ async def traced_io(emit: Callable[[str, dict], None], namespace: str, input_dat
     try:
         yield outcome
     except BaseException as exc:
-        emit(f"{namespace}.failed", {
-            "operation_id": operation_id,
-            "task_id": task_id,
-            "elapsed_ms": int((time.perf_counter() - started) * 1000),
-            "error_code": "io_failed",
-            "error_type": type(exc).__name__,
-        })
+        emit(
+            f"{namespace}.failed",
+            {
+                "operation_id": operation_id,
+                "task_id": task_id,
+                "elapsed_ms": int((time.perf_counter() - started) * 1000),
+                "error_code": "io_failed",
+                "error_type": type(exc).__name__,
+            },
+        )
         raise
 
     complete = {

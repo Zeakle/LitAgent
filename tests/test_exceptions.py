@@ -1,10 +1,13 @@
+"""Tests for the LitAgent exception hierarchy."""
+
 import pytest
-from litagent.exceptions import (
-    LitAgentError, ConfigError, MCPError, SafetyError
-)
+
+from litagent.exceptions import LitAgentError, ConfigError, MCPError, SafetyError
 
 
 class TestExceptionHierarchy:
+    """Tests inheritance and messages for project exceptions."""
+
     def test_all_inherit_from_base(self):
         assert issubclass(ConfigError, LitAgentError)
         assert issubclass(MCPError, LitAgentError)

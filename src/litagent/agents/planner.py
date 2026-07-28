@@ -1,6 +1,7 @@
-"""Planner Agent——查询分解 + TaskGraph 生成。"""
+"""Classify survey queries and build the worker task graph."""
 
 from __future__ import annotations
+
 import os
 import re
 import json
@@ -20,23 +21,27 @@ logger = get_logger("agents.planner")
 
 
 class QueryIntent(str, Enum):
-    TOPIC = 'topic'
-    ARXIV_ID = 'arxiv_id'
-    DOI = 'doi'
-    URL = 'url'
+    """Identify the supported survey-query input forms."""
+
+    TOPIC = "topic"
+    ARXIV_ID = "arxiv_id"
+    DOI = "doi"
+    URL = "url"
 
 
-_ARXIV_NEW_RE = re.compile(r'^(arxiv:)?\d{4}\.\d{4,5}(v\d+)?$', re.IGNORECASE)
-_ARXIV_LEGACY_RE = re.compile(r'^(arxiv:)?[a-z-]+(\.[a-z]{2})?/\d{7}(v\d+)?$', re.IGNORECASE)
-_DOI_RE = re.compile(r'^(doi:)?10\.\d{4,9}/\S+$', re.IGNORECASE)
+_ARXIV_NEW_RE = re.compile(r"^(arxiv:)?\d{4}\.\d{4,5}(v\d+)?$", re.IGNORECASE)
+_ARXIV_LEGACY_RE = re.compile(
+    r"^(arxiv:)?[a-z-]+(\.[a-z]{2})?/\d{7}(v\d+)?$", re.IGNORECASE
+)
+_DOI_RE = re.compile(r"^(doi:)?10\.\d{4,9}/\S+$", re.IGNORECASE)
 
 _RECALL_TOP_K = 20
 
 
 def classify_query_intent(query: str) -> QueryIntent:
-    """纯规则判定 query 意图——无网络、无 LLM"""
+    """Classify a query as a topic, arXiv ID, DOI, or URL."""
     q = (query or "").strip()
-    if q.lower().startswith(('http://', 'https://')):
+    if q.lower().startswith(("http://", "https://")):
         return QueryIntent.URL
     if _ARXIV_NEW_RE.match(q) or _ARXIV_LEGACY_RE.match(q):
         return QueryIntent.ARXIV_ID
@@ -45,16 +50,20 @@ def classify_query_intent(query: str) -> QueryIntent:
     return QueryIntent.TOPIC
 
 
-_DECOMPOSE_SYSTEM = """You are a query planning assistant for an academic literature survey system.
-Given a research survey topic, expand it into 2-3 focused sub-queries that together broaden \
-literature coverage (different angles, subtopics, or methodological facets of the SAME topic).
-Do NOT drift to unrelated topics. Keep each sub-query concise (a search-engine query, not a sentence).
+_DECOMPOSE_SYSTEM = """You are a query planning assistant for an academic \
+literature survey system.
+Given a research survey topic, expand it into 2-3 focused sub-queries that \
+together broaden literature coverage (different angles, subtopics, or \
+methodological facets of the SAME topic).
+Do NOT drift to unrelated topics. Keep each sub-query concise \
+(a search-engine query, not a sentence).
 
 Respond ONLY with JSON: {"sub_queries": ["...", "..."]}"""
 
 
 class SurveyPlanner:
-    """标准综述流程的规则 Planner。"""
+    """Build survey task graphs with optional topic decomposition."""
+
     def __init__(
         self,
         llm: BaseLLMClient | None = None,
@@ -67,17 +76,15 @@ class SurveyPlanner:
         self._trace_hook = trace_hook
         self._memory = memory_manager
 
-
     def _emit(self, event: str, data: dict) -> None:
         if self._trace_hook:
             try:
                 self._trace_hook(event, data)
             except Exception as e:
-                logger.debug(f'Trace hook failed for {event} : {e}')
-
+                logger.debug(f"Trace hook failed for {event} : {e}")
 
     async def plan(self, query: str) -> TaskGraph:
-        # prompt injection检测
+        """Create a task graph for the survey query."""
         detector = InjectionDetector()
         result = detector.scan(query)
         if result.risk == InjectionRisk.HIGH:
@@ -85,7 +92,6 @@ class SurveyPlanner:
 
         graph = TaskGraph()
 
-        # layer0: query扩展
         intent = classify_query_intent(query)
         if intent == QueryIntent.TOPIC and self._config.decompose_enabled and self._llm:
             sub_queries = await self._decompose_traced(query)
@@ -115,77 +121,98 @@ class SurveyPlanner:
             except Exception as e:
                 logger.warning(f"Procedural ranking failed, keeping default order: {e}")
 
-        # layer1: 搜索
         search_ids: list[str] = []
         for rank_idx, source in enumerate(sources):
             for i, sub_query in enumerate(sub_queries):
-                tid = f'search_{source}_q{i}'
-                graph.add_task(SubTask(
-                    task_id=tid,
-                    description=f"Search {source} for: {sub_query}",
-                    agent_type='search',
-                    priority=rank_idx,
-                    input_data={'mode': 'external', "source": source, "query": sub_query}
-                ))
+                tid = f"search_{source}_q{i}"
+                graph.add_task(
+                    SubTask(
+                        task_id=tid,
+                        description=f"Search {source} for: {sub_query}",
+                        agent_type="search",
+                        priority=rank_idx,
+                        input_data={
+                            "mode": "external",
+                            "source": source,
+                            "query": sub_query,
+                        },
+                    )
+                )
                 search_ids.append(tid)
 
-        # RAG call
         recall_ids: list[str] = []
         for i, sub_query in enumerate(sub_queries):
-            tid = f'recall_q{i}'
-            graph.add_task(SubTask(
-                task_id=tid,
-                description=f'RAG recall for: {sub_query}',
-                agent_type='recall',
-                input_data={'query': sub_query, 'top_k': _RECALL_TOP_K, 'query_index': i},
-            ))
+            tid = f"recall_q{i}"
+            graph.add_task(
+                SubTask(
+                    task_id=tid,
+                    description=f"RAG recall for: {sub_query}",
+                    agent_type="recall",
+                    input_data={
+                        "query": sub_query,
+                        "top_k": _RECALL_TOP_K,
+                        "query_index": i,
+                    },
+                )
+            )
             recall_ids.append(tid)
 
-        # layer2: 搜索结果去重
-        graph.add_task(SubTask(
-            task_id='dedup',
-            description='Deduplicate search results',
-            agent_type='dedup',
-            input_data={"query": query},
-        ), depends_on=search_ids + recall_ids)
+        graph.add_task(
+            SubTask(
+                task_id="dedup",
+                description="Deduplicate search results",
+                agent_type="dedup",
+                input_data={"query": query},
+            ),
+            depends_on=search_ids + recall_ids,
+        )
 
-        # layer3: Relevance重排
-        graph.add_task(SubTask(
-            task_id="relevance_gate",
-            description="Rank papers by relevance to query",
-            agent_type="relevance_gate",
-            input_data={"query": query},
-        ), depends_on=["dedup"])
+        graph.add_task(
+            SubTask(
+                task_id="relevance_gate",
+                description="Rank papers by relevance to query",
+                agent_type="relevance_gate",
+                input_data={"query": query},
+            ),
+            depends_on=["dedup"],
+        )
 
-        # layer4: 提取 + 引用分析（并行，只等 relevance_gate）
-        graph.add_task(SubTask(
-            task_id='extract',
-            description='Extract structure info from papers',
-            agent_type='extractor',
-            input_data={"query": query},
-            timeout_ms=300000,
-            max_retries=0,
-        ), depends_on=['relevance_gate'])
+        graph.add_task(
+            SubTask(
+                task_id="extract",
+                description="Extract structure info from papers",
+                agent_type="extractor",
+                input_data={"query": query},
+                timeout_ms=300000,
+                max_retries=0,
+            ),
+            depends_on=["relevance_gate"],
+        )
 
-        graph.add_task(SubTask(
-            task_id='graph_analysis',
-            description='Analyze citation network',
-            agent_type='graph',
-            input_data={"query": query},
-        ), depends_on=['relevance_gate'])
+        graph.add_task(
+            SubTask(
+                task_id="graph_analysis",
+                description="Analyze citation network",
+                agent_type="graph",
+                input_data={"query": query},
+            ),
+            depends_on=["relevance_gate"],
+        )
 
-        # layer5: 综合 -> 审稿(串行)
-        graph.add_task(SubTask(
-            task_id='adversarial_review',
-            description='Adversarial synthesis + review loop',
-            agent_type='adversarial_review',
-            input_data={"query": query},
-            timeout_ms=300000,
-            max_retries=0,   # 内部已有对抗循环 + 异常兜底，外层重试只会重跑同样的失败、产生重复 span
-        ), depends_on=['extract', 'graph_analysis'])
+        # The worker owns its revision loop, so scheduler retries would duplicate work.
+        graph.add_task(
+            SubTask(
+                task_id="adversarial_review",
+                description="Adversarial synthesis + review loop",
+                agent_type="adversarial_review",
+                input_data={"query": query},
+                timeout_ms=300000,
+                max_retries=0,
+            ),
+            depends_on=["extract", "graph_analysis"],
+        )
         logger.info(f"Planned {len(graph.tasks)} tasks for query {query}")
         return graph
-
 
     async def _decompose(self, query: str) -> list[str]:
         fallback = [query]
@@ -195,10 +222,10 @@ class SurveyPlanner:
         try:
             resp = await self._llm.chat(
                 [
-                    {'role': 'system', 'content': _DECOMPOSE_SYSTEM},
-                    {'role': 'user', 'content': wrap_xml('topic', query)},
+                    {"role": "system", "content": _DECOMPOSE_SYSTEM},
+                    {"role": "user", "content": wrap_xml("topic", query)},
                 ],
-                response_format={'type': 'json_object'},
+                response_format={"type": "json_object"},
                 max_tokens=self._config.max_tokens,
                 temperature=self._config.temperature,
             )
@@ -209,7 +236,7 @@ class SurveyPlanner:
                 logger.warning("Decompose: empty content, degrade to single query")
                 return fallback
 
-            raw = json.loads(content).get('sub_queries')
+            raw = json.loads(content).get("sub_queries")
             if not isinstance(raw, list):
                 logger.warning("Decompose: 'sub_queries' not a list, degrade")
                 return fallback
@@ -224,28 +251,33 @@ class SurveyPlanner:
                     merged.append(q)
 
             clamped = merged[: self._config.max_sub_queries]
-            logger.info(f'Decompose: {query!r} -> {len(clamped)} sub-queries')
+            logger.info(f"Decompose: {query!r} -> {len(clamped)} sub-queries")
             return clamped
         except Exception as e:
             logger.warning(f"Decompose failed ({e}), degrade to single query")
             return fallback
 
-
     async def _decompose_traced(self, query: str) -> list[str]:
-        self._emit("subspan.start", {
-            "task_id": "query_decomposition",
-            "parent_task_id": "",            # 兜底到 root survey span
-            "name": "planner.query_decomposition",
-            "round": 0,
-        })
+        self._emit(
+            "subspan.start",
+            {
+                "task_id": "query_decomposition",
+                "parent_task_id": "",
+                "name": "planner.query_decomposition",
+                "round": 0,
+            },
+        )
         token = set_task_id("query_decomposition")
-        sub_queries = [query]                # 预置兜底，异常也有值
+        sub_queries = [query]
         try:
             sub_queries = await self._decompose(query)
             return sub_queries
         finally:
             reset_task_id(token)
-            self._emit("subspan.end", {
-                "task_id": "query_decomposition",
-                "output": {"sub_queries": sub_queries},
-            })
+            self._emit(
+                "subspan.end",
+                {
+                    "task_id": "query_decomposition",
+                    "output": {"sub_queries": sub_queries},
+                },
+            )

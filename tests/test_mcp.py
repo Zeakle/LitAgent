@@ -1,8 +1,9 @@
 """Phase 9 MCP module tests."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from contextlib import AsyncExitStack
+
+import pytest
 
 from litagent.mcp.connection import MCPConnection
 from litagent.mcp.bridge import MCPBridge
@@ -10,9 +11,9 @@ from litagent.config import MCPServerConfig
 from litagent.exceptions import MCPError
 
 
-# ── MCPConnection ──
-
 class TestMCPConnectionConstruction:
+    """Tests MCP connection factories."""
+
     def test_stdio_factory_sets_transport(self):
         conn = MCPConnection.stdio("python", ["test.py"])
         assert conn._transport == "stdio"
@@ -35,19 +36,20 @@ class TestMCPConnectionConstruction:
     def test_unknown_transport_raises_on_enter(self):
         """ValueError is raised in __aenter__, not __init__."""
         conn = MCPConnection("invalid_transport", some_arg="x")
-        # __init__ succeeds (stores transport string), __aenter__ validates
         assert conn._transport == "invalid_transport"
 
 
 class TestMCPConnectionExitStack:
+    """Tests MCP connection resource management."""
+
     def test_has_exit_stack(self):
         conn = MCPConnection.stdio("echo")
         assert isinstance(conn._exit_stack, AsyncExitStack)
 
 
-# ── MCPBridge ──
-
 class TestMCPBridgeEmpty:
+    """Tests an MCP bridge without servers."""
+
     @pytest.mark.asyncio
     async def test_connect_all_empty_servers(self):
         bridge = MCPBridge()
@@ -56,6 +58,8 @@ class TestMCPBridgeEmpty:
 
 
 class TestMCPBridgeDisabledServers:
+    """Tests disabled MCP server handling."""
+
     @pytest.mark.asyncio
     async def test_connect_all_skips_disabled(self):
         bridge = MCPBridge()
@@ -66,18 +70,20 @@ class TestMCPBridgeDisabledServers:
 
 
 class TestMCPBridgeDisconnect:
+    """Tests MCP bridge disconnection."""
+
     @pytest.mark.asyncio
     async def test_disconnect_all_on_empty(self):
         bridge = MCPBridge()
-        # should not raise
         await bridge.disconnect_all()
 
 
-# ── MCPError ──
-
 class TestMCPError:
+    """Tests MCP error contracts."""
+
     def test_is_litagent_error(self):
         from litagent.exceptions import LitAgentError
+
         assert issubclass(MCPError, LitAgentError)
 
     def test_error_message(self):
@@ -85,9 +91,9 @@ class TestMCPError:
         assert str(e) == "test error"
 
 
-# ── MCPServerConfig ──
-
 class TestMCPServerConfig:
+    """Tests MCP server configuration."""
+
     def test_defaults(self):
         cfg = MCPServerConfig()
         assert cfg.transport == "stdio"

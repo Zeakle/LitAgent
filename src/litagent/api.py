@@ -1,11 +1,7 @@
-"""FastAPI REST API for LitAgent.
-
-启动:
-    uvicorn litagent.api:app --host 0.0.0.0 --port 8000 --reload
-Swagger UI: http://localhost:8000/docs
-"""
+"""Expose the LitAgent REST API and persistent flow-demo endpoints."""
 
 from __future__ import annotations
+
 import asyncio as _asyncio
 import json
 import os
@@ -34,16 +30,19 @@ from litagent.observability.tracing import LangFuseTracer
 logger = get_logger("api")
 
 
-# ═══════════════════════════════════════════════════════
-# Pydantic models
-# ═══════════════════════════════════════════════════════
+# API models
+
 
 class SurveyRequest(BaseModel):
+    """Validate a survey query and its optional configuration path."""
+
     query: str = Field(..., min_length=1, max_length=2000)
     config_path: str | None = None
 
 
 class SurveyStatus(BaseModel):
+    """Represent the current status of a survey task."""
+
     task_id: str
     status: str
     progress: str = ""
@@ -52,6 +51,8 @@ class SurveyStatus(BaseModel):
 
 
 class SurveyReport(BaseModel):
+    """Represent a completed survey report response."""
+
     task_id: str
     survey: str
     metadata: dict[str, Any]
@@ -60,30 +61,29 @@ class SurveyReport(BaseModel):
     partial: bool
     evaluation: dict[str, Any] = {}
     quality: dict[str, Any] = {
-        'status': 'unverified',
-        'failed_metrics': [],
-        'unverified_metrics': []
+        "status": "unverified",
+        "failed_metrics": [],
+        "unverified_metrics": [],
     }
     delivery: dict[str, Any] = {}
 
 
-# ═══════════════════════════════════════════════════════
-# Background: TTL cleanup
-# ═══════════════════════════════════════════════════════
+# Background cleanup
 
-_TASK_TTL_SECONDS = 3600   # 1 小时后清理旧任务
-_CLEANUP_INTERVAL = 600    # 每 10 分钟检查一次
+_TASK_TTL_SECONDS = 3600
+_CLEANUP_INTERVAL = 600
 FLOW_DEMO_QUERY = "few-shot learning in computer vision"
 FLOW_DEMO_STATIC = Path("static/flow-demo/index.html")
 
 
 async def _cleanup_old_tasks() -> None:
-    """后台轮询，清理已超过 TTL 的 completed/failed 任务。"""
+    """Remove terminal tasks after their in-memory TTL expires."""
     while True:
         await _asyncio.sleep(_CLEANUP_INTERVAL)
         now = time.time()
         expired = [
-            tid for tid, t in app.state.tasks.items()
+            tid
+            for tid, t in app.state.tasks.items()
             if t["status"] in ("completed", "failed")
             and (now - t.get("_created_at", 0)) > _TASK_TTL_SECONDS
         ]
@@ -93,20 +93,16 @@ async def _cleanup_old_tasks() -> None:
             logger.info("Cleaned %d expired tasks", len(expired))
 
 
-# ═══════════════════════════════════════════════════════
-# Lifespan — 替代已废弃的 @app.on_event("startup")
-# ═══════════════════════════════════════════════════════
-
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    # startup: 启动 TTL 清理协程
+    """Restore archived runs and manage the cleanup task lifecycle."""
     _app.state.flow_archive_index = {
         artifact["run_id"]: artifact for artifact in _app.state.flow_repository.list()
     }
     cleanup_task = _asyncio.create_task(_cleanup_old_tasks())
     logger.info("LitAgent API started, TTL cleanup running")
     yield
-    # shutdown: 取消清理协程
+
     cleanup_task.cancel()
     try:
         await cleanup_task
@@ -115,9 +111,7 @@ async def lifespan(_app: FastAPI):
     logger.info("LitAgent API shut down")
 
 
-# ═══════════════════════════════════════════════════════
-# App
-# ═══════════════════════════════════════════════════════
+# Application state
 
 app = FastAPI(
     title="LitAgent API",
@@ -126,7 +120,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# In-memory 任务状态（必须在 lifespan 外初始化，否则 TestClient 不可见）
+
 app.state.tasks: dict[str, dict[str, Any]] = {}
 app.state.flow_repository = ArchiveRepository()
 app.state.flow_runs: dict[str, dict[str, Any]] = {}
@@ -134,24 +128,26 @@ app.state.flow_archive_index = {
     artifact["run_id"]: artifact for artifact in app.state.flow_repository.list()
 }
 
-# Phase 14 前端静态文件预留
+
 try:
     app.mount("/static", StaticFiles(directory="static"), name="static")
 except RuntimeError:
+    # Static assets are optional in minimal and test installations.
     pass
 
 
-# ═══════════════════════════════════════════════════════
 # Routes
-# ═══════════════════════════════════════════════════════
+
 
 @app.get("/health")
 async def health():
+    """Return the API health status."""
     return {"status": "ok"}
 
 
 @app.get("/flow-demo", include_in_schema=False)
 async def flow_demo_page():
+    """Return the flow-demo user interface."""
     return FileResponse(FLOW_DEMO_STATIC)
 
 
@@ -175,17 +171,19 @@ async def _run_flow_demo(run_id: str, recorder: RunRecorder) -> None:
     entry = app.state.flow_runs[run_id]
     try:
         config = load_config()
-        recorder.set_config_summary({
-            "llm": {"model": config.llm.model, "base_url": config.llm.base_url},
-            "orchestrator": config.orchestrator.model_dump(),
-            "extractor": config.extractor.model_dump(),
-            "planner": config.planner.model_dump(),
-            "observability": {
-                "enabled": config.observability.enabled,
-                "langfuse_host": config.observability.langfuse_host,
-                "payload_mode": config.observability.payload_mode,
-            },
-        })
+        recorder.set_config_summary(
+            {
+                "llm": {"model": config.llm.model, "base_url": config.llm.base_url},
+                "orchestrator": config.orchestrator.model_dump(),
+                "extractor": config.extractor.model_dump(),
+                "planner": config.planner.model_dump(),
+                "observability": {
+                    "enabled": config.observability.enabled,
+                    "langfuse_host": config.observability.langfuse_host,
+                    "payload_mode": config.observability.payload_mode,
+                },
+            }
+        )
         trace_hook: Any = recorder
         if config.observability.enabled:
             langfuse = LangFuseTracer(
@@ -195,13 +193,17 @@ async def _run_flow_demo(run_id: str, recorder: RunRecorder) -> None:
             )
             trace_hook = CompositeTraceHook(
                 recorder,
-                RedactingTraceHook(langfuse, payload_mode=config.observability.payload_mode),
+                RedactingTraceHook(
+                    langfuse, payload_mode=config.observability.payload_mode
+                ),
             )
         async with LitAgent(config, trace_hook=trace_hook) as agent:
             report = await agent.run(FLOW_DEMO_QUERY)
         artifact = recorder.finalize(report=report)
         entry.update(
-            status=artifact["status"], error=artifact.get("error"), artifact=artifact,
+            status=artifact["status"],
+            error=artifact.get("error"),
+            artifact=artifact,
         )
         app.state.flow_archive_index[run_id] = artifact
     except Exception as exc:
@@ -241,21 +243,28 @@ def _flow_summary(artifact: dict[str, Any]) -> dict[str, Any]:
 
 @app.get("/flow-demo/runs")
 async def list_flow_demo_runs():
+    """List live and archived flow-demo runs."""
     artifacts = dict(app.state.flow_archive_index)
-    artifacts.update({item["run_id"]: item for item in app.state.flow_repository.list()})
+    artifacts.update(
+        {item["run_id"]: item for item in app.state.flow_repository.list()}
+    )
     for run_id in app.state.flow_runs:
         artifact = _flow_artifact(run_id)
         if artifact:
             artifacts[run_id] = artifact
-    return [_flow_summary(item) for item in sorted(
-        artifacts.values(),
-        key=lambda item: item.get("completed_at") or item.get("started_at", ""),
-        reverse=True,
-    )]
+    return [
+        _flow_summary(item)
+        for item in sorted(
+            artifacts.values(),
+            key=lambda item: item.get("completed_at") or item.get("started_at", ""),
+            reverse=True,
+        )
+    ]
 
 
 @app.get("/flow-demo/runs/{run_id}")
 async def get_flow_demo_run(run_id: str):
+    """Return one live or archived flow-demo run."""
     artifact = _flow_artifact(run_id)
     if artifact is None:
         raise HTTPException(status_code=404, detail=f"Flow run '{run_id}' not found")
@@ -264,6 +273,7 @@ async def get_flow_demo_run(run_id: str):
 
 @app.get("/flow-demo/runs/{run_id}/events")
 async def stream_flow_demo_events(run_id: str):
+    """Stream flow-demo trace events over server-sent events."""
     if _flow_artifact(run_id) is None:
         raise HTTPException(status_code=404, detail=f"Flow run '{run_id}' not found")
 
@@ -275,10 +285,16 @@ async def stream_flow_demo_events(run_id: str):
                 return
             events = artifact.get("events", [])
             for event in events[offset:]:
-                yield f"event: trace\ndata: {json.dumps(event, ensure_ascii=False, default=str)}\n\n"
+                yield (
+                    "event: trace\ndata: "
+                    f"{json.dumps(event, ensure_ascii=False, default=str)}\n\n"
+                )
             offset = len(events)
             if artifact.get("status") in {"completed", "failed"}:
-                yield f"event: done\ndata: {json.dumps(_flow_summary(artifact), ensure_ascii=False)}\n\n"
+                yield (
+                    "event: done\ndata: "
+                    f"{json.dumps(_flow_summary(artifact), ensure_ascii=False)}\n\n"
+                )
                 return
             await _asyncio.sleep(0.3)
 
@@ -287,9 +303,12 @@ async def stream_flow_demo_events(run_id: str):
 
 @app.get("/flow-demo/runs/{run_id}/download")
 async def download_flow_demo_run(run_id: str):
+    """Download a completed flow-demo artifact."""
     artifact = app.state.flow_repository.get(run_id)
     if artifact is None:
-        raise HTTPException(status_code=404, detail=f"Completed flow run '{run_id}' not found")
+        raise HTTPException(
+            status_code=404, detail=f"Completed flow run '{run_id}' not found"
+        )
     return FileResponse(
         app.state.flow_repository.path_for(run_id),
         media_type="application/json",
@@ -299,10 +318,13 @@ async def download_flow_demo_run(run_id: str):
 
 @app.post("/survey", status_code=201, response_model=SurveyStatus)
 async def create_survey(req: SurveyRequest, background_tasks: BackgroundTasks):
-    """提交文献综述任务，后台异步执行。"""
+    """Submit a survey task for background execution."""
     task_id = str(uuid.uuid4())[:8]
     app.state.tasks[task_id] = {
-        "status": "running", "progress": "planner", "result": None, "error": None,
+        "status": "running",
+        "progress": "planner",
+        "result": None,
+        "error": None,
         "_created_at": time.time(),
     }
     background_tasks.add_task(_run_survey, task_id, req.query, req.config_path)
@@ -310,23 +332,27 @@ async def create_survey(req: SurveyRequest, background_tasks: BackgroundTasks):
 
 
 async def _run_survey(task_id: str, query: str, config_path: str | None) -> None:
-    """后台执行 survey，完成后更新 app.state.tasks。"""
+    """Run a survey and store its terminal task state."""
     try:
         config = load_config(config_path)
         async with LitAgent(config) as agent:
             result = await agent.run(query)
             app.state.tasks[task_id].update(
-                status="completed", progress="done", result=result,
+                status="completed",
+                progress="done",
+                result=result,
             )
     except Exception as e:
         app.state.tasks[task_id].update(
-            status="failed", progress="", error=str(e),
+            status="failed",
+            progress="",
+            error=str(e),
         )
 
 
 @app.get("/survey/{task_id}", response_model=SurveyStatus)
 async def get_survey_status(task_id: str):
-    """查询任务状态"""
+    """Return the current status of a survey task."""
     task = app.state.tasks.get(task_id)
     if not task:
         raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
@@ -335,24 +361,29 @@ async def get_survey_status(task_id: str):
     if task["status"] == "completed":
         result = task.get("result") or {}
         d = result.get("delivery") or derive_delivery(
-            result.get("partial", False), result.get("quality"))
+            result.get("partial", False), result.get("quality")
+        )
         delivery_status = d.get("status")
 
     return SurveyStatus(
-        task_id=task_id, status=task["status"],
-        progress=task.get("progress", ""), error=task.get("error"),
+        task_id=task_id,
+        status=task["status"],
+        progress=task.get("progress", ""),
+        error=task.get("error"),
         delivery_status=delivery_status,
     )
 
 
 @app.get("/survey/{task_id}/report", response_model=SurveyReport)
 async def get_survey_report(task_id: str):
-    """获取已完成 survey 的完整报告。"""
+    """Return the report for a completed survey task."""
     task = app.state.tasks.get(task_id)
     if not task:
         raise HTTPException(status_code=404)
     if task["status"] == "running":
-        raise HTTPException(status_code=409, detail="Still running. Poll GET /survey/{task_id} first.")
+        raise HTTPException(
+            status_code=409, detail="Still running. Poll GET /survey/{task_id} first."
+        )
     if task["status"] == "failed":
         raise HTTPException(status_code=500, detail=task.get("error", "unknown"))
 
@@ -365,13 +396,10 @@ async def get_survey_report(task_id: str):
         graph_data=result.get("graph_data", {}),
         partial=result.get("partial", False),
         evaluation=result.get("evaluation", {}),
-        quality=result.get('quality',
-            {
-                'status': 'unverified',
-                'failed_metrics': [],
-                'unverified_metrics': []
-            }
+        quality=result.get(
+            "quality",
+            {"status": "unverified", "failed_metrics": [], "unverified_metrics": []},
         ),
-        delivery=result.get('delivery') or derive_delivery(
-            result.get('partial', False), result.get('quality')),
+        delivery=result.get("delivery")
+        or derive_delivery(result.get("partial", False), result.get("quality")),
     )

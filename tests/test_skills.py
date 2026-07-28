@@ -1,13 +1,15 @@
 """Phase 9 Skills module tests."""
 
-import pytest
 from pathlib import Path
+
+import pytest
+
 from litagent.skills.manager import Skill, SkillManager, _find_skills_dir
 
 
-# ── Skill dataclass ──
-
 class TestSkill:
+    """Tests skill metadata."""
+
     def test_basic_skill(self):
         s = Skill(name="test", description="A test skill", body="# Body")
         assert s.name == "test"
@@ -18,8 +20,6 @@ class TestSkill:
         s = Skill(name="x", description="x")
         assert s.body == ""
 
-
-# ── SkillManager ──
 
 class TestSkillManager:
     """Tests that SkillManager loads SKILL.md files correctly."""
@@ -65,7 +65,9 @@ class TestSkillManager:
     def test_body_contains_quality_checklist(self):
         m = SkillManager()
         body = m.get_body("cv")
-        assert "Quality checklist" in body.lower() or "quality checklist" in body.lower()
+        assert (
+            "Quality checklist" in body.lower() or "quality checklist" in body.lower()
+        )
 
     def test_nlp_body_contains_fields(self):
         m = SkillManager()
@@ -74,13 +76,13 @@ class TestSkillManager:
         assert "BLEU" in body
 
 
-# ── _find_skills_dir ──
-
 class TestFindSkillsDir:
+    """Tests skill-directory discovery."""
+
     def test_finds_skills_dir(self):
         path = _find_skills_dir("src/litagent/skills")
         assert path.is_dir()
-        assert (path / "cv" / "SKILL.md").is_file()   # cv 已扁平到 skills/ 直下（13.5 迁移）
+        assert (path / "cv" / "SKILL.md").is_file()
 
     def test_raises_on_nonexistent(self):
         with pytest.raises(FileNotFoundError):

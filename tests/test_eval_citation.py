@@ -1,12 +1,17 @@
+"""Tests for citation-accuracy evaluation."""
+
 import json
+
 import pytest
+
 from litagent.eval.citation import CitationEvaluator
 from litagent.eval.base import CTX_PAPERS
 from litagent.llm.client import LLMResponse
 
 
 class _StubLLM:
-    """按预设 JSON 返回的假 LLM。"""
+    """LLM test double that returns a fixed citation response."""
+
     def __init__(self, payload: dict | None = None, raise_exc=False):
         self._payload = payload
         self._raise = raise_exc
@@ -22,9 +27,15 @@ PAPERS = {CTX_PAPERS: [{"title": "ProtoNet"}, {"title": "MAML"}]}
 
 @pytest.mark.asyncio
 async def test_all_citations_real():
-    """全部引用都在源列表 → score=1.0。"""
-    llm = _StubLLM({"cited": [{"title": "ProtoNet", "in_source": True},
-                              {"title": "MAML", "in_source": True}]})
+    """Known citations receive a full score."""
+    llm = _StubLLM(
+        {
+            "cited": [
+                {"title": "ProtoNet", "in_source": True},
+                {"title": "MAML", "in_source": True},
+            ]
+        }
+    )
     ev = CitationEvaluator(llm, threshold=0.8)
     r = await ev.evaluate("draft mentions ProtoNet and MAML", PAPERS)
     assert r.score == 1.0 and r.passed is True
@@ -33,9 +44,15 @@ async def test_all_citations_real():
 
 @pytest.mark.asyncio
 async def test_fabricated_citation_lowers_score():
-    """一半引用编造 → score=0.5，fabricated 列出编造的。"""
-    llm = _StubLLM({"cited": [{"title": "ProtoNet", "in_source": True},
-                              {"title": "FakeNet 2099", "in_source": False}]})
+    """Fabricated citations reduce the score."""
+    llm = _StubLLM(
+        {
+            "cited": [
+                {"title": "ProtoNet", "in_source": True},
+                {"title": "FakeNet 2099", "in_source": False},
+            ]
+        }
+    )
     ev = CitationEvaluator(llm, threshold=0.8)
     r = await ev.evaluate("draft", PAPERS)
     assert r.score == 0.5 and r.passed is False
@@ -44,7 +61,7 @@ async def test_fabricated_citation_lowers_score():
 
 @pytest.mark.asyncio
 async def test_no_citations_is_full_score():
-    """综述没引用论文 → score=1.0（无幻觉），不是 skip。"""
+    """A report without citations receives a full score."""
     llm = _StubLLM({"cited": []})
     ev = CitationEvaluator(llm, threshold=0.8)
     r = await ev.evaluate("generic text", PAPERS)
@@ -53,7 +70,7 @@ async def test_no_citations_is_full_score():
 
 @pytest.mark.asyncio
 async def test_no_source_papers_skips():
-    """context 无源论文 → skip（前提缺失）。"""
+    """Evaluation is skipped when source papers are unavailable."""
     llm = _StubLLM({"cited": []})
     ev = CitationEvaluator(llm, threshold=0.8)
     r = await ev.evaluate("draft", {})
@@ -62,7 +79,7 @@ async def test_no_source_papers_skips():
 
 @pytest.mark.asyncio
 async def test_llm_failure_skips():
-    """LLM 挂 → skip，不抛异常。"""
+    """LLM failures produce a skipped evaluation."""
     ev = CitationEvaluator(_StubLLM(raise_exc=True), threshold=0.8)
     r = await ev.evaluate("draft", PAPERS)
     assert r.skipped is True and r.passed is True
@@ -70,7 +87,7 @@ async def test_llm_failure_skips():
 
 @pytest.mark.asyncio
 async def test_cited_null_skips():
-    """LLM 返回 {"cited": null} → 非 list → skip，不崩（json 合法但 schema 错）。"""
+    """A null citation list produces a skipped evaluation."""
     ev = CitationEvaluator(_StubLLM({"cited": None}), threshold=0.8)
     r = await ev.evaluate("draft", PAPERS)
     assert r.skipped is True and r.passed is True
@@ -78,7 +95,7 @@ async def test_cited_null_skips():
 
 @pytest.mark.asyncio
 async def test_cited_list_of_strings_no_crash():
-    """LLM 返回纯字符串列表（漏了 schema）→ 每项非 dict → 全算 fabricated，不崩。"""
+    """Malformed string citations do not crash evaluation."""
     ev = CitationEvaluator(_StubLLM({"cited": ["ProtoNet", "FakeNet"]}), threshold=0.8)
     r = await ev.evaluate("draft", PAPERS)
     assert r.score == 0.0

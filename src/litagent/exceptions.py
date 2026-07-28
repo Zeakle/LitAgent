@@ -1,23 +1,25 @@
-class LitAgentError(Exception):
-    """LitAgent 所有异常的基类。
+"""Define the LitAgent exception hierarchy."""
 
-    继承链的设计原因:
-    - 调用方只关心 LitAgentError → catch 一个就行
-    - 需要精确处理时 catch 子类 → try: ... except ConfigError: ...
-    """
+
+class LitAgentError(Exception):
+    """Base exception for LitAgent failures."""
+
     pass
 
 
 class ConfigError(LitAgentError):
-    """配置加载或校验失败。"""
+    """Report configuration loading or validation failures."""
+
     pass
 
 
 class MCPError(LitAgentError):
-    """MCP 连接或调用失败"""
+    """Report MCP connection or invocation failures."""
+
     pass
 
 
 class SafetyError(LitAgentError):
-    """安全检查失败（注入检测、cost 超限等）。"""
+    """Report safety-policy violations."""
+
     pass

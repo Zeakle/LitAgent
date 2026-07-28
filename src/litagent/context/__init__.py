@@ -1,3 +1,5 @@
+"""Context assembly, budgeting, compression, and evidence selection."""
+
 from litagent.context.evidence_selector import (
     EvidenceSelector,
     EvidenceSelection,

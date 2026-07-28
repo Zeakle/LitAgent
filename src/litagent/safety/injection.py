@@ -1,28 +1,32 @@
-"""Prompt Injection 检测——规则扫描已知注入模式。"""
+"""Detect common prompt-injection indicators in untrusted text."""
 
 from __future__ import annotations
+
 import re
 from dataclasses import dataclass
 from enum import Enum
+
 from litagent.logging import get_logger
 
-
-logger = get_logger('safety.injection')
+logger = get_logger("safety.injection")
 
 
 class InjectionRisk(str, Enum):
-    NONE = 'none'
-    SUSPICIOUS = 'suspicious'  # 弱信号，隔离+警告
-    HIGH = 'high'
+    """Classify prompt injection as absent, suspicious, or high risk."""
+
+    NONE = "none"
+    SUSPICIOUS = "suspicious"
+    HIGH = "high"
 
 
 @dataclass
 class DetectionResult:
+    """Represent a prompt-injection risk classification and its matches."""
+
     risk: InjectionRisk
     matched: list[str]
 
 
-# 高危模式：明确的越狱/指令覆盖意图
 _HIGH_PATTERNS = [
     r"ignore\s+(all\s+)?(previous|above|prior)\s+(instructions?|prompts?)",
     r"disregard\s+(the\s+)?(above|previous|system)",
@@ -30,10 +34,10 @@ _HIGH_PATTERNS = [
     r"forget\s+(everything|all|your)\s+(instructions?|rules?)",
     r"new\s+(system\s+)?(instructions?|prompt)\s*[:：]",
     r"do\s+not\s+(mention|reveal|tell)\s+this",
-    r"<\s*system[_\-]?(prompt|reminder)\s*>",   # 伪造系统标签
+    r"<\s*system[_\-]?(prompt|reminder)\s*>",
 ]
 
-# 可疑模式：弱信号，可能是正常学术内容，也可能是注入
+
 _SUSPICIOUS_PATTERNS = [
     r"\bsystem\s+prompt\b",
     r"\bjailbreak\b",
@@ -43,17 +47,17 @@ _SUSPICIOUS_PATTERNS = [
 
 
 class InjectionDetector:
-    """规则式 prompt injection 检测器。"""
+    """Classify text with compiled high-risk and suspicious patterns."""
 
     def __init__(self):
         self._high = [re.compile(p, re.IGNORECASE) for p in _HIGH_PATTERNS]
         self._suspicious = [re.compile(p, re.IGNORECASE) for p in _SUSPICIOUS_PATTERNS]
 
-    
     def scan(self, text: str) -> DetectionResult:
+        """Scan text for prompt-injection indicators."""
         if not text:
             return DetectionResult(InjectionRisk.NONE, [])
-        
+
         high_hits = [p.pattern for p in self._high if p.search(text)]
         if high_hits:
             logger.warning(f"HIGH injection risk: {high_hits}")

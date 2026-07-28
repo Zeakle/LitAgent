@@ -1,4 +1,4 @@
-"""Reranker 实现——Cross-encoder + Noop baseline。"""
+"""Provide cross-encoder and pass-through retrieval rerankers."""
 
 from sentence_transformers import CrossEncoder
 
@@ -8,17 +8,13 @@ _DEFAULT_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
 
 class CrossEncoderReranker(Reranker):
-    """Cross-encoder 重排序。
-
-    比 bi-encoder (dense embedding) 更精确——query-doc 对同时进模型。
-    代价是更慢——只对 top-k 候选运行，不对全量。
-    """
+    """Rerank candidates with a sentence-transformers cross-encoder."""
 
     def __init__(self, model_name: str = _DEFAULT_MODEL):
         self._model = CrossEncoder(model_name)
 
-    
     def rerank(self, query: str, docs: list[ScoredDoc]) -> list[ScoredDoc]:
+        """Rerank documents for the supplied query."""
         if not docs:
             return docs
         pairs = [(query, sd.doc.page_content[:1000]) for sd in docs]
@@ -28,8 +24,10 @@ class CrossEncoderReranker(Reranker):
 
         return sorted(docs, key=lambda s: s.score, reverse=True)
 
-    
+
 class NoopReranker(Reranker):
-    """透传——RAGAS baseline 评估用。"""
+    """Preserve the incoming retrieval order without rescoring."""
+
     def rerank(self, query: str, docs: list[ScoredDoc]) -> list[ScoredDoc]:
+        """Return documents unchanged."""
         return docs

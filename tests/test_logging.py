@@ -1,10 +1,16 @@
+"""Tests for logging configuration and logger creation."""
+
 import logging
+
 import pytest
+
 from litagent.logging import setup_logging, get_logger
 from litagent.config import LoggingConfig
 
 
 class TestGetLogger:
+    """Tests named logger creation."""
+
     def test_prefix(self):
         logger = get_logger("test_module")
         assert logger.name == "litagent.test_module"
@@ -15,13 +21,15 @@ class TestGetLogger:
 
 
 class TestSetupLogging:
+    """Tests logging setup."""
+
     def test_setup_logging_no_crash(self):
-        """setup_logging 正常执行不报错"""
+        """Default logging setup completes without error."""
         config = LoggingConfig(level="WARNING")
-        setup_logging(config)  # 不抛异常即通过
+        setup_logging(config)
 
     def test_setup_logging_custom_level(self):
-        """传入不同 level 不报错"""
+        """Logging setup applies the configured level."""
         for level in ["DEBUG", "INFO", "WARNING", "ERROR"]:
             setup_logging(LoggingConfig(level=level))
             logger = get_logger(f"test_{level.lower()}")

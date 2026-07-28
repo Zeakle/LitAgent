@@ -1,4 +1,7 @@
+"""Tests for skill discovery, ranking, and loading."""
+
 import pytest
+
 from litagent.skills.manager import SkillManager
 from litagent.tools.worker_tools import make_load_skill_tool
 
@@ -30,17 +33,17 @@ def offline_skill_embedder(monkeypatch):
 
 
 def _mgr():
-    return SkillManager()   # 默认扫 src/litagent/skills（扁平全部）
+    return SkillManager()
 
 
 def test_scans_flat_all_skills():
-    """扁平扫描加载全部 4 个 skill。"""
+    """Skill discovery scans the flat skill directory."""
     names = _mgr().list_names()
     assert {"cv", "nlp", "survey_writing", "review_checklist"} <= set(names)
 
 
 def test_semantic_search_picks_relevant():
-    """语义检索：'writing a survey' → survey_writing 排最相关。"""
+    """Semantic ranking selects the relevant skill."""
     m = _mgr()
     top = m.search_skills("writing a literature survey", top_k=2)
     names = [s.name for s in top]
@@ -54,27 +57,29 @@ def test_semantic_search_review():
 
 
 def test_metadata_for_filters_topk():
-    """to_metadata_text_for 只列 top_k。"""
+    """Metadata filtering respects the result limit."""
     m = _mgr()
     text = m.to_metadata_text_for("writing a literature survey", top_k=2)
     assert text.count("<skill") == 2
 
 
 def test_search_all_when_fewer_than_topk():
-    """skill 数 <= top_k → 全返回，不崩。"""
+    """Search returns every skill when below the limit."""
     m = _mgr()
     top = m.search_skills("anything", top_k=99)
     assert len(top) == len(m.list_names())
 
 
 def test_metadata_for_degrades_to_full_on_error(monkeypatch):
-    """语义检索失败 → 降级全列（不崩，全暴露）。"""
+    """Ranking failures degrade to the complete skill list."""
     m = _mgr()
+
     def _boom(*a, **k):
         raise RuntimeError("embedder OOM")
+
     monkeypatch.setattr(m, "search_skills", _boom)
     text = m.to_metadata_text_for("writing a survey", top_k=2)
-    assert text.count("<skill") == len(m.list_names())   # 降级全列
+    assert text.count("<skill") == len(m.list_names())
 
 
 @pytest.mark.asyncio
@@ -93,6 +98,6 @@ async def test_load_skill_unknown():
 
 @pytest.mark.asyncio
 async def test_load_skill_none_manager():
-    """skill_manager=None → 降级，不崩。"""
+    """Skill loading degrades safely without a manager."""
     tool = make_load_skill_tool(None)
     assert "not available" in await tool.ainvoke({"name": "cv"})

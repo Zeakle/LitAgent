@@ -1,13 +1,10 @@
-"""Phase 2 test helpers — mock agent node and tools."""
+"""Shared helpers for mock agent nodes and tools."""
 
 from langchain_core.messages import AIMessage
 
 
 def make_mock_agent_node(responses: list[dict], final_text: str = "Task completed."):
-    """创建一个 Mock Agent 节点，按顺序返回预设的 tool_call + final text.
-
-    loop_count 由引擎的 step_node 递增，mock 不再管理。
-    """
+    """Return an agent node that replays deterministic responses."""
     call_count = [0]
 
     def mock_node(state: dict) -> dict:
@@ -21,7 +18,16 @@ def make_mock_agent_node(responses: list[dict], final_text: str = "Task complete
             update["current_thought"] = responses[idx].get("current_thought", "")
             if action:
                 update["messages"] = [
-                    AIMessage(content="", tool_calls=[{"name": action["name"], "args": action.get("args", {}), "id": f"mock_{idx}"}])
+                    AIMessage(
+                        content="",
+                        tool_calls=[
+                            {
+                                "name": action["name"],
+                                "args": action.get("args", {}),
+                                "id": f"mock_{idx}",
+                            }
+                        ],
+                    )
                 ]
         else:
             update["current_action"] = None
@@ -34,7 +40,7 @@ def make_mock_agent_node(responses: list[dict], final_text: str = "Task complete
 
 
 def make_mock_tool(name: str, result: str):
-    """创建一个 Mock Tool，返回固定结果。"""
+    """Return a named tool that always produces the given result."""
 
     def tool_func(**kwargs) -> str:
         return result

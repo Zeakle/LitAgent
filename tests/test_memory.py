@@ -1,3 +1,5 @@
+"""Tests for working, episodic, semantic, and procedural memory."""
+
 import os
 from uuid import uuid4
 
@@ -34,8 +36,6 @@ def _test_session_id() -> str:
     return f"test_memory_{uuid4().hex}"
 
 
-# ── Working Memory Tests ──
-
 @pytest_asyncio.fixture
 async def working():
     redis_url = _test_redis_url()
@@ -64,6 +64,8 @@ async def working():
 
 @pytest.mark.integration
 class TestWorkingMemory:
+    """Tests working-memory persistence."""
+
     @pytest.mark.asyncio
     async def test_set_and_get(self, working):
         session_id = _test_session_id()
@@ -90,8 +92,6 @@ class TestWorkingMemory:
         await working.set(session_id, {"data": 1})
         assert await working.exists(session_id) is True
 
-
-# ── Episodic Memory Tests ──
 
 @pytest_asyncio.fixture
 async def episodic():
@@ -128,9 +128,15 @@ async def episodic():
 
 @pytest.mark.integration
 class TestEpisodicMemory:
+    """Tests episodic-memory storage and search."""
+
     @pytest.mark.asyncio
     async def test_store_and_search(self, episodic):
-        ep = Episode(summary="survey on few-shot learning", intent="literature_review", session_id=_test_session_id())
+        ep = Episode(
+            summary="survey on few-shot learning",
+            intent="literature_review",
+            session_id=_test_session_id(),
+        )
         eid = await episodic.store(ep)
         assert eid
         results = await episodic.search("few-shot learning")
@@ -139,14 +145,14 @@ class TestEpisodicMemory:
     @pytest.mark.asyncio
     async def test_delete(self, episodic):
         marker = _test_subject("delete_")
-        ep = Episode(summary=f"test {marker}", intent="general", session_id=_test_session_id())
+        ep = Episode(
+            summary=f"test {marker}", intent="general", session_id=_test_session_id()
+        )
         eid = await episodic.store(ep)
         await episodic.delete(eid)
         results = await episodic.search(marker)
         assert len(results) == 0
 
-
-# ── MemoryManager + Consolidate Tests ──
 
 @pytest_asyncio.fixture
 async def mm(working, episodic, semantic):
@@ -155,9 +161,14 @@ async def mm(working, episodic, semantic):
 
 @pytest.mark.integration
 class TestMemoryManager:
+    """Tests coordinated memory operations."""
+
     @pytest.mark.asyncio
     async def test_save_get_consolidate_recall(self, mm):
-        messages = [HumanMessage(content="survey few-shot learning"), AIMessage(content="ok")]
+        messages = [
+            HumanMessage(content="survey few-shot learning"),
+            AIMessage(content="ok"),
+        ]
         session_id = _test_session_id()
         await mm.save_state(session_id, {"messages": messages, "loop_count": 1})
         ep = await mm.consolidate(session_id)
@@ -174,17 +185,17 @@ class TestMemoryManager:
         assert ep is None
 
 
-# ── Phase 5: Semantic Memory Tests ──
-
 @pytest_asyncio.fixture
 async def semantic():
     pg_url = _test_pg_url()
     import asyncpg
+
     try:
         pool = await asyncpg.create_pool(pg_url)
     except Exception as e:
         pytest.skip(f"PostgreSQL unavailable at TEST_PG_URL: {e}")
     from litagent.memory.semantic import SemanticMemory
+
     sm = SemanticMemory(pool)
     created_keys: set[str] = set()
     original_upsert = sm.upsert
@@ -207,6 +218,8 @@ async def semantic():
 
 @pytest.mark.integration
 class TestSemanticMemory:
+    """Tests semantic-memory persistence."""
+
     @pytest.mark.asyncio
     async def test_upsert_and_get(self, semantic):
         key = _test_subject("test_key_")
@@ -217,7 +230,9 @@ class TestSemanticMemory:
 
     @pytest.mark.asyncio
     async def test_search_fallback(self, semantic):
-        await semantic.upsert(_test_subject("few_shot_benchmarks_"), {"list": ["miniImageNet"]})
+        await semantic.upsert(
+            _test_subject("few_shot_benchmarks_"), {"list": ["miniImageNet"]}
+        )
         results = await semantic.search("few_shot")
         assert len(results) >= 1
 
@@ -229,8 +244,6 @@ class TestSemanticMemory:
         result = await semantic.get(key)
         assert result["value"]["v"] == 2
 
-
-# ── 13.7.1 Procedural Memory Profile Tests ──
 
 from urllib.parse import urlparse
 
@@ -248,13 +261,16 @@ def _test_pg_url() -> str:
 def _test_subject(prefix: str) -> str:
     return f"{prefix}{uuid4().hex}"
 
+
 @pytest_asyncio.fixture
 async def procedural():
-    """需要 TEST_PG_URL 环境变量；未设置时 skip。"""
+    """Provide isolated procedural memory."""
     pg_url = _test_pg_url()
     import asyncpg
+
     pool = await asyncpg.create_pool(pg_url, min_size=1, max_size=1)
     from litagent.memory.procedural import ProceduralMemory
+
     pm = ProceduralMemory(pool)
     await pm.ensure_tables()
     yield pm
@@ -263,21 +279,26 @@ async def procedural():
 
 @pytest.mark.integration
 class TestProceduralProfiles:
-    """13.7.1：procedural_profiles 表 + upsert_profile + get_profiles。"""
+    """Tests procedural search-source profiles."""
 
     _PREFIX = "test_13_7_1_"
 
     async def _cleanup(self, procedural, subject: str):
         await procedural._pool.execute(
-            "DELETE FROM procedural_profiles WHERE subject = $1", subject)
+            "DELETE FROM procedural_profiles WHERE subject = $1", subject
+        )
 
     @pytest.mark.asyncio
     async def test_first_write_creates_row(self, procedural):
         subject = _test_subject(self._PREFIX)
         try:
             await procedural.upsert_profile(
-                "search_source", f"search_source:{subject}", subject,
-                success=True, duration_ms=100, result_count=5,
+                "search_source",
+                f"search_source:{subject}",
+                subject,
+                success=True,
+                duration_ms=100,
+                result_count=5,
             )
             profiles = await procedural.get_profiles()
             assert any(p["subject"] == subject for p in profiles)
@@ -286,16 +307,24 @@ class TestProceduralProfiles:
 
     @pytest.mark.asyncio
     async def test_updates_aggregate_fields(self, procedural):
-        """两次写入 → 计数器累加，平均值为滚动平均。"""
+        """Repeated writes update aggregate profile fields."""
         subject = _test_subject(self._PREFIX)
         try:
             await procedural.upsert_profile(
-                "search_source", f"search_source:{subject}", subject,
-                success=True, duration_ms=100, result_count=5,
+                "search_source",
+                f"search_source:{subject}",
+                subject,
+                success=True,
+                duration_ms=100,
+                result_count=5,
             )
             await procedural.upsert_profile(
-                "search_source", f"search_source:{subject}", subject,
-                success=True, duration_ms=300, result_count=3,
+                "search_source",
+                f"search_source:{subject}",
+                subject,
+                success=True,
+                duration_ms=300,
+                result_count=3,
             )
             profiles = await procedural.get_profiles()
             p = [p for p in profiles if p["subject"] == subject][0]
@@ -308,12 +337,15 @@ class TestProceduralProfiles:
 
     @pytest.mark.asyncio
     async def test_mutual_exclusion(self, procedural):
-        """success / empty / failure 三者互斥。"""
+        """Success and failure counters remain mutually consistent."""
         subject = _test_subject(self._PREFIX)
         try:
             await procedural.upsert_profile(
-                "search_source", f"search_source:{subject}", subject,
-                success=True, empty_result=True,
+                "search_source",
+                f"search_source:{subject}",
+                subject,
+                success=True,
+                empty_result=True,
             )
             profiles = await procedural.get_profiles()
             p = [p for p in profiles if p["subject"] == subject][0]
@@ -326,12 +358,15 @@ class TestProceduralProfiles:
 
     @pytest.mark.asyncio
     async def test_error_subtype_stacking(self, procedural):
-        """error_type='rate_limit' → failure 和 rate_limit 同时 +1。"""
+        """Error subtypes accumulate independently."""
         subject = _test_subject(self._PREFIX)
         try:
             await procedural.upsert_profile(
-                "search_source", f"search_source:{subject}", subject,
-                success=False, error_type="rate_limit",
+                "search_source",
+                f"search_source:{subject}",
+                subject,
+                success=False,
+                error_type="rate_limit",
             )
             profiles = await procedural.get_profiles()
             p = [p for p in profiles if p["subject"] == subject][0]
@@ -344,15 +379,17 @@ class TestProceduralProfiles:
 
 @pytest.mark.integration
 class TestProceduralPersistence:
-    """13.7.1-C：跨连接画像持久化。"""
+    """Tests procedural-memory persistence across connections."""
 
     _PREFIX = "test_persist_"
 
     @pytest.mark.asyncio
     async def test_profiles_persist_across_connections(self):
         pg_url = _test_pg_url()
-        import asyncpg
         from unittest.mock import MagicMock
+
+        import asyncpg
+
         from litagent.memory.manager import MemoryManager
         from litagent.memory.procedural import ProceduralMemory
 
@@ -363,8 +400,13 @@ class TestProceduralPersistence:
             await pm1.ensure_tables()
             for _ in range(5):
                 await pm1.upsert_profile(
-                    "search_source", f"search_source:{subject}", subject,
-                    success=True, duration_ms=200, result_count=10)
+                    "search_source",
+                    f"search_source:{subject}",
+                    subject,
+                    success=True,
+                    duration_ms=200,
+                    result_count=10,
+                )
         finally:
             await pool1.close()
 
@@ -372,10 +414,13 @@ class TestProceduralPersistence:
         try:
             pm2 = ProceduralMemory(pool2)
             manager = MemoryManager(
-                working=MagicMock(), episodic=MagicMock(), procedural=pm2,
+                working=MagicMock(),
+                episodic=MagicMock(),
+                procedural=pm2,
             )
             ranked = await manager.rank_search_sources(
-                ["unknown_source", subject], min_samples=3,
+                ["unknown_source", subject],
+                min_samples=3,
             )
             profiles = await pm2.get_profiles()
             p = [p for p in profiles if p["subject"] == subject]
@@ -385,27 +430,29 @@ class TestProceduralPersistence:
             assert ranked == [subject, "unknown_source"]
         finally:
             await pm2._pool.execute(
-                "DELETE FROM procedural_profiles WHERE subject = $1", subject)
+                "DELETE FROM procedural_profiles WHERE subject = $1", subject
+            )
             await pool2.close()
 
     @pytest.mark.asyncio
     async def test_ensure_tables_idempotent(self):
         pg_url = _test_pg_url()
         import asyncpg
+
         from litagent.memory.procedural import ProceduralMemory
 
         pool = await asyncpg.create_pool(pg_url, min_size=1, max_size=1)
         try:
             pm = ProceduralMemory(pool)
             await pm.ensure_tables()
-            await pm.ensure_tables()  # 幂等
+            await pm.ensure_tables()
         finally:
             await pool.close()
 
 
 @pytest.mark.integration
 class TestConcurrentUpsert:
-    """13.7.1-C：并发 UPSERT 聚合正确性。"""
+    """Tests concurrent procedural profile updates."""
 
     _PREFIX = "test_concurrent_"
 
@@ -413,7 +460,9 @@ class TestConcurrentUpsert:
     async def test_concurrent_writes_aggregate_correctly(self):
         pg_url = _test_pg_url()
         import asyncio as _asyncio
+
         import asyncpg
+
         from litagent.memory.procedural import ProceduralMemory
 
         subject = _test_subject(self._PREFIX)
@@ -423,8 +472,13 @@ class TestConcurrentUpsert:
         async def write_one(pool, dur):
             pm = ProceduralMemory(pool)
             await pm.upsert_profile(
-                "search_source", f"search_source:{subject}", subject,
-                success=True, duration_ms=dur, result_count=5)
+                "search_source",
+                f"search_source:{subject}",
+                subject,
+                success=True,
+                duration_ms=dur,
+                result_count=5,
+            )
 
         pool = await asyncpg.create_pool(pg_url, min_size=5, max_size=5)
         try:
@@ -439,20 +493,22 @@ class TestConcurrentUpsert:
             assert abs(p[0]["avg_duration_ms"] - expected_avg) < 2
         finally:
             await pm._pool.execute(
-                "DELETE FROM procedural_profiles WHERE subject = $1", subject)
+                "DELETE FROM procedural_profiles WHERE subject = $1", subject
+            )
             await pool.close()
 
-
-# ── Phase 5: MemoryManager with Semantic ──
 
 @pytest_asyncio.fixture
 async def mm_with_semantic(working, episodic, semantic):
     from litagent.memory.manager import MemoryManager
+
     return MemoryManager(working, episodic, semantic)
 
 
 @pytest.mark.integration
 class TestMemoryManagerWithSemantic:
+    """Tests memory-manager semantic recall."""
+
     @pytest.mark.asyncio
     async def test_recall_returns_dict(self, mm_with_semantic):
         key = _test_subject("test_fact_")
@@ -470,9 +526,9 @@ class TestMemoryManagerWithSemantic:
         assert len(facts) >= 1
 
 
-# ── Episode Model Tests ──
-
 class TestEpisode:
+    """Tests episode serialization."""
+
     def test_create_and_serialize(self):
         ep = Episode(summary="test summary", intent="general", session_id="s1")
         d = ep.to_dict()

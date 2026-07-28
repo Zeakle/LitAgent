@@ -1,33 +1,10 @@
-"""XML 标签模板——Anthropic 风格 prompt 结构化。
-
-用 XML 标签把 prompt 的各部分隔开，让 LLM 清晰地知道每个部分是什么。
-这不是过度设计——Anthropic 官方推荐的 prompt engineering pattern。
-
-用法:
-    prompt = build_system_prompt(
-        role="You are a Search Agent...",
-        instructions="Search across arxiv, Semantic Scholar...",
-        tools=tool_schemas_text,
-        context=memory_text,
-    )
-    user_msg = wrap_xml("user_input", "survey few-shot learning in CV")
-"""
-
+"""Build XML-delimited prompt sections."""
 
 from __future__ import annotations
 
 
 def wrap_xml(tag: str, content: str, attrs: dict[str, str] | None = None) -> str:
-    """用 XML 标签包裹内容。
-
-    Args:
-        tag: 标签名
-        content: 标签内容
-        attrs: 可选属性（如 source="memory", priority="high"）
-
-    Returns:
-        '<tag attr="val">\ncontent\n</tag>'
-    """
+    """Wrap non-empty content in an XML-like element."""
     if not content.strip():
         return ""
     if attrs:
@@ -46,30 +23,19 @@ def build_system_prompt(
     context: str = "",
     constraints: str = "",
 ) -> str:
-    """组装结构化 system prompt。
-
-    固定结构：role → instructions → tools → context → constraints。
-    空的部分自动跳过。
-
-    Args:
-        role: Agent 角色描述
-        instructions: 具体指令
-        tools: 可用工具列表（JSON schema 文本）
-        context: 注入的上下文（Memory / RAG 结果 / 论文数据）
-        constraints: 约束条件（输出格式、禁止行为等）
-    """
+    """Assemble a system prompt from non-empty XML-delimited sections."""
     parts: list[str] = [
-        wrap_xml('role', role),
-        wrap_xml('instructions', instructions),
+        wrap_xml("role", role),
+        wrap_xml("instructions", instructions),
     ]
 
     if tools:
         parts.append(wrap_xml("available_tools", tools))
     if skills:
-        parts.append(wrap_xml('available_skills', skills))
+        parts.append(wrap_xml("available_skills", skills))
     if context:
         parts.append(wrap_xml("context", context))
     if constraints:
         parts.append(wrap_xml("constraints", constraints))
 
-    return '\n\n'.join(p for p in parts if p)
+    return "\n\n".join(p for p in parts if p)

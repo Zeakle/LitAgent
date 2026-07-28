@@ -1,33 +1,37 @@
+"""Define tool metadata, execution policy, and callable wrappers."""
+
 from enum import Enum
 from typing import Any, Callable, Literal
+
 from pydantic import BaseModel, Field
 
 
 class ToolCategory(str, Enum):
-    """(str, Enum) 让枚举成员天生等价于字符串"""
-    READ = 'read'
-    WRITE = 'write'
-    DESTRUCTIVE = 'destructive'
+    """Classify tools by read, write, or destructive effects."""
+
+    READ = "read"
+    WRITE = "write"
+    DESTRUCTIVE = "destructive"
 
 
 class RateLimitConfig(BaseModel):
+    """Configure a rolling-window tool call limit."""
+
     max_calls: int
     window_seconds: int = 60
 
 
 class FallbackStep(BaseModel):
-    """降级链中的一个步骤"""
-    type: Literal['cached', 'default_value', 'skip', 'alternative_tool']
+    """Describe one ordered recovery action after tool failure."""
+
+    type: Literal["cached", "default_value", "skip", "alternative_tool"]
     alternative_tool: str | None = None
     default_result: Any = None
 
 
 class ToolDefinition(BaseModel):
-    """工具的完整定义——对外（LLM context）和对内（Registry）共用。
+    """Define the schema and execution policy for a callable tool."""
 
-    序列化给 LLM 时只输出 name/description/parameters 三个字段。
-    其他字段用于内部执行控制。
-    """
     name: str
     description: str
     parameters: dict = Field(default_factory=dict)
@@ -37,19 +41,19 @@ class ToolDefinition(BaseModel):
     rate_limit: RateLimitConfig | None = None
     fallback: list[FallbackStep] = Field(default_factory=list)
     cache_ttl_ms: int = 0
-    version: str = '1.0.0'
+    version: str = "1.0.0"
 
     def to_llm_format(self) -> dict:
-        """给 LLM 看的 tool schema（OpenAI/Anthropic 格式）"""
+        """Return the tool metadata exposed to an LLM."""
         return {
-            'name': self.name,
-            'description': self.description,
-            'parameters': self.parameters,
+            "name": self.name,
+            "description": self.description,
+            "parameters": self.parameters,
         }
 
 
 class RegisteredTool:
-    """Registry 内部存储的完整工具——ToolDefinition + 可调用函数"""
+    """Bind a tool definition to its callable implementation."""
 
     def __init__(self, definition: ToolDefinition, func: Callable):
         self.definition = definition

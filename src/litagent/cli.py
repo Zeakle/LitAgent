@@ -1,13 +1,7 @@
-# src/litagent/cli.py
-"""CLI entry point for LitAgent.
-
-Commands:
-    litagent survey <query>    Run a full literature survey
-    litagent config            Validate or display config
-    litagent tools             List registered tools
-"""
+"""Run survey, configuration, and tool-listing commands."""
 
 from __future__ import annotations
+
 import argparse
 import asyncio
 import json
@@ -18,36 +12,41 @@ from litagent.runner import LitAgent, derive_delivery
 
 
 def main() -> None:
-    """CLI 主入口。pyproject.toml 中 [project.scripts] 指向此函数。"""
+    """Parse arguments and dispatch the selected command."""
     parser = argparse.ArgumentParser(
         prog="litagent",
         description="LitAgent — Multi-agent adversarial literature review framework",
     )
     subparsers = parser.add_subparsers(dest="command", help="Commands")
 
-    # ── survey ──
+    # Survey command
     survey = subparsers.add_parser("survey", help="Run a full literature survey")
     survey.add_argument("query", help="Research query")
     survey.add_argument("--config", default=None, help="Path to config YAML")
     survey.add_argument("--output", "-o", default=None, help="Write report to file")
     survey.add_argument(
-        "--format", choices=["json", "markdown"], default="markdown",
+        "--format",
+        choices=["json", "markdown"],
+        default="markdown",
         help="Output format (default: markdown)",
     )
     survey.add_argument("--verbose", "-v", action="store_true", help="DEBUG logging")
 
-    # ── config ──
+    # Configuration command
     cfg = subparsers.add_parser("config", help="Validate or display config")
     cfg.add_argument("--config", default=None, help="Path to config YAML")
     cfg.add_argument(
-        "--validate-only", action="store_true",
+        "--validate-only",
+        action="store_true",
         help="Silent validation: exit 0 if valid, exit 1 if invalid",
     )
 
-    # ── tools ──
+    # Tool command
     tools_cmd = subparsers.add_parser("tools", help="List registered tools")
     tools_cmd.add_argument(
-        "--format", choices=["table", "json"], default="table",
+        "--format",
+        choices=["table", "json"],
+        default="table",
         help="Output format",
     )
 
@@ -76,14 +75,15 @@ async def _dispatch_async(args: argparse.Namespace) -> None:
 
 
 def _delivery_exit_code(report: dict) -> int:
-    """publishable → 0；blocked/needs_review/partial → 1。报告照常输出，只改 exit code。"""
+    """Return zero only when the report is publishable."""
     delivery = report.get("delivery") or derive_delivery(
-        report.get("partial", False), report.get("quality"))
+        report.get("partial", False), report.get("quality")
+    )
     return 0 if delivery.get("publishable", False) else 1
 
 
 async def _cmd_survey(args: argparse.Namespace) -> None:
-    """运行完整 survey → 格式化输出。"""
+    """Run a survey and emit it in the requested format."""
     config = load_config(args.config)
     if args.verbose:
         config.logging.level = "DEBUG"
@@ -103,18 +103,20 @@ async def _cmd_survey(args: argparse.Namespace) -> None:
     else:
         print(output)
 
-    # 交付语义：报告始终输出（可诊断），但不可发布时返回非零 exit code
     code = _delivery_exit_code(report)
     if code:
         delivery = report.get("delivery") or derive_delivery(
-            report.get("partial", False), report.get("quality"))
-        print(f"\nDelivery: {delivery.get('status', 'unknown')} — not publishable",
-              file=sys.stderr)
+            report.get("partial", False), report.get("quality")
+        )
+        print(
+            f"\nDelivery: {delivery.get('status', 'unknown')} — not publishable",
+            file=sys.stderr,
+        )
         sys.exit(code)
 
 
 def _cmd_config(args: argparse.Namespace) -> None:
-    """校验或展示配置。"""
+    """Validate or display the resolved configuration."""
     try:
         config = load_config(args.config)
     except Exception as e:
@@ -131,7 +133,7 @@ def _cmd_config(args: argparse.Namespace) -> None:
 
 
 def _cmd_tools(args: argparse.Namespace) -> None:
-    """列出所有已注册 tool。"""
+    """List the registered built-in tools."""
     from litagent.tools.registry import get_registry
     from litagent.tools.builtin.search import register_search_tools
     from litagent.tools.builtin.extract import register_extract_tools
@@ -151,12 +153,14 @@ def _cmd_tools(args: argparse.Namespace) -> None:
         print(f"{'Name':<35} {'Category':<12} {'Description':<50}")
         print("-" * 97)
         for t in sorted(tools, key=lambda t: t.name):
-            desc = t.description[:47] + "..." if len(t.description) > 50 else t.description
+            desc = (
+                t.description[:47] + "..." if len(t.description) > 50 else t.description
+            )
             print(f"{t.name:<35} {t.category.value:<12} {desc:<50}")
 
 
 def _format_report_markdown(report: dict) -> str:
-    """将 report dict 格式化为 Markdown。"""
+    """Render a survey report as Markdown."""
     survey_text = report.get("survey", "")
     metadata = report.get("metadata", {})
     review_history = report.get("review_history", [])
@@ -171,18 +175,22 @@ def _format_report_markdown(report: dict) -> str:
         f"**Accepted**: {metadata.get('accepted', False)}",
     ]
 
-    # banner 依据 delivery 而非裸 quality/partial——与 exit code 用同一映射
     delivery = report.get("delivery") or derive_delivery(
-        report.get("partial", False), report.get("quality"))
+        report.get("partial", False), report.get("quality")
+    )
     quality = report.get("quality") or {}
 
     banner = None
     if delivery["status"] == "partial":
-        banner = ("> ⚠ **Partial results — NOT PUBLISHABLE** — "
-                  "survey was interrupted (cost/timeout).")
+        banner = (
+            "> ⚠ **Partial results — NOT PUBLISHABLE** — "
+            "survey was interrupted (cost/timeout)."
+        )
     elif delivery["status"] == "blocked":
-        banner = ("> ⚠ **QUALITY FAILED — UNTRUSTED DRAFT, NOT PUBLISHABLE** "
-                  f"(failed: {', '.join(quality.get('failed_metrics', []))})")
+        banner = (
+            "> ⚠ **QUALITY FAILED — UNTRUSTED DRAFT, NOT PUBLISHABLE** "
+            f"(failed: {', '.join(quality.get('failed_metrics', []))})"
+        )
     elif delivery["status"] == "needs_review":
         banner = "> ⚠ **Quality unverified — needs review before publishing**"
     if banner:

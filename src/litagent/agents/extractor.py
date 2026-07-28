@@ -1,6 +1,7 @@
-"""Extractor Worker——LLM 异步提取，regex 降级。"""
+"""Extract structured evidence from ranked papers."""
 
 from __future__ import annotations
+
 import asyncio
 from typing import Any
 from collections.abc import Mapping
@@ -17,8 +18,8 @@ logger = get_logger("agents.extractor")
 
 
 class ExtractorWorker(Worker):
-    """提取 Worker——从论文列表中提取结构化信息。
-    """
+    """Extract papers concurrently and optionally index their claims."""
+
     def __init__(
         self,
         strategy: ExtractionStrategy,
@@ -36,28 +37,33 @@ class ExtractorWorker(Worker):
         self._detector = detector
         self._max_papers = max_papers
 
-
     @property
     def agent_type(self) -> str:
-        return 'extractor'
+        """Return the task-graph agent type handled by this worker."""
+        return "extractor"
 
-    
     async def execute(self, task: SubTask) -> Any:
-        upstream = task.input_data.get('upstream_results', {})
+        """Extract, enrich, and index papers from upstream ranking results."""
+        upstream = task.input_data.get("upstream_results", {})
         papers = self._get_papers_from_upstream(upstream)
 
         if self._detector:
             safe = []
             for p in papers:
-                res = self._detector.scan(f"{p.get('title', '')} {p.get('abstract', '')}")
+                res = self._detector.scan(
+                    f"{p.get('title', '')} {p.get('abstract', '')}"
+                )
                 if res.risk == InjectionRisk.HIGH:
-                    logger.warning(f"Skip paper {p.get('paper_id', '?')}: injection in content")
+                    logger.warning(
+                        f"Skip paper {p.get('paper_id', '?')}: injection in content"
+                    )
                     continue
                 safe.append(p)
             papers = safe
 
-        results = await asyncio.gather(*[self._extract_one(p) for p in papers],
-                                        return_exceptions=True)
+        results = await asyncio.gather(
+            *[self._extract_one(p) for p in papers], return_exceptions=True
+        )
 
         extractions = []
         for paper, r in zip(papers, results):
@@ -66,27 +72,31 @@ class ExtractorWorker(Worker):
 
             if isinstance(r, BaseException):
                 logger.warning(
-                    f"Extraction fully failed for paper={paper.get('paper_id', '?')} error_type={type(r).__name__}",
+                    f"Extraction fully failed for paper="
+                    f"{paper.get('paper_id', '?')} "
+                    f"error_type={type(r).__name__}",
                 )
                 continue
 
-            # 补齐权威元信息（策略只产出提取字段，不产出 paper_id/title 等）
-            r.update({
-                'paper_id': paper.get('paper_id', ""),
-                'title': paper.get('title', ''),
-                'abstract': paper.get('abstract', ''),
-                'citation_count': paper.get('citation_count', 0),
-                'source': paper.get('source', ''),
-            })
+            r.update(
+                {
+                    "paper_id": paper.get("paper_id", ""),
+                    "title": paper.get("title", ""),
+                    "abstract": paper.get("abstract", ""),
+                    "citation_count": paper.get("citation_count", 0),
+                    "source": paper.get("source", ""),
+                }
+            )
 
-            r['evidence_items'] = build_evidence_items(r)
+            r["evidence_items"] = build_evidence_items(r)
             extractions.append(r)
 
         if self._claims_index:
             try:
                 claims_objs = [
-                    Claim(text=c, source_paper=ext.get('paper_id', ""), confidence=0.5)
-                    for ext in extractions for c in ext.get('claims', [])
+                    Claim(text=c, source_paper=ext.get("paper_id", ""), confidence=0.5)
+                    for ext in extractions
+                    for c in ext.get("claims", [])
                 ]
                 if claims_objs:
                     await self._claims_index.add(claims_objs)
@@ -95,22 +105,22 @@ class ExtractorWorker(Worker):
 
         return extractions
 
-
     def _get_papers_from_upstream(self, upstream: dict) -> list[dict]:
         """Use the explicit DAG contract; dedup is a migration/test fallback only."""
         if not isinstance(upstream, Mapping):
             return []
 
-        if 'relevance_gate' in upstream:
-            candidates = upstream['relevance_gate']
+        if "relevance_gate" in upstream:
+            candidates = upstream["relevance_gate"]
         else:
-            candidates = upstream.get('dedup', [])
+            candidates = upstream.get("dedup", [])
 
         if not isinstance(candidates, list):
             return []
 
-        return [paper for paper in candidates if isinstance(paper, dict)][:self._max_papers]
-
+        return [paper for paper in candidates if isinstance(paper, dict)][
+            : self._max_papers
+        ]
 
     async def _extract_one(self, paper: dict) -> dict:
         async with self._sem:

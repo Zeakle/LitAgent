@@ -1,10 +1,15 @@
+"""Tests for evaluation aggregation and context construction."""
+
 import pytest
+
 from litagent.runner import LitAgent
 from litagent.config import load_config
 from litagent.eval.base import EvalResult, CTX_PAPERS, CTX_CLAIMS
 
 
 class _StubEval:
+    """Evaluator test double that returns a fixed result."""
+
     def __init__(self, metric, score, skipped=False):
         self._m, self._s, self._sk = metric, score, skipped
 
@@ -20,11 +25,13 @@ class _StubEval:
 
 @pytest.mark.asyncio
 async def test_evaluate_aggregates_results():
-    """三评估器结果聚合进 dict，key 是 metric 名。"""
+    """Evaluation results are aggregated by metric name."""
     agent = LitAgent(load_config())
-    agent._evaluators = [_StubEval("citation_accuracy", 0.9),
-                         _StubEval("internal_consistency", 0.7),
-                         _StubEval("faithfulness", 0.85, skipped=True)]
+    agent._evaluators = [
+        _StubEval("citation_accuracy", 0.9),
+        _StubEval("internal_consistency", 0.7),
+        _StubEval("faithfulness", 0.85, skipped=True),
+    ]
     results = {"extract": [{"title": "P", "abstract": "a", "claims": ["c1"]}]}
     out = await agent._evaluate("survey text", results)
     assert out["citation_accuracy"]["score"] == 0.9
@@ -34,7 +41,7 @@ async def test_evaluate_aggregates_results():
 
 @pytest.mark.asyncio
 async def test_evaluate_no_evaluators_empty():
-    """无评估器 → 空 dict，不崩。"""
+    """An empty evaluator set produces an empty result."""
     agent = LitAgent(load_config())
     agent._evaluators = []
     assert await agent._evaluate("s", {}) == {}
@@ -42,13 +49,18 @@ async def test_evaluate_no_evaluators_empty():
 
 @pytest.mark.asyncio
 async def test_one_evaluator_raises_others_survive():
-    """一个评估器抛异常 → 其他正常聚合（return_exceptions 生效）。"""
+    """One evaluator failure does not suppress other results."""
+
     class _Boom:
+        """Evaluator test double that always raises."""
+
         @property
         def metric_name(self):
             return "boom"
+
         async def evaluate(self, s, c):
             raise RuntimeError("boom")
+
     agent = LitAgent(load_config())
     agent._evaluators = [_Boom(), _StubEval("citation_accuracy", 0.9)]
     out = await agent._evaluate("s", {"extract": [{"title": "P", "claims": []}]})
@@ -56,7 +68,7 @@ async def test_one_evaluator_raises_others_survive():
 
 
 def test_build_context_from_extractions():
-    """_build_eval_context 从 extractor result 提 papers + claims。"""
+    """Evaluation context is built from extractor output."""
     agent = LitAgent(load_config())
     results = {"extract": [{"title": "P1", "abstract": "a1", "claims": ["x", "y"]}]}
     ctx = agent._build_eval_context(results)
@@ -65,8 +77,7 @@ def test_build_context_from_extractions():
 
 
 def test_build_context_picks_extractor_not_search():
-    """search/dedup result 也是 list[dict] 有 title，但只有 extractor 带 claims。
-    验证判别式取带 claims 的那个，不误取先插入的 search。"""
+    """Extractor output takes precedence over search output."""
     agent = LitAgent(load_config())
     results = {
         "search": [{"title": "SP", "abstract": "sa", "source": "arxiv"}],

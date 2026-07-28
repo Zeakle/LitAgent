@@ -1,26 +1,19 @@
-"""Tests for FastAPI REST API (Phase 11.5)."""
+"""Tests for survey API models, endpoints, and delivery state."""
+
+from unittest.mock import AsyncMock, patch, MagicMock
 
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
 from fastapi.testclient import TestClient
 
 from litagent.api import app, SurveyRequest, SurveyStatus, SurveyReport
 from litagent.observability.recorder import ArchiveRepository
 
-
-# ═══════════════════════════════════════════════════
-# FastAPI TestClient 需要在 import 阶段就可用
-# LitAgent 构造依赖 AppConfig，API 测试中 mock 掉
-# ═══════════════════════════════════════════════════
-
 client = TestClient(app)
 
 
-# ═══════════════════════════════════════════════════
-# Pydantic model 单元测试
-# ═══════════════════════════════════════════════════
-
 class TestSurveyRequest:
+    """Tests survey request validation."""
+
     def test_valid_minimal(self):
         req = SurveyRequest(query="review attention in LLMs")
         assert req.query == "review attention in LLMs"
@@ -35,10 +28,9 @@ class TestSurveyRequest:
             SurveyRequest(query="")
 
     def test_query_whitespace_only(self):
-        """min_length=1 检查的是字符串长度，不检查内容。空格也算字符，这里验证它会通过。"""
-        req = SurveyRequest(query="   ")  # 3 个空格，长度 >= 1，通过校验
+        """Whitespace-only queries retain the current model semantics."""
+        req = SurveyRequest(query="   ")
         assert req.query == "   "
-        # NOTE: 如果要拒绝纯空格 query，应该在 SurveyRequest 里加 field_validator
 
     def test_query_too_long(self):
         with pytest.raises(Exception):
@@ -46,6 +38,8 @@ class TestSurveyRequest:
 
 
 class TestSurveyStatus:
+    """Tests survey status serialization."""
+
     def test_minimal(self):
         s = SurveyStatus(task_id="abc123", status="running")
         assert s.task_id == "abc123"
@@ -59,6 +53,8 @@ class TestSurveyStatus:
 
 
 class TestSurveyReport:
+    """Tests survey report serialization."""
+
     def test_full(self):
         r = SurveyReport(
             task_id="t1",
@@ -75,7 +71,7 @@ class TestSurveyReport:
         assert r.evaluation["citation"]["score"] == 0.9
 
     def test_evaluation_defaults_to_empty_dict(self):
-        """evaluation 缺失时默认 {}，不破坏已有响应（向后兼容）。"""
+        """Missing evaluation data defaults to an empty mapping."""
         r = SurveyReport(
             task_id="t2",
             survey="text",
@@ -87,15 +83,13 @@ class TestSurveyReport:
         assert r.evaluation == {}
 
     def test_model_fields_include_evaluation(self):
-        """13.7.0：API response model 契约包含 evaluation 字段。"""
+        """The report schema exposes evaluation data."""
         assert "evaluation" in SurveyReport.model_fields
 
 
-# ═══════════════════════════════════════════════════
-# API 端点测试
-# ═══════════════════════════════════════════════════
-
 class TestHealth:
+    """Tests the health endpoint."""
+
     def test_health(self):
         resp = client.get("/health")
         assert resp.status_code == 200
@@ -103,6 +97,8 @@ class TestHealth:
 
 
 class TestFlowDemo:
+    """Tests live and archived flow-demo endpoints."""
+
     def test_serves_replay_page(self):
         response = client.get("/flow-demo")
 
@@ -118,7 +114,13 @@ class TestFlowDemo:
 
     def test_reads_persisted_archive_and_downloads_it(self, tmp_path, monkeypatch):
         repository = ArchiveRepository(tmp_path)
-        repository.save({"run_id": "flow-1", "query": "few-shot", "completed_at": "2026-07-18T00:00:00+00:00"})
+        repository.save(
+            {
+                "run_id": "flow-1",
+                "query": "few-shot",
+                "completed_at": "2026-07-18T00:00:00+00:00",
+            }
+        )
         monkeypatch.setattr(app.state, "flow_repository", repository)
         monkeypatch.setattr(app.state, "flow_runs", {})
         monkeypatch.setattr(app.state, "flow_archive_index", {})
@@ -131,6 +133,8 @@ class TestFlowDemo:
 
 
 class TestCreateSurvey:
+    """Tests survey creation."""
+
     def test_create_returns_201(self):
         with patch("litagent.api._run_survey", new_callable=AsyncMock):
             resp = client.post("/survey", json={"query": "test query"})
@@ -154,13 +158,17 @@ class TestCreateSurvey:
 
 
 class TestGetSurveyStatus:
+    """Tests survey status retrieval."""
+
     def test_not_found(self):
         resp = client.get("/survey/nonexistent")
         assert resp.status_code == 404
 
     def test_running_status(self):
         app.state.tasks["test123"] = {
-            "status": "running", "progress": "search", "error": None,
+            "status": "running",
+            "progress": "search",
+            "error": None,
             "_created_at": 0,
         }
         resp = client.get("/survey/test123")
@@ -171,7 +179,9 @@ class TestGetSurveyStatus:
 
     def test_completed_status(self):
         app.state.tasks["done1"] = {
-            "status": "completed", "progress": "done", "error": None,
+            "status": "completed",
+            "progress": "done",
+            "error": None,
             "_created_at": 0,
         }
         resp = client.get("/survey/done1")
@@ -180,29 +190,38 @@ class TestGetSurveyStatus:
 
 
 class TestGetSurveyReport:
+    """Tests survey report retrieval."""
+
     def test_not_found(self):
         resp = client.get("/survey/nonexistent/report")
         assert resp.status_code == 404
 
     def test_still_running_409(self):
         app.state.tasks["running1"] = {
-            "status": "running", "progress": "synthesis",
-            "result": None, "error": None, "_created_at": 0,
+            "status": "running",
+            "progress": "synthesis",
+            "result": None,
+            "error": None,
+            "_created_at": 0,
         }
         resp = client.get("/survey/running1/report")
         assert resp.status_code == 409
 
     def test_failed_500(self):
         app.state.tasks["failed1"] = {
-            "status": "failed", "progress": "",
-            "result": None, "error": "LLM timeout", "_created_at": 0,
+            "status": "failed",
+            "progress": "",
+            "result": None,
+            "error": "LLM timeout",
+            "_created_at": 0,
         }
         resp = client.get("/survey/failed1/report")
         assert resp.status_code == 500
 
     def test_completed_report(self):
         app.state.tasks["completed1"] = {
-            "status": "completed", "progress": "done",
+            "status": "completed",
+            "progress": "done",
             "error": None,
             "result": {
                 "survey": "## Survey on attention...",
@@ -222,9 +241,10 @@ class TestGetSurveyReport:
         assert body["partial"] is False
 
     def test_report_includes_evaluation(self):
-        """13.7.0：endpoint 返回包含 evaluation 字段。"""
+        """Completed reports include evaluation data."""
         app.state.tasks["eval1"] = {
-            "status": "completed", "progress": "done",
+            "status": "completed",
+            "progress": "done",
             "error": None,
             "result": {
                 "survey": "text",
@@ -243,9 +263,10 @@ class TestGetSurveyReport:
         assert body["evaluation"]["citation"]["score"] == 0.5
 
     def test_report_evaluation_defaults_when_missing(self):
-        """旧数据无 evaluation 字段 → endpoint 返回 {} 而非 500。"""
+        """Legacy reports default missing evaluation data."""
         app.state.tasks["old1"] = {
-            "status": "completed", "progress": "done",
+            "status": "completed",
+            "progress": "done",
             "error": None,
             "result": {
                 "survey": "old survey",
@@ -261,36 +282,41 @@ class TestGetSurveyReport:
         assert resp.json()["evaluation"] == {}
 
 
-# ═══════════════════════════════════════════════════
-# TTL cleanup
-# ═══════════════════════════════════════════════════
-
 class TestTTLCleanup:
+    """Tests expiration cleanup for in-memory survey tasks."""
+
     def test_expired_tasks_cleaned(self):
         import time
-        # 添加已完成的"过期"任务
+
         app.state.tasks["old_done"] = {
-            "status": "completed", "progress": "done",
-            "result": {}, "error": None,
-            "_created_at": time.time() - 7200,  # 2 小时前
+            "status": "completed",
+            "progress": "done",
+            "result": {},
+            "error": None,
+            "_created_at": time.time() - 7200,
         }
         app.state.tasks["old_failed"] = {
-            "status": "failed", "progress": "",
-            "result": None, "error": "boom",
+            "status": "failed",
+            "progress": "",
+            "result": None,
+            "error": "boom",
             "_created_at": time.time() - 5000,
         }
-        # 添加未过期的
+
         app.state.tasks["recent"] = {
-            "status": "running", "progress": "plan",
-            "result": None, "error": None,
+            "status": "running",
+            "progress": "plan",
+            "result": None,
+            "error": None,
             "_created_at": time.time(),
         }
 
-        # 直接调清理逻辑
         from litagent.api import _TASK_TTL_SECONDS
+
         now = time.time()
         expired = [
-            tid for tid, t in app.state.tasks.items()
+            tid
+            for tid, t in app.state.tasks.items()
             if t["status"] in ("completed", "failed")
             and (now - t.get("_created_at", 0)) > _TASK_TTL_SECONDS
         ]
@@ -299,25 +325,28 @@ class TestTTLCleanup:
 
         assert "old_done" not in app.state.tasks
         assert "old_failed" not in app.state.tasks
-        assert "recent" in app.state.tasks  # running 不清理
+        assert "recent" in app.state.tasks
 
-
-# ═══════════════════════════════════════════════════════════
-# 13.7.2-C2 — Quality API
-# ═══════════════════════════════════════════════════════════
 
 class TestQualityAPI:
-    """13.7.2-C2：API quality 字段。"""
+    """Tests quality data in API responses."""
 
     def test_api_returns_quality_for_new_report(self):
         app.state.tasks["q1"] = {
-            "status": "completed", "progress": "done", "error": None,
+            "status": "completed",
+            "progress": "done",
+            "error": None,
             "result": {
-                "survey": "text", "metadata": {}, "review_history": [],
-                "graph_data": {}, "partial": False,
-                "quality": {"status": "failed",
-                            "failed_metrics": ["citation_accuracy"],
-                            "unverified_metrics": []},
+                "survey": "text",
+                "metadata": {},
+                "review_history": [],
+                "graph_data": {},
+                "partial": False,
+                "quality": {
+                    "status": "failed",
+                    "failed_metrics": ["citation_accuracy"],
+                    "unverified_metrics": [],
+                },
             },
             "_created_at": 0,
         }
@@ -328,10 +357,15 @@ class TestQualityAPI:
 
     def test_api_defaults_quality_for_legacy_report(self):
         app.state.tasks["old2"] = {
-            "status": "completed", "progress": "done", "error": None,
+            "status": "completed",
+            "progress": "done",
+            "error": None,
             "result": {
-                "survey": "old", "metadata": {}, "review_history": [],
-                "graph_data": {}, "partial": False,
+                "survey": "old",
+                "metadata": {},
+                "review_history": [],
+                "graph_data": {},
+                "partial": False,
             },
             "_created_at": 0,
         }
@@ -340,67 +374,90 @@ class TestQualityAPI:
         assert resp.json()["quality"]["status"] == "unverified"
 
 
-# ═══════════════════════════════════════════════════════════
-# 13.7.3.3 — Delivery API 契约
-# ═══════════════════════════════════════════════════════════
-
 class TestDeliveryAPI:
-    """status 提供 delivery_status；report 提供 delivery；两端映射一致。"""
+    """Tests delivery state in API responses."""
 
     @staticmethod
     def _blocked_result():
         return {
-            "survey": "untrusted draft", "metadata": {}, "review_history": [],
-            "graph_data": {}, "partial": False,
-            "quality": {"status": "failed", "failed_metrics": ["faithfulness"],
-                        "unverified_metrics": []},
-            "delivery": {"status": "blocked", "publishable": False,
-                         "reason_codes": ["quality_failed"]},
+            "survey": "untrusted draft",
+            "metadata": {},
+            "review_history": [],
+            "graph_data": {},
+            "partial": False,
+            "quality": {
+                "status": "failed",
+                "failed_metrics": ["faithfulness"],
+                "unverified_metrics": [],
+            },
+            "delivery": {
+                "status": "blocked",
+                "publishable": False,
+                "reason_codes": ["quality_failed"],
+            },
         }
 
     def test_status_carries_delivery_status_when_completed(self):
         app.state.tasks["d1"] = {
-            "status": "completed", "progress": "done", "error": None,
-            "result": self._blocked_result(), "_created_at": 0,
+            "status": "completed",
+            "progress": "done",
+            "error": None,
+            "result": self._blocked_result(),
+            "_created_at": 0,
         }
         resp = client.get("/survey/d1")
         assert resp.status_code == 200
         body = resp.json()
-        assert body["status"] == "completed"          # 技术上完成
-        assert body["delivery_status"] == "blocked"   # 但交付被拦
+        assert body["status"] == "completed"
+        assert body["delivery_status"] == "blocked"
 
     def test_status_delivery_none_while_running(self):
         app.state.tasks["d2"] = {
-            "status": "running", "progress": "search", "error": None,
-            "result": None, "_created_at": 0,
+            "status": "running",
+            "progress": "search",
+            "error": None,
+            "result": None,
+            "_created_at": 0,
         }
         resp = client.get("/survey/d2")
         assert resp.json()["delivery_status"] is None
 
     def test_report_carries_delivery_and_stays_readable(self):
-        """blocked draft 仍可读取用于诊断，但 publishable=False 显式携带。"""
+        """Blocked reports remain readable with delivery diagnostics."""
         app.state.tasks["d3"] = {
-            "status": "completed", "progress": "done", "error": None,
-            "result": self._blocked_result(), "_created_at": 0,
+            "status": "completed",
+            "progress": "done",
+            "error": None,
+            "result": self._blocked_result(),
+            "_created_at": 0,
         }
         resp = client.get("/survey/d3/report")
         assert resp.status_code == 200
         body = resp.json()
-        assert body["survey"] == "untrusted draft"    # 可读（诊断用）
+        assert body["survey"] == "untrusted draft"
         assert body["delivery"]["status"] == "blocked"
         assert body["delivery"]["publishable"] is False
 
     def test_status_and_report_derive_consistently_for_legacy(self):
-        """legacy result 无 delivery → 两端都经 derive_delivery 派生，结论一致。"""
+        """Legacy status and report endpoints derive delivery consistently."""
         legacy = {
-            "survey": "old", "metadata": {}, "review_history": [],
-            "graph_data": {}, "partial": False,
-            "quality": {"status": "failed", "failed_metrics": ["citation_accuracy"],
-                        "unverified_metrics": []},
+            "survey": "old",
+            "metadata": {},
+            "review_history": [],
+            "graph_data": {},
+            "partial": False,
+            "quality": {
+                "status": "failed",
+                "failed_metrics": ["citation_accuracy"],
+                "unverified_metrics": [],
+            },
         }
         app.state.tasks["d4"] = {
-            "status": "completed", "progress": "done", "error": None,
-            "result": legacy, "_created_at": 0,
+            "status": "completed",
+            "progress": "done",
+            "error": None,
+            "result": legacy,
+            "_created_at": 0,
         }
         status_body = client.get("/survey/d4").json()
         report_body = client.get("/survey/d4/report").json()
@@ -409,10 +466,15 @@ class TestDeliveryAPI:
 
     def test_unverified_legacy_maps_to_needs_review(self):
         app.state.tasks["d5"] = {
-            "status": "completed", "progress": "done", "error": None,
+            "status": "completed",
+            "progress": "done",
+            "error": None,
             "result": {
-                "survey": "s", "metadata": {}, "review_history": [],
-                "graph_data": {}, "partial": False,
+                "survey": "s",
+                "metadata": {},
+                "review_history": [],
+                "graph_data": {},
+                "partial": False,
             },
             "_created_at": 0,
         }

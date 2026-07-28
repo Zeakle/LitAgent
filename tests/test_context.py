@@ -1,13 +1,19 @@
+"""Tests for context budgeting, compression, and prompt templates."""
+
 import pytest
+
 from litagent.context.budget import BudgetManager, CharBasedCounter, TokenCounter
 from litagent.context.pipeline import ContextPipeline, ContextLayer
 from litagent.context.compressor import TierCompressor, PaperInfo
 from litagent.context.templates import (
-    wrap_xml, build_system_prompt,
+    wrap_xml,
+    build_system_prompt,
 )
 
 
 class TestCharBasedCounter:
+    """Tests character-based token estimates."""
+
     def test_empty_string(self):
         counter = CharBasedCounter()
         assert counter.count("") == 0
@@ -27,6 +33,8 @@ class TestCharBasedCounter:
 
 
 class TestBudgetManager:
+    """Tests context-budget accounting."""
+
     def test_count_tokens(self):
         bm = BudgetManager(max_tokens=1000)
         assert bm.count_tokens("hello world!") == 3
@@ -63,10 +71,14 @@ class TestBudgetManager:
 
     def test_custom_counter(self):
         class DoubleCounter(TokenCounter):
+            """Counter that returns half the character count."""
+
             def count(self, text: str) -> int:
                 return len(text) // 2
+
             def chars_per_token(self) -> int:
                 return 2
+
         bm = BudgetManager(max_tokens=100, counter=DoubleCounter())
         assert bm.count_tokens("abcdef") == 3
 
@@ -74,10 +86,13 @@ class TestBudgetManager:
 def _async_builder(text: str):
     async def builder(state):
         return text
+
     return builder
 
 
 class TestContextPipeline:
+    """Tests layered context assembly."""
+
     @pytest.mark.asyncio
     async def test_single_layer(self):
         budget = BudgetManager(max_tokens=1000)
@@ -92,7 +107,9 @@ class TestContextPipeline:
         budget = BudgetManager(max_tokens=1000)
         pipeline = ContextPipeline(budget)
         pipeline.add_layer(ContextLayer("low", 2, 500, _async_builder("low priority")))
-        pipeline.add_layer(ContextLayer("high", 0, 500, _async_builder("high priority")))
+        pipeline.add_layer(
+            ContextLayer("high", 0, 500, _async_builder("high priority"))
+        )
         text, _ = await pipeline.build({})
         assert text.index("high priority") < text.index("low priority")
 
@@ -118,6 +135,7 @@ class TestContextPipeline:
     async def test_builder_exception_skipped(self):
         async def failing_builder(state):
             raise RuntimeError("boom")
+
         budget = BudgetManager(max_tokens=1000)
         pipeline = ContextPipeline(budget)
         pipeline.add_layer(ContextLayer("bad", 0, 500, failing_builder))
@@ -133,9 +151,13 @@ class TestContextPipeline:
 
 
 class TestTierCompressor:
+    """Tests tier-based paper compression."""
+
     def _make_paper(self, tier: int, title: str = "Paper") -> PaperInfo:
         return PaperInfo(
-            paper_id="p1", title=title, tier=tier,
+            paper_id="p1",
+            title=title,
+            tier=tier,
             claims=["claim A", "claim B"],
             metrics={"accuracy": "93.2%"},
             summary="A study on X.",
@@ -195,6 +217,8 @@ class TestTierCompressor:
 
 
 class TestTemplates:
+    """Tests context prompt templates."""
+
     def test_wrap_xml(self):
         result = wrap_xml("role", "You are a search agent")
         assert result == "<role>\nYou are a search agent\n</role>"

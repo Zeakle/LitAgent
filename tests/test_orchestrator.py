@@ -1,6 +1,9 @@
-import pytest
+"""Tests for task graphs, scheduling, and survey planning."""
+
 import asyncio
 from typing import Any
+
+import pytest
 
 from litagent.orchestrator.task_graph import TaskGraph, SubTask, TaskStatus
 from litagent.orchestrator.scheduler import Scheduler, Worker
@@ -8,6 +11,8 @@ from litagent.agents.planner import SurveyPlanner
 
 
 class MockWorker(Worker):
+    """Worker that returns deterministic task metadata."""
+
     def __init__(self, agent_type: str, delay: float = 0):
         self._type = agent_type
         self._delay = delay
@@ -23,6 +28,8 @@ class MockWorker(Worker):
 
 
 class FailingWorker(Worker):
+    """Worker test double that always raises."""
+
     def __init__(self, agent_type: str):
         self._type = agent_type
 
@@ -35,6 +42,8 @@ class FailingWorker(Worker):
 
 
 class TestTaskGraph:
+    """Tests task-graph state and dependency handling."""
+
     def test_add_and_get(self):
         g = TaskGraph()
         t = SubTask(task_id="t1", description="test", agent_type="search")
@@ -51,7 +60,10 @@ class TestTaskGraph:
     def test_get_ready_with_deps(self):
         g = TaskGraph()
         g.add_task(SubTask(task_id="t1", description="a", agent_type="search"))
-        g.add_task(SubTask(task_id="t2", description="b", agent_type="extract"), depends_on=["t1"])
+        g.add_task(
+            SubTask(task_id="t2", description="b", agent_type="extract"),
+            depends_on=["t1"],
+        )
         ready = g.get_ready_tasks()
         assert len(ready) == 1
         assert ready[0].task_id == "t1"
@@ -59,7 +71,10 @@ class TestTaskGraph:
     def test_ready_after_dep_done(self):
         g = TaskGraph()
         g.add_task(SubTask(task_id="t1", description="a", agent_type="search"))
-        g.add_task(SubTask(task_id="t2", description="b", agent_type="extract"), depends_on=["t1"])
+        g.add_task(
+            SubTask(task_id="t2", description="b", agent_type="extract"),
+            depends_on=["t1"],
+        )
         g.mark_done("t1", {"papers": 10})
         ready = g.get_ready_tasks()
         assert len(ready) == 1
@@ -68,8 +83,14 @@ class TestTaskGraph:
     def test_mark_failed_skips_downstream(self):
         g = TaskGraph()
         g.add_task(SubTask(task_id="t1", description="a", agent_type="search"))
-        g.add_task(SubTask(task_id="t2", description="b", agent_type="extract"), depends_on=["t1"])
-        g.add_task(SubTask(task_id="t3", description="c", agent_type="synthesis"), depends_on=["t2"])
+        g.add_task(
+            SubTask(task_id="t2", description="b", agent_type="extract"),
+            depends_on=["t1"],
+        )
+        g.add_task(
+            SubTask(task_id="t3", description="c", agent_type="synthesis"),
+            depends_on=["t2"],
+        )
         g.mark_failed("t1", "API down")
         assert g.get_task("t2").status == TaskStatus.SKIPPED
         assert g.get_task("t3").status == TaskStatus.SKIPPED
@@ -101,16 +122,22 @@ class TestTaskGraph:
 
     def test_priority_ordering(self):
         g = TaskGraph()
-        g.add_task(SubTask(task_id="low", description="a", agent_type="search", priority=2))
-        g.add_task(SubTask(task_id="high", description="b", agent_type="search", priority=0))
+        g.add_task(
+            SubTask(task_id="low", description="a", agent_type="search", priority=2)
+        )
+        g.add_task(
+            SubTask(task_id="high", description="b", agent_type="search", priority=0)
+        )
         ready = g.get_ready_tasks()
         assert ready[0].task_id == "high"
 
     def test_finalize_incomplete_cancels_running_and_skips_pending(self):
         g = TaskGraph()
         g.add_task(SubTask(task_id="running", description="a", agent_type="search"))
-        g.add_task(SubTask(task_id="pending", description="b", agent_type="extract"),
-                   depends_on=["running"])
+        g.add_task(
+            SubTask(task_id="pending", description="b", agent_type="extract"),
+            depends_on=["running"],
+        )
         g.mark_running("running")
 
         transitions = g.finalize_incomplete("orchestration_timeout")
@@ -136,11 +163,16 @@ class TestTaskGraph:
 
 
 class TestScheduler:
+    """Tests scheduler execution and failure propagation."""
+
     @pytest.mark.asyncio
     async def test_simple_sequential(self):
         g = TaskGraph()
         g.add_task(SubTask(task_id="t1", description="a", agent_type="search"))
-        g.add_task(SubTask(task_id="t2", description="b", agent_type="extract"), depends_on=["t1"])
+        g.add_task(
+            SubTask(task_id="t2", description="b", agent_type="extract"),
+            depends_on=["t1"],
+        )
         scheduler = Scheduler(workers=[MockWorker("search"), MockWorker("extract")])
         results = await scheduler.run(g)
         assert "t1" in results
@@ -168,8 +200,13 @@ class TestScheduler:
     @pytest.mark.asyncio
     async def test_worker_failure_cascades(self):
         g = TaskGraph()
-        g.add_task(SubTask(task_id="t1", description="a", agent_type="bad", max_retries=0))
-        g.add_task(SubTask(task_id="t2", description="b", agent_type="search"), depends_on=["t1"])
+        g.add_task(
+            SubTask(task_id="t1", description="a", agent_type="bad", max_retries=0)
+        )
+        g.add_task(
+            SubTask(task_id="t2", description="b", agent_type="search"),
+            depends_on=["t1"],
+        )
         scheduler = Scheduler(workers=[FailingWorker("bad"), MockWorker("search")])
         results = await scheduler.run(g)
         assert g.get_task("t1").status == TaskStatus.FAILED
@@ -179,10 +216,15 @@ class TestScheduler:
     async def test_timeout_returns_partial(self):
         g = TaskGraph()
         g.add_task(SubTask(task_id="fast", description="a", agent_type="search"))
-        g.add_task(SubTask(
-            task_id="slow", description="b", agent_type="slow",
-            timeout_ms=100, max_retries=0,
-        ))
+        g.add_task(
+            SubTask(
+                task_id="slow",
+                description="b",
+                agent_type="slow",
+                timeout_ms=100,
+                max_retries=0,
+            )
+        )
         scheduler = Scheduler(
             workers=[MockWorker("search"), MockWorker("slow", delay=5)],
             timeout_ms=2000,
@@ -194,8 +236,15 @@ class TestScheduler:
     @pytest.mark.asyncio
     async def test_global_timeout_cancels_running_and_emits_terminal(self):
         g = TaskGraph()
-        g.add_task(SubTask(task_id="slow", description="a", agent_type="slow",
-                           timeout_ms=5000, max_retries=0))
+        g.add_task(
+            SubTask(
+                task_id="slow",
+                description="a",
+                agent_type="slow",
+                timeout_ms=5000,
+                max_retries=0,
+            )
+        )
         events = []
         scheduler = Scheduler(
             workers=[MockWorker("slow", delay=5)],
@@ -206,26 +255,28 @@ class TestScheduler:
         assert await scheduler.run(g) == {}
         assert g.get_task("slow").status == TaskStatus.CANCELLED
         cancelled = [data for event, data in events if event == "worker.cancelled"]
-        assert cancelled == [{
-            "task_id": "slow", "agent_type": "slow",
-            "error": "orchestration_timeout",
-        }]
+        assert cancelled == [
+            {
+                "task_id": "slow",
+                "agent_type": "slow",
+                "error": "orchestration_timeout",
+            }
+        ]
 
 
 class TestSurveyPlanner:
-    """无 llm 构造 → _decompose 降级到单 query。这里验证「规则/降级骨架」；
-    完整 LLM 分解 + recall task 形态见 tests/test_agents.py::TestPlannerRecallTasks。"""
+    """Tests survey-plan task construction."""
 
     @pytest.fixture(autouse=True)
     def _no_ss_key(self, monkeypatch):
-        # 锁定源数为 arxiv+hf（2 源），避免宿主环境设了 SS key 导致源数飘
+
         monkeypatch.delenv("SEMANTIC_SCHOLAR_API_KEY", raising=False)
 
     @pytest.mark.asyncio
     async def test_plan_creates_dag(self):
         planner = SurveyPlanner()
         graph = await planner.plan("few-shot learning in CV")
-        # 单 query × 2 源 = 2 search + 1 recall + 5 下游(dedup/gate/extract/graph/adversarial)
+
         assert len(graph.tasks) == 8
         assert "report" not in graph.tasks
         assert graph.tasks["adversarial_review"].agent_type == "adversarial_review"
@@ -237,8 +288,8 @@ class TestSurveyPlanner:
         ready = graph.get_ready_tasks()
         search_tasks = [t for t in ready if t.agent_type == "search"]
         recall_tasks = [t for t in ready if t.agent_type == "recall"]
-        assert len(search_tasks) == 2   # arxiv+hf，单 query
-        assert len(recall_tasks) == 1   # 每个规范化 sub-query 恰好一个 recall
+        assert len(search_tasks) == 2
+        assert len(recall_tasks) == 1
 
     @pytest.mark.asyncio
     async def test_adversarial_review_depends_on_extract_and_graph(self):
@@ -251,20 +302,12 @@ class TestSurveyPlanner:
     async def test_query_propagated_to_search_input(self):
         planner = SurveyPlanner()
         graph = await planner.plan("vision transformers")
-        t = graph.get_task("search_arxiv_q0")   # 新 id 方案：search_{源}_q{i}
+        t = graph.get_task("search_arxiv_q0")
         assert t.input_data["query"] == "vision transformers"
 
 
-# ═══════════════════════════════════════════════════════════
-# 13.7.1-B — Scheduler 按 priority 调度
-# ═══════════════════════════════════════════════════════════
-
-# ═══════════════════════════════════════════════════════════
-# 13.8 — DAG 增加 relevance_gate 节点
-# ═══════════════════════════════════════════════════════════
-
 class TestRelevanceGateDAG:
-    """13.8：Planner DAG 含 relevance_gate，extract/graph 依赖它。"""
+    """Tests relevance-gate dependencies in the task graph."""
 
     @pytest.fixture(autouse=True)
     def _no_ss_key(self, monkeypatch):
@@ -273,6 +316,7 @@ class TestRelevanceGateDAG:
     @pytest.mark.asyncio
     async def test_dag_contains_relevance_gate(self):
         from litagent.agents.planner import SurveyPlanner
+
         planner = SurveyPlanner()
         graph = await planner.plan("test query")
         rg = graph.get_task("relevance_gate")
@@ -282,6 +326,7 @@ class TestRelevanceGateDAG:
     @pytest.mark.asyncio
     async def test_relevance_gate_depends_only_on_dedup(self):
         from litagent.agents.planner import SurveyPlanner
+
         planner = SurveyPlanner()
         graph = await planner.plan("test")
         deps = graph._deps.get("relevance_gate", set())
@@ -290,6 +335,7 @@ class TestRelevanceGateDAG:
     @pytest.mark.asyncio
     async def test_extract_and_graph_depend_on_relevance_gate(self):
         from litagent.agents.planner import SurveyPlanner
+
         planner = SurveyPlanner()
         graph = await planner.plan("test")
         assert graph._deps.get("extract") == {"relevance_gate"}
@@ -298,6 +344,7 @@ class TestRelevanceGateDAG:
     @pytest.mark.asyncio
     async def test_extract_has_zero_retries(self):
         from litagent.agents.planner import SurveyPlanner
+
         planner = SurveyPlanner()
         graph = await planner.plan("test")
         extract = graph.get_task("extract")
@@ -306,7 +353,7 @@ class TestRelevanceGateDAG:
 
 
 class TestSchedulerPriority:
-    """Scheduler 在 max_concurrent=1 时启动更低 priority task。"""
+    """Tests scheduler priority ordering."""
 
     @pytest.mark.asyncio
     async def test_scheduler_starts_lower_priority_task_first(self):
@@ -316,6 +363,8 @@ class TestSchedulerPriority:
         started: list[str] = []
 
         class RecordWorker(Worker):
+            """Worker that records task start order."""
+
             def __init__(self, name):
                 self._name = name
 
@@ -328,13 +377,16 @@ class TestSchedulerPriority:
                 return task.task_id
 
         graph = TaskGraph()
-        graph.add_task(SubTask(task_id="low_pri", description="low",
-                               agent_type="w", priority=10))
-        graph.add_task(SubTask(task_id="high_pri", description="high",
-                               agent_type="w", priority=0))
+        graph.add_task(
+            SubTask(task_id="low_pri", description="low", agent_type="w", priority=10)
+        )
+        graph.add_task(
+            SubTask(task_id="high_pri", description="high", agent_type="w", priority=0)
+        )
 
         scheduler = Scheduler(
-            workers=[RecordWorker("w")], max_concurrent=1, timeout_ms=5000)
+            workers=[RecordWorker("w")], max_concurrent=1, timeout_ms=5000
+        )
         await scheduler.run(graph)
 
         assert started[0] == "high_pri"

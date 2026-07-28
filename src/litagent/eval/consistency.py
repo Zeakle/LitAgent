@@ -1,6 +1,7 @@
-"""Internal Consistency 评估器——检测综述自相矛盾的定量声明。"""
+"""Evaluate internal contradictions in survey claims."""
 
 from __future__ import annotations
+
 import json
 from typing import Any
 
@@ -9,7 +10,7 @@ from litagent.llm.client import BaseLLMClient
 from litagent.context.templates import wrap_xml
 from litagent.logging import get_logger
 
-logger = get_logger('eval.consistency')
+logger = get_logger("eval.consistency")
 
 
 _CONSISTENCY_PROMPT = """You are a consistency checker for academic surveys. \
@@ -23,57 +24,58 @@ Different models or different datasets are NOT contradictions.
 Return ONLY a JSON object:
 {
   "conflicts": [
-    {"claim_a": "<statement 1>", "claim_b": "<statement 2>", "reason": "<why they conflict>"}
+    {"claim_a": "<statement 1>", "claim_b": "<statement 2>", \
+"reason": "<why they conflict>"}
   ]
 }
 If no contradictions, return {"conflicts": []}."""
 
 
 class ConsistencyEvaluator(Evaluator):
-    """LLM 检测综述内定量声明冲突。score = max(0, 1 - 矛盾数 × penalty)。
+    """Penalize contradictory quantitative claims identified by an LLM."""
 
-    只看综述自身，不需要 context（源论文无关）。
-    LLM 挂 / JSON 解析失败 / malformed → skip（中性降级）。
-    """
-
-    def __init__(self, llm: BaseLLMClient, threshold: float = 0.8, penalty: float = 0.2,
-                 max_tokens: int = 16384):
+    def __init__(
+        self,
+        llm: BaseLLMClient,
+        threshold: float = 0.8,
+        penalty: float = 0.2,
+        max_tokens: int = 16384,
+    ):
         super().__init__(threshold)
         self._llm = llm
         self._penalty = penalty
         self._max_tokens = max_tokens
 
-    
     @property
     def metric_name(self) -> str:
-        return 'internal_consistency'
+        """Return the evaluator metric name."""
+        return "internal_consistency"
 
-    
     async def evaluate(self, survey: str, context: dict[str, Any]) -> EvalResult:
+        """Score internal consistency from detected quantitative conflicts."""
         if not survey or not survey.strip():
-            return EvalResult.skip(self.metric_name, 'empty_survey')
+            return EvalResult.skip(self.metric_name, "empty_survey")
 
         try:
             resp = await self._llm.chat(
                 [
-                    {'role': 'system', 'content': _CONSISTENCY_PROMPT},
-                    {'role': 'user', 'content': wrap_xml('survey', survey)}
+                    {"role": "system", "content": _CONSISTENCY_PROMPT},
+                    {"role": "user", "content": wrap_xml("survey", survey)},
                 ],
-                response_format={'type': 'json_object'},
-                max_tokens=self._max_tokens,   # reasoning 模型：找矛盾的 reasoning 长，需大额度免 content 被挤空
+                response_format={"type": "json_object"},
+                max_tokens=self._max_tokens,
             )
-            conflicts = json.loads(resp.content).get('conflicts')
+            conflicts = json.loads(resp.content).get("conflicts")
         except Exception as e:
             logger.warning(f"Consistency eval LLM/parse failed: {e}")
             return EvalResult.skip(self.metric_name, f"llm_or_parse_error: {e}")
 
         if not isinstance(conflicts, list):
-            return EvalResult.skip(self.metric_name, "malformed 'conflicts' (not a list)")
+            return EvalResult.skip(
+                self.metric_name, "malformed 'conflicts' (not a list)"
+            )
 
         n = len(conflicts)
         score = max(0.0, 1.0 - n * self._penalty)
 
-        return self._make_result(score, {
-            'conflict_count': n,
-            'conflicts': conflicts
-        })
+        return self._make_result(score, {"conflict_count": n, "conflicts": conflicts})

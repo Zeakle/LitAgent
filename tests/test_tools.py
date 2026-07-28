@@ -1,8 +1,16 @@
+"""Tests for tool definitions, registration, and execution."""
+
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from litagent.tools.base import ToolDefinition, ToolCategory, RateLimitConfig, FallbackStep
+
+from litagent.tools.base import (
+    ToolDefinition,
+    ToolCategory,
+    RateLimitConfig,
+    FallbackStep,
+)
 from litagent.tools.registry import ToolRegistry, get_registry, reset_registry
 from litagent.tools.executor import ToolExecutor
 
@@ -25,12 +33,16 @@ echo_definition = ToolDefinition(
 )
 
 
-# ── ToolDefinition Tests ──
-
 class TestToolDefinition:
+    """Tests tool-definition serialization."""
+
     def test_to_llm_format_strips_internal_fields(self):
-        td = ToolDefinition(name="echo", description="Echo back", timeout_ms=999,
-                            parameters={"type": "object", "properties": {"msg": {"type": "string"}}})
+        td = ToolDefinition(
+            name="echo",
+            description="Echo back",
+            timeout_ms=999,
+            parameters={"type": "object", "properties": {"msg": {"type": "string"}}},
+        )
         llm = td.to_llm_format()
         assert llm["name"] == "echo"
         assert "parameters" in llm
@@ -45,9 +57,9 @@ class TestToolDefinition:
         assert td.cache_ttl_ms == 0
 
 
-# ── ToolRegistry Tests ──
-
 class TestToolRegistry:
+    """Tests tool registration and lookup."""
+
     @pytest.fixture(autouse=True)
     def reset(self):
         reset_registry()
@@ -87,23 +99,31 @@ class TestToolRegistry:
 
     def test_list_by_category(self):
         registry = get_registry()
-        registry.register(ToolDefinition(name="r", description="r", category=ToolCategory.READ), lambda: None)
-        registry.register(ToolDefinition(name="w", description="w", category=ToolCategory.WRITE), lambda: None)
+        registry.register(
+            ToolDefinition(name="r", description="r", category=ToolCategory.READ),
+            lambda: None,
+        )
+        registry.register(
+            ToolDefinition(name="w", description="w", category=ToolCategory.WRITE),
+            lambda: None,
+        )
         assert len(registry.list_by_category(ToolCategory.READ)) == 1
         assert len(registry.list_by_category(ToolCategory.WRITE)) == 1
 
 
-# ── ToolExecutor Tests ──
-
 class TestToolExecutor:
+    """Tests tool execution, timeout, and caching."""
+
     @pytest.fixture(autouse=True)
     def setup(self):
         reset_registry()
         registry = get_registry()
         registry.register(echo_definition, echo_tool)
         registry.register(
-            ToolDefinition(name="slow", description="slow", timeout_ms=100, max_retries=0),
-            lambda: asyncio.sleep(1)  # will timeout
+            ToolDefinition(
+                name="slow", description="slow", timeout_ms=100, max_retries=0
+            ),
+            lambda: asyncio.sleep(1),
         )
         self.executor = ToolExecutor(registry)
 
@@ -129,7 +149,7 @@ class TestToolExecutor:
         registry = get_registry()
         registry.register(
             ToolDefinition(name="cached", description="c", cache_ttl_ms=60000),
-            lambda x: f"result: {x}"
+            lambda x: f"result: {x}",
         )
         executor = ToolExecutor(registry)
         r1 = await executor.execute("cached", {"x": "a"})
@@ -140,6 +160,8 @@ class TestToolExecutor:
 
 
 class TestBuiltinSearch:
+    """Tests built-in paper search parsing."""
+
     @pytest.mark.asyncio
     async def test_search_arxiv_parses_response_without_network(self, monkeypatch):
         from litagent.tools.builtin import search
@@ -158,6 +180,8 @@ class TestBuiltinSearch:
         client.get = AsyncMock(return_value=response)
 
         class FakeAsyncClient:
+            """HTTP client that returns a fixed response."""
+
             async def __aenter__(self):
                 return client
 
@@ -167,10 +191,12 @@ class TestBuiltinSearch:
         monkeypatch.setattr(search.httpx, "AsyncClient", lambda **_: FakeAsyncClient())
 
         result = await search.search_arxiv("few-shot learning", max_results=1)
-        assert result == [{
-            "paper_id": "2401.01234",
-            "title": "Few-shot Learning",
-            "abstract": "A test abstract.",
-            "source": "arxiv",
-        }]
+        assert result == [
+            {
+                "paper_id": "2401.01234",
+                "title": "Few-shot Learning",
+                "abstract": "A test abstract.",
+                "source": "arxiv",
+            }
+        ]
         client.get.assert_awaited_once()

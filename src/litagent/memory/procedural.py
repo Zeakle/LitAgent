@@ -1,39 +1,34 @@
-"""Procedural Memory — PostgreSQL + FileSystem。
-
-存储可复用的方法模板（Skills）。SQL 做匹配查询，YAML 文件做人类可读的版本化管理。
-"""
-
+"""Store rolling execution profiles used for source ranking."""
 
 import asyncpg
 
 from litagent.config import MemoryConfig
 from litagent.logging import get_logger
 
-logger = get_logger('memory.procedural')
+logger = get_logger("memory.procedural")
 
 
 class ProceduralMemory:
-    """Procedural Memory 存储层"""
+    """Persist aggregate tool-execution profiles in PostgreSQL."""
 
     def __init__(self, pool: asyncpg.Pool):
         self._pool = pool
 
     async def ensure_tables(self) -> None:
-        """幂等建表——创建 procedural_profiles。connect() 和 runner 都应调一次。"""
+        """Create or migrate the procedural-memory schema."""
         await self._ensure_profile_table()
-
 
     @staticmethod
     async def connect(config: MemoryConfig) -> "ProceduralMemory":
+        """Connect to PostgreSQL and initialize the profile schema."""
         pool = await asyncpg.create_pool(config.pg_url)
         logger.info("Connected to PostgresSQL (Procedural Memory)")
         mem = ProceduralMemory(pool)
         await mem.ensure_tables()
         return mem
 
-
     async def _ensure_profile_table(self) -> None:
-        """幂等建表——若表不存在则创建。在 connect() 或 __init__ 末尾调一次。"""
+        """Create the profile table and migrate legacy duration precision."""
         await self._pool.execute("""
             CREATE TABLE IF NOT EXISTS procedural_profiles (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -61,14 +56,12 @@ class ProceduralMemory:
             ON procedural_profiles(profile_type, scope)
         """)
 
-        # Older Phase 13.7.1 databases stored the rolling duration as INTEGER,
-        # which truncates every concurrent update and accumulates large drift.
+        # Preserve fractional rolling averages when upgrading legacy INTEGER schemas.
         await self._pool.execute("""
             ALTER TABLE procedural_profiles
             ALTER COLUMN avg_duration_ms TYPE DOUBLE PRECISION
             USING avg_duration_ms::DOUBLE PRECISION
         """)
-
 
     async def upsert_profile(
         self,
@@ -83,8 +76,7 @@ class ProceduralMemory:
         duration_ms: int = 0,
         result_count: int = 0,
     ) -> None:
-        """写/更新一条执行画像。单条 UPSERT 原子完成——计数器 +1，均值在
-        ON CONFLICT DO UPDATE 中引用当前行值计算，多 sub-query 并发写入不丢数据。"""
+        """Merge one execution outcome into a rolling procedural profile."""
         is_failure = not success
         is_empty = success and empty_result
 
@@ -118,29 +110,35 @@ class ProceduralMemory:
                    END,
                    last_executed_at = now(),
                    updated_at = now()""",
-            profile_type, profile_key, subject, scope,
-            0 if is_failure or is_empty else 1,           # success +?
-            1 if is_failure else 0,                        # failure +?
-            1 if is_empty else 0,                          # empty +?
-            1 if error_type == "rate_limit" else 0,        # rate_limit +?
-            1 if error_type == "timeout" else 0,           # timeout +?
+            # Map this observation to the SQL statement's counter increments.
+            profile_type,
+            profile_key,
+            subject,
+            scope,
+            0 if is_failure or is_empty else 1,
+            1 if is_failure else 0,
+            1 if is_empty else 0,
+            1 if error_type == "rate_limit" else 0,
+            1 if error_type == "timeout" else 0,
             duration_ms,
             float(result_count),
         )
 
-
     async def get_profiles(
-        self, profile_type: str = 'search_source', scope: str = 'global',
+        self,
+        profile_type: str = "search_source",
+        scope: str = "global",
     ) -> list[dict]:
-        """返回指定类型和作用域的全部画像。"""
+        """Return profiles for a type and scope, ordered by subject."""
         rows = await self._pool.fetch(
             """SELECT * FROM procedural_profiles
             WHERE profile_type = $1 AND scope = $2
             ORDER BY subject""",
-            profile_type, scope,
+            profile_type,
+            scope,
         )
         return [dict(r) for r in rows]
 
-
     async def close(self) -> None:
+        """Close the PostgreSQL connection pool."""
         await self._pool.close()
