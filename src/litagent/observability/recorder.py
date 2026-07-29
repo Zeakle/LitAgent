@@ -500,7 +500,7 @@ _SECRET_KEYS = {
 }
 _SECRET_VALUE_RE = re.compile(
     r"(?i)(?:authorization\s*[:=]\s*bearer\s+\S+|bearer\s+[a-z0-9._-]{8,}|"
-    r"(?:sk|rk|pk)-[a-z0-9_-]{8,}|"
+    r"(?<![a-z0-9])(?:sk|rk|pk)-[a-z0-9_-]{16,}(?![a-z0-9_-])|"
     r"(?:api[_-]?key|access[_-]?token|refresh[_-]?token|session[_-]?token|"
     r"auth[_-]?token|password|secret)\s*[:=]\s*\S+|"
     r"-----BEGIN [A-Z ]*PRIVATE KEY-----)"
@@ -536,7 +536,7 @@ def _redact_trace_value(value: Any) -> Any:
     if isinstance(value, (list, tuple)):
         return [_redact_trace_value(item) for item in value]
     if isinstance(value, str) and _SECRET_VALUE_RE.search(value):
-        return "<redacted>"
+        return _SECRET_VALUE_RE.sub("<redacted>", value)
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
     return _redact_trace_value(_snapshot(value))

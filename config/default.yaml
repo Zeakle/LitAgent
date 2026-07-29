@@ -12,16 +12,17 @@ memory:
   pg_url: "postgresql://litagent:litagent@localhost:5433/litagent"   # host 5433 → 避开 LangFuse postgres(5432)
 
 context:
-  max_tokens: 32000
-  compact_threshold: 0.7
+  # Input assembly budget; generated output is controlled separately below.
+  max_tokens: 32768
+  compact_threshold: 0.85
   # ── Phase 13.8 evidence-grounded synthesis ──
   synthesis_evidence_max_tokens: 16000   # evidence plan + selected ledger
-  synthesis_papers_max_tokens: 10000     # structural paper catalog
+  synthesis_papers_max_tokens: 8000      # structural paper catalog
   evidence_top_k_per_section: 12        # per-section rerank top-k
   evidence_max_items: 60                # global selected items cap
   evidence_per_paper_cap: 4             # max evidence items per paper
-  review_evidence_max_tokens: 8000      # reviewer evidence layer
-  review_draft_max_tokens: 16000         # reviewer draft layer
+  review_evidence_max_tokens: 10000      # reviewer evidence layer
+  review_draft_max_tokens: 14000         # reviewer draft layer
   review_feedback_max_tokens: 2000      # bounded previous-review feedback
 
 extractor:
@@ -40,10 +41,16 @@ llm:
   max_tokens: 20000
   temperature: 0.1
 
+relevance:
+  max_papers: 50
+  min_papers: 10
+  cross_encoder_min_score: null
+  lexical_min_score: 0.0
+
 adversarial:
   max_rounds: 3
   pass_threshold: 0.8  # Reviewer评分 >= 0.8是未通过
-  review_max_tokens: 8192
+  review_max_tokens: 12288  # output cap; includes reasoning tokens in thinking mode
 
 mcp_servers: {} 
 
@@ -56,17 +63,24 @@ resilience:
   cb_cooldown_seconds: 60    # 熔断后冷却 60 秒
 
 observability:
-  enabled: false          # 改 true 启用 LangFuse tracing（需先起 LangFuse 服务）
+  enabled: true           # LangFuse unavailable or missing keys degrades to a no-op tracer
   langfuse_host: "http://localhost:3000"
   payload_mode: "full_redacted"  # 上传完整非密钥 I/O；密钥和认证值递归剔除
 
 eval:
-  max_tokens: 20000       # 评估器 LLM 调用额度——比常规大，citation 枚举引用 + reasoning 占额度
+  max_tokens: 16384       # output cap; citation/faithfulness reasoning needs more than 8K
+  faithfulness_max_evidence_items: 40
+  faithfulness_max_context_chars: 24000
+  rewrite:
+    max_items: 30
+    max_chars: 15000
+    min_body_length_ratio: 0.5
+    min_paragraph_ratio: 0.5
 
 planner:
   decompose_enabled: true   # LLM 把 query 扩展成 2-3 子 query（多路召回）；false 退回单 query
   max_sub_queries: 3        # 子 query 上限（含原始），防 N×源 组合爆炸
-  max_tokens: 4096          # 分解调用额度（reasoning 模型留余量）
+  max_tokens: 8192          # structured output is short, but thinking mode also consumes this cap
   temperature: 0.3          # 略高促子 query 多样化
   use_procedural_profiles: false      # 13.7.1：开关开启后 planner 用画像重排 source
   procedural_min_samples: 3           # 样本数不足不排

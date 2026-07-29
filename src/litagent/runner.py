@@ -3,17 +3,19 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import uuid
 import os
 import json
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from collections.abc import Mapping, Sequence
+from typing import Any, Callable, Literal
 
+from litagent.agents import adversarial
 from litagent.config import AppConfig
 from litagent.context.evidence_selector import EvidenceSelector
-from litagent.eval.base import CTX_EVIDENCE
 from litagent.exceptions import ConfigError
 from litagent.llm.client import BaseLLMClient, OpenAICompatibleClient
 from litagent.safety.budget import CostBudget
@@ -41,6 +43,21 @@ from litagent.agents.synthesis import SynthesisWorker
 from litagent.agents.reviewer import ReviewerWorker
 from litagent.agents.adversarial import AdversarialReviewWorker
 from litagent.agents.planner import SurveyPlanner
+from litagent.eval.base import (
+    CTX_CLAIMS,
+    CTX_EVIDENCE,
+    CTX_PAPERS,
+    CTX_QUERY,
+    CTX_REFERENCED_EVIDENCE,
+    CTX_REFERENCED_EVIDENCE_IDS,
+    CTX_SELECTED_EVIDENCE,
+    CTX_UNRESOLVED_EVIDENCE_IDS,
+)
+from litagent.evidence import (
+    collect_ledger,
+    extract_evidence_refs,
+    extract_evidence_refs_ordered,
+)
 from litagent.orchestrator.scheduler import Scheduler, Worker
 from litagent.orchestrator.task_graph import TaskGraph
 from litagent.logging import get_logger, setup_logging
@@ -60,14 +77,52 @@ from litagent.observability.context import set_task_id, reset_task_id
 from litagent.eval.citation import CitationEvaluator
 from litagent.eval.consistency import ConsistencyEvaluator
 from litagent.eval.ragas_eval import RagasFaithfulnessEvaluator
-from litagent.evidence import collect_ledger, format_ledger, find_unknown_refs
 
 logger = get_logger("runner")
 
 
-def derive_delivery(partial: bool, quality: dict[str, Any] | None) -> dict[str, Any]:
+_MARKDOWN_HEADING_RE = re.compile(r"^(#{1,2})\s+(.+?)\s*$")
+_PLACEHOLDER_LINE_RE = re.compile(
+    r"(?im)^\s*(?:\.\.\.|…|\[no changes to this section\.\]|"
+    r"\[omitted\]|todo|tbd)\s*$"
+)
+
+
+@dataclass(frozen=True)
+class RewriteValidation:
+    accepted: bool
+    reason_codes: tuple[str, ...]
+    referenced_evidence_ids: tuple[str, ...]
+    unknown_evidence_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class RewriteOutcome:
+    attempted: bool
+    committed: bool
+    candidate: str | None
+    validation: RewriteValidation | None
+    candidate_evaluation: Mapping[str, Any] | None
+    candidate_quality: Mapping[str, Any] | None
+    reason_code: str
+
+
+def derive_delivery(
+    partial: bool,
+    quality: Mapping[str, Any] | None,
+    degradation_reason_codes: Sequence[str] = (),
+) -> dict[str, Any]:
     """Map execution completeness and quality to the delivery policy."""
     q_status = (quality or {}).get("status", "unverified")
+    degradation_codes = list(dict.fromkeys(degradation_reason_codes))
+
+    critical_degradation = any(
+        code in {
+            'all_external_sources_unavailable',
+            'all_external_sources_empty'
+        }
+        for code in degradation_codes
+    )
 
     reason_codes: list[str] = []
     if partial:
@@ -76,12 +131,13 @@ def derive_delivery(partial: bool, quality: dict[str, Any] | None) -> dict[str, 
         reason_codes.append("quality_failed")
     elif q_status == "unverified":
         reason_codes.append("quality_unverified")
+    reason_codes.extend(degradation_codes)
 
     if partial:
         status = "partial"
     elif q_status == "failed":
         status = "blocked"
-    elif q_status == "unverified":
+    elif q_status == "unverified" or critical_degradation:
         status = "needs_review"
     else:
         status = "ready"
@@ -89,7 +145,7 @@ def derive_delivery(partial: bool, quality: dict[str, Any] | None) -> dict[str, 
     return {
         "status": status,
         "publishable": status == "ready",
-        "reason_codes": reason_codes,
+        "reason_codes": list(dict.fromkeys(reason_codes))
     }
 
 
@@ -161,15 +217,25 @@ class LitAgent:
             await self._wire()
 
         self._emit("survey.start", {"query": query, "session_id": self._session_id})
-        logger.info(f"Starting survey: {query}")
+        logger.info("Starting survey: %s", query)
 
         try:
+            # Reset source outcomes from prior runs so cross-run contamination is avoided.
+            if self._search is not None:
+                self._search.reset_source_outcomes()
+
             graph = await self._planner.plan(query)
             if hasattr(self._trace_hook, "capture_graph"):
                 self._trace_hook.capture_graph(graph)
             results = await self._scheduler.run(graph)
             if hasattr(self._trace_hook, "capture_graph_state"):
                 self._trace_hook.capture_graph_state(graph)
+
+            # Collect search outcomes after Scheduler completes.
+            search_outcomes, degradation_codes = self._summarize_search_outcomes(
+                self._search.get_source_outcomes() if self._search else ()
+            )
+
             report_data = self._extract_report(results, query)
             execution = self._derive_execution(
                 graph,
@@ -183,22 +249,53 @@ class LitAgent:
             )
             report_data["partial"] = execution["partial"]
             report_data.setdefault("metadata", {})["execution"] = execution
-            report_data["evaluation"] = await self._evaluate(
-                report_data["survey"], results
+            report_data.setdefault("metadata", {})[
+                "search_source_outcomes"
+            ] = search_outcomes
+
+            # Phase 1: initial evaluation.
+            initial_evaluation = await self._evaluate(
+                query=query,
+                survey=report_data["survey"],
+                results=results,
+                phase="initial",
             )
-            quality = self._derive_quality(report_data.get("evaluation", {}))
-            report_data["quality"] = quality
+            initial_quality = self._derive_quality(initial_evaluation)
+            report_data.update({
+                "evaluation": initial_evaluation,
+                "quality": initial_quality,
+            })
 
-            if quality["status"] == "failed" and await self._attempt_evidence_rewrite(
-                report_data, results
-            ):
-                report_data["evaluation"] = await self._evaluate(
-                    report_data["survey"], results
+            # Phase 2: evidence rewrite on quality failure.
+            if initial_quality["status"] == "failed":
+                rewrite_outcome = await self._attempt_evidence_rewrite(
+                    query=query,
+                    report_data=report_data,
+                    results=results,
+                    initial_evaluation=initial_evaluation,
+                    initial_quality=initial_quality,
                 )
-                quality = self._derive_quality(report_data["evaluation"])
-                report_data["quality"] = quality
+                report_data.setdefault("metadata", {})["evidence_rewrite"] = {
+                    "attempted": rewrite_outcome.attempted,
+                    "committed": rewrite_outcome.committed,
+                    "reason_code": rewrite_outcome.reason_code,
+                    "validation_reason_codes": (
+                        list(rewrite_outcome.validation.reason_codes)
+                        if rewrite_outcome.validation else []
+                    ),
+                    "candidate_quality": rewrite_outcome.candidate_quality,
+                }
 
-            report_data["delivery"] = derive_delivery(report_data["partial"], quality)
+            # Phase 3: delivery + memory + emit.
+            final_quality = report_data["quality"]
+            report_data["delivery"] = derive_delivery(
+                report_data["partial"],
+                final_quality,
+                degradation_codes,
+            )
+            report_data.setdefault("metadata", {})["memory"] = (
+                await self._finalize_memory(report_data=report_data)
+            )
 
             self._emit(
                 "survey.complete",
@@ -206,13 +303,15 @@ class LitAgent:
                     "query": query,
                     "rounds": report_data.get("metadata", {}).get("total_rounds", 0),
                     "accepted": report_data.get("metadata", {}).get("accepted", False),
-                    "quality_status": quality["status"],
+                    "quality_status": final_quality["status"],
                     "total_tokens": self._cost_budget.used if self._cost_budget else 0,
                     "delivery_status": report_data["delivery"]["status"],
                 },
             )
 
-            logger.info("Survey complete: %d chars", len(report_data.get("survey", "")))
+            logger.info(
+                "Survey complete: %d chars", len(report_data.get("survey", ""))
+            )
             return report_data
 
         except Exception as e:
@@ -245,6 +344,37 @@ class LitAgent:
             "partial": partial,
             "reason_codes": reason_codes,
         }
+
+    @staticmethod
+    def _summarize_search_outcomes(outcomes) -> tuple[list[dict], list[str]]:
+        """Convert SearchSourceOutcome objects into JSON-safe metadata and degradation codes."""
+        serialized: list[dict] = []
+        degradation_codes: list[str] = []
+        unavailable = {"rate_limited", "timeout", "failed"}
+
+        for outcome in outcomes:
+            item = {
+                "task_id": outcome.task_id,
+                "source": outcome.source,
+                "status": outcome.status.value,
+                "result_count": outcome.result_count,
+                "elapsed_ms": outcome.elapsed_ms,
+                "reason_code": outcome.reason_code,
+                "error_type": outcome.error_type,
+                "from_fallback": outcome.from_fallback,
+            }
+            serialized.append(item)
+            if outcome.reason_code:
+                degradation_codes.append(outcome.reason_code)
+
+        if serialized and all(
+            item["status"] in unavailable for item in serialized
+        ):
+            degradation_codes.append("all_external_sources_unavailable")
+        elif serialized and all(item["result_count"] == 0 for item in serialized):
+            degradation_codes.append("all_external_sources_empty")
+
+        return serialized, list(dict.fromkeys(degradation_codes))
 
     def _extract_report(self, results: dict[str, Any], query: str) -> dict[str, Any]:
         """Extract the sole final-report payload from scheduler results."""
@@ -387,7 +517,9 @@ class LitAgent:
         workers: list[Worker] = []
 
         self._search = SearchWorker(
-            executor=self._executor, memory_manager=self._infra.memory
+            executor=self._executor,
+            memory_manager=self._infra.memory,
+            trace_hook=self._trace_hook,
         )
         workers.append(self._search)
 
@@ -399,7 +531,11 @@ class LitAgent:
 
         self._relevance_gate = RelevanceGateWorker(
             reranker=self._infra.reranker,
-            max_papers=cfg.extractor.max_papers,
+            max_papers=cfg.relevance.max_papers,
+            min_papers=cfg.relevance.min_papers,
+            cross_encoder_min_score=cfg.relevance.cross_encoder_min_score,
+            lexical_min_score=cfg.relevance.lexical_min_score,
+            trace_hook=self._trace_hook,
         )
         workers.append(self._relevance_gate)
 
@@ -460,7 +596,6 @@ class LitAgent:
             workers=workers,
             max_concurrent=cfg.orchestrator.max_concurrent,
             timeout_ms=cfg.orchestrator.timeout_ms,
-            on_complete=self._on_session_complete,
             cost_budget=self._cost_budget,
             trace_hook=self._trace_hook,
         )
@@ -489,49 +624,80 @@ class LitAgent:
         )
         logger.info("LitAgent wiring complete (session %s)", self._session_id)
 
-    async def _on_session_complete(self, graph: TaskGraph) -> None:
-        """Persist and consolidate the completed survey into memory."""
-        if not self._infra.memory:
-            return
+    async def _finalize_memory(
+        self,
+        *,
+        report_data: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Promote trusted content to long-term memory after delivery decision."""
+        result: dict[str, Any] = {
+            "attempted": False,
+            "content_saved": False,
+            "consolidated": False,
+            "reason_code": "",
+            "error_type": None,
+        }
+        memory = self._infra.memory
+        if memory is None:
+            result["reason_code"] = "memory_unavailable"
+            return result
+
+        delivery = report_data.get("delivery")
+        execution = (
+            report_data.get("metadata", {}).get("execution", {})
+            if isinstance(report_data.get("metadata"), Mapping)
+            else {}
+        )
+        trusted = (
+            isinstance(delivery, Mapping)
+            and delivery.get("publishable") is True
+            and execution.get("partial") is False
+        )
+        if not trusted:
+            result["reason_code"] = "content_consolidation_skipped"
+            return result
+
+        result["attempted"] = True
+        state = {
+            "messages": [
+                {
+                    "type": "human",
+                    "content": f"Survey session {self._session_id}",
+                },
+                {
+                    "type": "ai",
+                    "content": str(report_data.get("survey") or ""),
+                },
+            ],
+        }
 
         try:
-            results = graph.get_results()
-            survey_text = ""
-            for result in results.values():
-                if isinstance(result, dict) and "final_draft" in result:
-                    survey_text = result["final_draft"]
-                    break
-
-            if not survey_text:
-                return
-
-            state = {
-                "messages": [
-                    {"type": "human", "content": f"Survey session {self._session_id}"},
-                    {"type": "ai", "content": survey_text[:4000]},
-                ]
-            }
-            await self._infra.memory.working.set(self._session_id, state)
-
-            # Consolidation runs after worker spans, so it uses a root subspan.
-            self._emit(
-                "subspan.start",
-                {
-                    "task_id": "consolidate",
-                    "parent_task_id": "",
-                    "name": "consolidate",
-                    "round": 0,
-                },
+            await memory.save_state(self._session_id, state)
+            result["content_saved"] = True
+            episode = await memory.consolidate(
+                self._session_id, llm=self._llm
             )
-            token = set_task_id("consolidate")
-            try:
-                await self._infra.memory.consolidate(self._session_id, llm=self._llm)
-            finally:
-                reset_task_id(token)
-                self._emit("subspan.end", {"task_id": "consolidate"})
-            logger.info("Session %s consolidated", self._session_id)
-        except Exception as e:
-            logger.warning("Session consolidation skipped: %s", e)
+            if episode is None:
+                result["reason_code"] = "consolidation_returned_none"
+                return result
+            result["consolidated"] = True
+            result["reason_code"] = "consolidated"
+            return result
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            result["reason_code"] = (
+                "consolidation_failed"
+                if result["content_saved"]
+                else "working_save_failed"
+            )
+            result["error_type"] = type(exc).__name__
+            logger.warning(
+                "Memory finalize degraded reason=%s error_type=%s",
+                result["reason_code"],
+                result["error_type"],
+            )
+            return result
 
     @staticmethod
     def _create_reranker() -> Reranker | None:
@@ -539,11 +705,15 @@ class LitAgent:
             return CrossEncoderReranker()
         except Exception as exc:
             logger.warning(
-                f"CrossEncoder unavailable reason=model_init_failed "
-                f"error_type = {type(exc).__name__}"
+                "CrossEncoder unavailable reason=model_init_failed "
+                "error_type=%s",
+                type(exc).__name__,
             )
-
             return None
+
+    async def _create_reranker_async(self) -> Reranker | None:
+        """Offload synchronous model loading to a thread."""
+        return await asyncio.to_thread(self._create_reranker)
 
     async def _connect_infra(self, cfg: AppConfig) -> Infra:
         """Connect optional backends independently and return those available."""
@@ -565,7 +735,7 @@ class LitAgent:
             from qdrant_client.models import Distance, VectorParams
 
             qdrant_client = AsyncQdrantClient(url=mem_cfg.qdrant_url)
-            dim = self._get_embedding_dim()
+            dim = await self._get_embedding_dim_async()
 
             for coll_name in ["episodes", "claims"]:
                 try:
@@ -588,7 +758,7 @@ class LitAgent:
                 vector_store = await QdrantVectorStore.ensure_compatible(
                     qdrant_client, "papers", dim
                 )
-                infra.reranker = self._create_reranker()
+                infra.reranker = await self._create_reranker_async()
                 infra.retriever = HybridRetriever(
                     vector_store, infra.reranker, trace_hook=self._trace_hook
                 )
@@ -648,48 +818,71 @@ class LitAgent:
 
         return get_embedder().dim
 
-    async def _evaluate(self, survey: str, results: dict[str, Any]) -> dict[str, Any]:
+    async def _get_embedding_dim_async(self) -> int:
+        """Offload synchronous embedding model init to a thread."""
+        return await asyncio.to_thread(self._get_embedding_dim)
+
+    async def _evaluate(
+        self,
+        *,
+        query: str, survey: str, results: Mapping[str, Any],
+        phase: Literal['initial', 'post_rewrite'], parent_task_id: str = ''
+    ) -> dict[str, Any]:
         """Run evaluators concurrently and serialize results by metric."""
+        if phase not in {'initial', 'post_rewrite'}:
+            raise ValueError(f'unsupported evaluation phase: {phase}')
         if not self._evaluators:
             return {}
 
-        contexts = self._build_eval_context(results)
-
-        self._emit(
-            "subspan.start",
-            {
-                "task_id": "evaluation",
-                "parent_task_id": "",
-                "name": "evaluation",
-                "round": 0,
-            },
-        )
-        token = set_task_id("evaluation")
-        out: dict[str, Any] = {}
+        task_id = f"evaluation.{phase}"
+        self._emit('subspan.start', {
+            'task_id': task_id,
+            'parent_task_id': parent_task_id,
+            'name': task_id,
+            'phase': phase,
+        })
+        token = set_task_id(task_id)
+        output: dict[str, Any] = {}
 
         try:
-            evals = await asyncio.gather(
-                *[e.evaluate(survey, contexts) for e in self._evaluators],
-                return_exceptions=True,
+            context = self._build_eval_context(
+                query=query,
+                survey=survey,
+                results=results,
+            )
+            evaluated = await asyncio.gather(
+                *[
+                    evaluator.evaluate(survey, context)
+                    for evaluator in self._evaluators
+                ],
+                return_exceptions=True
             )
 
-            for ev, result in zip(self._evaluators, evals):
-                if isinstance(result, Exception):
-                    logger.warning(f"Evaluator {ev.metric_name} raised: {result}")
+            for result in evaluated:
+                if isinstance(result, asyncio.CancelledError):
+                    raise result
+
+            for evaluator, result in zip(self._evaluators, evaluated):
+                if isinstance(result, BaseException):
+                    logger.warning(
+                        f'Evaluator {evaluator.metric_name} failed error_type = {type(result).__name__}'
+                    )
                     continue
-                out[result.metric] = {
+
+                output[result.metric] = {
                     "score": result.score,
                     "passed": result.passed,
                     "skipped": result.skipped,
                     "details": result.details,
                 }
-        except Exception as e:
-            logger.warning(f"Evaluation phase failed {e}")
+            return output
         finally:
             reset_task_id(token)
-            # Attach the per-metric results to the evaluation trace span.
-            self._emit("subspan.end", {"task_id": "evaluation", "output": out})
-        return out
+            self._emit("subspan.end", {
+                'task_id': task_id,
+                'output': output,
+                'phase': phase,
+            })
 
     @staticmethod
     def _collect_extractions(results: dict[str, Any]) -> list[dict]:
@@ -703,69 +896,190 @@ class LitAgent:
                 return result
         return []
 
-    def _build_eval_context(self, results: dict[str, Any]) -> dict[str, Any]:
+    def _build_eval_context(self, *, query: str, survey: str, results: Mapping[str, Any]) -> dict[str, Any]:
         """Build paper, claim, and evidence context from extraction output."""
-        from litagent.eval.base import CTX_PAPERS, CTX_CLAIMS
+        extractions = self._collect_extractions(dict(results))
+        ledger = collect_ledger(extractions)
+        ordered_refs = extract_evidence_refs_ordered(survey)
 
-        extractions: list = []
-        for result in results.values():
-            if (
-                isinstance(result, list)
-                and result
-                and isinstance(result[0], dict)
-                and "claims" in result[0]
-            ):
-                extractions = result
-                break
+        referenced: list[dict[str, Any]] = []
+        unresolved: list[str] = []
+        for evidence_id in ordered_refs:
+            item = ledger.get(evidence_id)
+            if isinstance(item, dict):
+                referenced.append(item)
+            else:
+                unresolved.append(evidence_id)
 
-        claims_texts = [c for ext in extractions for c in ext.get("claims", [])]
+        selected: list[dict[str, Any]] = []
+        selected_seen: set[str] = set()
+        adversarial = results.get('adversarial_review')
+        selection_summary = (
+            adversarial.get('evidence_selection')
+            if isinstance(adversarial, Mapping)
+            else None
+        )
+        if (
+            isinstance(selection_summary, Mapping)
+            and selection_summary.get('valid') is True
+        ):
+            sections = selection_summary.get('section_evidence_ids')
+            if isinstance(sections, Mapping):
+                for raw_ids in sections.values():
+                    if not isinstance(raw_ids, list):
+                        continue
+                    for evidence_id in raw_ids:
+                        if (
+                            isinstance(evidence_id, str)
+                            and evidence_id not in selected_seen
+                            and isinstance(ledger.get(evidence_id), dict)
+                        ):
+                            selected_seen.add(evidence_id)
+                            selected.append(ledger[evidence_id])
+
+        claims = [
+            {"text": claim}
+            for extraction in extractions
+            for claim in extraction.get("claims", [])
+            if isinstance(claim, str) and claim.strip()
+        ]
+
         return {
+            CTX_QUERY: query,
             CTX_PAPERS: extractions,
-            CTX_CLAIMS: [{"text": t} for t in claims_texts],
-            CTX_EVIDENCE: collect_ledger(extractions),
+            CTX_CLAIMS: claims,
+            CTX_EVIDENCE: ledger,
+            CTX_REFERENCED_EVIDENCE_IDS: ordered_refs,
+            CTX_REFERENCED_EVIDENCE: referenced,
+            CTX_UNRESOLVED_EVIDENCE_IDS: unresolved,
+            CTX_SELECTED_EVIDENCE: selected,
         }
+
+    @staticmethod
+    def _passed_metric_regressed(
+        initial: Mapping[str, Any],
+        candidate: Mapping[str, Any],
+    ) -> bool:
+        """Rewrite must only repair failures, never degrade previously passing metrics."""
+        for metric, initial_result in initial.items():
+            if not isinstance(initial_result, Mapping):
+                continue
+            if (
+                initial_result.get("passed") is True
+                and initial_result.get("skipped") is not True
+            ):
+                candidate_result = candidate.get(metric)
+                if (
+                    not isinstance(candidate_result, Mapping)
+                    or candidate_result.get("passed") is not True
+                    or candidate_result.get("skipped") is True
+                ):
+                    return True
+        return False
+
+    def _build_rewrite_evidence(
+        self,
+        *,
+        diagnostics: Sequence[Mapping[str, Any]],
+        evidence_ledger: Mapping[str, Mapping[str, Any]],
+        selected_evidence_ids: Sequence[str],
+        max_items: int,
+        max_chars: int,
+    ) -> list[dict[str, Any]]:
+        """Collect evidence items focused on diagnostic failures, bounded by budget."""
+        ordered_ids: list[str] = []
+        seen: set[str] = set()
+        has_uncited_claim = False
+
+        for diagnostic in diagnostics:
+            if diagnostic.get("reason_code") == "uncited_claim":
+                has_uncited_claim = True
+            raw_ids = diagnostic.get("evidence_ids")
+            if not isinstance(raw_ids, list):
+                continue
+            for evidence_id in raw_ids:
+                if isinstance(evidence_id, str) and evidence_id not in seen:
+                    seen.add(evidence_id)
+                    ordered_ids.append(evidence_id)
+
+        if has_uncited_claim:
+            for evidence_id in selected_evidence_ids:
+                if evidence_id not in seen:
+                    seen.add(evidence_id)
+                    ordered_ids.append(evidence_id)
+
+        selected: list[dict[str, Any]] = []
+        used_chars = 0
+        for evidence_id in ordered_ids:
+            raw = evidence_ledger.get(evidence_id)
+            if not isinstance(raw, Mapping):
+                continue
+            item = dict(raw)
+            rendered_size = (
+                len(str(item.get("evidence_id") or ""))
+                + len(str(item.get("paper_title") or ""))
+                + len(str(item.get("text") or ""))
+                + 16
+            )
+            if rendered_size > max_chars:
+                continue
+            if len(selected) >= max_items:
+                break
+            if used_chars + rendered_size > max_chars:
+                break
+            selected.append(item)
+            used_chars += rendered_size
+        return selected
 
     async def _attempt_evidence_rewrite(
-        self, report_data: dict[str, Any], results: dict[str, Any]
-    ) -> bool:
-        """Attempt one bounded evidence rewrite and commit only valid output."""
-        existing = report_data.get("metadata", {}).get("evidence_rewrite")
-        if existing and existing.get("attempted"):
-            return False
-
-        rewrite_meta: dict[str, Any] = {
-            "attempted": False,
-            "accepted": False,
-            "reason": "",
-        }
-        report_data.setdefault("metadata", {})["evidence_rewrite"] = rewrite_meta
+        self,
+        *,
+        query: str,
+        report_data: dict[str, Any],
+        results: Mapping[str, Any],
+        initial_evaluation: Mapping[str, Any],
+        initial_quality: Mapping[str, Any],
+    ) -> RewriteOutcome:
+        """Attempt evidence-grounded rewrite with full validation and atomic commit."""
+        original_survey = str(report_data.get("survey") or "")
+        if not original_survey:
+            return RewriteOutcome(
+                False, False, None, None, None, None,
+                "empty_original_survey",
+            )
 
         diagnostics = (
-            report_data.get("evaluation", {})
-            .get("faithfulness", {})
+            initial_evaluation.get("faithfulness", {})
             .get("details", {})
             .get("unsupported_claims")
         )
-        if not diagnostics:
-            rewrite_meta["reason"] = "no_unsupported_claims"
-            return False
+        if not isinstance(diagnostics, list) or not diagnostics:
+            return RewriteOutcome(
+                False, False, None, None, None, None,
+                "no_repairable_diagnostics",
+            )
 
-        ledger = collect_ledger(self._collect_extractions(results))
-        if not ledger:
-            rewrite_meta["reason"] = "empty_evidence_ledger"
-            return False
-
-        rewrite_meta["attempted"] = True
-        messages = self._synthesis.rewrite_with_evidence(
-            report_data["survey"],
-            format_ledger(ledger, max_chars=20000),
-            json.dumps(diagnostics, ensure_ascii=False, indent=2),
+        eval_context = self._build_eval_context(
+            query=query,
+            survey=original_survey,
+            results=results,
+        )
+        ledger = eval_context[CTX_EVIDENCE]
+        selected_ids = [
+            item["evidence_id"]
+            for item in eval_context[CTX_SELECTED_EVIDENCE]
+            if isinstance(item, Mapping) and item.get("evidence_id")
+        ]
+        rewrite_cfg = self._config.eval.rewrite
+        rewrite_items = self._build_rewrite_evidence(
+            diagnostics=diagnostics,
+            evidence_ledger=ledger,
+            selected_evidence_ids=selected_ids,
+            max_items=rewrite_cfg.max_items,
+            max_chars=rewrite_cfg.max_chars,
         )
 
-        accepted = False
-        reason = "llm_call_failed"
-        error_type: str | None = None
-        new_draft = ""
+        # ── LLM rewrite ──────────────────────────────────────────────
         self._emit(
             "subspan.start",
             {
@@ -776,54 +1090,122 @@ class LitAgent:
             },
         )
         token = set_task_id("evidence_rewrite")
+        candidate: str | None = None
+        llm_error_type: str | None = None
+        reason_code = "llm_call_failed"
 
         try:
             response = await self._llm.chat(
-                messages, max_tokens=self._config.eval.max_tokens
+                self._synthesis.rewrite_with_evidence(
+                    original_survey,
+                    json.dumps(rewrite_items, ensure_ascii=False),
+                    json.dumps(diagnostics, ensure_ascii=False, indent=2),
+                ),
+                max_tokens=self._config.eval.max_tokens,
             )
-            new_draft = (response.content or "").strip()
-            if not new_draft:
-                reason = "empty_draft"
-            elif len(new_draft) < 0.5 * len(report_data["survey"]):
-                reason = "draft_too_short"
-            elif find_unknown_refs(new_draft, ledger):
-                reason = "unknown_evidence_refs"
-            else:
-                accepted = True
-                reason = "accepted"
+            candidate = (response.content or "").strip()
         except asyncio.CancelledError:
-            reason = "cancelled"
-            error_type = "CancelledError"
+            reason_code = "cancelled"
+            llm_error_type = "CancelledError"
             raise
         except Exception as exc:
-            reason = "llm_call_failed"
-            error_type = type(exc).__name__
+            reason_code = "llm_call_failed"
+            llm_error_type = type(exc).__name__
         finally:
-            rewrite_meta["accepted"] = accepted
-            rewrite_meta["reason"] = reason
-            if error_type is not None:
-                rewrite_meta["error_type"] = error_type
             reset_task_id(token)
-            trace_output: dict[str, Any] = {
-                "accepted": accepted,
-                "reason": reason,
-            }
-            if error_type is not None:
-                trace_output["error_type"] = error_type
-            self._emit(
-                "subspan.end",
-                {
-                    "task_id": "evidence_rewrite",
-                    "output": trace_output,
-                },
+
+        if candidate is None:
+            self._emit("subspan.end", {
+                "task_id": "evidence_rewrite",
+                "output": {"accepted": False, "reason": reason_code},
+            })
+            return RewriteOutcome(
+                True, False, None, None, None, None, reason_code,
             )
 
-        if not accepted:
-            logger.warning("Evidence rewrite rejected: %s", reason)
-            return False
+        # ── validation ───────────────────────────────────────────────
+        validation = self._validate_rewrite_candidate(
+            original=original_survey,
+            candidate=candidate,
+            evidence_ledger=ledger,
+        )
+        if not validation.accepted:
+            self._emit("subspan.end", {
+                "task_id": "evidence_rewrite",
+                "output": {
+                    "accepted": False,
+                    "reason": "validation_failed",
+                    "reason_codes": list(validation.reason_codes),
+                },
+            })
+            logger.warning(
+                "Evidence rewrite rejected reason_codes=%s",
+                list(validation.reason_codes),
+            )
+            return RewriteOutcome(
+                True, False, candidate, validation, None, None,
+                "validation_failed",
+            )
 
-        report_data["survey"] = new_draft
-        return True
+        # ── re-evaluate ──────────────────────────────────────────────
+        candidate_evaluation = await self._evaluate(
+            query=query,
+            survey=candidate,
+            results=results,
+            phase="post_rewrite",
+            parent_task_id="evidence_rewrite",
+        )
+        candidate_quality = self._derive_quality(candidate_evaluation)
+
+        if self._passed_metric_regressed(initial_evaluation, candidate_evaluation):
+            self._emit("subspan.end", {
+                "task_id": "evidence_rewrite",
+                "output": {
+                    "accepted": False,
+                    "reason": "metric_regressed",
+                    "candidate_evaluation": candidate_evaluation,
+                },
+            })
+            return RewriteOutcome(
+                True, False, candidate, validation,
+                candidate_evaluation, candidate_quality,
+                "metric_regressed",
+            )
+
+        if candidate_quality["status"] != "passed":
+            self._emit("subspan.end", {
+                "task_id": "evidence_rewrite",
+                "output": {
+                    "accepted": False,
+                    "reason": "quality_still_failed",
+                    "candidate_quality": candidate_quality,
+                },
+            })
+            return RewriteOutcome(
+                True, False, candidate, validation,
+                candidate_evaluation, candidate_quality,
+                "quality_still_failed",
+            )
+
+        # ── atomic commit ────────────────────────────────────────────
+        report_data["survey"] = candidate
+        report_data["evaluation"] = candidate_evaluation
+        report_data["quality"] = candidate_quality
+
+        self._emit("subspan.end", {
+            "task_id": "evidence_rewrite",
+            "output": {
+                "accepted": True,
+                "reason": "committed",
+                "candidate_quality": candidate_quality,
+            },
+        })
+        logger.info("Evidence rewrite committed")
+        return RewriteOutcome(
+            True, True, candidate, validation,
+            candidate_evaluation, candidate_quality,
+            "committed",
+        )
 
     @staticmethod
     def _derive_quality(evaluation: dict[str, dict]) -> dict[str, Any]:
@@ -891,7 +1273,7 @@ class LitAgent:
             try:
                 await infra.retriever._store.close()
             except Exception as e:
-                logger.debug(f"AectorStore (retriever) close: {e}")
+                logger.debug(f"VectorStore (retriever) close: {e}")
 
         if infra._pg_pool:
             try:
@@ -914,6 +1296,125 @@ class LitAgent:
         self._wired = False
         self._emit("cleanup.complete", {"session_id": self._session_id})
         logger.info("Litagent cleanup complete")
+
+    @staticmethod
+    def _markdown_sections(text: str) -> list[tuple[int, str, str]]:
+        """Return heading level, normalized H1/H2 heading, and direct body."""
+        sections: list[tuple[int, str, str]] = []
+        current_level: int | None = None
+        current_heading: str | None = None
+        body: list[str] = []
+
+        # 保留出现顺序并标准化 heading 空白/大小写，供相对结构比较。
+        for line in (text or "").splitlines():
+            match = _MARKDOWN_HEADING_RE.match(line)
+            if match:
+                if current_heading is not None and current_level is not None:
+                    sections.append(
+                        (current_level, current_heading, "\n".join(body).strip())
+                    )
+                current_level = len(match.group(1))
+                current_heading = " ".join(match.group(2).lower().split())
+                body = []
+            elif current_heading is not None:
+                body.append(line)
+
+        if current_heading is not None and current_level is not None:
+            sections.append(
+                (current_level, current_heading, "\n".join(body).strip())
+            )
+        return sections
+
+    def _validate_rewrite_candidate(
+        self, *, original: str, candidate: str,
+        evidence_ledger: Mapping[str, Mapping[str, Any]],
+        allowed_removed_refs: Sequence[str] = (),
+    ) -> RewriteValidation:
+        reasons: list[str] = []
+        stripped = (candidate or '').strip()
+        if not stripped:
+            return RewriteValidation(
+                False, ("empty_candidate",), (), (),
+            )
+        if stripped == (original or "").strip():
+            reasons.append("identical_to_original")
+        if _PLACEHOLDER_LINE_RE.search(stripped):
+            if re.search(r"(?m)^\s*(?:\.\.\.|…)\s*$", stripped):
+                reasons.append("ellipsis_placeholder")
+            else:
+                reasons.append("placeholder_detected")
+
+        original_sections = self._markdown_sections(original)
+        candidate_sections = self._markdown_sections(candidate)
+        original_headings = [
+            (level, heading) for level, heading, _ in original_sections
+        ]
+        candidate_headings = [
+            (level, heading) for level, heading, _ in candidate_sections
+        ]
+
+        for heading in original_headings:
+            if heading not in candidate_headings:
+                reasons.append(f"missing_section:{heading}")
+        retained_order = [
+            heading for heading in candidate_headings
+            if heading in set(original_headings)
+        ]
+        if retained_order != [
+            heading for heading in original_headings
+            if heading in set(candidate_headings)
+        ]:
+            reasons.append('section_order_changed')
+        # H1 is the document title; only H2 entries represent content sections.
+        if any(
+            level == 2 and not body
+            for level, _, body in candidate_sections
+        ):
+            reasons.append('empty_section_detected')
+
+        rewrite_cfg = self._config.eval.rewrite
+        if original.strip():
+            if (
+                len(stripped)
+                < len(original.strip()) * rewrite_cfg.min_body_length_ratio
+            ):
+                reasons.append("body_length_collapse")
+            original_paragraphs = [
+                part for part in original.split("\n\n") if part.strip()
+            ]
+            candidate_paragraphs = [
+                part for part in candidate.split("\n\n") if part.strip()
+            ]
+            if (
+                original_paragraphs
+                and len(candidate_paragraphs)
+                < len(original_paragraphs) * rewrite_cfg.min_paragraph_ratio
+            ):
+                reasons.append("paragraph_collapse")
+
+        refs = extract_evidence_refs_ordered(candidate)
+        unknown = tuple(
+            evidence_id for evidence_id in refs
+            if evidence_id not in evidence_ledger
+        )
+        if unknown:
+            reasons.append("unknown_evidence_refs")
+
+        removable = set(allowed_removed_refs)
+        removed = (
+            extract_evidence_refs(original)
+            - set(refs)
+            - removable
+        )
+        if removed:
+            reasons.append("unexpected_removed_evidence_refs")
+
+        return RewriteValidation(
+            accepted=not reasons,
+            reason_codes=tuple(dict.fromkeys(reasons)),
+            referenced_evidence_ids=tuple(refs),
+            unknown_evidence_ids=unknown,
+        )
 
     def _emit(self, event: str, data: dict[str, Any] | None = None) -> None:
         """Emit a trace event without allowing hook failures to escape."""

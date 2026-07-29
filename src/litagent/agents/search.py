@@ -1,77 +1,218 @@
-"""Search Worker--调API搜索论文"""
-
+"""External paper search with stable degradation outcomes."""
 
 from __future__ import annotations
+
 import asyncio
+import time
+from dataclasses import asdict, dataclass
+from enum import Enum
 from typing import Any
-import time as _time
 
 from litagent.memory.manager import MemoryManager
 from litagent.orchestrator.scheduler import Worker
 from litagent.orchestrator.task_graph import SubTask
 from litagent.logging import get_logger
-from litagent.tools.executor import ToolExecutor
+from litagent.tools.executor import ToolExecutor, ToolResult
 
 logger = get_logger("agents.search")
 
 
-class SearchWorker(Worker):
-    """搜索Worker--根据 input_data['source']路由到对应的数据源"""
+_TOOL_BY_SOURCE = {
+    "arxiv": "search_arxiv",
+    "semantic_scholar": "search_semantic_scholar",
+    "huggingface": "search_huggingface",
+}
 
-    def __init__(self, executor: ToolExecutor, memory_manager: MemoryManager | None = None):
+
+class SearchSourceStatus(str, Enum):
+    """Describe the normalized outcome of one provider call."""
+
+    SUCCESS = "success"
+    EMPTY = "empty"
+    RATE_LIMITED = "rate_limited"
+    TIMEOUT = "timeout"
+    FAILED = "failed"
+
+
+@dataclass(frozen=True)
+class SearchSourceOutcome:
+    """Capture the normalized result of one search-provider task."""
+
+    task_id: str
+    source: str
+    status: SearchSourceStatus
+    result_count: int
+    elapsed_ms: float
+    reason_code: str | None = None
+    error_type: str | None = None
+    from_fallback: bool = False
+
+
+class SearchWorker(Worker):
+    """Run provider searches and record stable degradation outcomes."""
+
+    def __init__(
+        self,
+        executor: ToolExecutor,
+        memory_manager: MemoryManager | None = None,
+        trace_hook=None,
+    ) -> None:
         self._executor = executor
         self._memory = memory_manager
-
+        self._trace_hook = trace_hook
+        self._outcomes: dict[str, SearchSourceOutcome] = {}
 
     @property
     def agent_type(self) -> str:
-        return 'search'
+        """Return the task-graph agent type handled by this worker."""
+        return "search"
 
+    def reset_source_outcomes(self) -> None:
+        """Clear outcomes collected for prior runs."""
+        self._outcomes.clear()
 
-    async def execute(self, task: SubTask) -> Any:
-        source = task.input_data.get('source', 'arxiv')
-        query = task.input_data.get('query', '')
+    def get_source_outcomes(self) -> tuple[SearchSourceOutcome, ...]:
+        """Return the recorded source outcomes."""
+        return tuple(self._outcomes.values())
 
-        # soruce -> tool路由
-        tool_map = {
-            'arxiv': 'search_arxiv',
-            'semantic_scholar': 'search_semantic_scholar',
-            'huggingface': 'search_huggingface'
-        }
-        tool_name = tool_map.get(source, 'search_arxiv')  # default arxiv
-
-        t0 = _time.perf_counter()
-
-        api_result = await self._executor.execute(
-            tool_name, {'query': query, 'max_results': 20}
-        )
-        elapsed_ms = int((_time.perf_counter() - t0) * 1000)
-        api_papers = (api_result.output or []) if not api_result.error else []
-
-        profile_source = source if source in tool_map else 'arxiv'
-        if self._memory:
+    def _emit(self, event: str, data: dict[str, Any]) -> None:
+        if self._trace_hook:
             try:
-                has_error = bool(api_result.error)
-                is_empty = (not has_error) and len(api_papers) == 0
-                err_type: str | None = None
-                if has_error:
-                    err_str = str(api_result.error)
-                    if "429" in err_str or "rate limit" in err_str.lower():
-                        err_type = "rate_limit"
-                    elif "timeout" in err_str.lower():
-                        err_type = "timeout"
-                    else:
-                        err_type = "tool_error"
+                self._trace_hook(event, data)
+            except Exception:
+                logger.debug("Search trace hook failed", exc_info=True)
 
-                await self._memory.record_search_source_execution(
-                    subject=profile_source,
-                    success=not has_error,
-                    empty_result=is_empty,
-                    error_type=err_type,
-                    duration_ms=elapsed_ms,
-                    result_count=len(api_papers),
-                )
-            except Exception as e:
-                logger.warning(f"Profile record failed for {profile_source} : {e}")
-            
-        return api_papers
+    @staticmethod
+    def _classify(
+        task_id: str, source: str, result: ToolResult, elapsed_ms: float
+    ) -> tuple[list[dict[str, Any]], SearchSourceOutcome]:
+        if result.error is not None:
+            if result.error_code in {"tool_rate_limited", "http_rate_limited"}:
+                status = SearchSourceStatus.RATE_LIMITED
+                reason = "provider_rate_limited"
+            elif result.error_code == "tool_timeout":
+                status = SearchSourceStatus.TIMEOUT
+                reason = "provider_timeout"
+            else:
+                status = SearchSourceStatus.FAILED
+                reason = "provider_error"
+
+            return [], SearchSourceOutcome(
+                task_id=task_id,
+                source=source,
+                status=status,
+                result_count=0,
+                elapsed_ms=elapsed_ms,
+                reason_code=reason,
+                error_type=result.error_type,
+                from_fallback=result.from_fallback,
+            )
+
+        if not isinstance(result.output, list):
+            return [], SearchSourceOutcome(
+                task_id=task_id,
+                source=source,
+                status=SearchSourceStatus.FAILED,
+                result_count=0,
+                elapsed_ms=elapsed_ms,
+                reason_code="invalid_provider_response",
+                error_type=type(result.output).__name__,
+                from_fallback=result.from_fallback,
+            )
+
+        papers = [paper for paper in result.output if isinstance(paper, dict)]
+        malformed_count = len(result.output) - len(papers)
+        if malformed_count and not papers:
+            return [], SearchSourceOutcome(
+                task_id=task_id,
+                source=source,
+                status=SearchSourceStatus.FAILED,
+                result_count=0,
+                elapsed_ms=elapsed_ms,
+                reason_code="invalid_provider_response",
+                error_type="MalformedPaperList",
+                from_fallback=result.from_fallback,
+            )
+
+        status = SearchSourceStatus.SUCCESS if papers else SearchSourceStatus.EMPTY
+        if malformed_count:
+            reason = "invalid_provider_items_dropped"
+        elif result.from_fallback:
+            reason = "provider_fallback_used"
+        elif not papers:
+            reason = "provider_empty"
+        else:
+            reason = None
+        return papers, SearchSourceOutcome(
+            task_id=task_id,
+            source=source,
+            status=status,
+            result_count=len(papers),
+            elapsed_ms=elapsed_ms,
+            reason_code=reason,
+            error_type=result.error_type,
+            from_fallback=result.from_fallback,
+        )
+
+    async def _record_outcome(self, outcome: SearchSourceOutcome) -> None:
+        self._outcomes[outcome.task_id] = outcome
+        self._emit("search.source.complete", asdict(outcome))
+
+        if not self._memory:
+            return
+
+        try:
+            profile_error_type = {
+                SearchSourceStatus.RATE_LIMITED: "rate_limit",
+                SearchSourceStatus.TIMEOUT: "timeout",
+                SearchSourceStatus.FAILED: "tool_error",
+            }.get(outcome.status)
+            await self._memory.record_search_source_execution(
+                subject=outcome.source,
+                success=outcome.status
+                in {
+                    SearchSourceStatus.SUCCESS,
+                    SearchSourceStatus.EMPTY,
+                },
+                empty_result=outcome.status is SearchSourceStatus.EMPTY,
+                error_type=profile_error_type,
+                duration_ms=int(outcome.elapsed_ms),
+                result_count=outcome.result_count,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.warning(
+                "Profile record failed for %s",
+                outcome.source,
+                exc_info=True,
+            )
+
+    async def execute(self, task: SubTask) -> list[dict[str, Any]]:
+        """Run one provider search and record its normalized outcome."""
+        source = str(task.input_data.get("source") or "")
+        query = str(task.input_data.get("query") or "")
+        tool_name = _TOOL_BY_SOURCE.get(source)
+
+        if tool_name is None:
+            outcome = SearchSourceOutcome(
+                task_id=task.task_id,
+                source=source,
+                status=SearchSourceStatus.FAILED,
+                result_count=0,
+                elapsed_ms=0,
+                reason_code="invalid_search_source",
+                error_type="ValueError",
+            )
+            await self._record_outcome(outcome)
+            return []
+
+        started = time.perf_counter()
+        result = await self._executor.execute(
+            tool_name,
+            {"query": query, "max_results": 20},
+        )
+        elapsed_ms = (time.perf_counter() - started) * 1000
+        papers, outcome = self._classify(task.task_id, source, result, elapsed_ms)
+        await self._record_outcome(outcome)
+        return papers

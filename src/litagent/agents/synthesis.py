@@ -1,6 +1,7 @@
-"""Synthesis Worker——综述初稿生成。"""
+"""Synthesize evidence-scoped survey drafts and revision prompts."""
 
 from __future__ import annotations
+
 import asyncio
 import html
 import json
@@ -12,9 +13,10 @@ from litagent.config import AgentConfig, ContextConfig
 from litagent.context.pipeline import ContextPipeline, ContextLayer
 from litagent.context.budget import BudgetManager
 from litagent.context.evidence_selector import (
-    EvidenceSelector, EvidenceSelection, format_evidence_selection
+    EvidenceSelector,
+    EvidenceSelection,
+    format_evidence_selection,
 )
-
 from litagent.memory.manager import MemoryManager
 from litagent.orchestrator.scheduler import Worker
 from litagent.orchestrator.task_graph import SubTask
@@ -25,12 +27,12 @@ from litagent.skills.manager import SkillManager
 from litagent.tools.worker_tools import make_load_skill_tool
 from litagent.evidence import collect_ledger
 
-
-logger = get_logger('agents.synthesis')
+logger = get_logger("agents.synthesis")
 
 
 SYNTHESIS_ROLE = """You are an expert academic survey writer.
-Your task is to write a well-structured literature review based on the provided evidence."""
+Your task is to write a well-structured literature review based on the \
+provided evidence."""
 
 
 SYNTHESIS_INSTRUCTIONS = """Write a structured survey covering:
@@ -39,6 +41,12 @@ SYNTHESIS_INSTRUCTIONS = """Write a structured survey covering:
 3. Detailed analysis of key methods
 4. Experimental comparison
 5. Open problems and future directions
+
+OUTPUT FORMAT (MANDATORY):
+- Return Markdown only, with exactly one H1 document title.
+- Use H2 for top-level sections and H3 for subsections.
+- Start directly with the H1. Do not add commentary before it.
+- Do not wrap the survey in a Markdown code fence.
 
 EVIDENCE BOUNDARIES (MANDATORY):
 - <evidence_plan> is the ONLY allowed fact source for each section. Each
@@ -74,6 +82,8 @@ SCOPING RULES:
 
 REVISE_INSTRUCTIONS = """Revise the survey draft based on the reviewer's feedback.
 Address each criticism specifically. Keep existing good parts.
+Return the complete revised survey as Markdown only. Start directly with its single
+H1 document title; do not add a change summary, commentary, or code fence.
 
 CRITICAL: You have access to the SAME <evidence_plan> and <evidence_ledger> as the
 first draft. Every factual sentence must still cite an [E:<id>] from the plan.
@@ -92,15 +102,12 @@ For each item in <unsupported_claims> you may ONLY do one of:
 3. bind it to an EXISTING ledger item by appending its exact [E:<id>] marker.
 NEVER add new paper titles, authors, years, or evidence ids not in <evidence_ledger>.
 Keep supported content and overall structure intact.
-Return ONLY the rewritten survey text (no JSON, no commentary)."""
+Return Markdown only. Start directly with the single H1 document title; do not add
+commentary or a code fence."""
 
 
 class SynthesisWorker(Worker):
-    """综述生成 Worker。
-
-    输入：论文 extraction 列表 + citation graph 分析
-    输出：结构化综述初稿
-    """
+    """Generate surveys from selected evidence and paper metadata."""
 
     def __init__(
         self,
@@ -115,11 +122,14 @@ class SynthesisWorker(Worker):
     ):
         self._llm = llm
         self._memory = memory
-        self._budget = budget or BudgetManager(max_tokens=16000)
+        self._context_config = context_config or ContextConfig()
+        self._budget = budget or BudgetManager(
+            max_tokens=self._context_config.max_tokens,
+            compact_threshold=self._context_config.compact_threshold,
+        )
         self._skill_manager = skill_manager
         self._agent_config = agent_config or AgentConfig()
         self._evidence_selector = evidence_selector
-        self._context_config = context_config or ContextConfig()
 
         self._tools: list = []
         if skill_manager:
@@ -127,13 +137,15 @@ class SynthesisWorker(Worker):
 
     @property
     def agent_type(self) -> str:
-        return 'synthesis'
+        """Return the task-graph agent type handled by this worker."""
+        return "synthesis"
 
     async def execute(self, task: SubTask) -> Any:
-        upstream = task.input_data.get('upstream_results', {})
+        """Select evidence and generate a scoped survey draft."""
+        upstream = task.input_data.get("upstream_results", {})
         extractions = self._get_extractions(upstream)
         graph_data = self._get_graph_data(upstream)
-        query = task.input_data.get('query', "")
+        query = task.input_data.get("query", "")
 
         degradation_reasons: list[str] = []
 
@@ -143,36 +155,40 @@ class SynthesisWorker(Worker):
         if self._evidence_selector is not None:
             try:
                 selection = await self._evidence_selector.select(
-                    query, ledger,
-                    max_tokens=self._context_config.synthesis_evidence_max_tokens
+                    query,
+                    ledger,
+                    max_tokens=self._context_config.synthesis_evidence_max_tokens,
                 )
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                logger.warning(f'Evidence selection failed: {type(e).__name__}')
+                logger.warning(f"Evidence selection failed: {type(e).__name__}")
                 selection = EvidenceSelection(
                     candidate_count=len(ledger),
                     selected_items={},
                     section_evidence_ids={
-                        'introduction': [],
-                        'taxonomy': [],
-                        'methods': [],
-                        'experiments': [],
-                        'open_problems': []
+                        "introduction": [],
+                        "taxonomy": [],
+                        "methods": [],
+                        "experiments": [],
+                        "open_problems": [],
                     },
                     method_by_section={},
                     omitted_count=len(ledger),
-                    estimated_tokens=0
+                    estimated_tokens=0,
                 )
-                selection_error = 'evidence_selection_failed'
+                selection_error = "evidence_selection_failed"
                 degradation_reasons.append(selection_error)
         else:
             selection = EvidenceSelection(
                 candidate_count=len(ledger),
                 selected_items={},
                 section_evidence_ids={
-                    "introduction": [], "taxonomy": [], "methods": [],
-                    "experiments": [], "open_problems": [],
+                    "introduction": [],
+                    "taxonomy": [],
+                    "methods": [],
+                    "experiments": [],
+                    "open_problems": [],
                 },
                 method_by_section={},
                 omitted_count=len(ledger),
@@ -185,46 +201,53 @@ class SynthesisWorker(Worker):
         async def _evidence_layer(state: dict) -> str:
             return evidence_text
 
-        # ── Context Pipeline (evidence priority 0, papers priority 1) ──
+        # Give selected evidence priority over structural paper metadata.
         pipeline = ContextPipeline(self._budget)
-        pipeline.add_layer(ContextLayer(
-            "evidence", priority=0,
-            max_tokens=self._context_config.synthesis_evidence_max_tokens,
-            builder=_evidence_layer,
-        ))
+        pipeline.add_layer(
+            ContextLayer(
+                "evidence",
+                priority=0,
+                max_tokens=self._context_config.synthesis_evidence_max_tokens,
+                builder=_evidence_layer,
+            )
+        )
 
-        pipeline.add_layer(ContextLayer(
-            "papers", priority=1,
-            max_tokens=self._context_config.synthesis_papers_max_tokens,
-            builder=self._papers_layer,
-        ))
+        pipeline.add_layer(
+            ContextLayer(
+                "papers",
+                priority=1,
+                max_tokens=self._context_config.synthesis_papers_max_tokens,
+                builder=self._papers_layer,
+            )
+        )
 
-        user_msg, used = await pipeline.build({
-            "extractions": extractions,
-            "graph_data": graph_data,
-            "evidence_selection": selection,
-        })
+        user_msg, used = await pipeline.build(
+            {
+                "extractions": extractions,
+                "graph_data": graph_data,
+                "evidence_selection": selection,
+            }
+        )
 
         if not selection.selected_items or len(extractions) < 3:
             user_msg = (
                 f"<instruction>Only {len(extractions)} papers found with "
                 f"{len(selection.selected_items)} selected evidence items. "
                 f"Write a scoped evidence summary, not a comprehensive survey."
-                f"</instruction>\n"
-                + user_msg
+                f"</instruction>\n" + user_msg
             )
 
         skills_text = (
             self._skill_manager.to_metadata_text_for(
-                "writing a literature survey", top_k=2,
+                "writing a literature survey",
+                top_k=2,
             )
-            if self._skill_manager else ""
+            if self._skill_manager
+            else ""
         )
 
         system = build_system_prompt(
-            role=SYNTHESIS_ROLE,
-            instructions=SYNTHESIS_INSTRUCTIONS,
-            skills=skills_text
+            role=SYNTHESIS_ROLE, instructions=SYNTHESIS_INSTRUCTIONS, skills=skills_text
         )
 
         runner = ReActRunner(self._llm, tools=self._tools, config=self._agent_config)
@@ -232,34 +255,35 @@ class SynthesisWorker(Worker):
         result_text = (result_text or "").strip()
 
         if not result_text:
-            degradation_reasons.append('empty_synthesis_output')
+            degradation_reasons.append("empty_synthesis_output")
             return {
-                'draft': '',
-                'evidence_selection': selection.to_dict(),
-                'degradation_reasons': degradation_reasons
+                "draft": "",
+                "evidence_selection": selection.to_dict(),
+                "degradation_reasons": degradation_reasons,
             }
 
         draft: str = result_text
         try:
             parsed = json.loads(result_text)
-            if isinstance(parsed, dict) and isinstance(parsed.get('draft'), str):
-                draft = parsed['draft']
+            if isinstance(parsed, dict) and isinstance(parsed.get("draft"), str):
+                draft = parsed["draft"]
         except (json.JSONDecodeError, TypeError):
-            pass  # Plain text → it IS the draft
+            # Non-JSON output is already the draft text.
+            pass
 
         logger.info(f"Synthesis draft: {len(draft)} chars, ctx {used} tokens")
 
+        # Preserve trusted selector output instead of model-supplied metadata.
         result: dict[str, Any] = {
             "draft": draft,
-            # Always overwrite — never trust LLM-returned evidence_selection
             "evidence_selection": selection.to_dict(),
         }
 
         if degradation_reasons:
-            result['degradation_reasons'] = degradation_reasons
+            result["degradation_reasons"] = degradation_reasons
 
         if selection_error:
-            result['error'] = selection_error
+            result["error"] = selection_error
 
         return result
 
@@ -269,11 +293,7 @@ class SynthesisWorker(Worker):
         review_comments: str,
         evidence_selection: EvidenceSelection | Mapping[str, Any],
     ) -> list[dict[str, str]]:
-        """Build revision messages using the SAME evidence_selection.
-
-        evidence_selection is required (no default). Uses from_dict() for validation.
-        Malformed dict → ValueError, caught by Adversarial to keep current draft.
-        """
+        """Build revision messages against the original evidence selection."""
         if isinstance(evidence_selection, Mapping) and not isinstance(
             evidence_selection, EvidenceSelection
         ):
@@ -282,60 +302,69 @@ class SynthesisWorker(Worker):
             selection = evidence_selection
 
         system = build_system_prompt(
-            role=SYNTHESIS_ROLE,
-            instructions=REVISE_INSTRUCTIONS
+            role=SYNTHESIS_ROLE, instructions=REVISE_INSTRUCTIONS
         )
 
         evidence_text = format_evidence_selection(selection)
 
-        return[
-            {'role': 'system', 'content': system},
-            {'role': 'user', 'content': '\n\n'.join([
-                wrap_xml('current_draft', draft),
-                wrap_xml('reviewer_feedback', review_comments),
-                evidence_text,
-            ])},
+        return [
+            {"role": "system", "content": system},
+            {
+                "role": "user",
+                "content": "\n\n".join(
+                    [
+                        wrap_xml("current_draft", draft),
+                        wrap_xml("reviewer_feedback", review_comments),
+                        evidence_text,
+                    ]
+                ),
+            },
         ]
 
-    def rewrite_with_evidence(self, draft: str, ledger_text: str,
-                              diagnostics_text: str) -> list[dict]:
-        """构建 bounded rewrite 的 messages（供 runner 一次性调用）。"""
+    def rewrite_with_evidence(
+        self, draft: str, ledger_text: str, diagnostics_text: str
+    ) -> list[dict]:
+        """Build messages that rewrite unsupported claims against a ledger."""
         system = build_system_prompt(
-            role=SYNTHESIS_ROLE,
-            instructions=REWRITE_INSTRUCTIONS
+            role=SYNTHESIS_ROLE, instructions=REWRITE_INSTRUCTIONS
         )
 
         return [
-            {'role': 'system', 'content': system},
+            {"role": "system", "content": system},
             {
-                'role': 'user', 'content': '\n\n'.join([
-                    wrap_xml('current_draft', draft),
-                    wrap_xml('evidence_ledger', ledger_text),
-                    wrap_xml('unsupported_claims', diagnostics_text),
-                ])
-            }
+                "role": "user",
+                "content": "\n\n".join(
+                    [
+                        wrap_xml("current_draft", draft),
+                        wrap_xml("evidence_ledger", ledger_text),
+                        wrap_xml("unsupported_claims", diagnostics_text),
+                    ]
+                ),
+            },
         ]
 
     def _get_extractions(self, upstream: dict) -> list[dict]:
-        """Consume only the fixed DAG producer; never guess from another list."""
-        result = upstream.get('extract', []) if isinstance(upstream, Mapping) else []
+        """Read extraction results only from the fixed DAG producer."""
+        result = upstream.get("extract", []) if isinstance(upstream, Mapping) else []
         if not isinstance(result, list):
             return []
 
         return [item for item in result if isinstance(item, dict)]
 
     def _get_graph_data(self, upstream: dict) -> dict:
-        """Consume only the fixed graph producer."""
-        result = upstream.get('graph_analysis', {}) if isinstance(upstream, Mapping) else {}
+        """Read graph metadata only from the fixed DAG producer."""
+        result = (
+            upstream.get("graph_analysis", {}) if isinstance(upstream, Mapping) else {}
+        )
         return result if isinstance(result, dict) else {}
 
     async def _papers_layer(self, state: dict) -> str:
         ctx = self._build_papers_context(
-            state['extractions'],
-            state['graph_data'],
-            state.get('evidence_selection'),
+            state["extractions"],
+            state["graph_data"],
+            state.get("evidence_selection"),
         )
-        return wrap_xml('papers', ctx) if ctx else ""
+        return wrap_xml("papers", ctx) if ctx else ""
 
     def _build_papers_context(
         self,
@@ -343,36 +372,36 @@ class SynthesisWorker(Worker):
         graph_data: dict,
         evidence_selection: EvidenceSelection | None,
     ) -> str:
-        """Build structural paper catalog — paper_id, title, tier, selected evidence IDs only.
+        """Build a catalog of paper identity, tier, and selected evidence IDs.
 
-        No claims, metrics, abstract, or extraction free text.
-        Evidence ID ownership determined via paper_id match OR intersection with
-        extraction's own evidence_items — NOT via eid.startswith("t").
+        Evidence belongs to a paper by explicit ID or its extraction item set.
         """
         tier_map: dict[str, int] = {}
-        if graph_data and 'papers' in graph_data:
-            for p in graph_data['papers']:
-                tier_map[p.get('paper_id', '')] = p.get('tier', 3)
+        if graph_data and "papers" in graph_data:
+            for p in graph_data["papers"]:
+                tier_map[p.get("paper_id", "")] = p.get("tier", 3)
 
         lines: list[str] = []
         for ext in extractions:
-            pid = str(ext.get('paper_id') or '')
+            pid = str(ext.get("paper_id") or "")
             escaped_pid = html.escape(pid, quote=True)
-            title = html.escape(str(ext.get('title', '')), quote=True)
+            title = html.escape(str(ext.get("title", "")), quote=True)
             tier = tier_map.get(pid, 3)
 
             paper_eids: list[str] = []
             ext_eid_set: set[str] = set()
-            for ei in ext.get('evidence_items', []) or []:
-                if isinstance(ei, dict) and ei.get('evidence_id'):
-                    ext_eid_set.add(ei['evidence_id'])
+            for ei in ext.get("evidence_items", []) or []:
+                if isinstance(ei, dict) and ei.get("evidence_id"):
+                    ext_eid_set.add(ei["evidence_id"])
 
             selected_items = (
-                evidence_selection.selected_items if evidence_selection is not None else {}
+                evidence_selection.selected_items
+                if evidence_selection is not None
+                else {}
             )
 
             for eid, item in selected_items.items():
-                same_explicit_paper = bool(pid) and item.get('paper_id') == pid
+                same_explicit_paper = bool(pid) and item.get("paper_id") == pid
                 if same_explicit_paper or eid in ext_eid_set:
                     paper_eids.append(eid)
 
@@ -382,7 +411,8 @@ class SynthesisWorker(Worker):
                 else "(no evidence selected)"
             )
             lines.append(
-                f"paper_id={escaped_pid} | tier={tier} | title={title} | evidence={eid_str}"
+                f"paper_id={escaped_pid} | tier={tier} | "
+                f"title={title} | evidence={eid_str}"
             )
 
         return "\n".join(lines) if lines else ""

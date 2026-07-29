@@ -319,8 +319,40 @@ def test_redacting_sink_redacts_secret_values_under_innocent_keys():
         },
     )
 
-    assert captured[0]["error"] == "<redacted>"
+    assert captured[0]["error"] == "request failed with <redacted>"
     assert captured[0]["prompt_tokens"] == 4
+
+
+def test_redacting_sink_preserves_academic_task_hyphenated_terms():
+    captured = []
+    hook = RedactingTraceHook(lambda event, data: captured.append(data))
+    content = (
+        "The task-specific adapter learns task-invariant representations "
+        "without exposing credentials."
+    )
+
+    hook("llm.complete", {"content": content})
+
+    assert captured[0]["content"] == content
+
+
+def test_redacting_sink_replaces_only_inline_api_key_value():
+    captured = []
+    hook = RedactingTraceHook(lambda event, data: captured.append(data))
+
+    hook(
+        "survey.error",
+        {
+            "error": (
+                "provider rejected sk-1234567890abcdef1234567890; "
+                "the retry remains safe"
+            )
+        },
+    )
+
+    assert captured[0]["error"] == (
+        "provider rejected <redacted>; the retry remains safe"
+    )
 
 
 def test_redacting_sink_removes_session_tokens_but_keeps_token_metrics():

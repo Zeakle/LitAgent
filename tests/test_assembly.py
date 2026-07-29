@@ -1,14 +1,7 @@
-"""Phase 12 tests — Assembly + CLI。
-
-覆盖:
-  - AdversarialReviewWorker 新签名（接受注入 Worker）
-  - LitAgent wiring + minimal run (MockLLM)
-  - Graceful degradation (infra 不可用不崩)
-  - Memory/RAG backends close()
-  - CLI config/tools subcommands
-"""
+"""Tests for application assembly, runner contracts, and delivery policy."""
 
 from __future__ import annotations
+
 import asyncio
 import json
 import sys
@@ -17,10 +10,20 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from litagent.config import AppConfig, AgentConfig, LoggingConfig, MemoryConfig
-from litagent.config import ContextConfig, OrchestratorConfig, LLMConfig
-from litagent.config import (AdversarialConfig, SafetyConfig, ResilienceConfig,
-                             ExtractorConfig, ObservabilityConfig)
+from litagent.config import (
+    AppConfig,
+    AgentConfig,
+    LoggingConfig,
+    MemoryConfig,
+    ContextConfig,
+    OrchestratorConfig,
+    LLMConfig,
+    AdversarialConfig,
+    SafetyConfig,
+    ResilienceConfig,
+    ExtractorConfig,
+    ObservabilityConfig,
+)
 from litagent.llm.client import BaseLLMClient, LLMResponse, MockLLMClient
 from litagent.agents.synthesis import SynthesisWorker
 from litagent.agents.reviewer import ReviewerWorker
@@ -37,21 +40,19 @@ from litagent.orchestrator.task_graph import TaskGraph, SubTask
 from litagent.observability.recorder import RedactingTraceHook
 
 
-# ═══════════════════════════════════════════════════════════
-# Helpers
-# ═══════════════════════════════════════════════════════════
-
 def _minimal_config(**overrides) -> AppConfig:
-    """构建最小可用 AppConfig，所有 infra 端点指向无效地址（触发降级）。"""
+    """Build a minimal application configuration for isolated tests."""
     return AppConfig(
         agent=AgentConfig(max_loops=3),
         logging=LoggingConfig(level="WARNING"),
         memory=MemoryConfig(
             redis_url=overrides.pop("redis_url", "redis://localhost:9999"),
             qdrant_url=overrides.pop("qdrant_url", "http://localhost:9999"),
-            pg_url=overrides.pop("pg_url", "postgresql://none:none@localhost:9999/none"),
+            pg_url=overrides.pop(
+                "pg_url", "postgresql://none:none@localhost:9999/none"
+            ),
         ),
-        context=ContextConfig(max_tokens=16000),
+        context=ContextConfig(),
         orchestrator=OrchestratorConfig(timeout_ms=30000, max_concurrent=3),
         llm=LLMConfig(base_url="https://api.deepseek.com", model="deepseek-v4-flash"),
         adversarial=AdversarialConfig(max_rounds=1, pass_threshold=0.5),
@@ -62,13 +63,16 @@ def _minimal_config(**overrides) -> AppConfig:
     )
 
 
-# ═══════════════════════════════════════════════════════════
-# 12.1 — AdversarialReviewWorker refactored constructor
-# ═══════════════════════════════════════════════════════════
+def _minimal_agent() -> LitAgent:
+    """Return an unwired agent for pure runner contract tests."""
+    return LitAgent(_minimal_config())
+
 
 class TestAdversarialReviewWorker:
+    """Tests adversarial worker dependency injection."""
+
     def test_accepts_injected_workers(self):
-        """新签名接受预构建 SynthesisWorker + ReviewerWorker。"""
+        """The adversarial worker accepts injected collaborators."""
         llm = MockLLMClient(["draft text"])
         synthesis = SynthesisWorker(llm)
         reviewer = ReviewerWorker(llm)
@@ -95,14 +99,12 @@ class TestAdversarialReviewWorker:
         assert worker.agent_type == "adversarial_review"
 
 
-# ═══════════════════════════════════════════════════════════
-# 12.2 — close() methods on memory/RAG backends
-# ═══════════════════════════════════════════════════════════
-
 class TestBackendClose:
+    """Tests backend resource cleanup."""
+
     @pytest.mark.asyncio
     async def test_working_memory_close(self):
-        """WorkingMemory.close() 调用 redis.close()。"""
+        """Working-memory cleanup closes its Redis client."""
         redis = MagicMock()
         redis.close = AsyncMock()
         wm = WorkingMemory(redis, MemoryConfig())
@@ -111,7 +113,7 @@ class TestBackendClose:
 
     @pytest.mark.asyncio
     async def test_episodic_memory_close(self):
-        """EpisodicMemory.close() 调用 qdrant_client.close()。"""
+        """Episodic-memory cleanup closes its database pool."""
         client = MagicMock()
         client.close = AsyncMock()
         em = EpisodicMemory(client)
@@ -120,7 +122,7 @@ class TestBackendClose:
 
     @pytest.mark.asyncio
     async def test_semantic_memory_close(self):
-        """SemanticMemory.close() 调用 pool.close()。"""
+        """Semantic-memory cleanup closes its vector store."""
         pool = MagicMock()
         pool.close = AsyncMock()
         sm = SemanticMemory(pool)
@@ -129,7 +131,7 @@ class TestBackendClose:
 
     @pytest.mark.asyncio
     async def test_procedural_memory_close(self):
-        """ProceduralMemory.close() 调用 pool.close()。"""
+        """Procedural-memory cleanup closes its database pool."""
         pool = MagicMock()
         pool.close = AsyncMock()
         pm = ProceduralMemory(pool)
@@ -138,7 +140,7 @@ class TestBackendClose:
 
     @pytest.mark.asyncio
     async def test_claims_index_close(self):
-        """ClaimsIndex.close() 调用 client.close()。"""
+        """Claims-index cleanup closes its vector store."""
         client = MagicMock()
         client.close = AsyncMock()
         ci = ClaimsIndex(client)
@@ -146,18 +148,15 @@ class TestBackendClose:
         client.close.assert_awaited_once()
 
 
-# ═══════════════════════════════════════════════════════════
-# 12.3 — LitAgent assembly
-# ═══════════════════════════════════════════════════════════
-
 class TestLitAgentWiring:
+    """Tests LitAgent dependency wiring."""
+
     @pytest.mark.asyncio
     async def test_wires_without_infra(self):
-        """无 Redis/Qdrant/PG 时 wiring 不崩，所有 infra 组件为 None。"""
+        """Wiring degrades cleanly when infrastructure is unavailable."""
         config = _minimal_config()
         agent = LitAgent(config)
 
-        # 跳过 OpenAI client 真实连接——直接用 _wire 中 mock LLM client
         with patch("litagent.runner.OpenAICompatibleClient") as mock_llm_cls:
             mock_llm = MockLLMClient(["test"])
             mock_llm_cls.return_value = mock_llm
@@ -168,7 +167,7 @@ class TestLitAgentWiring:
         assert agent._executor is not None
         assert agent._scheduler is not None
         assert agent._planner is not None
-        # Infra should all be None (Redis/Qdrant/PG unreachable at localhost:9999)
+        # Unreachable test endpoints must disable optional infrastructure.
         assert agent._infra.memory is None
         assert agent._infra.claims_index is None
         assert agent._infra.retriever is None
@@ -178,7 +177,7 @@ class TestLitAgentWiring:
 
     @pytest.mark.asyncio
     async def test_all_workers_registered(self):
-        """Wiring 后 8 个 Worker 全部创建。"""
+        """Wiring registers every required worker."""
         config = _minimal_config()
         agent = LitAgent(config)
 
@@ -238,35 +237,31 @@ class TestLitAgentWiring:
 
     @pytest.mark.asyncio
     async def test_context_manager(self):
-        """async with LitAgent(config) 自动 wire + cleanup。"""
+        """The async context manager wires and closes the agent."""
         config = _minimal_config()
         with patch("litagent.runner.OpenAICompatibleClient") as mock_llm_cls:
             mock_llm_cls.return_value = MockLLMClient(["test"])
             async with LitAgent(config) as agent:
                 assert agent._wired is True
-            assert agent._wired is False  # cleanup resets
+            assert agent._wired is False
 
     @pytest.mark.asyncio
     async def test_wire_idempotent(self):
-        """重复 _wire() 不崩（幂等守护）。"""
+        """Repeated wiring is idempotent."""
         config = _minimal_config()
         agent = LitAgent(config)
 
         with patch("litagent.runner.OpenAICompatibleClient") as mock_llm_cls:
             mock_llm_cls.return_value = MockLLMClient(["test"])
             await agent._wire()
-            await agent._wire()  # second call should be no-op
+            await agent._wire()
 
         assert agent._wired is True
         await agent.cleanup()
 
 
-# ═══════════════════════════════════════════════════════════
-# 12.3 — LitAgent.run() with MockLLM
-# ═══════════════════════════════════════════════════════════
-
 class StubLLMClient(BaseLLMClient):
-    """可控响应的 LLM Client——每个 Worker 调不同 prompt 返回不同内容。"""
+    """LLM client that returns prompt-specific deterministic responses."""
 
     def __init__(self, responses: dict[str, str] | None = None):
         self._responses = responses or {}
@@ -276,18 +271,20 @@ class StubLLMClient(BaseLLMClient):
     async def chat(self, messages: list[dict], **kwargs) -> LLMResponse:
         self._call_count += 1
         self.calls.append(messages)
-        # Return structured JSON based on call context
         content = self._responses.get(
             "default",
-            '{"draft": "A survey draft about the query.", "score": 0.9, "verdict": "accept", "weaknesses": [], "issues": []}',
+            '{"draft": "A survey draft about the query.", "score": 0.9, '
+            '"verdict": "accept", "weaknesses": [], "issues": []}',
         )
         return LLMResponse(content=content, model="stub")
 
 
 class TestLitAgentRun:
+    """Tests end-to-end runner orchestration with test doubles."""
+
     @pytest.mark.asyncio
     async def test_minimal_run_returns_report(self):
-        """最小化 run()——MockLLM + no infra → 返回 report dict。"""
+        """A minimal run returns the normalized report contract."""
         config = _minimal_config()
         agent = LitAgent(config)
         stub_llm = StubLLMClient()
@@ -297,7 +294,6 @@ class TestLitAgentRun:
 
             await agent._wire()
 
-            # 把搜索/extract worker 的 execute 替换为 stub（避免真实网络调用）
             async def fake_search(task):
                 return [{"paper_id": "p1", "title": "Test Paper", "abstract": "test"}]
 
@@ -322,7 +318,7 @@ class TestLitAgentRun:
 
     @pytest.mark.asyncio
     async def test_run_without_wire_calls_wire(self):
-        """未显式 _wire() 时 run() 自动调用。"""
+        """Running an unwired agent wires it automatically."""
         config = _minimal_config()
         agent = LitAgent(config)
         stub_llm = StubLLMClient()
@@ -352,12 +348,8 @@ class TestLitAgentRun:
         await agent.cleanup()
 
 
-# ═══════════════════════════════════════════════════════════
-# 13.7.0 — Report/Evaluation 契约加固
-# ═══════════════════════════════════════════════════════════
-
 class TestExtractReport:
-    """_extract_report 按 DAG 契约直接键查找，不遍历不 duck-typing。"""
+    """Tests final report extraction and normalization."""
 
     def test_builds_report_from_adversarial_output(self):
         """The runner owns final report assembly and normalizes review history."""
@@ -369,15 +361,17 @@ class TestExtractReport:
                 "total_rounds": 2,
                 "final_score": 0.7,
                 "accepted": False,
-                "rounds": [{
-                    "round": 2,
-                    "review": {
-                        "score": 0.7,
-                        "verdict": "revise",
-                        "weaknesses": ["missing baseline"],
-                        "issues": [{"section": "Methods", "issue": "thin"}],
-                    },
-                }],
+                "rounds": [
+                    {
+                        "round": 2,
+                        "review": {
+                            "score": 0.7,
+                            "verdict": "revise",
+                            "weaknesses": ["missing baseline"],
+                            "issues": [{"section": "Methods", "issue": "thin"}],
+                        },
+                    }
+                ],
             },
             "graph_analysis": {
                 "papers": [{"title": "Paper A", "tier": 1}],
@@ -389,54 +383,55 @@ class TestExtractReport:
         assert out["survey"] == "adversarial draft"
         assert out["metadata"]["accepted"] is False
         assert isinstance(out["metadata"]["generated_at"], float)
-        assert out["review_history"] == [{
-            "round": 2,
-            "review": {
-                "score": 0.7,
-                "verdict": "revise",
-                "weaknesses": ["missing baseline"],
-                "issues": [{"section": "Methods", "issue": "thin"}],
-            },
-        }]
-        assert "Survey incomplete" not in out["survey"]      # ← 不触发 false positive
+        assert out["review_history"] == [
+            {
+                "round": 2,
+                "review": {
+                    "score": 0.7,
+                    "verdict": "revise",
+                    "weaknesses": ["missing baseline"],
+                    "issues": [{"section": "Methods", "issue": "thin"}],
+                },
+            }
+        ]
+        assert "Survey incomplete" not in out["survey"]
 
     def test_preserves_graph_analysis_contract(self):
-        """graph_data 只来自 results["graph_analysis"]，字段为 GraphWorker 真实 schema。"""
+        """Report extraction preserves the graph-analysis contract."""
         config = _minimal_config()
         agent = LitAgent(config)
         graph_output = {
-            "papers": [{"title": "Paper A", "tier": 1}, {"title": "Paper B", "tier": 2}],
+            "papers": [
+                {"title": "Paper A", "tier": 1},
+                {"title": "Paper B", "tier": 2},
+            ],
             "tier_counts": {"tier1": 1, "tier2": 1, "tier3": 0},
             "seminal_papers": [{"title": "Paper A", "tier": 1}],
         }
         results = {
             "graph_analysis": graph_output,
-            # 注入碰巧含 nodes key 的非 graph 数据，验证不被误判
             "adversarial_review": {
                 "final_draft": "x",
-                "nodes": 999,  # 旧逻辑会误抓这个
+                "nodes": 999,
             },
         }
         out = agent._extract_report(results, "test query")
-        # graph_data 必须是 graph_analysis 的真实输出，不是含 nodes 的 adversarial
+
         assert out["graph_data"] == graph_output
         assert "papers" in out["graph_data"]
         assert "tier_counts" in out["graph_data"]
         assert "seminal_papers" in out["graph_data"]
-        # 不应包含旧代码的 nodes 注入
+
         assert "nodes" not in out["graph_data"]
 
 
-# ═══════════════════════════════════════════════════════════
-# 13.7.1-C — Runner ensure_tables 调用
-# ═══════════════════════════════════════════════════════════
-
 class TestRunnerEnsureTables:
-    """runner._connect_infra 在 PG 可用时调 ensure_tables。"""
+    """Tests database table initialization during wiring."""
 
     @pytest.mark.asyncio
     async def test_ensure_tables_called_when_pg_available(self):
         from unittest.mock import AsyncMock, patch
+
         import asyncpg
 
         config = _minimal_config()
@@ -444,12 +439,14 @@ class TestRunnerEnsureTables:
         mock_pool = MagicMock(spec=asyncpg.Pool)
         ensure_tables = AsyncMock()
         with (
-            patch("litagent.runner.WorkingMemory.connect", new=AsyncMock(
-                side_effect=RuntimeError("redis unavailable")
-            )),
-            patch("qdrant_client.AsyncQdrantClient", side_effect=RuntimeError(
-                "qdrant unavailable"
-            )),
+            patch(
+                "litagent.runner.WorkingMemory.connect",
+                new=AsyncMock(side_effect=RuntimeError("redis unavailable")),
+            ),
+            patch(
+                "qdrant_client.AsyncQdrantClient",
+                side_effect=RuntimeError("qdrant unavailable"),
+            ),
             patch("asyncpg.create_pool", new=AsyncMock(return_value=mock_pool)),
             patch.object(ProceduralMemory, "ensure_tables", new=ensure_tables),
         ):
@@ -458,15 +455,14 @@ class TestRunnerEnsureTables:
         ensure_tables.assert_awaited_once()
 
 
-# ═══════════════════════════════════════════════════════════
-# 12.4 — CLI
-# ═══════════════════════════════════════════════════════════
-
 class TestCLI:
+    """Tests CLI output and validation."""
+
     def test_config_validate_ok(self):
-        """--validate-only 有效 config → exit 0 + stdout 'OK'。"""
-        from litagent.cli import _cmd_config
+        """Configuration validation reports success."""
         import argparse
+
+        from litagent.cli import _cmd_config
 
         ns = argparse.Namespace(config=None, validate_only=True)
         with pytest.raises(SystemExit) as exc:
@@ -474,9 +470,10 @@ class TestCLI:
         assert exc.value.code == 0
 
     def test_tools_json_output(self):
-        """tools --format json → valid JSON 输出。"""
-        from litagent.cli import _cmd_tools
+        """Tool listing produces valid JSON."""
         import argparse
+
+        from litagent.cli import _cmd_tools
 
         old_stdout = sys.stdout
         sys.stdout = StringIO()
@@ -493,9 +490,10 @@ class TestCLI:
         assert "extract_claims" in tool_names
 
     def test_cli_help(self):
-        """--help 输出包含三个子命令。"""
-        from litagent.cli import main
+        """The CLI exposes help output."""
         import argparse
+
+        from litagent.cli import main
 
         with pytest.raises(SystemExit) as exc:
             with patch("sys.argv", ["litagent", "--help"]):
@@ -503,15 +501,12 @@ class TestCLI:
         assert exc.value.code == 0
 
 
-# ═══════════════════════════════════════════════════════════
-# 13.7.2-C2 — Quality Gate
-# ═══════════════════════════════════════════════════════════
-
 class TestQualityGate:
-    """13.7.2-C2：_derive_quality 质量判定。"""
+    """Tests quality-gate state derivation."""
 
     def test_quality_failed_when_citation_fails(self):
         from litagent.runner import LitAgent
+
         ev = {
             "citation_accuracy": {"passed": False, "skipped": False},
             "faithfulness": {"passed": True, "skipped": False},
@@ -522,6 +517,7 @@ class TestQualityGate:
 
     def test_quality_unverified_when_skipped(self):
         from litagent.runner import LitAgent
+
         ev = {
             "citation_accuracy": {"passed": True, "skipped": True},
             "faithfulness": {"passed": True, "skipped": False},
@@ -531,6 +527,7 @@ class TestQualityGate:
 
     def test_quality_passed_only_when_both_pass(self):
         from litagent.runner import LitAgent
+
         ev = {
             "citation_accuracy": {"passed": True, "skipped": False},
             "faithfulness": {"passed": True, "skipped": False},
@@ -540,20 +537,26 @@ class TestQualityGate:
         assert q["failed_metrics"] == []
 
     def test_partial_remains_execution_interruption_only(self):
-        """partial 只表示超时/预算中断，不被 quality 改写。"""
+        """Quality failures do not redefine execution completeness."""
         from litagent.runner import LitAgent
+
         q = LitAgent._derive_quality({})
         assert q["status"] == "unverified"
 
 
 class TestExecutionSummary:
+    """Tests execution-summary derivation."""
+
     def test_failed_task_marks_report_partial(self):
         graph = TaskGraph()
-        graph.add_task(SubTask(task_id="extract", description="e", agent_type="extractor"))
+        graph.add_task(
+            SubTask(task_id="extract", description="e", agent_type="extractor")
+        )
         graph.mark_failed("extract", "worker_timeout")
 
-        execution = LitAgent._derive_execution(graph, budget_exceeded=False,
-                                                final_output_present=False)
+        execution = LitAgent._derive_execution(
+            graph, budget_exceeded=False, final_output_present=False
+        )
 
         assert execution["partial"] is True
         assert execution["status"] == "incomplete"
@@ -562,35 +565,39 @@ class TestExecutionSummary:
 
     def test_quality_does_not_affect_execution_completeness(self):
         graph = TaskGraph()
-        graph.add_task(SubTask(task_id="adversarial_review", description="a",
-                               agent_type="adversarial_review"))
+        graph.add_task(
+            SubTask(
+                task_id="adversarial_review",
+                description="a",
+                agent_type="adversarial_review",
+            )
+        )
         graph.mark_done("adversarial_review", {"final_draft": "draft"})
 
-        execution = LitAgent._derive_execution(graph, budget_exceeded=False,
-                                                final_output_present=True)
+        execution = LitAgent._derive_execution(
+            graph, budget_exceeded=False, final_output_present=True
+        )
 
         assert execution["partial"] is False
         assert execution["status"] == "complete"
         assert execution["reason_codes"] == []
 
 
-# ═══════════════════════════════════════════════════════════
-# 13.7.3.3 — derive_delivery 纯函数 + CLI 交付语义
-# ═══════════════════════════════════════════════════════════
-
 class TestDeriveDelivery:
-    """partial + quality → delivery 的四种映射。"""
+    """Tests delivery-state derivation."""
 
     def test_partial_wins_over_quality(self):
         from litagent.runner import derive_delivery
+
         d = derive_delivery(True, {"status": "failed"})
         assert d["status"] == "partial"
         assert d["publishable"] is False
         assert "partial_execution" in d["reason_codes"]
-        assert "quality_failed" in d["reason_codes"]     # 原因全记录
+        assert "quality_failed" in d["reason_codes"]
 
     def test_quality_failed_blocks(self):
         from litagent.runner import derive_delivery
+
         d = derive_delivery(False, {"status": "failed"})
         assert d["status"] == "blocked"
         assert d["publishable"] is False
@@ -598,6 +605,7 @@ class TestDeriveDelivery:
 
     def test_quality_unverified_needs_review(self):
         from litagent.runner import derive_delivery
+
         d = derive_delivery(False, {"status": "unverified"})
         assert d["status"] == "needs_review"
         assert d["publishable"] is False
@@ -605,6 +613,7 @@ class TestDeriveDelivery:
 
     def test_passed_and_complete_is_ready(self):
         from litagent.runner import derive_delivery
+
         d = derive_delivery(False, {"status": "passed"})
         assert d["status"] == "ready"
         assert d["publishable"] is True
@@ -612,12 +621,13 @@ class TestDeriveDelivery:
 
     def test_missing_quality_treated_as_unverified(self):
         from litagent.runner import derive_delivery
+
         d = derive_delivery(False, None)
         assert d["status"] == "needs_review"
 
 
 class TestCLIDeliveryContract:
-    """CLI 始终输出报告；exit code 与 banner 依据 delivery。"""
+    """Tests CLI behavior for each delivery state."""
 
     @staticmethod
     def _report(delivery_status, publishable, **extra):
@@ -626,73 +636,95 @@ class TestCLIDeliveryContract:
             "metadata": {"query": "q"},
             "review_history": [],
             "partial": extra.pop("partial", False),
-            "quality": extra.pop("quality", {"status": "passed",
-                                             "failed_metrics": [],
-                                             "unverified_metrics": []}),
-            "delivery": {"status": delivery_status, "publishable": publishable,
-                         "reason_codes": extra.pop("reason_codes", [])},
+            "quality": extra.pop(
+                "quality",
+                {"status": "passed", "failed_metrics": [], "unverified_metrics": []},
+            ),
+            "delivery": {
+                "status": delivery_status,
+                "publishable": publishable,
+                "reason_codes": extra.pop("reason_codes", []),
+            },
         }
 
     def test_exit_code_zero_when_ready(self):
         from litagent.cli import _delivery_exit_code
+
         assert _delivery_exit_code(self._report("ready", True)) == 0
 
     def test_exit_code_nonzero_when_blocked(self):
         from litagent.cli import _delivery_exit_code
+
         assert _delivery_exit_code(self._report("blocked", False)) != 0
 
     def test_exit_code_nonzero_when_needs_review(self):
         from litagent.cli import _delivery_exit_code
+
         assert _delivery_exit_code(self._report("needs_review", False)) != 0
 
     def test_exit_code_derives_for_legacy_report(self):
-        """旧 report 无 delivery → 按 partial/quality 派生同一映射。"""
+        """Legacy reports derive an exit code from normalized delivery."""
         from litagent.cli import _delivery_exit_code
-        legacy = {"survey": "x", "partial": False,
-                  "quality": {"status": "failed", "failed_metrics": ["faithfulness"],
-                              "unverified_metrics": []}}
+
+        legacy = {
+            "survey": "x",
+            "partial": False,
+            "quality": {
+                "status": "failed",
+                "failed_metrics": ["faithfulness"],
+                "unverified_metrics": [],
+            },
+        }
         assert _delivery_exit_code(legacy) != 0
 
     def test_banner_blocked(self):
         from litagent.cli import _format_report_markdown
-        report = self._report("blocked", False,
-                              quality={"status": "failed",
-                                       "failed_metrics": ["faithfulness"],
-                                       "unverified_metrics": []})
+
+        report = self._report(
+            "blocked",
+            False,
+            quality={
+                "status": "failed",
+                "failed_metrics": ["faithfulness"],
+                "unverified_metrics": [],
+            },
+        )
         out = _format_report_markdown(report)
         assert "NOT PUBLISHABLE" in out
         assert "faithfulness" in out
-        assert "survey body" in out        # 报告本体照常输出（可诊断）
+        assert "survey body" in out
 
     def test_banner_needs_review(self):
         from litagent.cli import _format_report_markdown
-        out = _format_report_markdown(self._report(
-            "needs_review", False,
-            quality={"status": "unverified", "failed_metrics": [],
-                     "unverified_metrics": ["faithfulness"]}))
+
+        out = _format_report_markdown(
+            self._report(
+                "needs_review",
+                False,
+                quality={
+                    "status": "unverified",
+                    "failed_metrics": [],
+                    "unverified_metrics": ["faithfulness"],
+                },
+            )
+        )
         assert "Quality unverified" in out
 
     def test_banner_partial(self):
         from litagent.cli import _format_report_markdown
+
         out = _format_report_markdown(self._report("partial", False, partial=True))
         assert "Partial results" in out
 
     def test_no_banner_when_ready(self):
         from litagent.cli import _format_report_markdown
+
         out = _format_report_markdown(self._report("ready", True))
         assert "⚠" not in out
 
 
-# ═══════════════════════════════════════════════════════════
-# 13.7.3.4 — Evidence Rewrite（bounded，一次，规则校验）
-# ═══════════════════════════════════════════════════════════
-
-# ═══════════════════════════════════════════════════════════
-# 13.8 — RelevanceGate wiring + ExtractorConfig 边界
-# ═══════════════════════════════════════════════════════════
-
 class TestRelevanceGateWiring:
-    """Runner 共享 reranker 实例。"""
+    """Tests relevance-gate dependency wiring."""
 
     @pytest.mark.asyncio
     async def test_reranker_shared_with_retriever_and_gate(self):
@@ -741,191 +773,318 @@ class TestRelevanceGateWiring:
         from langchain_core.documents import Document
 
         store = MagicMock(spec=VectorStore)
-        store.search = AsyncMock(return_value=[
-            ScoredDoc(Document(page_content=f"doc-{index}"), float(index))
-            for index in range(4)
-        ])
+        store.search = AsyncMock(
+            return_value=[
+                ScoredDoc(Document(page_content=f"doc-{index}"), float(index))
+                for index in range(4)
+            ]
+        )
         retriever = HybridRetriever(store, reranker=None)
         result = await retriever.search("query", top_k=2)
         assert [item.doc.page_content for item in result] == ["doc-0", "doc-1"]
 
 
 class TestExtractorConfig:
-    """max_papers / per_paper_timeout_ms 默认值。"""
+    """Tests extractor configuration boundaries."""
 
     def test_extractor_config_defaults(self):
         from litagent.config import ExtractorConfig
+
         cfg = ExtractorConfig()
         assert cfg.max_papers == 50
         assert cfg.per_paper_timeout_ms == 20000
 
     def test_extractor_config_rejects_zero_max_papers(self):
         from litagent.config import ExtractorConfig
+
         with pytest.raises(Exception):
             ExtractorConfig(max_papers=0)
 
     def test_per_paper_timeout_rejects_negative(self):
         from litagent.config import ExtractorConfig
+
         with pytest.raises(Exception):
             ExtractorConfig(per_paper_timeout_ms=-1)
 
 
-class TestEvidenceRewrite:
-    @staticmethod
-    def _agent_with_stub(rewrite_response: str):
-        config = _minimal_config()          # adversarial.max_rounds=1
-        agent = LitAgent(config)
-        agent._llm = MagicMock(spec=BaseLLMClient)
-        agent._llm.chat = AsyncMock(return_value=LLMResponse(
-            content=rewrite_response, model="stub"))
-        agent._synthesis = MagicMock()
-        agent._synthesis.rewrite_with_evidence = MagicMock(
-            return_value=[{"role": "user", "content": "rewrite request"}])
-        return agent
+class TestEvalContextAlignment:
+    """Tests evaluation-context evidence alignment."""
 
-    @staticmethod
-    def _report_and_results(rounds_used=0, with_diag=True):
-        from litagent.evidence import build_evidence_items
-        ext = {"paper_id": "p1", "title": "T", "abstract": "abs",
-               "claims": ["claim one"]}
-        ext["evidence_items"] = build_evidence_items(ext)
-        details = {"unsupported_claims": [
-            {"claim_text": "bad claim", "evidence_ids": [], "reason": "no support"}
-        ]} if with_diag else {}
-        report = {
-            "survey": "original draft",
-            "metadata": {"total_rounds": rounds_used},
-            "evaluation": {"faithfulness": {"score": 0.1, "passed": False,
-                                            "skipped": False, "details": details}},
+    def _make_results(self, extractions=None):
+        return {
+            "extract": extractions
+            or [
+                {
+                    "paper_id": "p1",
+                    "title": "T1",
+                    "claims": ["claim A"],
+                    "evidence_items": [
+                        {
+                            "evidence_id": "p1:claim:0",
+                            "paper_id": "p1",
+                            "paper_title": "T1",
+                            "text": "evidence A",
+                        },
+                        {
+                            "evidence_id": "p1:claim:1",
+                            "paper_id": "p1",
+                            "paper_title": "T1",
+                            "text": "evidence B",
+                        },
+                    ],
+                },
+                {
+                    "paper_id": "p2",
+                    "title": "T2",
+                    "claims": ["claim C"],
+                    "evidence_items": [
+                        {
+                            "evidence_id": "p2:claim:0",
+                            "paper_id": "p2",
+                            "paper_title": "T2",
+                            "text": "evidence C",
+                        },
+                    ],
+                },
+            ]
         }
-        return report, {"extract": [ext]}
 
-    @pytest.mark.asyncio
-    async def test_valid_rewrite_replaces_survey(self):
-        agent = self._agent_with_stub("revised draft [E:p1:claim:0]")
-        report, results = self._report_and_results(rounds_used=0)
-        assert await agent._attempt_evidence_rewrite(report, results) is True
-        assert report["survey"] == "revised draft [E:p1:claim:0]"
-        meta = report["metadata"]["evidence_rewrite"]
-        assert meta["attempted"] is True
-        assert meta["accepted"] is True
-
-    @pytest.mark.asyncio
-    async def test_unknown_evidence_ref_rejected_keeps_draft(self):
-        """越界 [E:*] → 拒绝改写，保底 draft 不被覆盖。"""
-        agent = self._agent_with_stub("revised bounded draft [E:fake:claim:9]")
-        report, results = self._report_and_results(rounds_used=0)
-        assert await agent._attempt_evidence_rewrite(report, results) is False
-        assert report["survey"] == "original draft"
-        meta = report["metadata"]["evidence_rewrite"]
-        assert meta["attempted"] is True
-        assert meta["accepted"] is False
-        assert "unknown" in meta["reason"]
-
-    @pytest.mark.asyncio
-    async def test_truncated_rewrite_rejected_keeps_draft(self):
-        """疑似截断稿（长度 < 原稿一半）→ 拒绝，即使引用全部合法。
-
-        reasoning 模型 max_tokens 被 reasoning 吃掉时 content 会被腰斩——
-        截断稿引用可能恰好全合法，仅靠 [E:*] 校验会漏放行。
-        """
-        agent = self._agent_with_stub("ok")            # 2 字符 << 原稿一半
-        report, results = self._report_and_results(rounds_used=0)
-        assert await agent._attempt_evidence_rewrite(report, results) is False
-        assert report["survey"] == "original draft"
-        assert "short" in report["metadata"]["evidence_rewrite"]["reason"]
-
-    @pytest.mark.asyncio
-    async def test_rewrite_uses_eval_max_tokens(self):
-        """rewrite 的 llm.chat 必须显式传 eval.max_tokens（防 reasoning 挤空 content）。"""
-        agent = self._agent_with_stub("revised bounded draft [E:p1:claim:0]")
-        report, results = self._report_and_results(rounds_used=0)
-        await agent._attempt_evidence_rewrite(report, results)
-        kwargs = agent._llm.chat.call_args.kwargs
-        assert kwargs.get("max_tokens") == agent._config.eval.max_tokens
-
-    @pytest.mark.asyncio
-    async def test_exhausted_adversarial_rounds_still_attempts_rewrite(self):
-        """R3：轮次耗尽不阻断 rewrite——评估后修复预算独立于对抗循环。"""
-        agent = self._agent_with_stub("revised bounded draft [E:p1:claim:0]")
-        report, results = self._report_and_results(rounds_used=1)  # == max_rounds
-        assert await agent._attempt_evidence_rewrite(report, results) is True
-        assert report["survey"] == "revised bounded draft [E:p1:claim:0]"
-        assert report["metadata"]["evidence_rewrite"]["attempted"] is True
-
-    @pytest.mark.asyncio
-    async def test_second_invocation_returns_false_without_llm_call(self):
-        """R3：同一 report 二次调用 → attempted 已耗，不调 LLM 也不重置记录。"""
-        agent = self._agent_with_stub("revised bounded draft [E:p1:claim:0]")
-        report, results = self._report_and_results(rounds_used=0)
-        # 第一次成功
-        assert await agent._attempt_evidence_rewrite(report, results) is True
-        assert agent._llm.chat.call_count == 1
-        # 第二次直接返回 False
-        assert await agent._attempt_evidence_rewrite(report, results) is False
-        assert agent._llm.chat.call_count == 1           # LLM 不再被调
-        # 记录未重置
-        assert report["metadata"]["evidence_rewrite"]["attempted"] is True
-        assert report["metadata"]["evidence_rewrite"]["accepted"] is True
-
-    @pytest.mark.asyncio
-    async def test_llm_exception_consumes_budget(self):
-        """R3/R6：LLM 异常 → attempted 已消耗，reason 用稳定码不含异常文本。"""
-        events = []
-        agent = self._agent_with_stub("unused")
-        agent._trace_hook = lambda event, data: events.append((event, data))
-        agent._llm.chat = AsyncMock(
-            side_effect=RuntimeError("Authorization: Bearer should-not-appear")
+    def test_referenced_evidence_resolves_correctly(self):
+        agent = _minimal_agent()
+        ctx = agent._build_eval_context(
+            query="few-shot learning",
+            survey="claim [E:p1:claim:0] and [E:p2:claim:0]",
+            results=self._make_results(),
         )
-        report, results = self._report_and_results(rounds_used=0)
-        assert await agent._attempt_evidence_rewrite(report, results) is False
-        assert report["survey"] == "original draft"
-        meta = report["metadata"]["evidence_rewrite"]
-        assert meta["attempted"] is True
-        assert meta["accepted"] is False
-        assert meta["reason"] == "llm_call_failed"
-        assert meta["error_type"] == "RuntimeError"
-        assert "should-not-appear" not in repr(meta)
-        assert "should-not-appear" not in repr(events)
+        assert len(ctx["referenced_evidence"]) == 2
+        assert ctx["unresolved_evidence_ids"] == []
+
+    def test_unknown_ref_preserved_as_unresolved(self):
+        agent = _minimal_agent()
+        ctx = agent._build_eval_context(
+            query="few-shot learning",
+            survey="claim [E:p1:claim:0] and [E:p99:claim:99]",
+            results=self._make_results(),
+        )
+        assert len(ctx["referenced_evidence"]) == 1
+        assert "p99:claim:99" in ctx["unresolved_evidence_ids"]
+
+    def test_empty_survey_returns_empty_referenced(self):
+        agent = _minimal_agent()
+        ctx = agent._build_eval_context(
+            query="few-shot learning",
+            survey="",
+            results=self._make_results(),
+        )
+        assert ctx["referenced_evidence_ids"] == []
+
+    def test_tail_evidence_not_lost_by_prefix_truncation(self):
+        """Evidence referenced near the report tail remains resolvable."""
+        extractions = []
+        for i in range(70):
+            eid = f"p{i}:claim:0"
+            evidence_text = f"evidence {i} " + ("x" * 1000)
+            extractions.append(
+                {
+                    "paper_id": f"p{i}",
+                    "title": f"T{i}",
+                    "claims": [f"c{i}"],
+                    "evidence_items": [
+                        {
+                            "evidence_id": eid,
+                            "paper_id": f"p{i}",
+                            "paper_title": f"T{i}",
+                            "text": evidence_text,
+                        },
+                    ],
+                }
+            )
+        agent = _minimal_agent()
+        ctx = agent._build_eval_context(
+            query="few-shot learning",
+            survey="claim [E:p69:claim:0]",
+            results={"extract": extractions},
+        )
+        assert len(ctx["referenced_evidence"]) == 1
+        assert ctx["unresolved_evidence_ids"] == []
+        assert ctx["referenced_evidence"][0]["text"].startswith("evidence 69")
+        assert (
+            sum(len(item["evidence_items"][0]["text"]) for item in extractions[:-1])
+            > 60_000
+        )
+
+
+class TestRewriteValidation:
+    """Tests validation of evidence-based rewrites."""
+
+    def _make_agent(self):
+        from litagent.config import AppConfig, AgentConfig, LoggingConfig
+        from litagent.runner import LitAgent
+
+        return LitAgent(AppConfig(agent=AgentConfig(), logging=LoggingConfig()))
+
+    def _ledger(self):
+        item = {"evidence_id": "p1:claim:0", "paper_title": "T", "text": "ev"}
+        return {item["evidence_id"]: item}
+
+    @staticmethod
+    def _original():
+        return (
+            "## Introduction\nOriginal intro [E:p1:claim:0].\n\n"
+            "## Methods\nOriginal methods [E:p1:claim:0].\n\n"
+            "## Open Problems\nOriginal limitations [E:p1:claim:0]."
+        )
+
+    def test_rejects_empty_candidate(self):
+        agent = self._make_agent()
+        v = agent._validate_rewrite_candidate(
+            original=self._original(),
+            candidate="",
+            evidence_ledger=self._ledger(),
+        )
+        assert v.accepted is False
+        assert "empty_candidate" in v.reason_codes
+
+    def test_rejects_placeholder_text(self):
+        agent = self._make_agent()
+        v = agent._validate_rewrite_candidate(
+            original=self._original(),
+            evidence_ledger=self._ledger(),
+            candidate="[No changes to this section.]\n## Intro\nText",
+        )
+        assert "placeholder_detected" in v.reason_codes
+
+    def test_rejects_ellipsis_placeholder(self):
+        agent = self._make_agent()
+        v = agent._validate_rewrite_candidate(
+            original=self._original(),
+            evidence_ledger=self._ledger(),
+            candidate="## Intro\nReal\n\n...\n\n## Next",
+        )
+        assert "ellipsis_placeholder" in v.reason_codes
+
+    def test_rejects_unknown_evidence_refs(self):
+        agent = self._make_agent()
+        v = agent._validate_rewrite_candidate(
+            original=self._original(),
+            evidence_ledger=self._ledger(),
+            candidate="Good [E:p1:claim:0]. Bad [E:fake:id].",
+        )
+        assert "unknown_evidence_refs" in v.reason_codes
+        assert "fake:id" in v.unknown_evidence_ids
+
+    def test_accepts_valid_candidate(self):
+        agent = self._make_agent()
+        v = agent._validate_rewrite_candidate(
+            original=self._original(),
+            evidence_ledger=self._ledger(),
+            candidate=(
+                "## Introduction\nImproved intro [E:p1:claim:0].\n\n"
+                "## Methods\nImproved methods [E:p1:claim:0].\n\n"
+                "## Open Problems\nImproved limitations [E:p1:claim:0]."
+            ),
+        )
+        assert v.accepted is True
+
+    def test_accepts_document_title_without_direct_body(self):
+        agent = self._make_agent()
+        original = (
+            "# Survey Title\n\n"
+            "## Introduction\nOriginal intro [E:p1:claim:0].\n\n"
+            "## Methods\nOriginal methods [E:p1:claim:0]."
+        )
+        candidate = (
+            "# Survey Title\n\n"
+            "## Introduction\nImproved intro [E:p1:claim:0].\n\n"
+            "## Methods\nImproved methods [E:p1:claim:0]."
+        )
+
+        v = agent._validate_rewrite_candidate(
+            original=original,
+            candidate=candidate,
+            evidence_ledger=self._ledger(),
+        )
+
+        assert v.accepted is True
+        assert "empty_section_detected" not in v.reason_codes
+
+    def test_rejects_empty_content_section(self):
+        agent = self._make_agent()
+        original = (
+            "# Survey Title\n\n"
+            "## Introduction\nOriginal intro [E:p1:claim:0].\n\n"
+            "## Methods\nOriginal methods [E:p1:claim:0]."
+        )
+        candidate = (
+            "# Survey Title\n\n"
+            "## Introduction\nImproved intro [E:p1:claim:0].\n\n"
+            "## Methods\n"
+        )
+
+        v = agent._validate_rewrite_candidate(
+            original=original,
+            candidate=candidate,
+            evidence_ledger=self._ledger(),
+        )
+
+        assert v.accepted is False
+        assert "empty_section_detected" in v.reason_codes
+
+    def test_rejects_missing_section(self):
+        agent = self._make_agent()
+        v = agent._validate_rewrite_candidate(
+            original=self._original(),
+            evidence_ledger=self._ledger(),
+            candidate=(
+                "## Introduction\nImproved intro [E:p1:claim:0].\n\n"
+                "## Open Problems\nImproved limitations [E:p1:claim:0]."
+            ),
+        )
+        assert v.accepted is False
+        assert any("missing_section" in rc for rc in v.reason_codes)
+
+
+class TestMemoryTrustOrdering:
+    """Tests memory writes against delivery trust state."""
 
     @pytest.mark.asyncio
-    async def test_llm_cancellation_consumes_budget_and_reraises(self):
-        events = []
-        agent = self._agent_with_stub("unused")
-        agent._trace_hook = lambda event, data: events.append((event, data))
-        agent._llm.chat = AsyncMock(side_effect=asyncio.CancelledError())
-        report, results = self._report_and_results(rounds_used=0)
-
-        with pytest.raises(asyncio.CancelledError):
-            await agent._attempt_evidence_rewrite(report, results)
-
-        meta = report["metadata"]["evidence_rewrite"]
-        assert meta["attempted"] is True
-        assert meta["accepted"] is False
-        assert meta["reason"] == "cancelled"
-        assert meta["error_type"] == "CancelledError"
-        endings = [data for event, data in events if event == "subspan.end"]
-        assert endings == [{
-            "task_id": "evidence_rewrite",
-            "output": {
-                "accepted": False,
-                "reason": "cancelled",
-                "error_type": "CancelledError",
+    async def test_blocked_delivery_skips_consolidation(self):
+        agent = _minimal_agent()
+        agent._infra.memory = MagicMock()
+        result = await agent._finalize_memory(
+            report_data={
+                "delivery": {"status": "blocked", "publishable": False},
+                "metadata": {"execution": {"partial": False}},
+                "survey": "test",
             },
-        }]
+        )
+        assert not result["content_saved"]
 
     @pytest.mark.asyncio
-    async def test_no_diagnostic_skips_rewrite(self):
-        """诊断缺失/为空 → 不触发 rewrite（诊断是 rewrite 的前提输入）。"""
-        agent = self._agent_with_stub("whatever")
-        report, results = self._report_and_results(rounds_used=0, with_diag=False)
-        assert await agent._attempt_evidence_rewrite(report, results) is False
-        agent._llm.chat.assert_not_called()
+    async def test_partial_skips_even_if_publishable(self):
+        agent = _minimal_agent()
+        agent._infra.memory = MagicMock()
+        result = await agent._finalize_memory(
+            report_data={
+                "delivery": {"status": "ready", "publishable": True},
+                "metadata": {"execution": {"partial": True}},
+                "survey": "test",
+            },
+        )
+        assert not result["content_saved"]
 
     @pytest.mark.asyncio
-    async def test_llm_failure_keeps_draft(self):
-        agent = self._agent_with_stub("unused")
-        agent._llm.chat = AsyncMock(side_effect=RuntimeError("api down"))
-        report, results = self._report_and_results(rounds_used=0)
-        assert await agent._attempt_evidence_rewrite(report, results) is False
-        assert report["survey"] == "original draft"
+    async def test_publishable_saves_and_consolidates(self):
+        agent = _minimal_agent()
+        agent._infra.memory = MagicMock()
+        agent._infra.memory.save_state = AsyncMock()
+        agent._infra.memory.consolidate = AsyncMock()
+        result = await agent._finalize_memory(
+            report_data={
+                "delivery": {"status": "ready", "publishable": True},
+                "metadata": {"execution": {"partial": False}},
+                "survey": "test",
+            },
+        )
+        assert result["content_saved"] is True
+        assert result["consolidated"] is True
