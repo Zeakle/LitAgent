@@ -19,11 +19,19 @@ class WorkingMemory:
 
     @staticmethod
     async def connect(config: MemoryConfig) -> "WorkingMemory":
-        """Connect to Redis and verify availability with a ping."""
+        """Connect to Redis and close the client if validation cannot finish."""
         redis = Redis.from_url(config.redis_url, decode_responses=False)
-        await redis.ping()
+        try:
+            await redis.ping()
+        except BaseException:
+            # Ownership has not transferred to Infra until this method returns.
+            try:
+                await redis.aclose()
+            except BaseException as close_exc:
+                logger.debug("Redis rollback close error: %s", close_exc)
+            raise
         # Avoid logging the Redis URL because it may contain credentials.
-        logger.info(f"Connected to Redis")
+        logger.info("Connected to Redis")
         return WorkingMemory(redis, config)
 
     async def get(self, session_id: str) -> dict | None:
@@ -64,4 +72,4 @@ class WorkingMemory:
 
     async def close(self) -> None:
         """Close the Redis client."""
-        await self._redis.close()
+        await self._redis.aclose()

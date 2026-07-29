@@ -11,14 +11,14 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, BackgroundTasks, HTTPException
+from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from litagent.config import load_config
+from litagent.contracts import SurveyResult, build_config_summary
 from litagent.logging import get_logger
-from litagent.runner import LitAgent, derive_delivery
 from litagent.observability.recorder import (
     ArchiveRepository,
     CompositeTraceHook,
@@ -26,11 +26,15 @@ from litagent.observability.recorder import (
     RunRecorder,
 )
 from litagent.observability.tracing import LangFuseTracer
+from litagent.runner import LitAgent, derive_delivery
 
 logger = get_logger("api")
 
 
 # API models
+# Static assets belong to the installed package, not the caller's cwd.
+FLOW_DEMO_STATIC_ROOT = Path(__file__).resolve().parent / "static"
+FLOW_DEMO_STATIC = FLOW_DEMO_STATIC_ROOT / "flow-demo" / "index.html"
 
 
 class SurveyRequest(BaseModel):
@@ -50,22 +54,10 @@ class SurveyStatus(BaseModel):
     delivery_status: str | None = None
 
 
-class SurveyReport(BaseModel):
-    """Represent a completed survey report response."""
+class SurveyReport(SurveyResult):
+    """Add API task identity to the shared survey-result contract."""
 
     task_id: str
-    survey: str
-    metadata: dict[str, Any]
-    review_history: list[dict[str, Any]]
-    graph_data: dict[str, Any]
-    partial: bool
-    evaluation: dict[str, Any] = {}
-    quality: dict[str, Any] = {
-        "status": "unverified",
-        "failed_metrics": [],
-        "unverified_metrics": [],
-    }
-    delivery: dict[str, Any] = {}
 
 
 # Background cleanup
@@ -73,7 +65,6 @@ class SurveyReport(BaseModel):
 _TASK_TTL_SECONDS = 3600
 _CLEANUP_INTERVAL = 600
 FLOW_DEMO_QUERY = "few-shot learning in computer vision"
-FLOW_DEMO_STATIC = Path("static/flow-demo/index.html")
 
 
 async def _cleanup_old_tasks() -> None:
@@ -129,11 +120,11 @@ app.state.flow_archive_index = {
 }
 
 
-try:
-    app.mount("/static", StaticFiles(directory="static"), name="static")
-except RuntimeError:
-    # Static assets are optional in minimal and test installations.
-    pass
+app.mount(
+    "/static",
+    StaticFiles(directory=str(FLOW_DEMO_STATIC_ROOT)),
+    name="static",
+)
 
 
 # Routes
@@ -147,7 +138,7 @@ async def health():
 
 @app.get("/flow-demo", include_in_schema=False)
 async def flow_demo_page():
-    """Return the flow-demo user interface."""
+    """Return the packaged flow-demo user interface."""
     return FileResponse(FLOW_DEMO_STATIC)
 
 
@@ -171,19 +162,9 @@ async def _run_flow_demo(run_id: str, recorder: RunRecorder) -> None:
     entry = app.state.flow_runs[run_id]
     try:
         config = load_config()
-        recorder.set_config_summary(
-            {
-                "llm": {"model": config.llm.model, "base_url": config.llm.base_url},
-                "orchestrator": config.orchestrator.model_dump(),
-                "extractor": config.extractor.model_dump(),
-                "planner": config.planner.model_dump(),
-                "observability": {
-                    "enabled": config.observability.enabled,
-                    "langfuse_host": config.observability.langfuse_host,
-                    "payload_mode": config.observability.payload_mode,
-                },
-            }
-        )
+        config_summary = build_config_summary(config)
+        recorder.set_config_summary(config_summary)
+
         trace_hook: Any = recorder
         if config.observability.enabled:
             langfuse = LangFuseTracer(
@@ -238,6 +219,7 @@ def _flow_summary(artifact: dict[str, Any]) -> dict[str, Any]:
         "error": artifact.get("error"),
         "quality": report.get("quality"),
         "delivery": report.get("delivery"),
+        "config_fingerprint": artifact.get("config_fingerprint"),
     }
 
 
@@ -387,19 +369,10 @@ async def get_survey_report(task_id: str):
     if task["status"] == "failed":
         raise HTTPException(status_code=500, detail=task.get("error", "unknown"))
 
-    result = task["result"] or {}
-    return SurveyReport(
-        task_id=task_id,
-        survey=result.get("survey", ""),
-        metadata=result.get("metadata", {}),
-        review_history=result.get("review_history", []),
-        graph_data=result.get("graph_data", {}),
-        partial=result.get("partial", False),
-        evaluation=result.get("evaluation", {}),
-        quality=result.get(
-            "quality",
-            {"status": "unverified", "failed_metrics": [], "unverified_metrics": []},
-        ),
-        delivery=result.get("delivery")
-        or derive_delivery(result.get("partial", False), result.get("quality")),
+    result = dict(task["result"] or {})
+    result.setdefault(
+        "delivery",
+        derive_delivery(result.get("partial", False), result.get("quality")),
     )
+
+    return SurveyReport(task_id=task_id, **result)

@@ -3,46 +3,38 @@
 from __future__ import annotations
 
 import asyncio
-import re
-import uuid
-import os
 import json
+import os
+import re
 import time
-from dataclasses import dataclass
-from pathlib import Path
+import uuid
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from functools import wraps
+from pathlib import Path
 from typing import Any, Callable, Literal
 
 from litagent.agents import adversarial
-from litagent.config import AppConfig
-from litagent.context.evidence_selector import EvidenceSelector
-from litagent.exceptions import ConfigError
-from litagent.llm.client import BaseLLMClient, OpenAICompatibleClient
-from litagent.safety.budget import CostBudget
-from litagent.safety.injection import InjectionDetector
-from litagent.tools.registry import get_registry
-from litagent.tools.executor import ToolExecutor
-from litagent.tools.builtin.search import register_search_tools
-from litagent.tools.builtin.extract import register_extract_tools
-from litagent.context.budget import BudgetManager
-from litagent.mcp.bridge import MCPBridge
-from litagent.skills.manager import SkillManager
+from litagent.agents.adversarial import AdversarialReviewWorker
+from litagent.agents.dedup import DedupWorker
 from litagent.agents.extraction_strategy import (
     ExtractionStrategy,
-    RegexStrategy,
     LLMStrategy,
+    RegexStrategy,
     ResilientExtractionStrategy,
 )
-from litagent.agents.search import SearchWorker
-from litagent.agents.recall import RecallWorker
 from litagent.agents.extractor import ExtractorWorker
-from litagent.agents.dedup import DedupWorker
-from litagent.agents.relevance_gate import RelevanceGateWorker
 from litagent.agents.graph import GraphWorker
-from litagent.agents.synthesis import SynthesisWorker
-from litagent.agents.reviewer import ReviewerWorker
-from litagent.agents.adversarial import AdversarialReviewWorker
 from litagent.agents.planner import SurveyPlanner
+from litagent.agents.recall import RecallWorker
+from litagent.agents.relevance_gate import RelevanceGateWorker
+from litagent.agents.reviewer import ReviewerWorker
+from litagent.agents.search import SearchWorker
+from litagent.agents.synthesis import SynthesisWorker
+from litagent.config import AppConfig
+from litagent.context.budget import BudgetManager
+from litagent.context.evidence_selector import EvidenceSelector
+from litagent.contracts import build_config_summary, normalize_survey_result
 from litagent.eval.base import (
     CTX_CLAIMS,
     CTX_EVIDENCE,
@@ -53,30 +45,40 @@ from litagent.eval.base import (
     CTX_SELECTED_EVIDENCE,
     CTX_UNRESOLVED_EVIDENCE_IDS,
 )
+from litagent.eval.citation import CitationEvaluator
+from litagent.eval.consistency import ConsistencyEvaluator
+from litagent.eval.ragas_eval import RagasFaithfulnessEvaluator
 from litagent.evidence import (
     collect_ledger,
     extract_evidence_refs,
     extract_evidence_refs_ordered,
 )
+from litagent.exceptions import ConfigError
+from litagent.llm.client import BaseLLMClient, OpenAICompatibleClient
+from litagent.logging import get_logger, setup_logging
+from litagent.mcp.bridge import MCPBridge
+from litagent.memory.episodic import EpisodicMemory
+from litagent.memory.manager import MemoryManager
+from litagent.memory.procedural import ProceduralMemory
+from litagent.memory.semantic import SemanticMemory
+from litagent.memory.working import WorkingMemory
+from litagent.observability.context import reset_task_id, set_task_id
+from litagent.observability.recorder import RedactingTraceHook
+from litagent.observability.tracing import LangFuseTracer
 from litagent.orchestrator.scheduler import Scheduler, Worker
 from litagent.orchestrator.task_graph import TaskGraph
-from litagent.logging import get_logger, setup_logging
-from litagent.memory.working import WorkingMemory
-from litagent.memory.episodic import EpisodicMemory
-from litagent.memory.semantic import SemanticMemory
-from litagent.memory.procedural import ProceduralMemory
-from litagent.memory.manager import MemoryManager
-from litagent.rag.interfaces import Reranker
-from litagent.rag.vector_store import QdrantVectorStore
 from litagent.rag.claims_index import ClaimsIndex
+from litagent.rag.interfaces import Reranker
 from litagent.rag.reranker import CrossEncoderReranker
 from litagent.rag.retriever import HybridRetriever
-from litagent.observability.tracing import LangFuseTracer
-from litagent.observability.recorder import RedactingTraceHook
-from litagent.observability.context import set_task_id, reset_task_id
-from litagent.eval.citation import CitationEvaluator
-from litagent.eval.consistency import ConsistencyEvaluator
-from litagent.eval.ragas_eval import RagasFaithfulnessEvaluator
+from litagent.rag.vector_store import QdrantVectorStore
+from litagent.safety.budget import CostBudget
+from litagent.safety.injection import InjectionDetector
+from litagent.skills.manager import SkillManager
+from litagent.tools.builtin.extract import register_extract_tools
+from litagent.tools.builtin.search import register_search_tools
+from litagent.tools.executor import ToolExecutor
+from litagent.tools.registry import get_registry
 
 logger = get_logger("runner")
 
@@ -117,10 +119,7 @@ def derive_delivery(
     degradation_codes = list(dict.fromkeys(degradation_reason_codes))
 
     critical_degradation = any(
-        code in {
-            'all_external_sources_unavailable',
-            'all_external_sources_empty'
-        }
+        code in {"all_external_sources_unavailable", "all_external_sources_empty"}
         for code in degradation_codes
     )
 
@@ -145,8 +144,22 @@ def derive_delivery(
     return {
         "status": status,
         "publishable": status == "ready",
-        "reason_codes": list(dict.fromkeys(reason_codes))
+        "reason_codes": list(dict.fromkeys(reason_codes)),
     }
+
+
+def _cleanup_incomplete_wiring(func):
+    """Release resources when private or public wiring exits exceptionally."""
+
+    @wraps(func)
+    async def wrapped(self, *args, **kwargs):
+        try:
+            return await func(self, *args, **kwargs)
+        except BaseException:
+            await self.cleanup()
+            raise
+
+    return wrapped
 
 
 @dataclass
@@ -158,9 +171,34 @@ class Infra:
     retriever: HybridRetriever | None = None
     reranker: Reranker | None = None
 
+    _working_memory: WorkingMemory | None = None
     _qdrant_client: Any = None
-    _redis_client: Any = None
     _pg_pool: Any = None
+    _closed: bool = False
+
+    async def close(self) -> None:
+        """Close owned handles once; borrowers never close shared handles."""
+        if self._closed:
+            return
+        self._closed = True
+
+        resources = (
+            ("PostgreSQL pool", self._pg_pool),
+            ("Qdrant client", self._qdrant_client),
+            ("Working Memory", self._working_memory),
+        )
+
+        self._pg_pool = None
+        self._qdrant_client = None
+        self._working_memory = None
+
+        for label, resource in resources:
+            if resource is None:
+                continue
+            try:
+                await resource.close()
+            except BaseException as exc:
+                logger.debug("%s close error: %s", label, exc)
 
 
 TraceHook = Callable[[str, dict[str, Any]], Any]
@@ -172,6 +210,7 @@ class LitAgent:
 
     def __init__(self, config: AppConfig, trace_hook: TraceHook | None = None) -> None:
         self._config = config
+        self._config_summary = build_config_summary(config)
         self._session_id = str(uuid.uuid4())[:8]
         self._trace_hook = trace_hook
 
@@ -261,10 +300,12 @@ class LitAgent:
                 phase="initial",
             )
             initial_quality = self._derive_quality(initial_evaluation)
-            report_data.update({
-                "evaluation": initial_evaluation,
-                "quality": initial_quality,
-            })
+            report_data.update(
+                {
+                    "evaluation": initial_evaluation,
+                    "quality": initial_quality,
+                }
+            )
 
             # Phase 2: evidence rewrite on quality failure.
             if initial_quality["status"] == "failed":
@@ -281,7 +322,8 @@ class LitAgent:
                     "reason_code": rewrite_outcome.reason_code,
                     "validation_reason_codes": (
                         list(rewrite_outcome.validation.reason_codes)
-                        if rewrite_outcome.validation else []
+                        if rewrite_outcome.validation
+                        else []
                     ),
                     "candidate_quality": rewrite_outcome.candidate_quality,
                 }
@@ -297,6 +339,10 @@ class LitAgent:
                 await self._finalize_memory(report_data=report_data)
             )
 
+            report_data = normalize_survey_result(
+                report_data, config_fingerprint=self._config_summary["fingerprint"]
+            )
+
             self._emit(
                 "survey.complete",
                 {
@@ -306,12 +352,11 @@ class LitAgent:
                     "quality_status": final_quality["status"],
                     "total_tokens": self._cost_budget.used if self._cost_budget else 0,
                     "delivery_status": report_data["delivery"]["status"],
+                    "config_fingerprint": report_data["config_fingerprint"],
                 },
             )
 
-            logger.info(
-                "Survey complete: %d chars", len(report_data.get("survey", ""))
-            )
+            logger.info("Survey complete: %d chars", len(report_data.get("survey", "")))
             return report_data
 
         except Exception as e:
@@ -367,9 +412,7 @@ class LitAgent:
             if outcome.reason_code:
                 degradation_codes.append(outcome.reason_code)
 
-        if serialized and all(
-            item["status"] in unavailable for item in serialized
-        ):
+        if serialized and all(item["status"] in unavailable for item in serialized):
             degradation_codes.append("all_external_sources_unavailable")
         elif serialized and all(item["result_count"] == 0 for item in serialized):
             degradation_codes.append("all_external_sources_empty")
@@ -387,6 +430,7 @@ class LitAgent:
             "total_rounds": 0,
             "final_score": 0.0,
             "accepted": False,
+            "config_summary": self._config_summary["effective"],
         }
 
         adv_result = results.get("adversarial_review")
@@ -430,6 +474,7 @@ class LitAgent:
             )
         return history
 
+    @_cleanup_incomplete_wiring
     async def _wire(self) -> None:
         """Construct all configured components once in dependency order."""
         if self._wired:
@@ -490,17 +535,29 @@ class LitAgent:
             compact_threshold=cfg.context.compact_threshold,
         )
 
-        self._infra = await self._connect_infra(cfg)
+        # Publish the owner before connecting so cancellation can find and close
+        # handles created before _connect_infra() returns.
+        self._infra = Infra()
+        self._infra = await self._connect_infra(cfg, infra=self._infra)
 
         skills_dir = str(Path(__file__).resolve().parent / "skills")
         self._skill_manager = SkillManager(skills_dir=skills_dir)
         if cfg.mcp_servers:
-            self._mcp_bridge = MCPBridge()
+            bridge = MCPBridge()
+            self._mcp_bridge = bridge
             try:
-                registered = await self._mcp_bridge.connect_all(cfg.mcp_servers)
+                registered = await bridge.connect_all(cfg.mcp_servers)
                 logger.info("MCP: %d tools registered", len(registered))
-            except Exception as e:
-                logger.warning(f"MCP bridge failed, continuing without MCP tools: {e}")
+            except Exception as exc:
+                logger.warning(
+                    "MCP bridge failed, continuing without MCP tools: %s",
+                    exc,
+                )
+                # connect_all may have opened earlier servers before a later one failed.
+                try:
+                    await bridge.disconnect_all()
+                except Exception as close_exc:
+                    logger.debug("MCP rollback disconnect error: %s", close_exc)
                 self._mcp_bridge = None
 
         regex_strategy = RegexStrategy(self._executor)
@@ -606,7 +663,6 @@ class LitAgent:
             trace_hook=self._trace_hook,
             memory_manager=self._infra.memory,
         )
-        self._wired = True
 
         eval_mt = cfg.eval.max_tokens
         self._evaluators = [
@@ -614,6 +670,8 @@ class LitAgent:
             ConsistencyEvaluator(self._llm, max_tokens=eval_mt),
             RagasFaithfulnessEvaluator(self._config, llm=self._llm),
         ]
+
+        self._wired = True
 
         self._emit(
             "wire.complete",
@@ -674,9 +732,7 @@ class LitAgent:
         try:
             await memory.save_state(self._session_id, state)
             result["content_saved"] = True
-            episode = await memory.consolidate(
-                self._session_id, llm=self._llm
-            )
+            episode = await memory.consolidate(self._session_id, llm=self._llm)
             if episode is None:
                 result["reason_code"] = "consolidation_returned_none"
                 return result
@@ -705,8 +761,7 @@ class LitAgent:
             return CrossEncoderReranker()
         except Exception as exc:
             logger.warning(
-                "CrossEncoder unavailable reason=model_init_failed "
-                "error_type=%s",
+                "CrossEncoder unavailable reason=model_init_failed " "error_type=%s",
                 type(exc).__name__,
             )
             return None
@@ -715,17 +770,26 @@ class LitAgent:
         """Offload synchronous model loading to a thread."""
         return await asyncio.to_thread(self._create_reranker)
 
-    async def _connect_infra(self, cfg: AppConfig) -> Infra:
+    async def _connect_infra(
+        self,
+        cfg: AppConfig,
+        *,
+        infra: Infra | None = None,
+    ) -> Infra:
         """Connect optional backends independently and return those available."""
         mem_cfg = cfg.memory
-        infra = Infra()
+        if infra is None:
+            infra = Infra()
 
         try:
             working = await WorkingMemory.connect(mem_cfg)
-            infra._redis_client = working._redis
+            infra._working_memory = working
             logger.info("Infra: Redis connected (Working Memory)")
-        except Exception as e:
-            logger.warning("Infra: Redis unavailable — Working Memory disabled (%s)", e)
+        except Exception as exc:
+            logger.warning(
+                "Infra: Redis unavailable - Working Memory disabled (%s)",
+                exc,
+            )
             working = None
 
         qdrant_client = None
@@ -735,47 +799,60 @@ class LitAgent:
             from qdrant_client.models import Distance, VectorParams
 
             qdrant_client = AsyncQdrantClient(url=mem_cfg.qdrant_url)
+            infra._qdrant_client = qdrant_client
             dim = await self._get_embedding_dim_async()
 
-            for coll_name in ["episodes", "claims"]:
+            for collection_name in ("episodes", "claims"):
                 try:
-                    await qdrant_client.get_collection(coll_name)
+                    await qdrant_client.get_collection(collection_name)
                 except Exception:
                     await qdrant_client.create_collection(
-                        collection_name=coll_name,
-                        vectors_config=VectorParams(size=dim, distance=Distance.COSINE),
+                        collection_name=collection_name,
+                        vectors_config=VectorParams(
+                            size=dim,
+                            distance=Distance.COSINE,
+                        ),
                     )
-                    logger.info("Infra: Created Qdrant collection '%s'", coll_name)
+                    logger.info(
+                        "Infra: Created Qdrant collection '%s'", collection_name
+                    )
 
             episodic = EpisodicMemory(qdrant_client)
-            claims_index = ClaimsIndex(qdrant_client, trace_hook=self._trace_hook)
-            infra._qdrant_client = qdrant_client
-            infra.claims_index = claims_index
+            infra.claims_index = ClaimsIndex(qdrant_client, trace_hook=self._trace_hook)
 
-            # papers is a dual-index collection. Preserve Claims/Episodic if a
-            # non-empty legacy papers collection requires an explicit migration.
             try:
                 vector_store = await QdrantVectorStore.ensure_compatible(
-                    qdrant_client, "papers", dim
+                    qdrant_client,
+                    "papers",
+                    dim,
                 )
                 infra.reranker = await self._create_reranker_async()
                 infra.retriever = HybridRetriever(
-                    vector_store, infra.reranker, trace_hook=self._trace_hook
+                    vector_store,
+                    infra.reranker,
+                    trace_hook=self._trace_hook,
                 )
-                logger.info("Infra: Qdrant connected (Episodic + Claims + Papers)")
-            except ConfigError as e:
+            except ConfigError as exc:
                 logger.warning(
-                    "Infra: RAG disabled pending papers schema migration (%s)", e
+                    "Infra: RAG disabled pending papers schema migration (%s)",
+                    exc,
                 )
-        except Exception as e:
+            logger.info("Infra: Qdrant connected (Episodic + Claims + Papers)")
+        except Exception as exc:
             logger.warning(
-                "Infra: Qdrant unavailable — RAG/Claims/Episodic disabled (%s)", e
+                "Infra: Qdrant unavailable - RAG/Claims/Episodic disabled (%s)",
+                exc,
             )
-            if qdrant_client:
+            if qdrant_client is not None:
                 try:
                     await qdrant_client.close()
-                except Exception:
-                    pass
+                except Exception as close_exc:
+                    logger.debug("Qdrant rollback close error: %s", close_exc)
+            infra._qdrant_client = None
+            infra.claims_index = None
+            infra.retriever = None
+            infra.reranker = None
+            episodic = None
 
         pg_pool = None
         semantic = None
@@ -783,16 +860,29 @@ class LitAgent:
         try:
             import asyncpg
 
-            pg_pool = await asyncpg.create_pool(mem_cfg.pg_url, min_size=2, max_size=10)
+            pg_pool = await asyncpg.create_pool(
+                mem_cfg.pg_url,
+                min_size=2,
+                max_size=10,
+            )
+            infra._pg_pool = pg_pool
             semantic = SemanticMemory(pg_pool)
             procedural = ProceduralMemory(pg_pool)
             await procedural.ensure_tables()
-            infra._pg_pool = pg_pool
             logger.info("Infra: PostgreSQL connected (Semantic + Procedural)")
-        except Exception as e:
+        except Exception as exc:
             logger.warning(
-                "Infra: PostgreSQL unavailable — Semantic/Procedural disabled (%s)", e
+                "Infra: PostgreSQL unavailable - Semantic/Procedural disabled (%s)",
+                exc,
             )
+            if pg_pool is not None:
+                try:
+                    await pg_pool.close()
+                except Exception as close_exc:
+                    logger.debug("PostgreSQL rollback close error: %s", close_exc)
+            infra._pg_pool = None
+            semantic = None
+            procedural = None
 
         if working is not None and episodic is not None:
             infra.memory = MemoryManager(
@@ -825,22 +915,28 @@ class LitAgent:
     async def _evaluate(
         self,
         *,
-        query: str, survey: str, results: Mapping[str, Any],
-        phase: Literal['initial', 'post_rewrite'], parent_task_id: str = ''
+        query: str,
+        survey: str,
+        results: Mapping[str, Any],
+        phase: Literal["initial", "post_rewrite"],
+        parent_task_id: str = "",
     ) -> dict[str, Any]:
         """Run evaluators concurrently and serialize results by metric."""
-        if phase not in {'initial', 'post_rewrite'}:
-            raise ValueError(f'unsupported evaluation phase: {phase}')
+        if phase not in {"initial", "post_rewrite"}:
+            raise ValueError(f"unsupported evaluation phase: {phase}")
         if not self._evaluators:
             return {}
 
         task_id = f"evaluation.{phase}"
-        self._emit('subspan.start', {
-            'task_id': task_id,
-            'parent_task_id': parent_task_id,
-            'name': task_id,
-            'phase': phase,
-        })
+        self._emit(
+            "subspan.start",
+            {
+                "task_id": task_id,
+                "parent_task_id": parent_task_id,
+                "name": task_id,
+                "phase": phase,
+            },
+        )
         token = set_task_id(task_id)
         output: dict[str, Any] = {}
 
@@ -855,7 +951,7 @@ class LitAgent:
                     evaluator.evaluate(survey, context)
                     for evaluator in self._evaluators
                 ],
-                return_exceptions=True
+                return_exceptions=True,
             )
 
             for result in evaluated:
@@ -865,7 +961,7 @@ class LitAgent:
             for evaluator, result in zip(self._evaluators, evaluated):
                 if isinstance(result, BaseException):
                     logger.warning(
-                        f'Evaluator {evaluator.metric_name} failed error_type = {type(result).__name__}'
+                        f"Evaluator {evaluator.metric_name} failed error_type = {type(result).__name__}"
                     )
                     continue
 
@@ -878,11 +974,14 @@ class LitAgent:
             return output
         finally:
             reset_task_id(token)
-            self._emit("subspan.end", {
-                'task_id': task_id,
-                'output': output,
-                'phase': phase,
-            })
+            self._emit(
+                "subspan.end",
+                {
+                    "task_id": task_id,
+                    "output": output,
+                    "phase": phase,
+                },
+            )
 
     @staticmethod
     def _collect_extractions(results: dict[str, Any]) -> list[dict]:
@@ -896,7 +995,9 @@ class LitAgent:
                 return result
         return []
 
-    def _build_eval_context(self, *, query: str, survey: str, results: Mapping[str, Any]) -> dict[str, Any]:
+    def _build_eval_context(
+        self, *, query: str, survey: str, results: Mapping[str, Any]
+    ) -> dict[str, Any]:
         """Build paper, claim, and evidence context from extraction output."""
         extractions = self._collect_extractions(dict(results))
         ledger = collect_ledger(extractions)
@@ -913,17 +1014,17 @@ class LitAgent:
 
         selected: list[dict[str, Any]] = []
         selected_seen: set[str] = set()
-        adversarial = results.get('adversarial_review')
+        adversarial = results.get("adversarial_review")
         selection_summary = (
-            adversarial.get('evidence_selection')
+            adversarial.get("evidence_selection")
             if isinstance(adversarial, Mapping)
             else None
         )
         if (
             isinstance(selection_summary, Mapping)
-            and selection_summary.get('valid') is True
+            and selection_summary.get("valid") is True
         ):
-            sections = selection_summary.get('section_evidence_ids')
+            sections = selection_summary.get("section_evidence_ids")
             if isinstance(sections, Mapping):
                 for raw_ids in sections.values():
                     if not isinstance(raw_ids, list):
@@ -1044,7 +1145,12 @@ class LitAgent:
         original_survey = str(report_data.get("survey") or "")
         if not original_survey:
             return RewriteOutcome(
-                False, False, None, None, None, None,
+                False,
+                False,
+                None,
+                None,
+                None,
+                None,
                 "empty_original_survey",
             )
 
@@ -1055,7 +1161,12 @@ class LitAgent:
         )
         if not isinstance(diagnostics, list) or not diagnostics:
             return RewriteOutcome(
-                False, False, None, None, None, None,
+                False,
+                False,
+                None,
+                None,
+                None,
+                None,
                 "no_repairable_diagnostics",
             )
 
@@ -1115,12 +1226,21 @@ class LitAgent:
             reset_task_id(token)
 
         if candidate is None:
-            self._emit("subspan.end", {
-                "task_id": "evidence_rewrite",
-                "output": {"accepted": False, "reason": reason_code},
-            })
+            self._emit(
+                "subspan.end",
+                {
+                    "task_id": "evidence_rewrite",
+                    "output": {"accepted": False, "reason": reason_code},
+                },
+            )
             return RewriteOutcome(
-                True, False, None, None, None, None, reason_code,
+                True,
+                False,
+                None,
+                None,
+                None,
+                None,
+                reason_code,
             )
 
         # ── validation ───────────────────────────────────────────────
@@ -1130,20 +1250,28 @@ class LitAgent:
             evidence_ledger=ledger,
         )
         if not validation.accepted:
-            self._emit("subspan.end", {
-                "task_id": "evidence_rewrite",
-                "output": {
-                    "accepted": False,
-                    "reason": "validation_failed",
-                    "reason_codes": list(validation.reason_codes),
+            self._emit(
+                "subspan.end",
+                {
+                    "task_id": "evidence_rewrite",
+                    "output": {
+                        "accepted": False,
+                        "reason": "validation_failed",
+                        "reason_codes": list(validation.reason_codes),
+                    },
                 },
-            })
+            )
             logger.warning(
                 "Evidence rewrite rejected reason_codes=%s",
                 list(validation.reason_codes),
             )
             return RewriteOutcome(
-                True, False, candidate, validation, None, None,
+                True,
+                False,
+                candidate,
+                validation,
+                None,
+                None,
                 "validation_failed",
             )
 
@@ -1158,32 +1286,46 @@ class LitAgent:
         candidate_quality = self._derive_quality(candidate_evaluation)
 
         if self._passed_metric_regressed(initial_evaluation, candidate_evaluation):
-            self._emit("subspan.end", {
-                "task_id": "evidence_rewrite",
-                "output": {
-                    "accepted": False,
-                    "reason": "metric_regressed",
-                    "candidate_evaluation": candidate_evaluation,
+            self._emit(
+                "subspan.end",
+                {
+                    "task_id": "evidence_rewrite",
+                    "output": {
+                        "accepted": False,
+                        "reason": "metric_regressed",
+                        "candidate_evaluation": candidate_evaluation,
+                    },
                 },
-            })
+            )
             return RewriteOutcome(
-                True, False, candidate, validation,
-                candidate_evaluation, candidate_quality,
+                True,
+                False,
+                candidate,
+                validation,
+                candidate_evaluation,
+                candidate_quality,
                 "metric_regressed",
             )
 
         if candidate_quality["status"] != "passed":
-            self._emit("subspan.end", {
-                "task_id": "evidence_rewrite",
-                "output": {
-                    "accepted": False,
-                    "reason": "quality_still_failed",
-                    "candidate_quality": candidate_quality,
+            self._emit(
+                "subspan.end",
+                {
+                    "task_id": "evidence_rewrite",
+                    "output": {
+                        "accepted": False,
+                        "reason": "quality_still_failed",
+                        "candidate_quality": candidate_quality,
+                    },
                 },
-            })
+            )
             return RewriteOutcome(
-                True, False, candidate, validation,
-                candidate_evaluation, candidate_quality,
+                True,
+                False,
+                candidate,
+                validation,
+                candidate_evaluation,
+                candidate_quality,
                 "quality_still_failed",
             )
 
@@ -1192,18 +1334,25 @@ class LitAgent:
         report_data["evaluation"] = candidate_evaluation
         report_data["quality"] = candidate_quality
 
-        self._emit("subspan.end", {
-            "task_id": "evidence_rewrite",
-            "output": {
-                "accepted": True,
-                "reason": "committed",
-                "candidate_quality": candidate_quality,
+        self._emit(
+            "subspan.end",
+            {
+                "task_id": "evidence_rewrite",
+                "output": {
+                    "accepted": True,
+                    "reason": "committed",
+                    "candidate_quality": candidate_quality,
+                },
             },
-        })
+        )
         logger.info("Evidence rewrite committed")
         return RewriteOutcome(
-            True, True, candidate, validation,
-            candidate_evaluation, candidate_quality,
+            True,
+            True,
+            candidate,
+            validation,
+            candidate_evaluation,
+            candidate_quality,
             "committed",
         )
 
@@ -1236,66 +1385,33 @@ class LitAgent:
         return {"status": "passed", "failed_metrics": [], "unverified_metrics": []}
 
     async def cleanup(self) -> None:
-        """Flush tracing and close every connected backend."""
+        """Disconnect MCP and close each owned infrastructure handle once."""
         self._emit("cleanup.start", {"session_id": self._session_id})
         logger.info("Cleaning up LitAgent (session %s)...", self._session_id)
 
-        if self._trace_hook and hasattr(self._trace_hook, "flush"):
+        if self._mcp_bridge is not None:
+            bridge = self._mcp_bridge
+            self._mcp_bridge = None
             try:
-                self._trace_hook.flush()
-            except Exception as e:
-                logger.debug(f"Tracer flush error {e}")
-
-        if self._mcp_bridge:
-            try:
-                await self._mcp_bridge.disconnect_all()
-            except Exception as e:
-                logger.debug(f"MCP disconnect error: {e}")
+                await bridge.disconnect_all()
+            except BaseException as exc:
+                logger.debug("MCP disconnect error: %s", exc)
 
         infra = self._infra
-
-        if infra.memory:
-            for backend in ["working", "episodic", "semantic", "procedural"]:
-                b = getattr(infra.memory, backend, None)
-                if b:
-                    try:
-                        await b.close()
-                    except Exception as e:
-                        logger.debug(f"{backend} closed error {e}")
-
-        if infra.claims_index:
-            try:
-                await infra.claims_index.close()
-            except Exception as e:
-                logger.debug(f"ClaimsIndex close: {e}")
-
-        if infra.retriever:
-            try:
-                await infra.retriever._store.close()
-            except Exception as e:
-                logger.debug(f"VectorStore (retriever) close: {e}")
-
-        if infra._pg_pool:
-            try:
-                await infra._pg_pool.close()
-            except Exception as e:
-                logger.debug(f"PG pool close: {e}")
-
-        if infra._qdrant_client:
-            try:
-                await infra._qdrant_client.close()
-            except Exception as e:
-                logger.debug(f"Qdrant client close: {e}")
-
-        if infra._redis_client:
-            try:
-                await infra._redis_client.close()
-            except Exception as e:
-                logger.debug(f"Redis close: {e}")
+        self._infra = Infra()
+        await infra.close()
 
         self._wired = False
         self._emit("cleanup.complete", {"session_id": self._session_id})
-        logger.info("Litagent cleanup complete")
+
+        # Flush after cleanup.complete so terminal lifecycle events reach LangFuse.
+        if self._trace_hook and hasattr(self._trace_hook, "flush"):
+            try:
+                self._trace_hook.flush()
+            except BaseException as exc:
+                logger.debug("Tracer flush error: %s", exc)
+
+        logger.info("LitAgent cleanup complete")
 
     @staticmethod
     def _markdown_sections(text: str) -> list[tuple[int, str, str]]:
@@ -1320,21 +1436,25 @@ class LitAgent:
                 body.append(line)
 
         if current_heading is not None and current_level is not None:
-            sections.append(
-                (current_level, current_heading, "\n".join(body).strip())
-            )
+            sections.append((current_level, current_heading, "\n".join(body).strip()))
         return sections
 
     def _validate_rewrite_candidate(
-        self, *, original: str, candidate: str,
+        self,
+        *,
+        original: str,
+        candidate: str,
         evidence_ledger: Mapping[str, Mapping[str, Any]],
         allowed_removed_refs: Sequence[str] = (),
     ) -> RewriteValidation:
         reasons: list[str] = []
-        stripped = (candidate or '').strip()
+        stripped = (candidate or "").strip()
         if not stripped:
             return RewriteValidation(
-                False, ("empty_candidate",), (), (),
+                False,
+                ("empty_candidate",),
+                (),
+                (),
             )
         if stripped == (original or "").strip():
             reasons.append("identical_to_original")
@@ -1357,20 +1477,19 @@ class LitAgent:
             if heading not in candidate_headings:
                 reasons.append(f"missing_section:{heading}")
         retained_order = [
-            heading for heading in candidate_headings
+            heading
+            for heading in candidate_headings
             if heading in set(original_headings)
         ]
         if retained_order != [
-            heading for heading in original_headings
+            heading
+            for heading in original_headings
             if heading in set(candidate_headings)
         ]:
-            reasons.append('section_order_changed')
+            reasons.append("section_order_changed")
         # H1 is the document title; only H2 entries represent content sections.
-        if any(
-            level == 2 and not body
-            for level, _, body in candidate_sections
-        ):
-            reasons.append('empty_section_detected')
+        if any(level == 2 and not body for level, _, body in candidate_sections):
+            reasons.append("empty_section_detected")
 
         rewrite_cfg = self._config.eval.rewrite
         if original.strip():
@@ -1394,18 +1513,13 @@ class LitAgent:
 
         refs = extract_evidence_refs_ordered(candidate)
         unknown = tuple(
-            evidence_id for evidence_id in refs
-            if evidence_id not in evidence_ledger
+            evidence_id for evidence_id in refs if evidence_id not in evidence_ledger
         )
         if unknown:
             reasons.append("unknown_evidence_refs")
 
         removable = set(allowed_removed_refs)
-        removed = (
-            extract_evidence_refs(original)
-            - set(refs)
-            - removable
-        )
+        removed = extract_evidence_refs(original) - set(refs) - removable
         if removed:
             reasons.append("unexpected_removed_evidence_refs")
 

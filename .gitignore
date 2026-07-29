@@ -38,6 +38,13 @@ artifacts/*.log
 # Langfuse
 langfuse/
 
+# Local Corpus and persistence migration assets
+artifacts/corpus/raw/
+artifacts/corpus/parsed/
+artifacts/corpus/quarantine/
+artifacts/qdrant-migration/
+artifacts/benchmarks/runtime/
+
 # Survey 运行调试产物
 survey_run*.log
 survey_result.md

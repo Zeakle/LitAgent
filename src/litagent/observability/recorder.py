@@ -180,6 +180,7 @@ class RunRecorder:
             "elapsed_ms": None,
             "session_id": None,
             "config": {},
+            "config_fingerprint": None,
             "usage": {
                 "prompt_tokens": 0,
                 "completion_tokens": 0,
@@ -213,8 +214,10 @@ class RunRecorder:
         self._apply_event(event, payload, record["at"])
 
     def set_config_summary(self, summary: dict[str, Any]) -> None:
-        """Store a serializable summary of effective run configuration."""
-        self._artifact["config"] = _snapshot(summary)
+        """Store one canonical config summary and expose its fingerprint."""
+        snapshot = _snapshot(summary)
+        self._artifact["config"] = snapshot
+        self._artifact["config_fingerprint"] = snapshot.get("fingerprint")
 
     def capture_graph(self, graph: Any) -> None:
         """Capture the planned graph definition before execution."""
@@ -268,19 +271,37 @@ class RunRecorder:
             target["error"] = task.error
 
     def finalize(
-        self, report: dict[str, Any] | None = None, error: str | None = None
+        self,
+        report: dict[str, Any] | None = None,
+        error: str | None = None,
     ) -> dict[str, Any]:
-        """Finalize, persist, and return the terminal run artifact."""
-        self._artifact["status"] = "failed" if error else "completed"
+        """Finalize and persist one internally consistent terminal artifact."""
+        terminal_error = error
+        report_data = report or {}
+        report_fingerprint = report_data.get("config_fingerprint")
+        artifact_fingerprint = self._artifact.get("config_fingerprint")
+
+        if artifact_fingerprint is None and report_fingerprint:
+            # Non-flow callers may attach the identity through the report first.
+            self._artifact["config_fingerprint"] = report_fingerprint
+        elif (
+            terminal_error is None
+            and artifact_fingerprint
+            and report_fingerprint
+            and artifact_fingerprint != report_fingerprint
+        ):
+            terminal_error = "config_fingerprint_mismatch"
+
+        self._artifact["status"] = "failed" if terminal_error else "completed"
         self._artifact["completed_at"] = _now()
         self._artifact["elapsed_ms"] = int(
             (time.perf_counter() - self._started_monotonic) * 1000
         )
         self._artifact["report"] = _snapshot(report) if report is not None else None
-        self._artifact["error"] = error
-        report_data = report or {}
+        self._artifact["error"] = terminal_error
         self._artifact["quality"] = _snapshot(report_data.get("quality"))
         self._artifact["delivery"] = _snapshot(report_data.get("delivery"))
+
         statuses: dict[str, int] = {}
         unfinished_graph_tasks: list[str] = []
         for task in self._artifact["graph"]["tasks"].values():
@@ -289,12 +310,15 @@ class RunRecorder:
             if status in {"pending", "running"}:
                 unfinished_graph_tasks.append(task.get("task_id", ""))
         self._artifact["task_statuses"] = statuses
-        # A completed archive must not claim success with unfinished graph tasks.
-        if not error and unfinished_graph_tasks:
+
+        if self._artifact["error"] is None and unfinished_graph_tasks:
             self._artifact["status"] = "failed"
             self._artifact["error"] = "incomplete_graph_state"
-        if not error:
-            self._close_unfinished_nodes()
+
+        # Every persisted terminal artifact must close lifecycle nodes even when
+        # the run itself failed or its graph snapshot was incomplete.
+        self._close_unfinished_nodes()
+
         self._repository.save(self._artifact)
         return self.snapshot()
 

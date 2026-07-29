@@ -10,34 +10,34 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from litagent.agents.adversarial import AdversarialReviewWorker
+from litagent.agents.reviewer import ReviewerWorker
+from litagent.agents.synthesis import SynthesisWorker
 from litagent.config import (
-    AppConfig,
+    AdversarialConfig,
     AgentConfig,
+    AppConfig,
+    ContextConfig,
+    ExtractorConfig,
+    LLMConfig,
     LoggingConfig,
     MemoryConfig,
-    ContextConfig,
-    OrchestratorConfig,
-    LLMConfig,
-    AdversarialConfig,
-    SafetyConfig,
-    ResilienceConfig,
-    ExtractorConfig,
     ObservabilityConfig,
+    OrchestratorConfig,
+    ResilienceConfig,
+    SafetyConfig,
 )
 from litagent.llm.client import BaseLLMClient, LLMResponse, MockLLMClient
-from litagent.agents.synthesis import SynthesisWorker
-from litagent.agents.reviewer import ReviewerWorker
-from litagent.agents.adversarial import AdversarialReviewWorker
-from litagent.runner import LitAgent, Infra
-from litagent.memory.working import WorkingMemory
 from litagent.memory.episodic import EpisodicMemory
-from litagent.memory.semantic import SemanticMemory
 from litagent.memory.procedural import ProceduralMemory
+from litagent.memory.semantic import SemanticMemory
+from litagent.memory.working import WorkingMemory
+from litagent.observability.recorder import RedactingTraceHook
+from litagent.orchestrator.task_graph import SubTask, TaskGraph
 from litagent.rag.claims_index import ClaimsIndex
 from litagent.rag.interfaces import Reranker, ScoredDoc, VectorStore
 from litagent.rag.retriever import HybridRetriever
-from litagent.orchestrator.task_graph import TaskGraph, SubTask
-from litagent.observability.recorder import RedactingTraceHook
+from litagent.runner import Infra, LitAgent
 
 
 def _minimal_config(**overrides) -> AppConfig:
@@ -106,10 +106,10 @@ class TestBackendClose:
     async def test_working_memory_close(self):
         """Working-memory cleanup closes its Redis client."""
         redis = MagicMock()
-        redis.close = AsyncMock()
+        redis.aclose = AsyncMock()
         wm = WorkingMemory(redis, MemoryConfig())
         await wm.close()
-        redis.close.assert_awaited_once()
+        redis.aclose.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_episodic_memory_close(self):
@@ -918,7 +918,7 @@ class TestRewriteValidation:
     """Tests validation of evidence-based rewrites."""
 
     def _make_agent(self):
-        from litagent.config import AppConfig, AgentConfig, LoggingConfig
+        from litagent.config import AgentConfig, AppConfig, LoggingConfig
         from litagent.runner import LitAgent
 
         return LitAgent(AppConfig(agent=AgentConfig(), logging=LoggingConfig()))
