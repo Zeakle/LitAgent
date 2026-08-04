@@ -71,6 +71,7 @@ def _rag_summary(config: AppConfig) -> dict[str, Any] | None:
         "top_k",
         "reranker_enabled",
         "writeback_enabled",
+        "benchmark_collection",
     )
 
     return {field: getattr(rag, field) for field in allowed if hasattr(rag, field)}

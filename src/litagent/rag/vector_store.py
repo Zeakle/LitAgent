@@ -1,25 +1,31 @@
 """Implement Qdrant dense-plus-BM25 retrieval with rank fusion."""
 
+import asyncio
 import uuid
 
+from langchain_core.documents import Document
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import (
     Distance,
-    VectorParams,
-    SparseVectorParams,
-    Modifier,
-    PointStruct,
-    Prefetch,
-    FusionQuery,
-    Fusion,
 )
 from qdrant_client.models import Document as QdrantDocument
-from langchain_core.documents import Document
+from qdrant_client.models import (
+    Fusion,
+    FusionQuery,
+    Modifier,
+    PointIdsList,
+    PointStruct,
+    Prefetch,
+    SparseVectorParams,
+    VectorParams,
+)
 
-from litagent.rag.interfaces import VectorStore, ScoredDoc
-from litagent.rag.embedder import get_embedder
 from litagent.config import MemoryConfig
 from litagent.logging import get_logger
+from litagent.rag.corpus import CorpusStats, CorpusStatsStatus
+from litagent.rag.embedder import get_embedder
+from litagent.rag.interfaces import ScoredDoc, VectorStore
+from litagent.rag.models import ContentChunk, ScoredChunkHit
 
 logger = get_logger("rag.vector_store")
 
@@ -30,9 +36,18 @@ SPARSE_KEY = "bm25_sparse"
 class QdrantVectorStore(VectorStore):
     """Store documents in named dense and sparse Qdrant indexes."""
 
-    def __init__(self, client: AsyncQdrantClient, collection_name: str):
+    def __init__(
+        self,
+        client: AsyncQdrantClient,
+        collection_name: str,
+        *,
+        identity=None,
+        embedder=None,
+    ):
         self._client = client
         self._collection = collection_name
+        self._identity = identity
+        self._embedder = embedder or get_embedder()
 
     @classmethod
     async def ensure_compatible(
@@ -40,6 +55,9 @@ class QdrantVectorStore(VectorStore):
         client: AsyncQdrantClient,
         collection_name: str,
         dim: int,
+        *,
+        identity=None,
+        embedder=None,
     ) -> "QdrantVectorStore":
         """Ensure the collection exposes the expected named dense vector.
 
@@ -63,7 +81,12 @@ class QdrantVectorStore(VectorStore):
             info = await client.get_collection(collection_name)
         except Exception:
             await _create()
-            return cls(client, collection_name)
+            return cls(
+                client,
+                collection_name,
+                identity=identity,
+                embedder=embedder,
+            )
 
         vectors = info.config.params.vectors
         if not (isinstance(vectors, dict) and DENSE_KEY in vectors):
@@ -83,7 +106,12 @@ class QdrantVectorStore(VectorStore):
             )
             await client.delete_collection(collection_name)
             await _create()
-        return cls(client, collection_name)
+        return cls(
+            client,
+            collection_name,
+            identity=identity,
+            embedder=embedder,
+        )
 
     @classmethod
     async def connect(
@@ -111,6 +139,39 @@ class QdrantVectorStore(VectorStore):
             )
         await self._client.upsert(collection_name=self._collection, points=points)
         logger.debug(f"Added {len(points)} points to {self._collection}")
+
+    async def upsert_chunks(self, writes) -> None:
+        """Upsert deterministic dense/sparse points with safe payloads."""
+        points = [
+            PointStruct(
+                id=write.point_id,
+                vector={
+                    DENSE_KEY: write.vector,
+                    SPARSE_KEY: QdrantDocument(
+                        text=write.chunk.text,
+                        model="Qdrant/bm25",
+                    ),
+                },
+                payload=write.payload,
+            )
+            for write in writes
+        ]
+        if points:
+            await self._client.upsert(
+                collection_name=self._collection,
+                points=points,
+                wait=True,
+            )
+
+    async def update_payloads(self, updates) -> None:
+        """update paper metadata without replacing vectors."""
+        for update in updates:
+            await self._client.set_payload(
+                collection_name=self._collection,
+                payload=update.payload,
+                points=[update.point_id],
+                wait=True,
+            )
 
     async def search(self, query: str, top_k: int = 20) -> list[ScoredDoc]:
         """Fuse dense and BM25 candidates with reciprocal-rank fusion."""
@@ -141,6 +202,84 @@ class QdrantVectorStore(VectorStore):
                 )
                 scored.append(ScoredDoc(doc=doc, score=r.score if r.score else 0))
         return scored
+
+    async def search_chunks(self, query: str, top_k: int) -> list[ScoredChunkHit]:
+        """Run dense/BM25 RRF and restore typed chunk hits."""
+        query_vec = await asyncio.to_thread(self._embedder.embed, query)
+        response = await self._client.query_points(
+            collection_name=self._collection,
+            prefetch=[
+                Prefetch(query=query_vec, using=DENSE_KEY, limit=top_k * 2),
+                Prefetch(
+                    query=QdrantDocument(text=query, model="Qdrant/bm25"),
+                    using=SPARSE_KEY,
+                    limit=top_k * 2,
+                ),
+            ],
+            query=FusionQuery(fusion=Fusion.RRF),
+            limit=top_k,
+            with_payload=True,
+        )
+        hits = []
+        for point in response.points:
+            payload = point.payload or {}
+            try:
+                hits.append(
+                    ScoredChunkHit(
+                        chunk=ContentChunk.model_validate(payload["chunk"]),
+                        title=payload["title"],
+                        abstract=payload.get("abstract", ""),
+                        authors=payload.get("authors", []),
+                        year=payload.get("year"),
+                        sources=payload.get("sources", []),
+                        warnings=payload.get("warnings", []),
+                        score=float(point.score or 0.0),
+                        collection=payload["collection"],
+                        corpus_version=payload["corpus_version"],
+                        schema_version=payload["schema_version"],
+                        parser_version=payload["parser_version"],
+                        chunking_version=payload["chunking_version"],
+                        embedding_model=payload["embedding_model"],
+                    )
+                )
+            except (KeyError, TypeError, ValueError):
+                logger.warning(
+                    "Skipping malformed paper payload point_id=%s",
+                    point.id,
+                )
+        return hits
+
+    async def stats(self) -> CorpusStats:
+        """Distinguish a missing collection from empty and ready indexes."""
+        exists = await self._client.collection_exists(self._collection)
+        if not exists:
+            return CorpusStats(
+                status=CorpusStatsStatus.NOT_FOUND,
+                collection_name=self._collection,
+                points_count=0,
+                identity_fingerprint=(
+                    self._identity.fingerprint if self._identity else "unknown"
+                ),
+            )
+        info = await self._client.get_collection(self._collection)
+        count = int(info.points_count or 0)
+        return CorpusStats(
+            status=(CorpusStatsStatus.READY if count else CorpusStatsStatus.EMPTY),
+            collection_name=self._collection,
+            points_count=count,
+            identity_fingerprint=(
+                self._identity.fingerprint if self._identity else "unknown"
+            ),
+        )
+
+    async def delete_points(self, point_ids) -> None:
+        """Delete deterministic stale points."""
+        if point_ids:
+            await self._client.delete(
+                collection_name=self._collection,
+                points_selector=PointIdsList(points=list(point_ids)),
+                wait=True,
+            )
 
     async def close(self) -> None:
         """Close the Qdrant client."""

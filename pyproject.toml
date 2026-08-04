@@ -22,6 +22,7 @@ dependencies = [
     "langchain-text-splitters>=0.3",
     "openai>=1.0",
     "mcp>=1.27,<2",
+    "pymupdf>=1.24,<2",
 ]
 
 [project.scripts]
@@ -52,6 +53,7 @@ ragas = [
 litagent = [
     "skills/*/SKILL.md",
     "static/flow-demo/*",
+    "rag/*.sql",
 ]
 
 [tool.setuptools.packages.find]

@@ -4,9 +4,15 @@ from __future__ import annotations
 
 from typing import Any
 
+from litagent.logging import get_logger
 from litagent.orchestrator.scheduler import Worker
 from litagent.orchestrator.task_graph import SubTask
-from litagent.logging import get_logger
+from litagent.rag.models import (
+    ContentChunk,
+    ContentScope,
+    PaperCandidate,
+    merge_paper_candidates,
+)
 
 logger = get_logger("agent.dedup")
 
@@ -20,17 +26,57 @@ class DedupWorker(Worker):
         return "dedup"
 
     async def execute(self, task: SubTask) -> Any:
-        """Merge upstream results and keep one paper per normalized title."""
+        """Merge upstream candidates and preserve richer content."""
         upstream = task.input_data.get("upstream_results", {})
+        candidates = []
 
-        all_papers: list[dict] = []
-        for task_id, papers in upstream.items():
-            if isinstance(papers, list):
-                all_papers.extend(papers)
-
-        deduped = self._dedup_by_title(all_papers)
-        logger.info(f"Dedup: {len(all_papers)} -> {len(deduped)} papers")
-        return deduped
+        for papers in upstream.values():
+            if not isinstance(papers, list):
+                continue
+            for paper in papers:
+                if not isinstance(paper, dict):
+                    continue
+                try:
+                    candidates.append(PaperCandidate.model_validate(paper))
+                except ValueError:
+                    title = str(paper.get("title") or "").strip()
+                    paper_id = str(paper.get("paper_id") or "").strip()
+                    if not title or not paper_id:
+                        continue
+                    abstract = str(paper.get("abstract") or "").strip()
+                    candidates.append(
+                        PaperCandidate(
+                            paper_id=paper_id,
+                            title=title,
+                            abstract=abstract,
+                            citation_count=max(
+                                int(paper.get("citation_count") or 0),
+                                0,
+                            ),
+                            source=str(paper.get("source") or "legacy"),
+                            content_scope=(
+                                ContentScope.ABSTRACT
+                                if abstract
+                                else ContentScope.METADATA_ONLY
+                            ),
+                            chunks=(
+                                [
+                                    ContentChunk.from_text(
+                                        paper_id=paper_id,
+                                        chunk_key="abstract",
+                                        text=abstract,
+                                        section="abstract",
+                                        content_scope=ContentScope.ABSTRACT,
+                                    )
+                                ]
+                                if abstract
+                                else []
+                            ),
+                        )
+                    )
+        merged = merge_paper_candidates(candidates)
+        logger.info("Dedup: %d -> %d papers", len(candidates), len(merged))
+        return [candidate.to_dag_dict() for candidate in merged]
 
     def _dedup_by_title(self, papers: list[dict]) -> list[dict]:
         """Prefer the most-cited paper when normalized titles collide."""

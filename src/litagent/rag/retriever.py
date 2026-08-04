@@ -3,11 +3,65 @@
 import time
 import uuid
 
-from litagent.rag.interfaces import ScoredDoc, Reranker, VectorStore
-from litagent.observability.context import get_task_id
 from litagent.logging import get_logger
+from litagent.observability.context import get_task_id
+from litagent.rag.interfaces import Reranker, ScoredDoc, VectorStore
+from litagent.rag.models import (
+    ContentChunk,
+    ContentScope,
+    ScoredChunkHit,
+    ScoredPaperHit,
+)
 
 logger = get_logger("rag.retriever")
+
+
+def aggregate_chunk_hits(
+    hits: list[ScoredChunkHit], *, top_k: int
+) -> list[ScoredPaperHit]:
+    """Group chunk hits by paper while preserving best query score."""
+    grouped: dict[str, list[ScoredChunkHit]] = {}
+    for hit in hits:
+        grouped.setdefault(hit.chunk.paper_id, []).append(hit)
+
+    papers = []
+    for paper_hits in grouped.values():
+        ordered = sorted(paper_hits, key=lambda item: item.score, reverse=True)
+        first = ordered[0]
+        chunks = list({hit.chunk.chunk_key: hit.chunk for hit in paper_hits}.values())
+        abstract = next(
+            (chunk.text for chunk in chunks if chunk.chunk_key == "abstract"),
+            first.abstract,
+        )
+        scope = (
+            ContentScope.SELECTED_FULLTEXT
+            if any(
+                chunk.content_scope is ContentScope.SELECTED_FULLTEXT
+                for chunk in chunks
+            )
+            else (ContentScope.ABSTRACT if abstract else ContentScope.METADATA_ONLY)
+        )
+        papers.append(
+            ScoredPaperHit(
+                paper_id=first.chunk.paper_id,
+                title=first.title,
+                abstract=abstract,
+                authors=first.authors,
+                year=first.year,
+                sources=first.sources,
+                warnings=first.warnings,
+                content_scope=scope,
+                chunks=sorted(chunks, key=lambda item: item.chunk_key),
+                score=first.score,
+                collection=first.collection,
+                corpus_version=first.corpus_version,
+                schema_version=first.schema_version,
+                parser_version=first.parser_version,
+                chunking_version=first.chunking_version,
+                embedding_model=first.embedding_model,
+            )
+        )
+    return sorted(papers, key=lambda item: item.score, reverse=True)[:top_k]
 
 
 class HybridRetriever:
@@ -81,3 +135,14 @@ class HybridRetriever:
                 },
             )
             raise
+
+    async def search_papers(
+        self,
+        query: str,
+        top_k: int = 20,
+        candidate_k: int | None = None,
+    ) -> list[ScoredPaperHit]:
+        """Retrieve versioned chunks and aggregate them into parent papers."""
+        requested = max(candidate_k or top_k * 2, top_k)
+        hits = await self._store.search_chunks(query, requested)
+        return aggregate_chunk_hits(hits, top_k=top_k)

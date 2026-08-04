@@ -68,6 +68,8 @@ from litagent.observability.tracing import LangFuseTracer
 from litagent.orchestrator.scheduler import Scheduler, Worker
 from litagent.orchestrator.task_graph import TaskGraph
 from litagent.rag.claims_index import ClaimsIndex
+from litagent.rag.corpus import CollectionIdentity
+from litagent.rag.embedder import LocalEmbedder
 from litagent.rag.interfaces import Reranker
 from litagent.rag.reranker import CrossEncoderReranker
 from litagent.rag.retriever import HybridRetriever
@@ -580,7 +582,10 @@ class LitAgent:
         )
         workers.append(self._search)
 
-        self._recall = RecallWorker(retriever=self._infra.retriever)
+        self._recall = RecallWorker(
+            retriever=self._infra.retriever,
+            trace_hook=self._trace_hook,
+        )
         workers.append(self._recall)
 
         self._dedup = DedupWorker()
@@ -821,20 +826,31 @@ class LitAgent:
             infra.claims_index = ClaimsIndex(qdrant_client, trace_hook=self._trace_hook)
 
             try:
+                if not cfg.rag.enabled:
+                    raise ConfigError("RAG disabled by configuration")
+                paper_identity = CollectionIdentity.from_config(cfg.rag)
+                paper_embedder = LocalEmbedder(cfg.rag.embedding_model)
+                paper_dim = await asyncio.to_thread(lambda: paper_embedder.dim)
                 vector_store = await QdrantVectorStore.ensure_compatible(
                     qdrant_client,
-                    "papers",
-                    dim,
+                    paper_identity.collection_name,
+                    paper_dim,
+                    identity=paper_identity,
+                    embedder=paper_embedder,
                 )
-                infra.reranker = await self._create_reranker_async()
+                infra.reranker = (
+                    await self._create_reranker_async()
+                    if cfg.rag.reranker_enabled
+                    else None
+                )
                 infra.retriever = HybridRetriever(
                     vector_store,
                     infra.reranker,
                     trace_hook=self._trace_hook,
                 )
-            except ConfigError as exc:
+            except Exception as exc:
                 logger.warning(
-                    "Infra: RAG disabled pending papers schema migration (%s)",
+                    "Infra: RAG unavailable (%s)",
                     exc,
                 )
             logger.info("Infra: Qdrant connected (Episodic + Claims + Papers)")

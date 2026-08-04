@@ -6,11 +6,11 @@ from typing import Any
 
 import pytest
 
-from litagent.orchestrator.task_graph import SubTask
-from litagent.agents.search import SearchWorker
 from litagent.agents.dedup import DedupWorker
 from litagent.agents.extractor import ExtractorWorker
 from litagent.agents.graph import GraphWorker
+from litagent.agents.search import SearchWorker
+from litagent.orchestrator.task_graph import SubTask
 from litagent.tools.executor import ToolExecutor, ToolResult
 from litagent.tools.registry import ToolRegistry
 
@@ -181,7 +181,7 @@ class TestGraphWorker:
         assert w.agent_type == "graph"
 
 
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from litagent.tools.executor import ToolResult
 
@@ -195,7 +195,10 @@ class TestSearchWorkerProfile:
         executor = MagicMock(spec=ToolExecutor)
         executor.execute = AsyncMock(
             return_value=ToolResult(
-                name="test_tool", args={}, output=[{"title": "P"}], error=None
+                name="test_tool",
+                args={},
+                output=[{"title": "P", "paper_id": "2401.00001", "source": "arxiv"}],
+                error=None,
             )
         )
         memory = AsyncMock()
@@ -269,7 +272,10 @@ class TestSearchWorkerProfile:
         executor = MagicMock(spec=ToolExecutor)
         executor.execute = AsyncMock(
             return_value=ToolResult(
-                name="test_tool", args={}, output=[{"title": "X"}], error=None
+                name="test_tool",
+                args={},
+                output=[{"title": "X", "paper_id": "2401.00002", "source": "arxiv"}],
+                error=None,
             )
         )
         memory = AsyncMock()
@@ -291,7 +297,10 @@ class TestSearchWorkerProfile:
         executor = MagicMock(spec=ToolExecutor)
         executor.execute = AsyncMock(
             return_value=ToolResult(
-                name="test_tool", args={}, output=[{"title": "X"}], error=None
+                name="test_tool",
+                args={},
+                output=[{"title": "X", "paper_id": "2401.00002", "source": "arxiv"}],
+                error=None,
             )
         )
         sw = SearchWorker(executor=executor, memory_manager=None)
@@ -540,7 +549,7 @@ class TestQueryIntent:
     """Tests query-intent parsing."""
 
     def test_topic(self):
-        from litagent.agents.planner import classify_query_intent, QueryIntent
+        from litagent.agents.planner import QueryIntent, classify_query_intent
 
         assert classify_query_intent("few-shot learning in CV") == QueryIntent.TOPIC
         assert (
@@ -548,26 +557,26 @@ class TestQueryIntent:
         )
 
     def test_arxiv_new_style(self):
-        from litagent.agents.planner import classify_query_intent, QueryIntent
+        from litagent.agents.planner import QueryIntent, classify_query_intent
 
         assert classify_query_intent("2401.00001") == QueryIntent.ARXIV_ID
         assert classify_query_intent("2401.00001v2") == QueryIntent.ARXIV_ID
         assert classify_query_intent("arXiv:2401.00001") == QueryIntent.ARXIV_ID
 
     def test_arxiv_legacy(self):
-        from litagent.agents.planner import classify_query_intent, QueryIntent
+        from litagent.agents.planner import QueryIntent, classify_query_intent
 
         assert classify_query_intent("cs.CL/0301001") == QueryIntent.ARXIV_ID
         assert classify_query_intent("hep-th/9901001v1") == QueryIntent.ARXIV_ID
 
     def test_doi(self):
-        from litagent.agents.planner import classify_query_intent, QueryIntent
+        from litagent.agents.planner import QueryIntent, classify_query_intent
 
         assert classify_query_intent("10.1038/nature12373") == QueryIntent.DOI
         assert classify_query_intent("doi:10.1145/3292500.3330701") == QueryIntent.DOI
 
     def test_url_wins_over_embedded_id(self):
-        from litagent.agents.planner import classify_query_intent, QueryIntent
+        from litagent.agents.planner import QueryIntent, classify_query_intent
 
         assert (
             classify_query_intent("https://arxiv.org/abs/2401.00001") == QueryIntent.URL
@@ -656,20 +665,30 @@ class TestRecallWorker:
     """Tests semantic-memory recall."""
 
     @staticmethod
-    def _scored_doc():
-        class _Doc:
-            """Minimal document fixture."""
+    def _scored_hit():
+        from litagent.rag.models import ContentChunk, ContentScope, ScoredPaperHit
 
-            metadata = {"arxiv_id": "2401.00001", "title": "T"}
-            page_content = "abstract text " * 100
-
-        class _SD:
-            """Minimal scored-document fixture."""
-
-            doc = _Doc()
-            score = 0.9
-
-        return _SD()
+        chunk = ContentChunk.from_text(
+            paper_id="arxiv:2401.00001",
+            chunk_key="abstract",
+            text="abstract text",
+            section="abstract",
+            content_scope=ContentScope.ABSTRACT,
+        )
+        return ScoredPaperHit(
+            paper_id="arxiv:2401.00001",
+            title="T",
+            abstract="abstract text",
+            content_scope=ContentScope.ABSTRACT,
+            chunks=[chunk],
+            score=0.9,
+            collection="papers",
+            corpus_version="v1",
+            schema_version="paper-v1",
+            parser_version="pymupdf-v1",
+            chunking_version="page-block-v1",
+            embedding_model="all-MiniLM-L6-v2",
+        )
 
     @pytest.mark.asyncio
     async def test_no_retriever_returns_empty(self):
@@ -710,7 +729,7 @@ class TestRecallWorker:
         from litagent.agents.recall import RecallWorker
 
         retriever = MagicMock()
-        retriever.search = AsyncMock(return_value=[self._scored_doc()])
+        retriever.search_papers = AsyncMock(return_value=[self._scored_hit()])
         w = RecallWorker(retriever=retriever)
         result = await w.execute(
             SubTask(
@@ -722,7 +741,7 @@ class TestRecallWorker:
         )
         assert len(result) == 1
         p = result[0]
-        assert p["paper_id"] == "2401.00001"
+        assert p["paper_id"] == "arxiv:2401.00001"
         assert p["title"] == "T"
         assert p["source"] == "rag_index"
         assert p["score"] == 0.9
@@ -741,12 +760,12 @@ class TestRecallWorker:
         graph = await planner.plan("topic")
 
         retriever = MagicMock()
-        retriever.search = AsyncMock(return_value=[])
+        retriever.search_papers = AsyncMock(return_value=[])
         w = RecallWorker(retriever=retriever)
         for t in graph.tasks.values():
             if t.agent_type == "recall":
                 await w.execute(t)
-        assert retriever.search.await_count == 3
+        assert retriever.search_papers.await_count == 3
 
 
 class TestSearchWorkerPureExternal:
@@ -765,7 +784,7 @@ class TestSearchWorkerPureExternal:
             return_value=ToolResult(
                 name="t",
                 args={},
-                output=[{"title": "P", "source": "arxiv"}],
+                output=[{"title": "P", "source": "arxiv", "paper_id": "2401.00001"}],
                 error=None,
             )
         )
@@ -778,7 +797,20 @@ class TestSearchWorkerPureExternal:
                 input_data={"source": "arxiv", "query": "q"},
             )
         )
-        assert result == [{"title": "P", "source": "arxiv"}]
+        assert result == [
+            {
+                "paper_id": "arxiv:2401.00001",
+                "title": "P",
+                "abstract": "",
+                "authors": [],
+                "citation_count": 0,
+                "source": "arxiv",
+                "content_scope": "metadata_only",
+                "chunks": [],
+                "provenance": [],
+                "warnings": [],
+            }
+        ]
 
 
 class TestEvidenceLedger:
@@ -909,7 +941,7 @@ class TestSynthesisEvidenceCitation:
         assert len(result["evidence_selection"]["selected_items"]) > 0
 
     def test_rewrite_messages_carry_draft_ledger_diagnostics(self):
-        from litagent.agents.synthesis import SynthesisWorker, REWRITE_INSTRUCTIONS
+        from litagent.agents.synthesis import REWRITE_INSTRUCTIONS, SynthesisWorker
 
         assert "NEVER add new paper titles" in REWRITE_INSTRUCTIONS
         w = SynthesisWorker(llm=MagicMock())
@@ -929,7 +961,7 @@ class TestFaithfulnessDiagnostic:
 
     @staticmethod
     def _cfg():
-        from litagent.config import AppConfig, AgentConfig, LoggingConfig
+        from litagent.config import AgentConfig, AppConfig, LoggingConfig
 
         return AppConfig(agent=AgentConfig(), logging=LoggingConfig())
 
@@ -1007,8 +1039,8 @@ class TestFaithfulnessDiagnostic:
 
     @pytest.mark.asyncio
     async def test_diagnose_without_llm_or_ledger_marks_skipped(self):
-        from litagent.eval.ragas_eval import RagasFaithfulnessEvaluator
         from litagent.eval.base import CTX_EVIDENCE
+        from litagent.eval.ragas_eval import RagasFaithfulnessEvaluator
 
         ev = RagasFaithfulnessEvaluator(self._cfg())
         out = await ev._diagnose("survey", self._context())

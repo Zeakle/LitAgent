@@ -1,7 +1,7 @@
 """Define configuration models and load validated application settings."""
 
-import os
 import math
+import os
 from pathlib import Path
 from typing import Literal
 
@@ -188,6 +188,48 @@ class RelevanceConfig(BaseModel):
         return self
 
 
+class RAGConfig(BaseModel):
+    """Configure versioned paper-corpus ingestion and retrieval."""
+
+    enabled: bool = True
+    paper_collection: str = Field(default="papers", min_length=1)
+    benchmark_collection: str = Field(
+        default="papers_benchmark",
+        min_length=1,
+    )
+    claims_collection: str = Field(default="claims", min_length=1)
+    corpus_version: str = Field(default="v1", min_length=1)
+    schema_version: str = Field(default="paper-v1", min_length=1)
+    parser_version: str = Field(default="pymupdf-v1", min_length=1)
+    chunking_version: str = Field(default="page-block-v1", min_length=1)
+    embedding_model: str = Field(
+        default="all-MiniLM-L6-v2",
+        min_length=1,
+    )
+    content_mode: Literal[
+        "abstract",
+        "abstract_and_selected_fulltext",
+    ] = "abstract"
+    candidate_k: int = Field(default=40, ge=1, le=500)
+    top_k: int = Field(default=20, ge=1, le=100)
+    reranker_enabled: bool = True
+    writeback_enabled: bool = False
+    manifest_path: str = "corpus/manifest.yaml"
+    raw_root: str = "artifacts/corpus/raw"
+    quarantine_root: str = "artifacts/corpus/quarantine"
+    max_pdf_bytes: int = Field(default=50 * 1024 * 1024, ge=1024)
+
+    @model_validator(mode="after")
+    def _validate_retrieval_limits(self):
+        if self.candidate_k < self.top_k:
+            raise ValueError("rag.candidate_k must be >= rag.top_k")
+        if self.paper_collection == self.benchmark_collection:
+            raise ValueError(
+                "rag.paper_collection and benchmark_collection must differ"
+            )
+        return self
+
+
 class EvalConfig(BaseModel):
     """Configure evaluator and evidence-rewrite limits."""
 
@@ -212,6 +254,7 @@ class AppConfig(BaseModel):
     resilience: ResilienceConfig = ResilienceConfig()
     extractor: ExtractorConfig = ExtractorConfig()
     relevance: RelevanceConfig = RelevanceConfig()
+    rag: RAGConfig = RAGConfig()
     observability: ObservabilityConfig = ObservabilityConfig()
     eval: EvalConfig = EvalConfig()
     planner: PlannerConfig = PlannerConfig()

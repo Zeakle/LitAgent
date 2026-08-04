@@ -8,10 +8,11 @@ from dataclasses import asdict, dataclass
 from enum import Enum
 from typing import Any
 
+from litagent.logging import get_logger
 from litagent.memory.manager import MemoryManager
 from litagent.orchestrator.scheduler import Worker
 from litagent.orchestrator.task_graph import SubTask
-from litagent.logging import get_logger
+from litagent.rag.models import PaperCandidate
 from litagent.tools.executor import ToolExecutor, ToolResult
 
 logger = get_logger("agents.search")
@@ -120,8 +121,18 @@ class SearchWorker(Worker):
                 from_fallback=result.from_fallback,
             )
 
-        papers = [paper for paper in result.output if isinstance(paper, dict)]
-        malformed_count = len(result.output) - len(papers)
+        normalized = []
+        malformed_count = 0
+        for raw in result.output:
+            if not isinstance(raw, dict):
+                malformed_count += 1
+                continue
+            try:
+                normalized.append(PaperCandidate.from_external(raw).to_dag_dict())
+            except (TypeError, ValueError):
+                malformed_count += 1
+        papers = normalized
+
         if malformed_count and not papers:
             return [], SearchSourceOutcome(
                 task_id=task_id,

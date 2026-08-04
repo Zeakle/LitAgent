@@ -47,6 +47,26 @@ relevance:
   cross_encoder_min_score: null
   lexical_min_score: 0.0
 
+rag:
+  enabled: true
+  paper_collection: "papers"
+  benchmark_collection: "papers_benchmark"
+  claims_collection: "claims"
+  corpus_version: "v1"
+  schema_version: "paper-v1"
+  parser_version: "pymupdf-v1"
+  chunking_version: "page-block-v1"
+  embedding_model: "all-MiniLM-L6-v2"
+  content_mode: "abstract"
+  candidate_k: 40
+  top_k: 20
+  reranker_enabled: true
+  writeback_enabled: false
+  manifest_path: "corpus/manifest.yaml"
+  raw_root: "artifacts/corpus/raw"
+  quarantine_root: "artifacts/corpus/quarantine"
+  max_pdf_bytes: 52428800
+
 adversarial:
   max_rounds: 3
   pass_threshold: 0.8  # Reviewer评分 >= 0.8是未通过

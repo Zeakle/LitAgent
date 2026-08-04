@@ -19,6 +19,7 @@ build/
 
 # 技术知识库 (本地学习资料，不上库)
 kb/
+architecture/
 
 # 虚拟环境
 .venv/

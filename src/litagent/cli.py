@@ -6,13 +6,14 @@ import argparse
 import asyncio
 import json
 import sys
+from pathlib import Path
 
 from litagent.config import load_config
 from litagent.runner import LitAgent, derive_delivery
 
 
-def main() -> None:
-    """Parse arguments and dispatch the selected command."""
+def build_parser() -> argparse.ArgumentParser:
+    """Build the CLI grammar without executing a command."""
     parser = argparse.ArgumentParser(
         prog="litagent",
         description="LitAgent — Multi-agent adversarial literature review framework",
@@ -50,6 +51,47 @@ def main() -> None:
         help="Output format",
     )
 
+    # Corpus command
+    corpus = subparsers.add_parser(
+        "corpus",
+        help="Validate, ingest, inspect, or rebuild the paper corpus",
+    )
+    corpus_sub = corpus.add_subparsers(
+        dest="corpus_command",
+        required=True,
+    )
+
+    validate = corpus_sub.add_parser("validate")
+    validate.add_argument("--manifest", required=True)
+
+    ingest = corpus_sub.add_parser("ingest")
+    ingest.add_argument("--manifest", required=True)
+    ingest.add_argument("--resume", action="store_true")
+
+    stats = corpus_sub.add_parser("stats")
+    stats.add_argument(
+        "--purpose",
+        choices=["runtime", "benchmark"],
+        default="runtime",
+    )
+
+    rebuild = corpus_sub.add_parser("rebuild")
+    rebuild.add_argument("--manifest", required=True)
+    rebuild.add_argument("--yes", action="store_true")
+
+    quarantine = corpus_sub.add_parser("quarantine")
+    quarantine_sub = quarantine.add_subparsers(
+        dest="quarantine_command",
+        required=True,
+    )
+    quarantine_sub.add_parser("list")
+
+    return parser
+
+
+def main() -> None:
+    """Parse arguments and dispatch the selected command."""
+    parser = build_parser()
     args = parser.parse_args()
 
     try:
@@ -72,6 +114,168 @@ async def _dispatch_async(args: argparse.Namespace) -> None:
         await _cmd_survey(args)
     elif args.command == "tools":
         _cmd_tools(args)
+    elif args.command == "corpus":
+        await _cmd_corpus(args)
+
+
+async def _cmd_corpus(args: argparse.Namespace) -> None:
+    """Dispatch corpus sub-commands (ingestion pipeline)."""
+    import time
+
+    from litagent.config import load_config
+    from litagent.rag.ingest import CorpusIngestor, QuarantineRepository
+    from litagent.rag.manifest import load_manifest
+    from litagent.rag.pdf_parser import PyMuPDFParser
+    from litagent.rag.runtime import CorpusRuntime
+    from litagent.rag.sources import ArxivPDFAdapter, LocalPDFAdapter
+    from litagent.rag.vector_store import QdrantVectorStore
+
+    config = load_config()
+    started = time.monotonic()
+    quarantine = QuarantineRepository(Path(config.rag.quarantine_root))
+
+    if args.corpus_command == "quarantine":
+        if args.quarantine_command == "list":
+            entries = quarantine.list_entries()
+            print(
+                json.dumps(
+                    {
+                        "identity": config.rag.paper_collection,
+                        "status": "ok",
+                        "count": len(entries),
+                        "entries": entries,
+                        "elapsed_ms": int((time.monotonic() - started) * 1000),
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+            return
+
+    if args.corpus_command == "validate":
+        manifest = load_manifest(
+            Path(args.manifest),
+            raw_root=Path(config.rag.raw_root),
+        )
+        print(
+            json.dumps(
+                {
+                    "identity": config.rag.paper_collection,
+                    "status": "ok",
+                    "counts": {"papers": len(manifest.papers)},
+                    "reason_codes": [],
+                    "elapsed_ms": int((time.monotonic() - started) * 1000),
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return
+
+    runtime = await CorpusRuntime.connect(
+        config,
+        purpose=getattr(args, "purpose", "runtime"),
+    )
+    try:
+        if args.corpus_command == "stats":
+            stats = await runtime.store.stats()
+            print(
+                json.dumps(
+                    {
+                        "identity": runtime.identity.collection_name,
+                        "status": stats.status.value,
+                        "counts": {"points": stats.points_count},
+                        "reason_codes": [],
+                        "elapsed_ms": int((time.monotonic() - started) * 1000),
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+            return
+
+        if args.corpus_command == "rebuild" and not args.yes:
+            print(
+                json.dumps(
+                    {
+                        "identity": runtime.identity.collection_name,
+                        "status": "aborted",
+                        "reason_codes": ["rebuild_requires_yes"],
+                        "elapsed_ms": int((time.monotonic() - started) * 1000),
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+            raise SystemExit(2)
+
+        import httpx
+
+        async with httpx.AsyncClient() as http_client:
+            if args.corpus_command == "rebuild":
+                # Rebuild the versioned collection before re-ingesting.
+                if await runtime.qdrant_client.collection_exists(
+                    runtime.identity.collection_name
+                ):
+                    await runtime.qdrant_client.delete_collection(
+                        runtime.identity.collection_name
+                    )
+                dim = await asyncio.to_thread(lambda: runtime.embedder.dim)
+                await QdrantVectorStore.ensure_compatible(
+                    runtime.qdrant_client,
+                    runtime.identity.collection_name,
+                    dim,
+                    identity=runtime.identity,
+                    embedder=runtime.embedder,
+                )
+                await runtime.state.reset_collection(runtime.identity.collection_name)
+
+            parser = PyMuPDFParser()
+            local_pdf_adapter = LocalPDFAdapter(
+                max_pdf_bytes=config.rag.max_pdf_bytes,
+            )
+            pdf_adapter = ArxivPDFAdapter(
+                http_client,
+                raw_root=Path(config.rag.raw_root),
+                max_pdf_bytes=config.rag.max_pdf_bytes,
+            )
+            ingestor = CorpusIngestor(
+                config=config.rag,
+                service=runtime.service,
+                parser=parser,
+                local_pdf_adapter=local_pdf_adapter,
+                pdf_adapter=pdf_adapter,
+                quarantine=quarantine,
+            )
+
+            if args.corpus_command in {"ingest", "rebuild"}:
+                summary = await ingestor.ingest_manifest(
+                    Path(args.manifest),
+                    resume=getattr(args, "resume", False),
+                )
+                print(
+                    json.dumps(
+                        {
+                            "identity": runtime.identity.collection_name,
+                            "status": summary.status,
+                            "counts": {
+                                "papers": summary.paper_count,
+                                "succeeded": summary.succeeded_count,
+                                "failed": summary.failed_count,
+                                "embedded": summary.embedded_count,
+                                "payload_updated": summary.payload_updated_count,
+                                "deleted": summary.deleted_count,
+                                "unchanged": summary.unchanged_count,
+                            },
+                            "reason_codes": summary.reason_codes,
+                            "elapsed_ms": int((time.monotonic() - started) * 1000),
+                        },
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+                )
+    finally:
+        await runtime.close()
 
 
 def _delivery_exit_code(report: dict) -> int:
@@ -134,9 +338,9 @@ def _cmd_config(args: argparse.Namespace) -> None:
 
 def _cmd_tools(args: argparse.Namespace) -> None:
     """List the registered built-in tools."""
-    from litagent.tools.registry import get_registry
-    from litagent.tools.builtin.search import register_search_tools
     from litagent.tools.builtin.extract import register_extract_tools
+    from litagent.tools.builtin.search import register_search_tools
+    from litagent.tools.registry import get_registry
 
     registry = get_registry()
     register_search_tools()
