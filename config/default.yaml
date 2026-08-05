@@ -66,6 +66,15 @@ rag:
   raw_root: "artifacts/corpus/raw"
   quarantine_root: "artifacts/corpus/quarantine"
   max_pdf_bytes: 52428800
+  parsed_root: "artifacts/corpus/parsed"
+  max_representative_chunks: 4
+  trusted_claim_recall_top_k: 5
+  trusted_claim_context_max_chars: 4000
+  quality:
+    max_gibberish_ratio: 0.15
+    min_text_page_ratio: 0.20
+    repeated_margin_min_pages: 2
+    margin_ratio: 0.10
 
 adversarial:
   max_rounds: 3

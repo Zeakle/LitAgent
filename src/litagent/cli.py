@@ -123,9 +123,14 @@ async def _cmd_corpus(args: argparse.Namespace) -> None:
     import time
 
     from litagent.config import load_config
-    from litagent.rag.ingest import CorpusIngestor, QuarantineRepository
+    from litagent.rag.ingest import (
+        CorpusIngestor,
+        ParsedAuditRepository,
+        QuarantineRepository,
+    )
     from litagent.rag.manifest import load_manifest
     from litagent.rag.pdf_parser import PyMuPDFParser
+    from litagent.rag.quality import CorpusTextQualityGate
     from litagent.rag.runtime import CorpusRuntime
     from litagent.rag.sources import ArxivPDFAdapter, LocalPDFAdapter
     from litagent.rag.vector_store import QdrantVectorStore
@@ -230,7 +235,8 @@ async def _cmd_corpus(args: argparse.Namespace) -> None:
                 )
                 await runtime.state.reset_collection(runtime.identity.collection_name)
 
-            parser = PyMuPDFParser()
+            quality_gate = CorpusTextQualityGate(**config.rag.quality.model_dump())
+            parser = PyMuPDFParser(quality_gate=quality_gate)
             local_pdf_adapter = LocalPDFAdapter(
                 max_pdf_bytes=config.rag.max_pdf_bytes,
             )
@@ -246,6 +252,7 @@ async def _cmd_corpus(args: argparse.Namespace) -> None:
                 local_pdf_adapter=local_pdf_adapter,
                 pdf_adapter=pdf_adapter,
                 quarantine=quarantine,
+                audit_repository=ParsedAuditRepository(Path(config.rag.parsed_root)),
             )
 
             if args.corpus_command in {"ingest", "rebuild"}:
@@ -253,6 +260,10 @@ async def _cmd_corpus(args: argparse.Namespace) -> None:
                     Path(args.manifest),
                     resume=getattr(args, "resume", False),
                 )
+                outcome_counts: dict[str, int] = {}
+                for report in summary.reports:
+                    outcome = report.outcome.value
+                    outcome_counts[outcome] = outcome_counts.get(outcome, 0) + 1
                 print(
                     json.dumps(
                         {
@@ -267,6 +278,11 @@ async def _cmd_corpus(args: argparse.Namespace) -> None:
                                 "deleted": summary.deleted_count,
                                 "unchanged": summary.unchanged_count,
                             },
+                            "outcomes": outcome_counts,
+                            "reports": [
+                                report.model_dump(mode="json")
+                                for report in summary.reports
+                            ],
                             "reason_codes": summary.reason_codes,
                             "elapsed_ms": int((time.monotonic() - started) * 1000),
                         },

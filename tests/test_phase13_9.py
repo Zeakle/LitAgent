@@ -479,6 +479,8 @@ class TestMemoryTrustContract:
         result = await agent._finalize_memory(
             report_data={
                 "survey": "ready",
+                "partial": False,
+                "quality": {"status": "passed"},
                 "delivery": {"status": "ready", "publishable": True},
                 "metadata": {"execution": {"partial": False}},
             }
@@ -501,6 +503,8 @@ class TestMemoryTrustContract:
             await agent._finalize_memory(
                 report_data={
                     "survey": "ready",
+                    "partial": False,
+                    "quality": {"status": "passed"},
                     "delivery": {"status": "ready", "publishable": True},
                     "metadata": {"execution": {"partial": False}},
                 }

@@ -17,18 +17,30 @@ logger = get_logger("rag.retriever")
 
 
 def aggregate_chunk_hits(
-    hits: list[ScoredChunkHit], *, top_k: int
+    hits: list[ScoredChunkHit],
+    *,
+    top_k: int,
+    max_chunks_per_paper: int = 4,
 ) -> list[ScoredPaperHit]:
-    """Group chunk hits by paper while preserving best query score."""
+    if top_k <= 0 or max_chunks_per_paper <= 0:
+        raise ValueError("top_k and max_chunks_per_paper must be positive")
     grouped: dict[str, list[ScoredChunkHit]] = {}
     for hit in hits:
         grouped.setdefault(hit.chunk.paper_id, []).append(hit)
 
-    papers = []
+    papers: list[ScoredPaperHit] = []
     for paper_hits in grouped.values():
         ordered = sorted(paper_hits, key=lambda item: item.score, reverse=True)
         first = ordered[0]
-        chunks = list({hit.chunk.chunk_key: hit.chunk for hit in paper_hits}.values())
+        chunks: list[ContentChunk] = []
+        seen: set[str] = set()
+        for hit in ordered:
+            if hit.chunk.chunk_key in seen:
+                continue
+            seen.add(hit.chunk.chunk_key)
+            chunks.append(hit.chunk)
+            if len(chunks) >= max_chunks_per_paper:
+                break
         abstract = next(
             (chunk.text for chunk in chunks if chunk.chunk_key == "abstract"),
             first.abstract,
@@ -39,7 +51,7 @@ def aggregate_chunk_hits(
                 chunk.content_scope is ContentScope.SELECTED_FULLTEXT
                 for chunk in chunks
             )
-            else (ContentScope.ABSTRACT if abstract else ContentScope.METADATA_ONLY)
+            else ContentScope.ABSTRACT if abstract else ContentScope.METADATA_ONLY
         )
         papers.append(
             ScoredPaperHit(
@@ -51,7 +63,7 @@ def aggregate_chunk_hits(
                 sources=first.sources,
                 warnings=first.warnings,
                 content_scope=scope,
-                chunks=sorted(chunks, key=lambda item: item.chunk_key),
+                chunks=chunks,
                 score=first.score,
                 collection=first.collection,
                 corpus_version=first.corpus_version,
@@ -141,8 +153,13 @@ class HybridRetriever:
         query: str,
         top_k: int = 20,
         candidate_k: int | None = None,
+        max_chunks_per_paper: int = 4,
     ) -> list[ScoredPaperHit]:
         """Retrieve versioned chunks and aggregate them into parent papers."""
-        requested = max(candidate_k or top_k * 2, top_k)
+        requested = max(candidate_k or top_k * max_chunks_per_paper, top_k)
         hits = await self._store.search_chunks(query, requested)
-        return aggregate_chunk_hits(hits, top_k=top_k)
+        return aggregate_chunk_hits(
+            hits,
+            top_k=top_k,
+            max_chunks_per_paper=max_chunks_per_paper,
+        )

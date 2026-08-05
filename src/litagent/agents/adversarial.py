@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from contextlib import asynccontextmanager
 from typing import Any
-from collections.abc import Mapping
 
+from litagent.agents.reviewer import ReviewerWorker
+from litagent.agents.synthesis import SynthesisWorker
+from litagent.context.evidence_selector import EvidenceSelection
+from litagent.llm.client import BaseLLMClient
+from litagent.logging import get_logger
+from litagent.observability.context import reset_task_id, set_task_id
 from litagent.orchestrator.scheduler import Worker
 from litagent.orchestrator.task_graph import SubTask
-from litagent.llm.client import BaseLLMClient
-from litagent.agents.synthesis import SynthesisWorker
-from litagent.agents.reviewer import ReviewerWorker
-from litagent.observability.context import set_task_id, reset_task_id
-from litagent.context.evidence_selector import EvidenceSelection
-from litagent.logging import get_logger
 
 logger = get_logger("agents.adversarial")
 
@@ -125,6 +125,7 @@ class AdversarialReviewWorker(Worker):
                             description=f"Review round {round_num}",
                             agent_type="reviewer",
                             input_data={
+                                "query": task.input_data.get("query", ""),
                                 "upstream_results": {
                                     "synthesis": {
                                         "draft": draft,
@@ -132,7 +133,7 @@ class AdversarialReviewWorker(Worker):
                                             evidence_selection.to_dict()
                                         ),
                                     },
-                                }
+                                },
                             },
                         )
                         review = await self._reviewer.execute(review_task)
@@ -141,6 +142,7 @@ class AdversarialReviewWorker(Worker):
                             draft,
                             rounds[-1]["review"],
                             evidence_selection,
+                            query=task.input_data.get("query", ""),
                         )
 
                 rounds.append(

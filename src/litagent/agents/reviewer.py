@@ -2,28 +2,52 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 
-from litagent.skills.manager import SkillManager
-from litagent.orchestrator.scheduler import Worker
-from litagent.orchestrator.task_graph import SubTask
-from litagent.llm.client import BaseLLMClient
-from litagent.context.templates import build_system_prompt, wrap_xml
-from litagent.context.pipeline import ContextPipeline, ContextLayer
+from litagent.config import AdversarialConfig, ContextConfig
 from litagent.context.budget import BudgetManager
 from litagent.context.evidence_selector import (
     EvidenceSelection,
     format_evidence_selection,
 )
-from litagent.logging import get_logger
-from litagent.rag.claims_index import ClaimsIndex
-from litagent.config import AdversarialConfig, ContextConfig
+from litagent.context.pipeline import ContextLayer, ContextPipeline
+from litagent.context.templates import build_system_prompt, wrap_xml
 from litagent.evidence import extract_evidence_refs
+from litagent.llm.client import BaseLLMClient
+from litagent.logging import get_logger
+from litagent.orchestrator.scheduler import Worker
+from litagent.orchestrator.task_graph import SubTask
+from litagent.rag.claims_index import ClaimsIndex, TrustedClaim
+from litagent.skills.manager import SkillManager
 
 logger = get_logger("agents.reviewer")
+
+
+def format_trusted_claim_advisory(
+    claims: Sequence[TrustedClaim], *, max_chars: int
+) -> str:
+    """Bound prior-run claims on whole lines and keep them non-citable."""
+    header = (
+        "PRIOR TRUSTED CLAIMS - ADVISORY ONLY. These are not current-run evidence "
+        "and must not be cited or used to repair an unsupported statement."
+    )
+    lines = [header]
+    used = len(header)
+    for claim in claims:
+        line = (
+            f"paper={claim.paper_id}; chunk={claim.chunk_key}; "
+            f"claim={claim.text}; support={claim.supporting_text}"
+        )
+        if used + len(line) + 1 > max_chars:
+            break
+        lines.append(line)
+        used += len(line) + 1
+    return "\n".join(lines) if len(lines) > 1 else ""
+
 
 REVIEWER_ROLE = """You are a senior reviewer for top AI conferences \
 (NeurIPS, ICML, ICLR).
@@ -97,6 +121,8 @@ class ReviewerWorker(Worker):
         config: AdversarialConfig | None = None,
         *,
         context_config: ContextConfig | None = None,
+        trusted_claim_recall_top_k: int = 0,
+        trusted_claim_context_max_chars: int = 4000,
     ):
         self._llm = llm
         self._claims_index = claims_index
@@ -107,14 +133,44 @@ class ReviewerWorker(Worker):
         )
         self._skill_manager = skill_manager
         self._config = config or AdversarialConfig()
+        self._trusted_claim_recall_top_k = trusted_claim_recall_top_k
+        self._trusted_claim_context_max_chars = trusted_claim_context_max_chars
+        self._trusted_claim_cache: dict[str, str] = {}
 
     @property
     def agent_type(self) -> str:
         """Return the task-graph agent type handled by this worker."""
         return "reviewer"
 
+    async def _recall_trusted_claims(self, query: str) -> str:
+        """Recall prior-run trusted claims as bounded, non-citable advisory text."""
+        normalized = " ".join(query.split()).strip()
+        if (
+            not normalized
+            or self._claims_index is None
+            or self._trusted_claim_recall_top_k <= 0
+        ):
+            return ""
+        if normalized in self._trusted_claim_cache:
+            return self._trusted_claim_cache[normalized]
+        try:
+            claims = await self._claims_index.search(
+                normalized, top_k=self._trusted_claim_recall_top_k
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning("Trusted claims recall degraded: %s", exc)
+            claims = []
+        context = format_trusted_claim_advisory(
+            claims, max_chars=self._trusted_claim_context_max_chars
+        )
+        self._trusted_claim_cache[normalized] = context
+        return context
+
     async def execute(self, task: SubTask) -> Any:
         """Review an upstream draft and enforce its evidence contract."""
+        query = str(task.input_data.get("query") or "")
         upstream = task.input_data.get("upstream_results", {})
         synthesis = upstream.get("synthesis", {})
         if not isinstance(synthesis, dict):
@@ -134,7 +190,7 @@ class ReviewerWorker(Worker):
                 logger.warning(f"Malformed evidence_selection: {e}")
                 evidence_missing = True
 
-        user_msg, used = await self._build_review_context(draft, selection)
+        user_msg, used = await self._build_review_context(draft, selection, query=query)
 
         skills_text = (
             self._skill_manager.to_metadata_text_for(
@@ -182,6 +238,7 @@ class ReviewerWorker(Worker):
         revised_draft: str,
         previous_review: dict[str, Any],
         evidence_selection: EvidenceSelection | Mapping[str, Any],
+        query: str = "",
     ) -> dict[str, Any]:
         """Review a revision against the original evidence selection."""
 
@@ -193,7 +250,10 @@ class ReviewerWorker(Worker):
             selection = evidence_selection
 
         user_msg, used = await self._build_review_context(
-            revised_draft, selection, previous_review=previous_review
+            revised_draft,
+            selection,
+            previous_review=previous_review,
+            query=query,
         )
 
         system = build_system_prompt(
@@ -224,6 +284,7 @@ class ReviewerWorker(Worker):
         draft: str,
         selection: EvidenceSelection | None,
         previous_review: dict[str, Any] | None = None,
+        query: str = "",
     ) -> tuple[str, int]:
         """Build budgeted draft, evidence, and optional prior-review context."""
         pipeline = ContextPipeline(self._budget)
@@ -269,6 +330,22 @@ class ReviewerWorker(Worker):
                     builder=_previous_review_builder,
                 )
             )
+
+        if query:
+            _advisory = await self._recall_trusted_claims(query)
+            if _advisory:
+
+                async def _advisory_builder(state: dict) -> str:
+                    return _advisory
+
+                pipeline.add_layer(
+                    ContextLayer(
+                        "trusted_claims",
+                        priority=3,
+                        max_tokens=self._trusted_claim_context_max_chars,
+                        builder=_advisory_builder,
+                    )
+                )
 
         return await pipeline.build({"draft": draft})
 

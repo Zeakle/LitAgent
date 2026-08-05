@@ -4,10 +4,10 @@ import json
 
 import pytest
 
-from litagent.llm.client import MockLLMClient, LLMResponse
-from litagent.agents.synthesis import SynthesisWorker
-from litagent.agents.reviewer import ReviewerWorker
 from litagent.agents.adversarial import AdversarialReviewWorker
+from litagent.agents.reviewer import ReviewerWorker
+from litagent.agents.synthesis import SynthesisWorker
+from litagent.llm.client import LLMResponse, MockLLMClient
 from litagent.orchestrator.task_graph import SubTask
 
 
@@ -596,8 +596,8 @@ class TestAdversarialEvidenceGate:
         """Every review round receives the same selected evidence IDs."""
         import json as _json
 
-        from litagent.agents.synthesis import SynthesisWorker as _SW
         from litagent.agents.reviewer import ReviewerWorker as _RW
+        from litagent.agents.synthesis import SynthesisWorker as _SW
 
         calls: list[dict] = []
 
@@ -624,7 +624,7 @@ class TestAdversarialEvidenceGate:
             """Reviewer that records revision evidence."""
 
             async def review_revision(
-                self, revised_draft, previous_review, evidence_selection
+                self, revised_draft, previous_review, evidence_selection, query=""
             ):
                 sel = (
                     EvidenceSelection.from_dict(evidence_selection)
@@ -643,6 +643,7 @@ class TestAdversarialEvidenceGate:
                     revised_draft,
                     previous_review,
                     evidence_selection,
+                    query=query,
                 )
 
         low_review = _json.dumps(

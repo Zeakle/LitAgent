@@ -67,6 +67,11 @@ from litagent.observability.recorder import RedactingTraceHook
 from litagent.observability.tracing import LangFuseTracer
 from litagent.orchestrator.scheduler import Scheduler, Worker
 from litagent.orchestrator.task_graph import TaskGraph
+from litagent.rag.claim_promotion import (
+    ClaimPromotionSummary,
+    ClaimsPromoter,
+    is_publishable_report,
+)
 from litagent.rag.claims_index import ClaimsIndex
 from litagent.rag.corpus import CollectionIdentity
 from litagent.rag.embedder import LocalEmbedder
@@ -118,6 +123,7 @@ def derive_delivery(
 ) -> dict[str, Any]:
     """Map execution completeness and quality to the delivery policy."""
     q_status = (quality or {}).get("status", "unverified")
+    valid_quality_status = q_status in {"passed", "failed", "unverified"}
     degradation_codes = list(dict.fromkeys(degradation_reason_codes))
 
     critical_degradation = any(
@@ -128,7 +134,9 @@ def derive_delivery(
     reason_codes: list[str] = []
     if partial:
         reason_codes.append("partial_execution")
-    if q_status == "failed":
+    if not valid_quality_status:
+        reason_codes.append("quality_invalid")
+    elif q_status == "failed":
         reason_codes.append("quality_failed")
     elif q_status == "unverified":
         reason_codes.append("quality_unverified")
@@ -138,7 +146,7 @@ def derive_delivery(
         status = "partial"
     elif q_status == "failed":
         status = "blocked"
-    elif q_status == "unverified" or critical_degradation:
+    elif not valid_quality_status or q_status == "unverified" or critical_degradation:
         status = "needs_review"
     else:
         status = "ready"
@@ -330,15 +338,30 @@ class LitAgent:
                     "candidate_quality": rewrite_outcome.candidate_quality,
                 }
 
-            # Phase 3: delivery + memory + emit.
+            # Phase 3: delivery + trusted claim promotion + memory + emit.
             final_quality = report_data["quality"]
             report_data["delivery"] = derive_delivery(
                 report_data["partial"],
                 final_quality,
                 degradation_codes,
             )
-            report_data.setdefault("metadata", {})["memory"] = (
-                await self._finalize_memory(report_data=report_data)
+            promotion = (
+                await ClaimsPromoter(self._infra.claims_index).promote(
+                    run_id=self._session_id,
+                    domain=query,
+                    report_data=report_data,
+                    extractions=self._collect_extractions(results),
+                )
+                if self._infra.claims_index is not None
+                else ClaimPromotionSummary(
+                    "skipped", 0, 0, 0, "claims_index_unavailable"
+                )
+            )
+            report_data.setdefault("metadata", {})[
+                "claims_promotion"
+            ] = promotion.to_dict()
+            report_data["metadata"]["memory"] = await self._finalize_memory(
+                report_data=report_data
             )
 
             report_data = normalize_survey_result(
@@ -603,7 +626,6 @@ class LitAgent:
 
         self._extractor = ExtractorWorker(
             strategy=self._extraction_strategy,
-            claims_index=self._infra.claims_index,
             max_concurrent=cfg.extractor.max_concurrent,
             detector=InjectionDetector(),
             max_papers=cfg.extractor.max_papers,
@@ -639,6 +661,8 @@ class LitAgent:
             skill_manager=self._skill_manager,
             config=cfg.adversarial,
             context_config=cfg.context,
+            trusted_claim_recall_top_k=cfg.rag.trusted_claim_recall_top_k,
+            trusted_claim_context_max_chars=cfg.rag.trusted_claim_context_max_chars,
         )
         workers.append(self._reviewer)
 
@@ -705,18 +729,7 @@ class LitAgent:
             result["reason_code"] = "memory_unavailable"
             return result
 
-        delivery = report_data.get("delivery")
-        execution = (
-            report_data.get("metadata", {}).get("execution", {})
-            if isinstance(report_data.get("metadata"), Mapping)
-            else {}
-        )
-        trusted = (
-            isinstance(delivery, Mapping)
-            and delivery.get("publishable") is True
-            and execution.get("partial") is False
-        )
-        if not trusted:
+        if not is_publishable_report(report_data):
             result["reason_code"] = "content_consolidation_skipped"
             return result
 
@@ -807,7 +820,7 @@ class LitAgent:
             infra._qdrant_client = qdrant_client
             dim = await self._get_embedding_dim_async()
 
-            for collection_name in ("episodes", "claims"):
+            for collection_name in ("episodes", cfg.rag.claims_collection):
                 try:
                     await qdrant_client.get_collection(collection_name)
                 except Exception:
@@ -823,7 +836,11 @@ class LitAgent:
                     )
 
             episodic = EpisodicMemory(qdrant_client)
-            infra.claims_index = ClaimsIndex(qdrant_client, trace_hook=self._trace_hook)
+            infra.claims_index = ClaimsIndex(
+                qdrant_client,
+                trace_hook=self._trace_hook,
+                collection_name=cfg.rag.claims_collection,
+            )
 
             try:
                 if not cfg.rag.enabled:

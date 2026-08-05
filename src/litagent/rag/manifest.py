@@ -13,7 +13,11 @@ from litagent.rag.models import RawPaperAsset, SourceKind, SourceRef, canonical_
 
 
 class ManifestValidationError(ValueError):
-    """Report a stable manifest or trusted-source validation failure."""
+    """Carry a stable source-boundary code and a safe diagnostic message."""
+
+    def __init__(self, code: str, message: str | None = None) -> None:
+        super().__init__(message or code)
+        self.code = code
 
 
 class PDFSource(BaseModel):
@@ -90,7 +94,10 @@ class CorpusManifest(BaseModel):
                     paper.pdf.path,
                 )
                 if not paper.pdf.sha256:
-                    raise ManifestValidationError("local_pdf requires expected sha256")
+                    raise ManifestValidationError(
+                        "asset_hash_mismatch",
+                        "local_pdf requires expected sha256",
+                    )
                 sources.append(
                     SourceRef(
                         kind=SourceKind.LOCAL_PDF,
@@ -119,7 +126,8 @@ class CorpusManifest(BaseModel):
             )
             if paper.paper_id != expected_id:
                 raise ManifestValidationError(
-                    f"paper_id mismatch: {paper.paper_id!r} != {expected_id!r}"
+                    "metadata_id_mismatch",
+                    f"paper_id mismatch: {paper.paper_id!r} != {expected_id!r}",
                 )
             assets.append(
                 RawPaperAsset(
@@ -142,7 +150,7 @@ class CorpusManifest(BaseModel):
 def validate_arxiv_pdf_url(value: str | None) -> str:
     """Allow only HTTPS PDF endpoints owned by arXiv."""
     if not value:
-        raise ManifestValidationError("arxiv_pdf requires url")
+        raise ManifestValidationError("source_missing", "arxiv_pdf requires url")
     parsed = urlsplit(value)
     if (
         parsed.scheme != "https"
@@ -151,7 +159,10 @@ def validate_arxiv_pdf_url(value: str | None) -> str:
         or parsed.username
         or parsed.password
     ):
-        raise ManifestValidationError("PDF URL is outside the arXiv allowlist")
+        raise ManifestValidationError(
+            "source_not_allowlisted",
+            "PDF URL is outside the arXiv allowlist",
+        )
     return value
 
 
@@ -161,14 +172,37 @@ def _resolve_local_pdf(
 ) -> Path:
     """Resolve a local source without allowing traversal outside raw_root."""
     if not relative_path:
-        raise ManifestValidationError("local_pdf requires path")
+        raise ManifestValidationError("source_missing", "local_pdf requires path")
     root = raw_root.resolve()
     candidate = (root / relative_path).resolve()
     if not candidate.is_relative_to(root):
-        raise ManifestValidationError("local PDF escapes raw_root")
-    # Existence/content checks belong to LocalPDFAdapter and only run when
-    # selected-fulltext mode actually consumes the PDF.
+        raise ManifestValidationError(
+            "source_not_allowlisted",
+            "local PDF escapes raw_root",
+        )
     return candidate
+
+
+def validate_unique_assets(manifest: CorpusManifest) -> None:
+    """Reject duplicate paper ids and duplicate declared PDF hashes."""
+    paper_ids: set[str] = set()
+    pdf_hashes: dict[str, str] = {}
+    for paper in manifest.papers:
+        if paper.paper_id in paper_ids:
+            raise ManifestValidationError(
+                "duplicate_paper_id",
+                f"duplicate paper_id: {paper.paper_id!r}",
+            )
+        paper_ids.add(paper.paper_id)
+        sha256 = paper.pdf.sha256.lower() if paper.pdf and paper.pdf.sha256 else ""
+        owner = pdf_hashes.get(sha256) if sha256 else None
+        if owner is not None and owner != paper.paper_id:
+            raise ManifestValidationError(
+                "duplicate_asset",
+                f"PDF sha256 shared by {owner!r} and {paper.paper_id!r}",
+            )
+        if sha256:
+            pdf_hashes[sha256] = paper.paper_id
 
 
 def load_manifest(
@@ -184,10 +218,25 @@ def load_manifest(
         )
 
         if manifest.schema_version != 1:
-            raise ManifestValidationError("unsupported manifest schema_version")
-        manifest.to_assets()
-        return manifest
+            raise ManifestValidationError(
+                "manifest_invalid",
+                "unsupported manifest schema_version",
+            )
     except ManifestValidationError:
         raise
     except Exception as exc:
-        raise ManifestValidationError(str(exc)) from exc
+        raise ManifestValidationError("manifest_invalid", str(exc)) from exc
+
+    validate_unique_assets(manifest)
+    materialize_manifest_assets(manifest)
+    return manifest
+
+
+def materialize_manifest_assets(manifest: CorpusManifest) -> list[RawPaperAsset]:
+    """Convert entries while preserving coded errors and normalizing surprises."""
+    try:
+        return manifest.to_assets()
+    except ManifestValidationError:
+        raise
+    except Exception as exc:
+        raise ManifestValidationError("manifest_invalid", str(exc)) from exc

@@ -7,7 +7,7 @@ import json
 import re
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -113,6 +113,8 @@ class ContentChunk(BaseModel):
     section: str
     content_scope: ContentScope
     content_hash: str
+    raw_content_hash: str | None = None
+    transformations: list[str] = Field(default_factory=list)
     page: int | None = Field(default=None, ge=1)
     block_index: int | None = Field(default=None, ge=0)
     bbox: tuple[float, float, float, float] | None = None
@@ -126,6 +128,8 @@ class ContentChunk(BaseModel):
         text: str,
         section: str,
         content_scope: ContentScope,
+        raw_text: str | None = None,
+        transformations: Sequence[str] = (),
         page: int | None = None,
         block_index: int | None = None,
         bbox: tuple[float, float, float, float] | None = None,
@@ -134,6 +138,7 @@ class ContentChunk(BaseModel):
         normalized = " ".join(text.split()).strip()
         if not normalized:
             raise ValueError("empty chunks are not indexable")
+        raw = text if raw_text is None else raw_text
 
         return cls(
             paper_id=paper_id,
@@ -142,6 +147,8 @@ class ContentChunk(BaseModel):
             section=section.strip().lower() or "unknown",
             content_scope=content_scope,
             content_hash=hashlib.sha256(normalized.encode("utf-8")).hexdigest(),
+            raw_content_hash=hashlib.sha256(raw.encode("utf-8")).hexdigest(),
+            transformations=list(dict.fromkeys(transformations)),
             page=page,
             block_index=block_index,
             bbox=bbox,
@@ -149,12 +156,31 @@ class ContentChunk(BaseModel):
 
     @model_validator(mode="after")
     def _validate_locator(self):
-        if self.content_scope is ContentScope.ABSTRACT:
-            if any(
-                value is not None for value in (self.page, self.block_index, self.bbox)
-            ):
-                raise ValueError("abstract chunks cannot have PDF locators")
+        locator_values = (self.page, self.block_index, self.bbox)
+        if self.content_scope is ContentScope.ABSTRACT and any(
+            value is not None for value in locator_values
+        ):
+            raise ValueError("abstract chunks cannot have PDF locators")
+        if self.content_scope is ContentScope.SELECTED_FULLTEXT and any(
+            value is None for value in locator_values
+        ):
+            raise ValueError("selected-fulltext chunks require page, block and bbox")
         return self
+
+    @property
+    def locator(self) -> dict[str, Any]:
+        """Return the stable locator copied into EvidenceItem v2."""
+        return {
+            "paper_id": self.paper_id,
+            "chunk_key": self.chunk_key,
+            "section": self.section,
+            "page": self.page,
+            "block_index": self.block_index,
+            "bbox": list(self.bbox) if self.bbox else None,
+            "content_scope": self.content_scope.value,
+            "content_hash": self.content_hash,
+            "raw_content_hash": self.raw_content_hash,
+        }
 
 
 class PaperRecord(BaseModel):
@@ -375,15 +401,7 @@ def merge_paper_records(records: list[PaperRecord]) -> list[PaperRecord]:
         if current is None:
             grouped[record.paper_id] = record.model_copy(deep=True)
             continue
-        chunks = {chunk.chunk_key: chunk for chunk in current.chunks}
-        for chunk in record.chunks:
-            existing = chunks.get(chunk.chunk_key)
-            if (
-                existing is None
-                or _SCOPE_RANK[chunk.content_scope]
-                >= _SCOPE_RANK[existing.content_scope]
-            ):
-                chunks[chunk.chunk_key] = chunk
+        chunks = _merge_chunks(current.chunks, record.chunks)
         sources = {
             (
                 source.kind.value,
@@ -403,7 +421,7 @@ def merge_paper_records(records: list[PaperRecord]) -> list[PaperRecord]:
                 "authors": record.authors or current.authors,
                 "year": record.year or current.year,
                 "content_scope": strongest,
-                "chunks": sorted(chunks.values(), key=lambda item: item.chunk_key),
+                "chunks": chunks,
                 "asset_hash": _digest(sorted({current.asset_hash, record.asset_hash})),
                 "sources": list(sources.values()),
                 "warnings": list(dict.fromkeys([*current.warnings, *record.warnings])),
@@ -411,6 +429,27 @@ def merge_paper_records(records: list[PaperRecord]) -> list[PaperRecord]:
             }
         )
     return list(grouped.values())
+
+
+def _merge_chunks(
+    current: Sequence[ContentChunk],
+    incoming: Sequence[ContentChunk],
+) -> list[ContentChunk]:
+    """Merge by key while preserving order and preferring richer content."""
+    merged = list(current)
+    positions = {chunk.chunk_key: index for index, chunk in enumerate(merged)}
+    for chunk in incoming:
+        position = positions.get(chunk.chunk_key)
+        if position is None:
+            positions[chunk.chunk_key] = len(merged)
+            merged.append(chunk)
+            continue
+        if (
+            _SCOPE_RANK[chunk.content_scope]
+            >= _SCOPE_RANK[merged[position].content_scope]
+        ):
+            merged[position] = chunk
+    return merged
 
 
 def merge_paper_candidates(
@@ -433,8 +472,7 @@ def merge_paper_candidates(
                 title_keys[fallback] = key
             continue
 
-        chunks = {chunk.chunk_key: chunk for chunk in current.chunks}
-        chunks.update({chunk.chunk_key: chunk for chunk in candidate.chunks})
+        merged_chunks = _merge_chunks(current.chunks, candidate.chunks)
         strongest = max(
             (current.content_scope, candidate.content_scope),
             key=_SCOPE_RANK.__getitem__,
@@ -469,7 +507,7 @@ def merge_paper_candidates(
                     else None
                 ),
                 "content_scope": strongest,
-                "chunks": sorted(chunks.values(), key=lambda item: item.chunk_key),
+                "chunks": merged_chunks,
                 "provenance": list(
                     {
                         (

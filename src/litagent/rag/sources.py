@@ -24,13 +24,16 @@ class ArxivMetadataAdapter:
         """Fetch one id and reject empty or mismatched provider results."""
         documents = await self._loader.load(arxiv_id)
         if not documents:
-            raise ManifestValidationError("arxiv_metadata_not_found")
+            raise ManifestValidationError("source_missing", "arxiv_metadata_not_found")
         document = documents[0]
         returned_id = str(document.metadata.get("arxiv_id") or "")
         paper_id = canonical_paper_id(arxiv_id=returned_id)
         expected = canonical_paper_id(arxiv_id=arxiv_id)
         if paper_id != expected:
-            raise ManifestValidationError("arxiv_metadata_id_mismatch")
+            raise ManifestValidationError(
+                "metadata_id_mismatch",
+                "arxiv_metadata_id_mismatch",
+            )
         title = str(document.metadata.get("title") or "").strip()
         content = document.page_content.strip()
         abstract = (
@@ -65,15 +68,20 @@ class LocalPDFAdapter:
     async def materialize(self, asset: RawPaperAsset) -> RawPaperAsset:
         """Validate size, magic and manifest hash without changing paths"""
         if asset.pdf_path is None:
-            raise ManifestValidationError("local PDF path missing")
+            raise ManifestValidationError("source_missing", "local PDF path missing")
         if not asset.pdf_path.is_file():
-            raise ManifestValidationError("local PDF not found")
+            raise ManifestValidationError("source_missing", "local PDF not found")
+        if asset.pdf_path.stat().st_size == 0:
+            raise ManifestValidationError("empty_asset", "local asset is zero bytes")
         if asset.pdf_path.stat().st_size > self._max_pdf_bytes:
-            raise ManifestValidationError("local PDF exceeds max_pdf_bytes")
+            raise ManifestValidationError(
+                "asset_too_large",
+                "local PDF exceeds max_pdf_bytes",
+            )
 
         content = await asyncio.to_thread(asset.pdf_path.read_bytes)
         if content[:5] != b"%PDF-":
-            raise ManifestValidationError("local asset is not a PDF")
+            raise ManifestValidationError("not_pdf", "local asset is not a PDF")
         actual_hash = hashlib.sha256(content).hexdigest()
         expected_hash = next(
             (
@@ -85,7 +93,10 @@ class LocalPDFAdapter:
         )
 
         if not expected_hash or actual_hash.lower() != expected_hash.lower():
-            raise ManifestValidationError("local PDF hash mismatch")
+            raise ManifestValidationError(
+                "asset_hash_mismatch",
+                "local PDF hash mismatch",
+            )
         return asset.model_copy(update={"asset_hash": actual_hash})
 
 
@@ -110,7 +121,10 @@ class ArxivPDFAdapter:
         safe_name = asset.paper_id.replace(":", "_").replace("/", "_")
         target = (self._raw_root / f"{safe_name}.pdf").resolve()
         if not target.is_relative_to(self._raw_root):
-            raise ManifestValidationError("download target escapes raw_root")
+            raise ManifestValidationError(
+                "source_not_allowlisted",
+                "download target escapes raw_root",
+            )
         temporary = target.with_suffix(".pdf.tmp")
         digest = hashlib.sha256()
         total = 0
@@ -126,20 +140,26 @@ class ArxivPDFAdapter:
                 validate_arxiv_pdf_url(str(response.url))
                 declared = int(response.headers.get("content-length") or 0)
                 if declared > self._max_pdf_bytes:
-                    raise ManifestValidationError("arxiv PDF exceeds max_pdf_bytes")
+                    raise ManifestValidationError(
+                        "asset_too_large",
+                        "arxiv PDF exceeds max_pdf_bytes",
+                    )
                 with temporary.open("wb") as handle:
                     async for chunk in response.aiter_bytes():
                         total += len(chunk)
                         if total > self._max_pdf_bytes:
                             raise ManifestValidationError(
-                                "arxiv PDF exceeds max_pdf_bytes"
+                                "asset_too_large",
+                                "arxiv PDF exceeds max_pdf_bytes",
                             )
                         if len(prefix) < 5:
                             prefix = (prefix + chunk)[:5]
                         digest.update(chunk)
                         handle.write(chunk)
             if prefix != b"%PDF-":
-                raise ManifestValidationError("downloaded asset is not a PDF")
+                raise ManifestValidationError(
+                    "not_pdf", "downloaded asset is not a PDF"
+                )
             actual_hash = digest.hexdigest()
             expected_hash = next(
                 (
@@ -150,7 +170,10 @@ class ArxivPDFAdapter:
                 None,
             )
             if expected_hash and actual_hash.lower() != expected_hash.lower():
-                raise ManifestValidationError("arxiv PDF sha256 mismatch")
+                raise ManifestValidationError(
+                    "asset_hash_mismatch",
+                    "arxiv PDF sha256 mismatch",
+                )
             os.replace(temporary, target)
             return asset.model_copy(
                 update={

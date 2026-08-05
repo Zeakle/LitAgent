@@ -188,11 +188,25 @@ class RelevanceConfig(BaseModel):
         return self
 
 
+class CorpusQualityConfig(BaseModel):
+    """Configure deterministic PDF text-quality decisions."""
+
+    max_gibberish_ratio: float = Field(default=0.15, ge=0.0, le=1.0)
+    min_text_page_ratio: float = Field(default=0.20, ge=0.0, le=1.0)
+    repeated_margin_min_pages: int = Field(default=2, ge=2, le=100)
+    margin_ratio: float = Field(default=0.10, gt=0.0, lt=0.5)
+
+
 class RAGConfig(BaseModel):
     """Configure versioned paper-corpus ingestion and retrieval."""
 
     enabled: bool = True
     paper_collection: str = Field(default="papers", min_length=1)
+    parsed_root: str = "artifacts/corpus/parsed"
+    max_representative_chunks: int = Field(default=4, ge=1, le=20)
+    trusted_claim_recall_top_k: int = Field(default=5, ge=0, le=20)
+    trusted_claim_context_max_chars: int = Field(default=4000, ge=500, le=20000)
+    quality: CorpusQualityConfig = Field(default_factory=CorpusQualityConfig)
     benchmark_collection: str = Field(
         default="papers_benchmark",
         min_length=1,

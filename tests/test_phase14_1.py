@@ -87,9 +87,10 @@ def _record(
 
 
 class _FakePage:
-    def __init__(self, blocks, images=None):
+    def __init__(self, blocks, images=None, width=800.0, height=1000.0):
         self._blocks = blocks
         self._images = images or []
+        self.rect = SimpleNamespace(width=width, height=height)
 
     def get_text(self, mode):
         assert mode == "blocks"
@@ -110,6 +111,9 @@ class _FakePDF:
 
     def __iter__(self):
         return iter(self._pages)
+
+    def __len__(self):
+        return len(self._pages)
 
     def close(self):
         self.closed = True
@@ -938,6 +942,8 @@ async def test_rebuild_recreates_collection_and_reingests_manifest(tmp_path):
     config = load_config().model_copy(deep=True)
     config.rag.raw_root = str(tmp_path / "raw")
     config.rag.quarantine_root = str(tmp_path / "quarantine")
+    config.rag.parsed_root = str(tmp_path / "parsed")
+    config.rag.quality.max_gibberish_ratio = 0.01
 
     class _AsyncClientContext:
         async def __aenter__(self):
@@ -970,6 +976,7 @@ async def test_rebuild_recreates_collection_and_reingests_manifest(tmp_path):
                 deleted_count=0,
                 unchanged_count=0,
                 reason_codes=[],
+                reports=[],
             )
         )
     )
@@ -980,7 +987,13 @@ async def test_rebuild_recreates_collection_and_reingests_manifest(tmp_path):
             "litagent.rag.runtime.CorpusRuntime.connect",
             new=AsyncMock(return_value=runtime),
         ),
-        patch("litagent.rag.ingest.CorpusIngestor", return_value=ingestor),
+        patch(
+            "litagent.rag.ingest.CorpusIngestor",
+            return_value=ingestor,
+        ) as ingestor_factory,
+        patch("litagent.rag.quality.CorpusTextQualityGate") as quality_gate_factory,
+        patch("litagent.rag.pdf_parser.PyMuPDFParser") as parser_factory,
+        patch("litagent.rag.ingest.ParsedAuditRepository") as audit_factory,
         patch(
             "litagent.rag.vector_store.QdrantVectorStore.ensure_compatible",
             new=AsyncMock(),
@@ -1001,6 +1014,15 @@ async def test_rebuild_recreates_collection_and_reingests_manifest(tmp_path):
     ingestor.ingest_manifest.assert_awaited_once_with(
         manifest_path,
         resume=False,
+    )
+    quality_gate_factory.assert_called_once_with(**config.rag.quality.model_dump())
+    parser_factory.assert_called_once_with(
+        quality_gate=quality_gate_factory.return_value
+    )
+    audit_factory.assert_called_once_with(Path(config.rag.parsed_root))
+    assert (
+        ingestor_factory.call_args.kwargs["audit_repository"]
+        is audit_factory.return_value
     )
     runtime.close.assert_awaited_once()
 

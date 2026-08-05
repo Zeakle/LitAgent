@@ -625,6 +625,15 @@ class TestDeriveDelivery:
         d = derive_delivery(False, None)
         assert d["status"] == "needs_review"
 
+    def test_unknown_quality_status_fails_closed(self):
+        from litagent.runner import derive_delivery
+
+        d = derive_delivery(False, {"status": "pass"})
+
+        assert d["status"] == "needs_review"
+        assert d["publishable"] is False
+        assert d["reason_codes"] == ["quality_invalid"]
+
 
 class TestCLIDeliveryContract:
     """Tests CLI behavior for each delivery state."""
@@ -1081,6 +1090,8 @@ class TestMemoryTrustOrdering:
         agent._infra.memory.consolidate = AsyncMock()
         result = await agent._finalize_memory(
             report_data={
+                "partial": False,
+                "quality": {"status": "passed"},
                 "delivery": {"status": "ready", "publishable": True},
                 "metadata": {"execution": {"partial": False}},
                 "survey": "test",
@@ -1088,3 +1099,21 @@ class TestMemoryTrustOrdering:
         )
         assert result["content_saved"] is True
         assert result["consolidated"] is True
+
+    @pytest.mark.asyncio
+    async def test_invalid_quality_never_reaches_memory(self):
+        agent = _minimal_agent()
+        agent._infra.memory = MagicMock()
+
+        result = await agent._finalize_memory(
+            report_data={
+                "partial": False,
+                "quality": {"status": "pass"},
+                "delivery": {"status": "ready", "publishable": True},
+                "metadata": {"execution": {"partial": False}},
+                "survey": "test",
+            }
+        )
+
+        assert result["content_saved"] is False
+        assert result["reason_code"] == "content_consolidation_skipped"

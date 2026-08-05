@@ -2,17 +2,101 @@
 
 from __future__ import annotations
 
-import json
 import asyncio
+import json
 from abc import ABC, abstractmethod
+from typing import Any, Mapping
 
-from litagent.llm.client import BaseLLMClient
-from litagent.tools.executor import ToolExecutor
-from litagent.skills.manager import SkillManager
 from litagent.context.templates import wrap_xml
+from litagent.llm.client import BaseLLMClient
 from litagent.logging import get_logger
+from litagent.skills.manager import SkillManager
+from litagent.tools.executor import ToolExecutor
 
 logger = get_logger("agents.extraction_strategy")
+
+
+def build_extraction_context(
+    paper: Mapping[str, Any],
+    *,
+    max_chunks: int = 4,
+    max_chars: int = 12_000,
+) -> tuple[str, list[str]]:
+    """Render bounded, locator-marked evidence for claim extraction."""
+    if max_chunks <= 0 or max_chars <= 0:
+        raise ValueError("max_chunks and max_chars must be positive")
+
+    raw_chunks = paper.get("chunks") if isinstance(paper, Mapping) else None
+    chunks = [chunk for chunk in (raw_chunks or []) if isinstance(chunk, Mapping)]
+    ranked = sorted(
+        enumerate(chunks),
+        key=lambda pair: (
+            0 if pair[1].get("content_scope") == "selected_fulltext" else 1,
+            pair[0],
+        ),
+    )
+    selected = [chunk for _, chunk in ranked[:max_chunks] if chunk.get("text")]
+    title = str(paper.get("title") or "")[:500]
+    lines = [f"Title: {title}"[:max_chars]]
+    keys: list[str] = []
+    for chunk in selected:
+        key = str(chunk.get("chunk_key") or "")
+        if not key:
+            continue
+        # A per-chunk cap prevents one malformed PDF block from consuming the
+        # complete extraction budget while preserving stable chunk markers.
+        prefix = f"[CHUNK:{key}] section={chunk.get('section', 'unknown')}\n"
+        used = len("\n\n".join(lines))
+        available = max_chars - used - 2 - len(prefix)
+        if available <= 0:
+            break
+        text = str(chunk["text"])[: min(2_800, available)]
+        lines.append(f"{prefix}{text}")
+        keys.append(key)
+
+    if not keys and paper.get("abstract"):
+        used = len("\n\n".join(lines))
+        prefix = "[ABSTRACT]\n"
+        available = max_chars - used - 2 - len(prefix)
+        if available > 0:
+            lines.append(f"{prefix}{str(paper['abstract'])[: min(2_800, available)]}")
+
+    return "\n\n".join(lines), keys
+
+
+def _normalize_claim_records(
+    value: Any,
+    *,
+    allowed_chunk_keys: set[str],
+) -> list[dict[str, Any]]:
+    """Keep only well-formed claims anchored to supplied extraction chunks."""
+    if not isinstance(value, list):
+        return []
+
+    records: list[dict[str, Any]] = []
+    for item in value:
+        if not isinstance(item, Mapping):
+            continue
+        text = str(item.get("text") or "").strip()
+        chunk_key = str(item.get("source_chunk_key") or "").strip()
+        if not text or chunk_key not in allowed_chunk_keys:
+            continue
+        confidence = item.get("confidence")
+        if confidence is not None:
+            try:
+                confidence = float(confidence)
+            except (TypeError, ValueError):
+                continue
+            if not 0.0 <= confidence <= 1.0:
+                continue
+        records.append(
+            {
+                "text": text,
+                "source_chunk_key": chunk_key,
+                "confidence": confidence,
+            }
+        )
+    return records
 
 
 class ExtractionStrategy(ABC):
@@ -43,23 +127,59 @@ class RegexStrategy(ExtractionStrategy):
         )
         methods_r = await self._executor.execute("extract_methods", {"text": text})
         datasets_r = await self._executor.execute("extract_datasets", {"text": text})
+        raw_claims = claims_r.output if not claims_r.error else []
+        claims = (
+            [
+                claim.strip()
+                for claim in raw_claims
+                if isinstance(claim, str) and claim.strip()
+            ]
+            if isinstance(raw_claims, list)
+            else []
+        )
+        abstract_chunk_key = next(
+            (
+                str(chunk.get("chunk_key"))
+                for chunk in paper.get("chunks", [])
+                if isinstance(chunk, Mapping)
+                and chunk.get("chunk_key")
+                and (
+                    chunk.get("content_scope") == "abstract"
+                    or chunk.get("section") == "abstract"
+                )
+            ),
+            None,
+        )
+        claim_records = (
+            [
+                {
+                    "text": claim.strip(),
+                    "source_chunk_key": abstract_chunk_key,
+                    "confidence": None,
+                }
+                for claim in claims
+            ]
+            if abstract_chunk_key
+            else []
+        )
         return {
-            "claims": claims_r.output if not claims_r.error else [],
+            "claims": claims,
+            "claim_records": claim_records,
             "metrics": metrics_r.output if not metrics_r.error else {},
             "methods": methods_r.output if not methods_r.error else [],
             "datasets": datasets_r.output if not datasets_r.error else [],
         }
 
 
-_REQUIRED_KEYS_INSTRUCTION = """Output a JSON object with EXACTLY these keys \
-(same as the rule-based extractor, so downstream stays consistent):
-- "claims": list of key claim sentences
+_REQUIRED_KEYS_INSTRUCTION = """Output a JSON object with these required keys:
+- "claim_records": list of objects with "text", "source_chunk_key", and optional
+  "confidence" in [0, 1]. source_chunk_key MUST exactly match a supplied CHUNK marker.
 - "metrics": object mapping metric name to value, e.g. {"accuracy": "85.7%"}
 - "methods": list of method names
 - "datasets": list of dataset names
-PLUS any domain-specific fields from the chosen skill \
+You may add domain-specific fields from the chosen skill \
 (e.g. model_architecture, backbone, training_strategy).
-Choose the most appropriate skill based on the paper, then extract."""
+Do not create a claim when no supplied chunk directly supports it."""
 
 
 class LLMStrategy(ExtractionStrategy):
@@ -71,8 +191,7 @@ class LLMStrategy(ExtractionStrategy):
 
     async def extract(self, paper: dict) -> dict:
         """Return normalized structured fields from an LLM JSON response."""
-        title = paper.get("title", "")
-        abstract = paper.get("abstract", "")
+        context, selected_keys = build_extraction_context(paper)
         system = (
             "You are an academic paper extractor.\n"
             f"""{self._skill_manager.to_metadata_text_for(
@@ -85,13 +204,20 @@ class LLMStrategy(ExtractionStrategy):
         resp = await self._llm.chat(
             [
                 {"role": "system", "content": system},
-                {"role": "user", "content": wrap_xml("paper", f"{title}\n{abstract}")},
+                {"role": "user", "content": wrap_xml("paper", context)},
             ],
             response_format={"type": "json_object"},
         )
 
         data = json.loads(resp.content)
-        data.setdefault("claims", [])
+        if not isinstance(data, dict):
+            raise ValueError("LLM extraction output must be a JSON object")
+        claim_records = _normalize_claim_records(
+            data.get("claim_records"),
+            allowed_chunk_keys=set(selected_keys),
+        )
+        data["claim_records"] = claim_records
+        data["claims"] = [record["text"] for record in claim_records]
         data.setdefault("metrics", {})
         data.setdefault("methods", [])
         data.setdefault("datasets", [])

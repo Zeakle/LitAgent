@@ -6,11 +6,12 @@ import asyncio
 
 import pytest
 
-from litagent.observability.lifecycle import traced_io, sanitize_input
+from litagent.observability.lifecycle import sanitize_input, traced_io
 from litagent.observability.tracing import LangFuseTracer
+from litagent.tools.base import RateLimitConfig, ToolDefinition
 from litagent.tools.executor import ToolExecutor
 from litagent.tools.registry import ToolRegistry
-from litagent.tools.base import ToolDefinition, RateLimitConfig
+
 
 class TestSanitizeInput:
     """Tests recursive trace-input sanitization."""
@@ -501,30 +502,56 @@ class _FakeEmbedder:
     dim = 4
 
     def embed(self, text):
+        if isinstance(text, list):
+            return [[0.0] * 4 for _ in text]
         return [0.0] * 4
 
 
 class TestClaimsIndexProducer:
     """Tests claims-index lifecycle event production."""
 
+    @staticmethod
+    def _trusted_claim(text: str):
+        from litagent.rag.claims_index import TrustedClaim
+
+        return TrustedClaim(
+            claim_id=f"claim-{text}",
+            text=text,
+            supporting_text="support",
+            run_id="run-1",
+            domain="test",
+            paper_id="p1",
+            evidence_id="e1",
+            chunk_key="abstract",
+            section="abstract",
+            content_scope="abstract",
+            content_hash="hash",
+            evidence_version="v2",
+            quality_status="passed",
+            delivery_status="ready",
+        )
+
     @pytest.mark.asyncio
     async def test_add_emits_lifecycle_pair(self, monkeypatch):
         import litagent.rag.claims_index as ci_mod
-        from litagent.rag.claims_index import ClaimsIndex, Claim
+        from litagent.rag.claims_index import ClaimsIndex
 
         monkeypatch.setattr(ci_mod, "get_embedder", lambda: _FakeEmbedder())
         events = []
         client = MagicMock()
         client.upsert = AsyncMock()
         ci = ClaimsIndex(client, trace_hook=lambda e, d: events.append((e, d)))
-        await ci.add([Claim(text="c1"), Claim(text="c2")])
-        assert [e for e, _ in events] == ["claims.add.start", "claims.add.complete"]
+        await ci.upsert_trusted([self._trusted_claim("c1"), self._trusted_claim("c2")])
+        assert [e for e, _ in events] == [
+            "claims.promote.start",
+            "claims.promote.complete",
+        ]
         assert events[1][1]["count"] == 2
 
     @pytest.mark.asyncio
     async def test_add_failure_emits_failed_and_raises(self, monkeypatch):
         import litagent.rag.claims_index as ci_mod
-        from litagent.rag.claims_index import ClaimsIndex, Claim
+        from litagent.rag.claims_index import ClaimsIndex
 
         monkeypatch.setattr(ci_mod, "get_embedder", lambda: _FakeEmbedder())
         events = []
@@ -532,8 +559,11 @@ class TestClaimsIndexProducer:
         client.upsert = AsyncMock(side_effect=RuntimeError("qdrant down"))
         ci = ClaimsIndex(client, trace_hook=lambda e, d: events.append((e, d)))
         with pytest.raises(RuntimeError):
-            await ci.add([Claim(text="c1")])
-        assert [e for e, _ in events] == ["claims.add.start", "claims.add.failed"]
+            await ci.upsert_trusted([self._trusted_claim("c1")])
+        assert [e for e, _ in events] == [
+            "claims.promote.start",
+            "claims.promote.failed",
+        ]
 
     @pytest.mark.asyncio
     async def test_search_emits_lifecycle_pair(self, monkeypatch):
@@ -649,8 +679,8 @@ class TestMemoryLayerCanonical:
     def test_layer_constants_are_canonical(self):
         from litagent.memory.manager import (
             LAYER_EPISODIC,
-            LAYER_SEMANTIC,
             LAYER_PROCEDURAL,
+            LAYER_SEMANTIC,
         )
 
         assert LAYER_EPISODIC == "episodic"

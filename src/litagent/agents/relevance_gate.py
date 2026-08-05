@@ -6,7 +6,7 @@ import asyncio
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, Mapping
 
 from langchain_core.documents import Document
 
@@ -18,6 +18,31 @@ from litagent.rag.interfaces import Reranker, ScoredDoc
 logger = get_logger("agents.relevance_gate")
 _WORD_RE = re.compile(r"[a-z0-9]+")
 _SOURCE_INDEX = "_relevance_source_index"
+
+
+def build_relevance_text(
+    paper: Mapping[str, Any],
+    *,
+    max_chunks: int = 2,
+    max_chars: int = 4_000,
+) -> str:
+    """Render a bounded relevance context from title, abstract, and chunk prefix."""
+    if max_chunks <= 0 or max_chars <= 0:
+        raise ValueError("max_chunks and max_chars must be positive")
+
+    parts = [
+        str(paper.get("title") or "")[:500],
+        str(paper.get("abstract") or "")[:1_200],
+    ]
+    chunks = paper.get("chunks")
+    if isinstance(chunks, list):
+        for chunk in chunks[:max_chunks]:
+            if isinstance(chunk, Mapping) and chunk.get("text"):
+                parts.append(
+                    f"[{chunk.get('section', 'unknown')}] "
+                    f"{str(chunk['text'])[:1_000]}"
+                )
+    return "\n".join(part for part in parts if part)[:max_chars]
 
 
 @dataclass(frozen=True)
@@ -218,10 +243,7 @@ class RelevanceGateWorker(Worker):
         docs = [
             ScoredDoc(
                 doc=Document(
-                    page_content=(
-                        f"{paper.get('title') or ''}\n"
-                        f"{(paper.get('abstract') or '')[:1000]}"
-                    ),
+                    page_content=build_relevance_text(paper, max_chunks=2),
                     metadata={_SOURCE_INDEX: index},
                 ),
                 score=0.0,
@@ -271,10 +293,7 @@ class RelevanceGateWorker(Worker):
             scored.append(
                 ScoredDoc(
                     doc=Document(
-                        page_content=(
-                            f"{paper.get('title') or ''}\n"
-                            f"{(paper.get('abstract') or '')[:1000]}"
-                        ),
+                        page_content=build_relevance_text(paper, max_chunks=2),
                         metadata={_SOURCE_INDEX: index},
                     ),
                     score=score,
