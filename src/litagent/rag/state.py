@@ -22,7 +22,7 @@ class IngestionStatus(str, Enum):
 
 
 class PaperCorpusState(BaseModel):
-    """Keep the last committed chunk set plus current execution status."""
+    """Keep the last committed chunk set plus index identity."""
 
     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
@@ -36,9 +36,16 @@ class PaperCorpusState(BaseModel):
     schema_version: str | None = None
     parser_version: str | None = None
     chunking_version: str | None = None
+    chunk_strategy: str | None = None
+    chunk_size: int | None = None
+    chunk_overlap: int | None = None
+    embedding_backend: str | None = None
     embedding_model: str | None = None
+    embedding_document_adapter: str | None = None
     active_point_ids: list[str] = Field(default_factory=list)
     chunk_hashes: dict[str, str] = Field(default_factory=dict)
+    embedding_input_hashes: dict[str, str] = Field(default_factory=dict)
+    payload_hashes: dict[str, str] = Field(default_factory=dict)
     error_code: str | None = None
 
     @classmethod
@@ -50,7 +57,7 @@ class PaperCorpusState(BaseModel):
         point_ids: list[str],
         batch_id: str,
     ) -> "PaperCorpusState":
-        """Build the state committed only after all Qdrant writes succeed."""
+        """Build state only after all Qdrant side effects succeed."""
         return cls(
             collection_name=identity.collection_name,
             paper_id=record.paper_id,
@@ -62,10 +69,31 @@ class PaperCorpusState(BaseModel):
             schema_version=identity.schema_version,
             parser_version=identity.parser_version,
             chunking_version=identity.chunking_version,
+            chunk_strategy=identity.chunk_strategy,
+            chunk_size=identity.chunk_size,
+            chunk_overlap=identity.chunk_overlap,
+            embedding_backend=identity.embedding_backend,
             embedding_model=identity.embedding_model,
+            embedding_document_adapter=identity.embedding_document_adapter,
             active_point_ids=point_ids,
             chunk_hashes={
                 point_id: chunk.content_hash
+                for point_id, chunk in zip(
+                    point_ids,
+                    record.chunks,
+                    strict=True,
+                )
+            },
+            embedding_input_hashes={
+                point_id: identity.embedding_input_hash(record, chunk)
+                for point_id, chunk in zip(
+                    point_ids,
+                    record.chunks,
+                    strict=True,
+                )
+            },
+            payload_hashes={
+                point_id: identity.payload_hash(record, chunk)
                 for point_id, chunk in zip(
                     point_ids,
                     record.chunks,
@@ -86,9 +114,14 @@ class CorpusStateRepository:
         """Normalize asyncpg JSON and omit database-only audit columns."""
         payload = dict(row)
         payload.pop("updated_at", None)
-        chunk_hashes = payload.get("chunk_hashes")
-        if isinstance(chunk_hashes, str):
-            payload["chunk_hashes"] = json.loads(chunk_hashes)
+        for field_name in (
+            "chunk_hashes",
+            "embedding_input_hashes",
+            "payload_hashes",
+        ):
+            value = payload.get(field_name)
+            if isinstance(value, str):
+                payload[field_name] = json.loads(value)
         return PaperCorpusState.model_validate(payload)
 
     async def ensure_tables(self) -> None:
@@ -138,18 +171,22 @@ class CorpusStateRepository:
         )
 
     async def mark_succeeded(self, state: PaperCorpusState) -> None:
-        """Atomically replace the committed hash and active-point snapshot."""
+        """Atomically replace hashes, point ownership, and index identity."""
         await self._pool.execute(
             """
             INSERT INTO corpus_paper_state (
                 collection_name, paper_id, status, batch_id,
                 asset_hash, metadata_hash, corpus_version, schema_version,
-                parser_version, chunking_version, embedding_model,
-                active_point_ids, chunk_hashes, error_code
+                parser_version, chunking_version, chunk_strategy,
+                chunk_size, chunk_overlap, embedding_backend, embedding_model,
+                embedding_document_adapter, active_point_ids, chunk_hashes,
+                embedding_input_hashes, payload_hashes,
+                error_code
             )
             VALUES (
                 $1, $2, 'succeeded', $3, $4, $5, $6, $7,
-                $8, $9, $10, $11, $12::jsonb, NULL
+                $8, $9, $10, $11, $12, $13, $14, $15, $16, $17::jsonb,
+                $18::jsonb, $19::jsonb, NULL
             )
             ON CONFLICT (collection_name, paper_id) DO UPDATE SET
                 status = 'succeeded',
@@ -160,9 +197,16 @@ class CorpusStateRepository:
                 schema_version = EXCLUDED.schema_version,
                 parser_version = EXCLUDED.parser_version,
                 chunking_version = EXCLUDED.chunking_version,
+                chunk_strategy = EXCLUDED.chunk_strategy,
+                chunk_size = EXCLUDED.chunk_size,
+                chunk_overlap = EXCLUDED.chunk_overlap,
+                embedding_backend = EXCLUDED.embedding_backend,
                 embedding_model = EXCLUDED.embedding_model,
+                embedding_document_adapter = EXCLUDED.embedding_document_adapter,
                 active_point_ids = EXCLUDED.active_point_ids,
                 chunk_hashes = EXCLUDED.chunk_hashes,
+                embedding_input_hashes = EXCLUDED.embedding_input_hashes,
+                payload_hashes = EXCLUDED.payload_hashes,
                 error_code = NULL,
                 updated_at = now()
             """,
@@ -175,9 +219,16 @@ class CorpusStateRepository:
             state.schema_version,
             state.parser_version,
             state.chunking_version,
+            state.chunk_strategy,
+            state.chunk_size,
+            state.chunk_overlap,
+            state.embedding_backend,
             state.embedding_model,
+            state.embedding_document_adapter,
             state.active_point_ids,
             json.dumps(state.chunk_hashes, sort_keys=True),
+            json.dumps(state.embedding_input_hashes, sort_keys=True),
+            json.dumps(state.payload_hashes, sort_keys=True),
         )
 
     async def mark_failed(

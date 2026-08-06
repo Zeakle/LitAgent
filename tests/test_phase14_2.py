@@ -965,7 +965,7 @@ async def test_runner_bootstraps_configured_claims_collection(monkeypatch):
             "litagent.runner.QdrantVectorStore.ensure_compatible",
             new=AsyncMock(side_effect=RuntimeError("paper index unavailable")),
         ),
-        patch("litagent.runner.LocalEmbedder", return_value=fake_embedder),
+        patch("litagent.runner.build_retrieval_embedder", return_value=fake_embedder),
         patch.object(
             asyncpg,
             "create_pool",

@@ -19,6 +19,12 @@ class _IntegrationEmbedder:
             return [float(len(texts)), 1.0, 0.5]
         return [[float(len(text)), 1.0, 0.5] for text in texts]
 
+    def embed_documents(self, documents):
+        return self.embed([document.text for document in documents])
+
+    def embed_query(self, query):
+        return self.embed(query)
+
 
 def _record(*, texts=("Abstract evidence.", "Method evidence."), keys=None):
     from litagent.rag.models import ContentChunk, ContentScope, PaperRecord
@@ -72,8 +78,8 @@ async def corpus_runtime(monkeypatch):
 
     monkeypatch.setattr(
         runtime_module,
-        "LocalEmbedder",
-        lambda _model_name: _IntegrationEmbedder(),
+        "build_retrieval_embedder",
+        lambda _config: _IntegrationEmbedder(),
     )
 
     suffix = uuid.uuid4().hex[:12]

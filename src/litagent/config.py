@@ -2,6 +2,7 @@
 
 import math
 import os
+from enum import Enum
 from pathlib import Path
 from typing import Literal
 
@@ -188,6 +189,30 @@ class RelevanceConfig(BaseModel):
         return self
 
 
+class ChunkStrategy(str, Enum):
+    """Select the deterministic chunk policy used for PDF clean blocks."""
+
+    PAGE_BLOCK = "page_block"
+    RECURSIVE = "recursive"
+    SECTION_AWARE = "section_aware"
+
+
+class RetrievalMode(str, Enum):
+    """Select one observable paper-retrieval algorithm."""
+
+    BM25 = "bm25"
+    DENSE = "dense"
+    RRF = "rrf"
+    RRF_RERANK = "rrf_rerank"
+
+
+class EmbeddingBackend(str, Enum):
+    """Select the dense embedding implementation."""
+
+    SENTENCE_TRANSFORMER = "sentence_transformer"
+    SPECTER2 = "specter2"
+
+
 class CorpusQualityConfig(BaseModel):
     """Configure deterministic PDF text-quality decisions."""
 
@@ -207,26 +232,31 @@ class RAGConfig(BaseModel):
     trusted_claim_recall_top_k: int = Field(default=5, ge=0, le=20)
     trusted_claim_context_max_chars: int = Field(default=4000, ge=500, le=20000)
     quality: CorpusQualityConfig = Field(default_factory=CorpusQualityConfig)
-    benchmark_collection: str = Field(
-        default="papers_benchmark",
-        min_length=1,
-    )
+    benchmark_collection: str = Field(default="papers_benchmark", min_length=1)
     claims_collection: str = Field(default="claims", min_length=1)
     corpus_version: str = Field(default="v1", min_length=1)
     schema_version: str = Field(default="paper-v1", min_length=1)
     parser_version: str = Field(default="pymupdf-v1", min_length=1)
     chunking_version: str = Field(default="page-block-v1", min_length=1)
-    embedding_model: str = Field(
-        default="all-MiniLM-L6-v2",
-        min_length=1,
-    )
+    chunk_strategy: ChunkStrategy = ChunkStrategy.PAGE_BLOCK
+    chunk_size: int = Field(default=1200, ge=200, le=8000)
+    chunk_overlap: int = Field(default=150, ge=0, le=2000)
+    embedding_backend: EmbeddingBackend = EmbeddingBackend.SENTENCE_TRANSFORMER
+    embedding_model: str = Field(default="all-MiniLM-L6-v2", min_length=1)
+    embedding_document_adapter: str | None = None
+    embedding_query_adapter: str | None = None
     content_mode: Literal[
         "abstract",
         "abstract_and_selected_fulltext",
     ] = "abstract"
+    retrieval_mode: RetrievalMode = RetrievalMode.RRF
     candidate_k: int = Field(default=40, ge=1, le=500)
     top_k: int = Field(default=20, ge=1, le=100)
     reranker_enabled: bool = True
+    reranker_model: str = Field(
+        default="cross-encoder/ms-marco-MiniLM-L-6-v2",
+        min_length=1,
+    )
     writeback_enabled: bool = False
     manifest_path: str = "corpus/manifest.yaml"
     raw_root: str = "artifacts/corpus/raw"
@@ -234,13 +264,25 @@ class RAGConfig(BaseModel):
     max_pdf_bytes: int = Field(default=50 * 1024 * 1024, ge=1024)
 
     @model_validator(mode="after")
-    def _validate_retrieval_limits(self):
+    def _validate_retrieval_policy(self):
         if self.candidate_k < self.top_k:
             raise ValueError("rag.candidate_k must be >= rag.top_k")
         if self.paper_collection == self.benchmark_collection:
             raise ValueError(
                 "rag.paper_collection and benchmark_collection must differ"
             )
+        if self.chunk_overlap >= self.chunk_size:
+            raise ValueError("rag.chunk_overlap must be smaller than chunk_size")
+        if self.embedding_backend is EmbeddingBackend.SPECTER2 and not (
+            self.embedding_document_adapter and self.embedding_query_adapter
+        ):
+            raise ValueError(
+                "rag SPECTER2 backend requires document and query adapter names"
+            )
+        if self.retrieval_mode is RetrievalMode.RRF_RERANK and not (
+            self.reranker_enabled and self.reranker_model.strip()
+        ):
+            raise ValueError("rag.rrf_rerank requires an enabled, named reranker")
         return self
 
 

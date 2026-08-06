@@ -2,19 +2,19 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
-import json
 from enum import Enum
 from typing import Callable
 
-from litagent.config import PlannerConfig
+from litagent.config import PlannerConfig, RAGConfig
 from litagent.context.templates import wrap_xml
 from litagent.exceptions import SafetyError
-from litagent.observability.context import reset_task_id, set_task_id
 from litagent.llm.client import BaseLLMClient
-from litagent.orchestrator.task_graph import TaskGraph, SubTask
 from litagent.logging import get_logger
+from litagent.observability.context import reset_task_id, set_task_id
+from litagent.orchestrator.task_graph import SubTask, TaskGraph
 from litagent.safety.injection import InjectionDetector, InjectionRisk
 
 logger = get_logger("agents.planner")
@@ -34,8 +34,6 @@ _ARXIV_LEGACY_RE = re.compile(
     r"^(arxiv:)?[a-z-]+(\.[a-z]{2})?/\d{7}(v\d+)?$", re.IGNORECASE
 )
 _DOI_RE = re.compile(r"^(doi:)?10\.\d{4,9}/\S+$", re.IGNORECASE)
-
-_RECALL_TOP_K = 20
 
 
 def classify_query_intent(query: str) -> QueryIntent:
@@ -70,9 +68,11 @@ class SurveyPlanner:
         config: PlannerConfig | None = None,
         trace_hook: Callable[[str, dict], None] | None = None,
         memory_manager: "MemoryManager | None" = None,
-    ):
+        rag_config: RAGConfig | None = None,
+    ) -> None:
         self._llm = llm
         self._config = config or PlannerConfig()
+        self._rag_config = rag_config or RAGConfig()
         self._trace_hook = trace_hook
         self._memory = memory_manager
 
@@ -141,21 +141,26 @@ class SurveyPlanner:
                 search_ids.append(tid)
 
         recall_ids: list[str] = []
-        for i, sub_query in enumerate(sub_queries):
-            tid = f"recall_q{i}"
+        for index, sub_query in enumerate(sub_queries):
+            task_id = f"recall_q{index}"
             graph.add_task(
                 SubTask(
-                    task_id=tid,
+                    task_id=task_id,
                     description=f"RAG recall for: {sub_query}",
                     agent_type="recall",
                     input_data={
                         "query": sub_query,
-                        "top_k": _RECALL_TOP_K,
-                        "query_index": i,
+                        "query_index": index,
+                        "top_k": self._rag_config.top_k,
+                        "candidate_k": self._rag_config.candidate_k,
+                        "max_representative_chunks": (
+                            self._rag_config.max_representative_chunks
+                        ),
+                        "retrieval_mode": self._rag_config.retrieval_mode.value,
                     },
                 )
             )
-            recall_ids.append(tid)
+            recall_ids.append(task_id)
 
         graph.add_task(
             SubTask(

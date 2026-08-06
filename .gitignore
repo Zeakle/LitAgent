@@ -28,8 +28,8 @@ venv/
 # 测试（测试文件已跟踪；只忽略缓存和覆盖率报告）
 .pytest_cache/
 .pytest-tmp-*/
-artifacts/runs/
-artifacts/*.log
+# Corpus、回放和 benchmark 都是可再生的本机运行产物。
+artifacts/
 .coverage
 
 # IDE

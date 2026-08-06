@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 from enum import Enum
 from pathlib import Path
@@ -102,8 +103,29 @@ class RawPaperAsset(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class ChunkSourceSpan(BaseModel):
+    """Locate one chunk fragment in a cleaned PDF text block."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    page: int = Field(ge=1)
+    block_index: int = Field(ge=0)
+    bbox: tuple[float, float, float, float]
+    start_char: int = Field(ge=0)
+    end_char: int = Field(gt=0)
+    raw_content_hash: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _validate_span(self):
+        if self.start_char >= self.end_char:
+            raise ValueError("source span start_char must be smaller than end_char")
+        if not all(math.isfinite(value) for value in self.bbox):
+            raise ValueError("source span bbox values must be finite")
+        return self
+
+
 class ContentChunk(BaseModel):
-    """Represent one deterministic retrieval unit and its source locator."""
+    """Represent one deterministic retrieval unit and its source lineage."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -118,6 +140,7 @@ class ContentChunk(BaseModel):
     page: int | None = Field(default=None, ge=1)
     block_index: int | None = Field(default=None, ge=0)
     bbox: tuple[float, float, float, float] | None = None
+    source_spans: list[ChunkSourceSpan] = Field(default_factory=list)
 
     @classmethod
     def from_text(
@@ -129,16 +152,33 @@ class ContentChunk(BaseModel):
         section: str,
         content_scope: ContentScope,
         raw_text: str | None = None,
+        raw_content_hash: str | None = None,
         transformations: Sequence[str] = (),
         page: int | None = None,
         block_index: int | None = None,
         bbox: tuple[float, float, float, float] | None = None,
+        source_spans: Sequence[ChunkSourceSpan | dict[str, Any]] = (),
     ) -> "ContentChunk":
-        """Normalize text once and drive its stable content hash."""
+        """Normalize text while preserving explicit raw and locator lineage."""
         normalized = " ".join(text.split()).strip()
         if not normalized:
             raise ValueError("empty chunks are not indexable")
-        raw = text if raw_text is None else raw_text
+
+        spans = [ChunkSourceSpan.model_validate(span) for span in source_spans]
+        if spans:
+            first = spans[0]
+            page = first.page if page is None else page
+            block_index = first.block_index if block_index is None else block_index
+            bbox = first.bbox if bbox is None else bbox
+
+        if raw_content_hash is None:
+            if raw_text is not None:
+                raw_content_hash = hashlib.sha256(raw_text.encode("utf-8")).hexdigest()
+            elif spans:
+                lineage = "|".join(span.raw_content_hash for span in spans)
+                raw_content_hash = hashlib.sha256(lineage.encode("utf-8")).hexdigest()
+            else:
+                raw_content_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
 
         return cls(
             paper_id=paper_id,
@@ -147,24 +187,34 @@ class ContentChunk(BaseModel):
             section=section.strip().lower() or "unknown",
             content_scope=content_scope,
             content_hash=hashlib.sha256(normalized.encode("utf-8")).hexdigest(),
-            raw_content_hash=hashlib.sha256(raw.encode("utf-8")).hexdigest(),
+            raw_content_hash=raw_content_hash,
             transformations=list(dict.fromkeys(transformations)),
             page=page,
             block_index=block_index,
             bbox=bbox,
+            source_spans=spans,
         )
 
     @model_validator(mode="after")
     def _validate_locator(self):
         locator_values = (self.page, self.block_index, self.bbox)
-        if self.content_scope is ContentScope.ABSTRACT and any(
-            value is not None for value in locator_values
-        ):
-            raise ValueError("abstract chunks cannot have PDF locators")
+        if self.content_scope is ContentScope.ABSTRACT:
+            if any(value is not None for value in locator_values) or self.source_spans:
+                raise ValueError("abstract chunks cannot have PDF locators")
+            return self
+
         if self.content_scope is ContentScope.SELECTED_FULLTEXT and any(
             value is None for value in locator_values
         ):
             raise ValueError("selected-fulltext chunks require page, block and bbox")
+        if self.source_spans:
+            first = self.source_spans[0]
+            if (self.page, self.block_index, self.bbox) != (
+                first.page,
+                first.block_index,
+                first.bbox,
+            ):
+                raise ValueError("legacy locator must match the first source span")
         return self
 
     @property
@@ -177,6 +227,9 @@ class ContentChunk(BaseModel):
             "page": self.page,
             "block_index": self.block_index,
             "bbox": list(self.bbox) if self.bbox else None,
+            "source_spans": [
+                span.model_dump(mode="json") for span in self.source_spans
+            ],
             "content_scope": self.content_scope.value,
             "content_hash": self.content_hash,
             "raw_content_hash": self.raw_content_hash,
@@ -255,7 +308,7 @@ class PaperRecord(BaseModel):
 
 
 class ScoredChunkHit(BaseModel):
-    """Return one versioned Qdrant chunk hit"""
+    """Return one versioned Qdrant chunk hit."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -272,11 +325,16 @@ class ScoredChunkHit(BaseModel):
     schema_version: str
     parser_version: str
     chunking_version: str
+    chunk_strategy: str = "page_block"
+    chunk_size: int = 1200
+    chunk_overlap: int = 150
+    embedding_backend: str = "sentence_transformer"
     embedding_model: str
+    embedding_document_adapter: str | None = None
 
 
 class ScoredPaperHit(BaseModel):
-    """Aggregate multiple chunk hits into one query-specific paper result"""
+    """Aggregate multiple chunk hits into one query-specific paper result."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -295,7 +353,12 @@ class ScoredPaperHit(BaseModel):
     schema_version: str
     parser_version: str
     chunking_version: str
+    chunk_strategy: str = "page_block"
+    chunk_size: int = 1200
+    chunk_overlap: int = 150
+    embedding_backend: str = "sentence_transformer"
     embedding_model: str
+    embedding_document_adapter: str | None = None
 
 
 class PaperCandidate(BaseModel):
@@ -384,7 +447,12 @@ class PaperCandidate(BaseModel):
                 "schema_version": hit.schema_version,
                 "parser_version": hit.parser_version,
                 "chunking_version": hit.chunking_version,
+                "chunk_strategy": hit.chunk_strategy,
+                "chunk_size": hit.chunk_size,
+                "chunk_overlap": hit.chunk_overlap,
+                "embedding_backend": hit.embedding_backend,
                 "embedding_model": hit.embedding_model,
+                "embedding_document_adapter": hit.embedding_document_adapter,
             },
         )
 

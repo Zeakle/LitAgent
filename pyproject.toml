@@ -48,6 +48,9 @@ dev = [
 ragas = [
     "ragas>=0.4,<0.5",
 ]
+benchmark = [
+    "adapters>=1.0",
+]
 
 [tool.setuptools.package-data]
 litagent = [

@@ -53,7 +53,7 @@ def _mcp_summary(config: AppConfig) -> list[dict[str, Any]]:
 
 
 def _rag_summary(config: AppConfig) -> dict[str, Any] | None:
-    """Project the RAG model without accepting unknown fields."""
+    """Project non-secret RAG behavior into the run fingerprint."""
     rag = getattr(config, "rag", None)
     if rag is None:
         return None
@@ -61,20 +61,29 @@ def _rag_summary(config: AppConfig) -> dict[str, Any] | None:
         "enabled",
         "paper_collection",
         "claims_collection",
+        "benchmark_collection",
         "corpus_version",
         "schema_version",
         "parser_version",
         "chunking_version",
+        "chunk_strategy",
+        "chunk_size",
+        "chunk_overlap",
+        "embedding_backend",
         "embedding_model",
+        "embedding_document_adapter",
+        "embedding_query_adapter",
         "content_mode",
+        "retrieval_mode",
         "candidate_k",
         "top_k",
+        "max_representative_chunks",
         "reranker_enabled",
+        "reranker_model",
         "writeback_enabled",
-        "benchmark_collection",
     )
-
-    return {field: getattr(rag, field) for field in allowed if hasattr(rag, field)}
+    serialized = rag.model_dump(mode="json")
+    return {field: serialized[field] for field in allowed}
 
 
 def build_config_summary(config: AppConfig) -> dict[str, Any]:

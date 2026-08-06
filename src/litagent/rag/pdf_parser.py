@@ -7,7 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
-from litagent.rag.models import ContentChunk, ContentScope, PaperRecord, RawPaperAsset
+from litagent.rag.chunking import CorpusChunker, PageBlockChunker
+from litagent.rag.models import ContentScope, PaperRecord, RawPaperAsset
 from litagent.rag.quality import (
     CleanedDocument,
     CorpusTextQualityGate,
@@ -66,9 +67,11 @@ class PyMuPDFParser:
         *,
         opener: Callable[[Path], Any] | None = None,
         quality_gate: CorpusTextQualityGate | None = None,
+        chunker: CorpusChunker | None = None,
     ) -> None:
         self._opener = opener or _default_open
         self._quality_gate = quality_gate or CorpusTextQualityGate()
+        self._chunker = chunker or PageBlockChunker()
 
     def parse(self, asset: RawPaperAsset) -> PaperRecord:
         """Parse one local PDF and always release the underlying document."""
@@ -114,7 +117,7 @@ class PyMuPDFParser:
                 document.close()
 
     def _parse_quality_document(self, asset: RawPaperAsset, document) -> ParsedPaper:
-        """Convert cleaned blocks into locator-preserving full-text chunks."""
+        """Clean PDF blocks, then delegate chunk construction once."""
         base = PaperRecord.from_abstract_asset(asset)
         raw_blocks: list[RawTextBlock] = []
         current_section = "unknown"
@@ -154,30 +157,22 @@ class PyMuPDFParser:
         if cleaned.report.decision is QualityDecision.QUARANTINED:
             return ParsedPaper(record=None, quality=cleaned.report, audit=cleaned)
 
-        chunks = list(base.chunks)
-        raw_by_locator = {
-            (raw.page, raw.block_index): raw for raw in cleaned.source_blocks
-        }
-        for block in cleaned.blocks:
-            raw = raw_by_locator[(block.page, block.block_index)]
-            chunks.append(
-                ContentChunk.from_text(
-                    paper_id=block.paper_id,
-                    chunk_key=f"page:{block.page}:block:{block.block_index}",
-                    text=block.text,
-                    raw_text=raw.raw_text,
-                    transformations=block.transformations,
-                    section=block.section,
-                    content_scope=ContentScope.SELECTED_FULLTEXT,
-                    page=block.page,
-                    block_index=block.block_index,
-                    bbox=block.bbox,
-                )
+        try:
+            fulltext_chunks = self._chunker.chunk(
+                paper_id=asset.paper_id,
+                blocks=cleaned.blocks,
             )
+        except Exception as exc:
+            raise CorpusParseError("chunking_failed", str(exc)) from exc
 
-        has_fulltext = any(
-            chunk.content_scope is ContentScope.SELECTED_FULLTEXT for chunk in chunks
-        )
+        canonical_abstract = " ".join(base.abstract.split())
+        fulltext_chunks = [
+            chunk
+            for chunk in fulltext_chunks
+            if not canonical_abstract or chunk.text != canonical_abstract
+        ]
+        chunks = [*base.chunks, *fulltext_chunks]
+        has_fulltext = bool(fulltext_chunks)
         record = base.model_copy(
             update={
                 "content_scope": (
@@ -199,66 +194,3 @@ class PyMuPDFParser:
             }
         )
         return ParsedPaper(record=record, quality=cleaned.report, audit=cleaned)
-
-    def _parse_document(self, asset: RawPaperAsset, document: Any) -> PaperRecord:
-        """Convert text blocks while treating scanned pages as degradation."""
-        base = PaperRecord.from_abstract_asset(asset)
-        chunks = list(base.chunks)
-        warnings = list(base.warnings)
-        current_section = "unknown"
-        image_only_pages = 0
-
-        for page_number, page in enumerate(document, start=1):
-            blocks = page.get_text("blocks") or []
-            text_blocks = [
-                block
-                for block in blocks
-                if len(block) >= 7 and int(block[6]) == 0 and str(block[4]).strip()
-            ]
-            if not text_blocks and page.get_images(full=True):
-                image_only_pages += 1
-                continue
-            for block in text_blocks:
-                text = " ".join(str(block[4]).split()).strip()
-                if _HEADING.fullmatch(text):
-                    current_section = text.lower().replace(" ", "_")
-                    continue
-
-                if base.abstract and text == " ".join(base.abstract.split()):
-                    # Canonical abstract chunk already represents this text.
-                    continue
-                block_index = int(block[5])
-                chunks.append(
-                    ContentChunk.from_text(
-                        paper_id=asset.paper_id,
-                        chunk_key=f"page:{page_number}:block:{block_index}",
-                        text=text,
-                        section=current_section,
-                        content_scope=ContentScope.SELECTED_FULLTEXT,
-                        page=page_number,
-                        block_index=block_index,
-                        bbox=tuple(float(value) for value in block[:4]),
-                    )
-                )
-
-        ocr_required = image_only_pages > 0 and not any(
-            chunk.content_scope is ContentScope.SELECTED_FULLTEXT for chunk in chunks
-        )
-        if ocr_required:
-            warnings.append("ocr_required:image_only_pdf")
-        scope = (
-            ContentScope.SELECTED_FULLTEXT
-            if any(
-                chunk.content_scope is ContentScope.SELECTED_FULLTEXT
-                for chunk in chunks
-            )
-            else base.content_scope
-        )
-        return base.model_copy(
-            update={
-                "content_scope": scope,
-                "chunks": chunks,
-                "warnings": warnings,
-                "ocr_required": ocr_required,
-            }
-        )

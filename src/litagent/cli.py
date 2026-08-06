@@ -12,6 +12,40 @@ from litagent.config import load_config
 from litagent.runner import LitAgent, derive_delivery
 
 
+def _add_benchmark_commands(subparsers) -> None:
+    """Register offline ingestion and explicit live retrieval benchmarks."""
+    benchmark = subparsers.add_parser(
+        "benchmark",
+        help="Run reproducible ingestion or RAG benchmarks",
+    )
+    benchmark_sub = benchmark.add_subparsers(
+        dest="benchmark_command",
+        required=True,
+    )
+    ingestion = benchmark_sub.add_parser("ingestion")
+    ingestion.add_argument("--dataset", required=True)
+    ingestion.add_argument(
+        "--output-root",
+        default="artifacts/benchmarks/rag",
+    )
+    ingestion.add_argument("--config", default=None)
+
+    retrieval = benchmark_sub.add_parser("retrieval")
+    retrieval.add_argument("--dataset", required=True)
+    retrieval.add_argument("--profiles", required=True)
+    retrieval.add_argument("--profile-id", action="append", default=[])
+    retrieval.add_argument(
+        "--output-root",
+        default="artifacts/benchmarks/rag",
+    )
+    retrieval.add_argument("--config", default=None)
+    retrieval.add_argument(
+        "--live",
+        action="store_true",
+        help="Allow model loading and isolated Qdrant/PostgreSQL access",
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the CLI grammar without executing a command."""
     parser = argparse.ArgumentParser(
@@ -86,6 +120,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     quarantine_sub.add_parser("list")
 
+    _add_benchmark_commands(subparsers)
     return parser
 
 
@@ -116,6 +151,104 @@ async def _dispatch_async(args: argparse.Namespace) -> None:
         _cmd_tools(args)
     elif args.command == "corpus":
         await _cmd_corpus(args)
+    elif args.command == "benchmark":
+        await _cmd_benchmark(args)
+
+
+async def _cmd_benchmark(args: argparse.Namespace) -> None:
+    """Run one benchmark family and print its terminal summary."""
+    import subprocess
+
+    from litagent.benchmark.artifacts import BenchmarkArtifactRepository
+    from litagent.benchmark.datasets import (
+        load_ingestion_dataset,
+        load_profiles,
+        load_retrieval_dataset,
+    )
+    from litagent.benchmark.generated_ingestion import (
+        GeneratedIngestionCaseExecutor,
+    )
+    from litagent.benchmark.ingestion_runner import IngestionRobustnessRunner
+    from litagent.benchmark.rag_runner import RAGBenchmarkRunner
+
+    config = load_config(args.config)
+    artifacts = BenchmarkArtifactRepository(Path(args.output_root))
+    if args.benchmark_command == "ingestion":
+        dataset = load_ingestion_dataset(Path(args.dataset))
+        result = await IngestionRobustnessRunner(
+            GeneratedIngestionCaseExecutor(config.rag)
+        ).run(dataset.cases)
+        artifacts.write(result)
+        print(
+            json.dumps(
+                result.model_dump(mode="json"),
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        if result.status != "succeeded":
+            raise SystemExit(1)
+        return
+
+    if not args.live:
+        raise SystemExit("retrieval benchmark requires explicit --live")
+    dataset = load_retrieval_dataset(Path(args.dataset))
+    profiles = load_profiles(Path(args.profiles))
+    selected = set(args.profile_id)
+    if selected:
+        known = {profile.profile_id for profile in profiles}
+        unknown = selected - known
+        if unknown:
+            raise SystemExit(f"unknown benchmark profiles: {sorted(unknown)}")
+        profiles = [profile for profile in profiles if profile.profile_id in selected]
+    try:
+        git_sha = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        git_sha = "unknown"
+    try:
+        git_dirty = bool(
+            subprocess.run(
+                ["git", "status", "--porcelain"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+        )
+    except (OSError, subprocess.CalledProcessError):
+        git_dirty = True
+    results = await RAGBenchmarkRunner(
+        base_config=config,
+        artifacts=artifacts,
+    ).run(
+        dataset=dataset,
+        profiles=profiles,
+        git_sha=git_sha,
+        git_dirty=git_dirty,
+    )
+    summary = {
+        "status": (
+            "succeeded"
+            if all(result.status == "succeeded" for result in results)
+            else "failed"
+        ),
+        "profiles": [
+            {
+                "profile_id": result.profile_id,
+                "run_id": result.run_id,
+                "status": result.status,
+                "reason_codes": result.reason_codes,
+            }
+            for result in results
+        ],
+    }
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
+    if summary["status"] != "succeeded":
+        raise SystemExit(1)
 
 
 async def _cmd_corpus(args: argparse.Namespace) -> None:
@@ -123,6 +256,7 @@ async def _cmd_corpus(args: argparse.Namespace) -> None:
     import time
 
     from litagent.config import load_config
+    from litagent.rag.chunking import build_corpus_chunker
     from litagent.rag.ingest import (
         CorpusIngestor,
         ParsedAuditRepository,
@@ -236,7 +370,10 @@ async def _cmd_corpus(args: argparse.Namespace) -> None:
                 await runtime.state.reset_collection(runtime.identity.collection_name)
 
             quality_gate = CorpusTextQualityGate(**config.rag.quality.model_dump())
-            parser = PyMuPDFParser(quality_gate=quality_gate)
+            parser = PyMuPDFParser(
+                quality_gate=quality_gate,
+                chunker=build_corpus_chunker(config.rag),
+            )
             local_pdf_adapter = LocalPDFAdapter(
                 max_pdf_bytes=config.rag.max_pdf_bytes,
             )

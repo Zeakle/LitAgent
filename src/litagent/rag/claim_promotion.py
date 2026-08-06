@@ -95,6 +95,7 @@ def _to_trusted_claim(
             page=evidence.get("page"),
             block_index=evidence.get("block_index"),
             bbox=evidence.get("bbox"),
+            source_spans=evidence.get("source_spans") or [],
             content_scope=str(evidence["content_scope"]),
             content_hash=str(evidence["content_hash"]),
             evidence_version="v2",

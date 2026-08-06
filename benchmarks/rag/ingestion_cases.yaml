@@ -1,0 +1,21 @@
+schema_version: 1
+dataset_id: litagent-ingestion-robustness
+dataset_version: v1
+cases:
+  - {case_id: normal-single-column, fixture_type: normal_pdf, expected_outcome: indexed}
+  - {case_id: double-column, fixture_type: double_column_pdf, expected_outcome: indexed, expected_reason_codes: [double_column_order_uncertain]}
+  - {case_id: repeated-header, fixture_type: repeated_header_pdf, expected_outcome: indexed, expected_reason_codes: [repeated_header_footer_removed]}
+  - {case_id: page-numbers, fixture_type: page_number_pdf, expected_outcome: indexed, expected_reason_codes: [page_number_removed]}
+  - {case_id: scanned-only, fixture_type: scanned_pdf, expected_outcome: metadata_only, expected_reason_codes: [ocr_required]}
+  - {case_id: mixed-scan, fixture_type: mixed_scan_pdf, expected_outcome: indexed, expected_reason_codes: [ocr_required]}
+  - {case_id: corrupt-pdf, fixture_type: corrupt_pdf, expected_outcome: failed, expected_reason_codes: [parser_failed]}
+  - {case_id: encrypted-pdf, fixture_type: encrypted_pdf, expected_outcome: failed, expected_reason_codes: [encrypted_pdf]}
+  - {case_id: fake-pdf, fixture_type: fake_pdf, expected_outcome: failed, expected_reason_codes: [not_pdf]}
+  - {case_id: empty-pdf, fixture_type: empty_pdf, expected_outcome: metadata_only, expected_reason_codes: [ocr_required]}
+  - {case_id: metadata-only, fixture_type: metadata_only, expected_outcome: metadata_only}
+  - {case_id: duplicate-blocks, fixture_type: duplicate_blocks_pdf, expected_outcome: indexed, expected_reason_codes: [duplicate_block_removed]}
+  - {case_id: version-update, fixture_type: version_update_pdf, expected_outcome: indexed}
+  - {case_id: high-injection, fixture_type: high_injection_pdf, expected_outcome: quarantined, expected_reason_codes: [prompt_injection_high]}
+  - {case_id: suspicious-injection, fixture_type: suspicious_injection_pdf, expected_outcome: indexed, expected_reason_codes: [suspicious_block_excluded]}
+  - {case_id: gibberish, fixture_type: gibberish_pdf, expected_outcome: metadata_only, expected_reason_codes: [gibberish_block_excluded]}
+  - {case_id: multipage-locators, fixture_type: multipage_pdf, expected_outcome: indexed}

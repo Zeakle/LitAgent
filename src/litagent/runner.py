@@ -74,7 +74,7 @@ from litagent.rag.claim_promotion import (
 )
 from litagent.rag.claims_index import ClaimsIndex
 from litagent.rag.corpus import CollectionIdentity
-from litagent.rag.embedder import LocalEmbedder
+from litagent.rag.embedder import build_retrieval_embedder
 from litagent.rag.interfaces import Reranker
 from litagent.rag.reranker import CrossEncoderReranker
 from litagent.rag.retriever import HybridRetriever
@@ -691,6 +691,7 @@ class LitAgent:
             config=cfg.planner,
             trace_hook=self._trace_hook,
             memory_manager=self._infra.memory,
+            rag_config=cfg.rag,
         )
 
         eval_mt = cfg.eval.max_tokens
@@ -774,19 +775,28 @@ class LitAgent:
             return result
 
     @staticmethod
-    def _create_reranker() -> Reranker | None:
+    def _create_reranker(model_name: str | None = None) -> Reranker | None:
         try:
-            return CrossEncoderReranker()
+            return (
+                CrossEncoderReranker(model_name)
+                if model_name
+                else CrossEncoderReranker()
+            )
         except Exception as exc:
             logger.warning(
-                "CrossEncoder unavailable reason=model_init_failed " "error_type=%s",
+                "CrossEncoder unavailable reason=model_init_failed error_type=%s",
                 type(exc).__name__,
             )
             return None
 
-    async def _create_reranker_async(self) -> Reranker | None:
+    async def _create_reranker_async(
+        self,
+        model_name: str | None = None,
+    ) -> Reranker | None:
         """Offload synchronous model loading to a thread."""
-        return await asyncio.to_thread(self._create_reranker)
+        if model_name is None:
+            return await asyncio.to_thread(self._create_reranker)
+        return await asyncio.to_thread(self._create_reranker, model_name)
 
     async def _connect_infra(
         self,
@@ -846,7 +856,7 @@ class LitAgent:
                 if not cfg.rag.enabled:
                     raise ConfigError("RAG disabled by configuration")
                 paper_identity = CollectionIdentity.from_config(cfg.rag)
-                paper_embedder = LocalEmbedder(cfg.rag.embedding_model)
+                paper_embedder = build_retrieval_embedder(cfg.rag)
                 paper_dim = await asyncio.to_thread(lambda: paper_embedder.dim)
                 vector_store = await QdrantVectorStore.ensure_compatible(
                     qdrant_client,
@@ -856,7 +866,7 @@ class LitAgent:
                     embedder=paper_embedder,
                 )
                 infra.reranker = (
-                    await self._create_reranker_async()
+                    await self._create_reranker_async(cfg.rag.reranker_model)
                     if cfg.rag.reranker_enabled
                     else None
                 )
@@ -866,10 +876,7 @@ class LitAgent:
                     trace_hook=self._trace_hook,
                 )
             except Exception as exc:
-                logger.warning(
-                    "Infra: RAG unavailable (%s)",
-                    exc,
-                )
+                logger.warning("Infra: RAG unavailable (%s)", exc)
             logger.info("Infra: Qdrant connected (Episodic + Claims + Papers)")
         except Exception as exc:
             logger.warning(

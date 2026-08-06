@@ -20,6 +20,7 @@ from litagent.config import MemoryConfig
 from litagent.logging import get_logger
 from litagent.observability.lifecycle import traced_io
 from litagent.rag.embedder import get_embedder
+from litagent.rag.models import ChunkSourceSpan
 
 logger = get_logger("rag.claims_index")
 COLLECTION_NAME = "claims"
@@ -42,6 +43,7 @@ class TrustedClaim(BaseModel):
     page: int | None = None
     block_index: int | None = None
     bbox: list[float] | None = None
+    source_spans: list[ChunkSourceSpan] = Field(default_factory=list)
     content_scope: str
     content_hash: str
     evidence_version: str

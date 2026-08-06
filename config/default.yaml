@@ -56,11 +56,19 @@ rag:
   schema_version: "paper-v1"
   parser_version: "pymupdf-v1"
   chunking_version: "page-block-v1"
+  chunk_strategy: "page_block"
+  chunk_size: 1200
+  chunk_overlap: 150
+  embedding_backend: "sentence_transformer"
   embedding_model: "all-MiniLM-L6-v2"
+  embedding_document_adapter: null
+  embedding_query_adapter: null
   content_mode: "abstract"
+  retrieval_mode: "rrf"
   candidate_k: 40
   top_k: 20
   reranker_enabled: true
+  reranker_model: "cross-encoder/ms-marco-MiniLM-L-6-v2"
   writeback_enabled: false
   manifest_path: "corpus/manifest.yaml"
   raw_root: "artifacts/corpus/raw"

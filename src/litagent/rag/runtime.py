@@ -11,7 +11,8 @@ from qdrant_client import AsyncQdrantClient
 
 from litagent.config import AppConfig
 from litagent.rag.corpus import CollectionIdentity, CorpusService
-from litagent.rag.embedder import LocalEmbedder
+from litagent.rag.embedder import build_retrieval_embedder
+from litagent.rag.interfaces import RetrievalEmbedder
 from litagent.rag.state import CorpusStateRepository
 from litagent.rag.vector_store import QdrantVectorStore
 
@@ -24,7 +25,7 @@ class CorpusRuntime:
     state: CorpusStateRepository
     store: QdrantVectorStore
     service: CorpusService
-    embedder: LocalEmbedder
+    embedder: RetrievalEmbedder
     qdrant_client: Any
     pg_pool: Any
     _closed: bool = field(default=False, init=False, repr=False)
@@ -36,11 +37,8 @@ class CorpusRuntime:
         *,
         purpose: Literal["runtime", "benchmark"] = "runtime",
     ) -> "CorpusRuntime":
-        identity = CollectionIdentity.from_config(
-            config.rag,
-            purpose=purpose,
-        )
-        embedder = LocalEmbedder(config.rag.embedding_model)
+        identity = CollectionIdentity.from_config(config.rag, purpose=purpose)
+        embedder = build_retrieval_embedder(config.rag)
         dim = await asyncio.to_thread(lambda: embedder.dim)
         qdrant_client = AsyncQdrantClient(url=config.memory.qdrant_url)
         pg_pool = None

@@ -1,6 +1,7 @@
 """Implement Qdrant dense-plus-BM25 retrieval with rank fusion."""
 
 import asyncio
+import json
 import uuid
 
 from langchain_core.documents import Document
@@ -20,7 +21,7 @@ from qdrant_client.models import (
     VectorParams,
 )
 
-from litagent.config import MemoryConfig
+from litagent.config import MemoryConfig, RetrievalMode
 from litagent.logging import get_logger
 from litagent.rag.corpus import CorpusStats, CorpusStatsStatus
 from litagent.rag.embedder import get_embedder
@@ -173,10 +174,17 @@ class QdrantVectorStore(VectorStore):
                 wait=True,
             )
 
+    async def _query_vector(self, query: str) -> list[float]:
+        """Embed one query and guard against dimension drift."""
+        vector = await asyncio.to_thread(self._embedder.embed_query, query)
+        expected = getattr(self._embedder, "dim", None)
+        if expected is not None and len(vector) != expected:
+            raise ValueError(f"embedder returned dimension {len(vector)} != {expected}")
+        return vector
+
     async def search(self, query: str, top_k: int = 20) -> list[ScoredDoc]:
         """Fuse dense and BM25 candidates with reciprocal-rank fusion."""
-        embedder = get_embedder()
-        query_vec = embedder.embed(query)
+        query_vec = await self._query_vector(query)
 
         response = await self._client.query_points(
             collection_name=self._collection,
@@ -203,24 +211,53 @@ class QdrantVectorStore(VectorStore):
                 scored.append(ScoredDoc(doc=doc, score=r.score if r.score else 0))
         return scored
 
-    async def search_chunks(self, query: str, top_k: int) -> list[ScoredChunkHit]:
-        """Run dense/BM25 RRF and restore typed chunk hits."""
-        query_vec = await asyncio.to_thread(self._embedder.embed, query)
-        response = await self._client.query_points(
-            collection_name=self._collection,
-            prefetch=[
-                Prefetch(query=query_vec, using=DENSE_KEY, limit=top_k * 2),
-                Prefetch(
-                    query=QdrantDocument(text=query, model="Qdrant/bm25"),
-                    using=SPARSE_KEY,
-                    limit=top_k * 2,
-                ),
-            ],
-            query=FusionQuery(fusion=Fusion.RRF),
-            limit=top_k,
-            with_payload=True,
-        )
-        hits = []
+    async def search_chunks(
+        self,
+        query: str,
+        top_k: int,
+        *,
+        mode: RetrievalMode = RetrievalMode.RRF,
+    ) -> list[ScoredChunkHit]:
+        """Execute one typed retrieval mode and restore chunk contracts."""
+        if top_k <= 0:
+            raise ValueError("top_k must be positive")
+
+        common = {
+            "collection_name": self._collection,
+            "limit": top_k,
+            "with_payload": True,
+        }
+        if mode is RetrievalMode.BM25:
+            response = await self._client.query_points(
+                **common,
+                query=QdrantDocument(text=query, model="Qdrant/bm25"),
+                using=SPARSE_KEY,
+            )
+        elif mode is RetrievalMode.DENSE:
+            query_vector = await self._query_vector(query)
+            response = await self._client.query_points(
+                **common,
+                query=query_vector,
+                using=DENSE_KEY,
+            )
+        elif mode in (RetrievalMode.RRF, RetrievalMode.RRF_RERANK):
+            query_vector = await self._query_vector(query)
+            response = await self._client.query_points(
+                **common,
+                prefetch=[
+                    Prefetch(query=query_vector, using=DENSE_KEY, limit=top_k),
+                    Prefetch(
+                        query=QdrantDocument(text=query, model="Qdrant/bm25"),
+                        using=SPARSE_KEY,
+                        limit=top_k,
+                    ),
+                ],
+                query=FusionQuery(fusion=Fusion.RRF),
+            )
+        else:
+            raise ValueError(f"unsupported retrieval mode: {mode}")
+
+        hits: list[ScoredChunkHit] = []
         for point in response.points:
             payload = point.payload or {}
             try:
@@ -239,7 +276,14 @@ class QdrantVectorStore(VectorStore):
                         schema_version=payload["schema_version"],
                         parser_version=payload["parser_version"],
                         chunking_version=payload["chunking_version"],
+                        chunk_strategy=payload["chunk_strategy"],
+                        chunk_size=payload["chunk_size"],
+                        chunk_overlap=payload["chunk_overlap"],
+                        embedding_backend=payload["embedding_backend"],
                         embedding_model=payload["embedding_model"],
+                        embedding_document_adapter=payload.get(
+                            "embedding_document_adapter"
+                        ),
                     )
                 )
             except (KeyError, TypeError, ValueError):
@@ -280,6 +324,37 @@ class QdrantVectorStore(VectorStore):
                 points_selector=PointIdsList(points=list(point_ids)),
                 wait=True,
             )
+
+    async def estimate_logical_footprint_bytes(self) -> int:
+        """Estimate reproducible payload and vector bytes for this collection."""
+        total = 0
+        offset = None
+        while True:
+            records, offset = await self._client.scroll(
+                collection_name=self._collection,
+                limit=256,
+                offset=offset,
+                with_payload=True,
+                with_vectors=True,
+            )
+            for record in records:
+                total += len(
+                    json.dumps(
+                        record.payload or {},
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ).encode("utf-8")
+                )
+                vectors = record.vector or {}
+                values = vectors.values() if isinstance(vectors, dict) else [vectors]
+                for vector in values:
+                    if isinstance(vector, list):
+                        total += len(vector) * 4
+                    elif hasattr(vector, "values") and hasattr(vector, "indices"):
+                        total += len(vector.values) * 4 + len(vector.indices) * 4
+            if offset is None:
+                return total
 
     async def close(self) -> None:
         """Close the Qdrant client."""

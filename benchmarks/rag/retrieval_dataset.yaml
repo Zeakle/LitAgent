@@ -1,0 +1,46 @@
+# Paper metadata and topical judgments were checked against the official arXiv
+# abstract pages. The status is source_reviewed rather than human_reviewed so a
+# later manual relevance audit can be represented without rewriting history.
+schema_version: 1
+dataset_id: few-shot-vision-rag
+dataset_version: v2
+judgment_status: source_reviewed
+review_notes: Official arXiv metadata checked; relevance labels require final human sign-off before publication.
+manifest_path: corpus/manifest.yaml
+corpus_paper_ids:
+  - arxiv:1703.05175
+  - arxiv:2003.11539
+  - arxiv:2008.11297
+  - arxiv:2104.02638
+  - arxiv:2109.01134
+queries:
+  - query_id: q01
+    query: prototypical metric learning for few-shot image classification
+    relevant_paper_ids: [arxiv:1703.05175]
+  - query_id: q02
+    query: linear classifier on a self-supervised embedding for few-shot images
+    relevant_paper_ids: [arxiv:2003.11539]
+  - query_id: q03
+    query: transductive mutual information over support and query predictions
+    relevant_paper_ids: [arxiv:2008.11297]
+  - query_id: q04
+    query: unified comparison of transfer learning and meta-learning benchmarks
+    relevant_paper_ids: [arxiv:2104.02638]
+  - query_id: q05
+    query: learnable prompts for CLIP few-shot image recognition
+    relevant_paper_ids: [arxiv:2109.01134]
+  - query_id: q06
+    query: simple alternatives to complicated meta-learning algorithms
+    relevant_paper_ids: [arxiv:1703.05175, arxiv:2003.11539, arxiv:2008.11297]
+  - query_id: q07
+    query: few-shot visual recognition under domain shift and out-of-distribution tasks
+    relevant_paper_ids: [arxiv:2008.11297, arxiv:2104.02638, arxiv:2109.01134]
+  - query_id: q08
+    query: transductive inference using unlabeled query examples
+    relevant_paper_ids: [arxiv:2008.11297]
+  - query_id: q09
+    query: discrepancies in evaluation norms for few-shot classification
+    relevant_paper_ids: [arxiv:2003.11539, arxiv:2104.02638]
+  - query_id: q10
+    query: prompt engineering and domain generalization in vision-language models
+    relevant_paper_ids: [arxiv:2109.01134]

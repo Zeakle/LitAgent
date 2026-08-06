@@ -12,6 +12,7 @@ from enum import Enum
 from typing import Any, Literal, Protocol, Sequence
 
 from litagent.config import RAGConfig
+from litagent.rag.interfaces import EmbeddingDocument
 from litagent.rag.models import ContentChunk, PaperCandidate, PaperRecord
 from litagent.rag.state import IngestionStatus, PaperCorpusState
 
@@ -29,20 +30,77 @@ class CollectionIdentity:
     schema_version: str
     parser_version: str
     chunking_version: str
+    chunk_strategy: str
+    chunk_size: int
+    chunk_overlap: int
+    embedding_backend: str
     embedding_model: str
+    embedding_document_adapter: str | None
     content_mode: str
+
+    def embedding_input_hash(
+        self,
+        record: PaperRecord,
+        chunk: ContentChunk,
+    ) -> str:
+        """Hash exactly the fields consumed by the configured document encoder."""
+        payload = {"text": chunk.text}
+        if self.embedding_backend == "specter2":
+            # SPECTER2 encodes title [SEP] chunk text, unlike the symmetric
+            # SentenceTransformer baseline which consumes chunk text only.
+            payload["title"] = record.title
+        return _stable_hash(payload)
+
+    def chunk_payload(
+        self,
+        record: PaperRecord,
+        chunk: ContentChunk,
+    ) -> dict[str, Any]:
+        """Project the complete Qdrant payload from one canonical record."""
+        return {
+            "paper_id": record.paper_id,
+            "title": record.title,
+            "abstract": record.abstract,
+            "authors": record.authors,
+            "year": record.year,
+            "content_scope": record.content_scope.value,
+            "chunk": chunk.model_dump(mode="json"),
+            "sources": [source.model_dump(mode="json") for source in record.sources],
+            "warnings": record.warnings,
+            "ocr_required": record.ocr_required,
+            "collection": self.collection_name,
+            "corpus_version": self.corpus_version,
+            "schema_version": self.schema_version,
+            "parser_version": self.parser_version,
+            "chunking_version": self.chunking_version,
+            "chunk_strategy": self.chunk_strategy,
+            "chunk_size": self.chunk_size,
+            "chunk_overlap": self.chunk_overlap,
+            "embedding_backend": self.embedding_backend,
+            "embedding_model": self.embedding_model,
+            "embedding_document_adapter": self.embedding_document_adapter,
+        }
+
+    def payload_hash(self, record: PaperRecord, chunk: ContentChunk) -> str:
+        """Hash every field written to Qdrant, including locator provenance."""
+        return _stable_hash(self.chunk_payload(record, chunk))
 
     @classmethod
     def from_config(
         cls, config: RAGConfig, *, purpose: Literal["runtime", "benchmark"] = "runtime"
     ) -> "CollectionIdentity":
-        """Derive a stable collection name from vector-compatible settings."""
+        """Derive a stable collection name from storage-compatible settings."""
         values = {
             "corpus_version": config.corpus_version,
             "schema_version": config.schema_version,
             "parser_version": config.parser_version,
             "chunking_version": config.chunking_version,
+            "chunk_strategy": config.chunk_strategy.value,
+            "chunk_size": config.chunk_size,
+            "chunk_overlap": config.chunk_overlap,
+            "embedding_backend": config.embedding_backend.value,
             "embedding_model": config.embedding_model,
+            "embedding_document_adapter": config.embedding_document_adapter,
             "content_mode": config.content_mode,
         }
         canonical = json.dumps(
@@ -75,6 +133,17 @@ def deterministic_point_id(identity: CollectionIdentity, chunk: ContentChunk) ->
     """Return a Qdrant-compatible UUID bound to version/paper/chunk identity."""
     value = f"{identity.fingerprint}|{chunk.paper_id}|{chunk.chunk_key}"
     return str(uuid.uuid5(_POINT_NAMESPACE, value))
+
+
+def _stable_hash(value: Any) -> str:
+    """Return a canonical SHA-256 digest for incremental-state comparisons."""
+    encoded = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -155,12 +224,21 @@ def build_sync_plan(
     embed_chunks: list[ContentChunk] = []
     payload_only: list[ContentChunk] = []
     unchanged: list[str] = []
-    metadata_changed = previous.metadata_hash != record.metadata_hash
     for point_id, chunk in current.items():
-        old_hash = previous.chunk_hashes.get(point_id)
-        if old_hash != chunk.content_hash:
+        current_embedding_hash = identity.embedding_input_hash(record, chunk)
+        old_embedding_hash = previous.embedding_input_hashes.get(point_id)
+        if old_embedding_hash is None and identity.embedding_backend != "specter2":
+            # Legacy rows can safely reuse the text hash for symmetric encoders.
+            old_embedding_hash = previous.chunk_hashes.get(point_id)
+
+        if old_embedding_hash != current_embedding_hash:
             embed_chunks.append(chunk)
-        elif metadata_changed:
+        elif previous.payload_hashes.get(point_id) != identity.payload_hash(
+            record,
+            chunk,
+        ):
+            # Missing hashes on legacy rows deliberately cause one payload
+            # refresh so locator and provenance data cannot remain stale.
             payload_only.append(chunk)
         else:
             unchanged.append(point_id)
@@ -239,25 +317,8 @@ class CorpusService:
         record: PaperRecord,
         chunk: ContentChunk,
     ) -> dict[str, Any]:
-        """Project only retrieval-safe metadata into Qdrant."""
-        return {
-            "paper_id": record.paper_id,
-            "title": record.title,
-            "abstract": record.abstract,
-            "authors": record.authors,
-            "year": record.year,
-            "content_scope": record.content_scope.value,
-            "chunk": chunk.model_dump(mode="json"),
-            "sources": [source.model_dump(mode="json") for source in record.sources],
-            "warnings": record.warnings,
-            "ocr_required": record.ocr_required,
-            "collection": self.identity.collection_name,
-            "corpus_version": self.identity.corpus_version,
-            "schema_version": self.identity.schema_version,
-            "parser_version": self.identity.parser_version,
-            "chunking_version": self.identity.chunking_version,
-            "embedding_model": self.identity.embedding_model,
-        }
+        """Project retrieval-safe metadata and full index identity."""
+        return self.identity.chunk_payload(record, chunk)
 
     async def sync_record(
         self,
@@ -272,17 +333,27 @@ class CorpusService:
         plan = build_sync_plan(self.identity, record, previous)
         stage = "planning"
         try:
-            writes: list[ChunkWrite] = []
             if plan.embed_chunks:
                 stage = "embedding"
+                documents = [
+                    EmbeddingDocument(
+                        paper_id=record.paper_id,
+                        title=record.title,
+                        text=chunk.text,
+                        section=chunk.section,
+                        content_scope=chunk.content_scope.value,
+                    )
+                    for chunk in plan.embed_chunks
+                ]
                 vectors = await asyncio.to_thread(
-                    self._embedder.embed,
-                    [chunk.text for chunk in plan.embed_chunks],
+                    self._embedder.embed_documents,
+                    documents,
                 )
                 if len(vectors) != len(plan.embed_chunks) or any(
-                    not vector for vector in vectors
+                    not vector or len(vector) != self._embedder.dim
+                    for vector in vectors
                 ):
-                    raise ValueError("embedder returned empty/misaligned vectors")
+                    raise ValueError("embedder returned empty or misaligned vectors")
                 writes = [
                     ChunkWrite(
                         point_id=deterministic_point_id(self.identity, chunk),

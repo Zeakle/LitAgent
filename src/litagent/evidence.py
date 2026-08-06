@@ -28,6 +28,7 @@ class EvidenceItem:
     page: int | None = None
     block_index: int | None = None
     bbox: list[float] | None = None
+    source_spans: list[dict[str, Any]] | None = None
     content_hash: str | None = None
     raw_content_hash: str | None = None
     evidence_version: str = "v1"
@@ -82,6 +83,7 @@ def build_evidence_items(extraction: dict) -> list[dict[str, Any]]:
                 f"section={chunk.get('section', 'unknown')};"
                 f"page={page};block={block_index}"
             )
+            source_spans = chunk.get("source_spans") or []
             items.append(
                 EvidenceItem(
                     evidence_id=f"{key}:{chunk_key}:claim:{digest}",
@@ -98,6 +100,7 @@ def build_evidence_items(extraction: dict) -> list[dict[str, Any]]:
                     page=chunk.get("page"),
                     block_index=chunk.get("block_index"),
                     bbox=chunk.get("bbox"),
+                    source_spans=list(source_spans),
                     content_hash=chunk.get("content_hash"),
                     raw_content_hash=chunk.get("raw_content_hash"),
                     evidence_version="v2",

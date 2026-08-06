@@ -2,8 +2,22 @@
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import Protocol, Sequence
 
 from langchain_core.documents import Document
+
+from litagent.rag.models import ScoredPaperHit
+
+
+@dataclass(frozen=True)
+class EmbeddingDocument:
+    """Carry paper context required by scientific document encoders."""
+
+    paper_id: str
+    title: str
+    text: str
+    section: str
+    content_scope: str
 
 
 @dataclass
@@ -14,21 +28,32 @@ class ScoredDoc:
     score: float
 
 
+class RetrievalEmbedder(Protocol):
+    """Expose asymmetric document and query embedding operations."""
+
+    @property
+    def dim(self) -> int:
+        """Return the dense vector dimension."""
+        raise NotImplementedError
+
+    def embed_documents(
+        self,
+        documents: Sequence[EmbeddingDocument],
+    ) -> list[list[float]]:
+        """Embed indexable paper chunks."""
+        raise NotImplementedError
+
+    def embed_query(self, query: str) -> list[float]:
+        """Embed a short retrieval query."""
+        raise NotImplementedError
+
+
 class DocumentLoader(ABC):
     """Load source documents for ingestion."""
 
     @abstractmethod
     async def load(self, source: str) -> list[Document]:
         """Load documents identified by a source query or identifier."""
-        ...
-
-
-class Chunker(ABC):
-    """Split documents into retrieval units."""
-
-    @abstractmethod
-    def chunk(self, doc: Document) -> list[Document]:
-        """Split a document into retrieval-ready chunks."""
         ...
 
 
@@ -62,9 +87,17 @@ class VectorStore(ABC):
 
 
 class Reranker(ABC):
-    """Reorder retrieved documents by query-document relevance."""
+    """Reorder document or parent-paper candidates."""
 
     @abstractmethod
     def rerank(self, query: str, docs: list[ScoredDoc]) -> list[ScoredDoc]:
-        """Rerank documents for the supplied query."""
-        ...
+        """Rerank legacy documents for the supplied query."""
+        raise NotImplementedError
+
+    def rerank_papers(
+        self,
+        query: str,
+        papers: list[ScoredPaperHit],
+    ) -> list[ScoredPaperHit]:
+        """Rerank unique parent papers when the backend supports it."""
+        raise NotImplementedError("paper reranking is not implemented")

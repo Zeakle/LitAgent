@@ -175,6 +175,17 @@ class _EmbedderFake:
         self.calls.append(list(texts))
         return [[float(index), 1.0] for index, _ in enumerate(texts)]
 
+    @property
+    def dim(self) -> int:
+        return 2
+
+    def embed_documents(self, documents):
+        return self.embed([document.text for document in documents])
+
+    def embed_query(self, query: str) -> list[float]:
+        vector = self.embed([query])
+        return vector[0]
+
 
 def test_rag_config_defaults_are_safe_and_match_default_yaml():
     from litagent.config import load_config
@@ -1016,9 +1027,12 @@ async def test_rebuild_recreates_collection_and_reingests_manifest(tmp_path):
         resume=False,
     )
     quality_gate_factory.assert_called_once_with(**config.rag.quality.model_dump())
-    parser_factory.assert_called_once_with(
-        quality_gate=quality_gate_factory.return_value
-    )
+    parser_factory.assert_called_once()
+    parser_kwargs = parser_factory.call_args.kwargs
+    assert parser_kwargs["quality_gate"] is quality_gate_factory.return_value
+    from litagent.rag.chunking import PageBlockChunker
+
+    assert isinstance(parser_kwargs["chunker"], PageBlockChunker)
     audit_factory.assert_called_once_with(Path(config.rag.parsed_root))
     assert (
         ingestor_factory.call_args.kwargs["audit_repository"]
@@ -1052,7 +1066,7 @@ async def test_runner_reads_the_same_versioned_collection_written_by_corpus():
             agent, "_get_embedding_dim_async", new=AsyncMock(return_value=384)
         ),
         patch.object(agent, "_create_reranker_async", new=AsyncMock(return_value=None)),
-        patch("litagent.runner.LocalEmbedder", return_value=paper_embedder),
+        patch("litagent.runner.build_retrieval_embedder", return_value=paper_embedder),
         patch(
             "litagent.runner.QdrantVectorStore.ensure_compatible",
             new=AsyncMock(return_value=store),
@@ -1081,7 +1095,7 @@ async def test_corpus_runtime_closes_qdrant_when_postgres_connect_fails():
     embedder = SimpleNamespace(dim=384)
 
     with (
-        patch("litagent.rag.runtime.LocalEmbedder", return_value=embedder),
+        patch("litagent.rag.runtime.build_retrieval_embedder", return_value=embedder),
         patch("litagent.rag.runtime.AsyncQdrantClient", return_value=qdrant),
         patch(
             "litagent.rag.runtime.asyncpg.create_pool",

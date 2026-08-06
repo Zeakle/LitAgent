@@ -7,6 +7,7 @@ import time
 import uuid
 from typing import Any
 
+from litagent.config import RetrievalMode
 from litagent.logging import get_logger
 from litagent.orchestrator.scheduler import Worker
 from litagent.orchestrator.task_graph import SubTask
@@ -36,34 +37,42 @@ class RecallWorker(Worker):
                 logger.debug("Recall trace hook failed", exc_info=True)
 
     async def execute(self, task: SubTask) -> list[dict[str, Any]]:
-        """Retrieve related papers or return an empty degraded result."""
-        query = task.input_data.get("query", "")
-        top_k = task.input_data.get("top_k", 20)
-
+        """Retrieve papers or return an explicitly traced degraded result."""
+        query = str(task.input_data.get("query") or "")
+        top_k = int(task.input_data.get("top_k", 20))
+        candidate_k = int(task.input_data.get("candidate_k", max(top_k, 40)))
+        max_chunks = int(task.input_data.get("max_representative_chunks", 4))
+        mode = RetrievalMode(task.input_data.get("retrieval_mode", "rrf"))
         if not self._retriever or not query:
             return []
 
         operation_id = uuid.uuid4().hex
         started = time.perf_counter()
-        self._emit(
-            "rag.recall.start",
-            {
-                "operation_id": operation_id,
-                "task_id": task.task_id,
-                "query": query,
-                "top_k": top_k,
-            },
-        )
-
+        trace_input = {
+            "operation_id": operation_id,
+            "task_id": task.task_id,
+            "query": query,
+            "top_k": top_k,
+            "candidate_k": candidate_k,
+            "max_representative_chunks": max_chunks,
+            "retrieval_mode": mode.value,
+            "strict": False,
+        }
+        self._emit("rag.recall.start", trace_input)
         try:
-            hits = await self._retriever.search_papers(query, top_k=top_k)
+            hits = await self._retriever.search_papers(
+                query,
+                top_k=top_k,
+                candidate_k=candidate_k,
+                max_chunks_per_paper=max_chunks,
+                mode=mode,
+                strict=False,
+            )
         except asyncio.CancelledError:
             self._emit(
                 "rag.recall.failed",
                 {
-                    "operation_id": operation_id,
-                    "task_id": task.task_id,
-                    "query": query,
+                    **trace_input,
                     "reason_code": "recall_cancelled",
                     "error_type": "CancelledError",
                     "elapsed_ms": int((time.perf_counter() - started) * 1000),
@@ -75,9 +84,7 @@ class RecallWorker(Worker):
             self._emit(
                 "rag.recall.failed",
                 {
-                    "operation_id": operation_id,
-                    "task_id": task.task_id,
-                    "query": query,
+                    **trace_input,
                     "reason_code": "recall_failed",
                     "error_type": type(exc).__name__,
                     "elapsed_ms": int((time.perf_counter() - started) * 1000),
@@ -86,22 +93,20 @@ class RecallWorker(Worker):
             return []
 
         candidates = [PaperCandidate.from_scored_hit(hit).to_dag_dict() for hit in hits]
-
         first = hits[0] if hits else None
         self._emit(
             "rag.recall.complete",
             {
-                "operation_id": operation_id,
-                "task_id": task.task_id,
-                "query": query,
-                "candidate_count": top_k,
+                **trace_input,
                 "result_count": len(candidates),
                 "collection": first.collection if first else None,
-                "corpus_version": (first.corpus_version if first else None),
+                "corpus_version": first.corpus_version if first else None,
                 "schema_version": first.schema_version if first else None,
                 "parser_version": first.parser_version if first else None,
-                "chunking_version": (first.chunking_version if first else None),
-                "embedding_model": (first.embedding_model if first else None),
+                "chunking_version": first.chunking_version if first else None,
+                "chunk_strategy": first.chunk_strategy if first else None,
+                "embedding_backend": first.embedding_backend if first else None,
+                "embedding_model": first.embedding_model if first else None,
                 "content_scopes": sorted(
                     {item["content_scope"] for item in candidates}
                 ),
