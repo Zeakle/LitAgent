@@ -16,14 +16,17 @@ from litagent.benchmark.models import (
 
 
 def _unique(values: Sequence[str]) -> list[str]:
+    """Return values in stable first-seen order."""
     return list(dict.fromkeys(values))
 
 
 def _mean(values: Sequence[float]) -> float:
+    """Return the arithmetic mean of the values."""
     return sum(values) / len(values) if values else 0.0
 
 
 def _percentile(values: Sequence[int], percentile: float) -> float:
+    """Return the requested percentile value."""
     if not values:
         return 0.0
     ordered = sorted(values)
@@ -129,9 +132,7 @@ def aggregate_ingestion_cases(
     true_quarantine = [
         case for case in predicted_quarantine if case.expected_outcome == "quarantined"
     ]
-    outcome_matches = [
-        case.actual_outcome == case.expected_outcome for case in cases
-    ]
+    outcome_matches = [case.actual_outcome == case.expected_outcome for case in cases]
     reason_matches = [
         set(case.expected_reason_codes).issubset(case.actual_reason_codes)
         for case in cases
@@ -145,14 +146,10 @@ def aggregate_ingestion_cases(
         )
     ]
     metadata_values = [
-        case.metadata_correct
-        for case in cases
-        if case.metadata_correct is not None
+        case.metadata_correct for case in cases if case.metadata_correct is not None
     ]
     locator_values = [
-        case.locator_preserved
-        for case in cases
-        if case.locator_preserved is not None
+        case.locator_preserved for case in cases if case.locator_preserved is not None
     ]
     duplicate_values = [
         case.duplicates_suppressed

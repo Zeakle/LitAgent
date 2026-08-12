@@ -14,6 +14,7 @@ class SemanticMemory:
     """Store and retrieve semantic facts with provenance-based ranking."""
 
     def __init__(self, pool: asyncpg.Pool):
+        """Initialize the semantic memory."""
         self._pool = pool
 
     @staticmethod
@@ -97,6 +98,7 @@ class SemanticMemory:
         return [dict(r) for r in rows]
 
     async def _get_by_key(self, key: str) -> dict | None:
+        """Load one semantic-memory entry by key."""
         row = await self._pool.fetchrow(
             "SELECT * FROM semantic_entries WHERE key = $1", key
         )
@@ -130,4 +132,5 @@ class SemanticMemory:
 
 
 def _vector_to_pg(vec: list[float]) -> str:
+    """Format a vector as a PostgreSQL pgvector literal."""
     return "[" + ",".join(str(v) for v in vec) + "]"

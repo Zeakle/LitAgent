@@ -8,7 +8,7 @@ import xml.etree.ElementTree as ET
 import httpx
 
 from litagent.logging import get_logger
-from litagent.tools.base import FallbackStep, ToolDefinition, ToolCategory
+from litagent.tools.base import FallbackStep, ToolCategory, ToolDefinition
 from litagent.tools.registry import get_registry
 
 logger = get_logger("tools.search")
@@ -25,6 +25,7 @@ async def search_arxiv(query: str = "", max_results: int = 20) -> list[dict]:
 
 
 def _parse_arxiv_xml(xml_text: str) -> list[dict]:
+    """Parse an arXiv Atom feed into normalized paper records."""
     papers = []
     root = ET.fromstring(xml_text)
     ns = {"atom": "http://www.w3.org/2005/Atom"}

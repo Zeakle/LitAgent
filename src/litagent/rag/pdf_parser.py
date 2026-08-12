@@ -28,11 +28,13 @@ class CorpusParseError(RuntimeError):
     """Carry a stable paper reason code for quarantine and resume."""
 
     def __init__(self, code: str, message: str):
+        """Initialize the corpus parse error."""
         super().__init__(message)
         self.code = code
 
 
 def _default_open(path: Path):
+    """Open a PDF document with PyMuPDF."""
     import pymupdf
 
     return pymupdf.open(path)
@@ -69,6 +71,7 @@ class PyMuPDFParser:
         quality_gate: CorpusTextQualityGate | None = None,
         chunker: CorpusChunker | None = None,
     ) -> None:
+        """Initialize the PyMuPDF parser."""
         self._opener = opener or _default_open
         self._quality_gate = quality_gate or CorpusTextQualityGate()
         self._chunker = chunker or PageBlockChunker()
@@ -84,6 +87,7 @@ class PyMuPDFParser:
         return parsed.record
 
     def parse_with_quality(self, asset: RawPaperAsset) -> ParsedPaper:
+        """Parse one PDF and return its quality decision."""
         if asset.pdf_path is None:
             record = PaperRecord.from_abstract_asset(asset)
             quality = DocumentQualityReport(

@@ -34,6 +34,7 @@ class CrossEncoderReranker(Reranker):
         model: Any | None = None,
         max_paper_chars: int = 4000,
     ) -> None:
+        """Initialize the cross-encoder reranker."""
         self.model_name = model_name
         self._model = model or CrossEncoder(model_name)
         self._max_paper_chars = max_paper_chars
@@ -84,6 +85,7 @@ class NoopReranker(Reranker):
     model_name = "noop"
 
     def rerank(self, query: str, docs: list[ScoredDoc]) -> list[ScoredDoc]:
+        """Return scored documents in their existing order."""
         return docs
 
     def rerank_papers(
@@ -91,4 +93,5 @@ class NoopReranker(Reranker):
         query: str,
         papers: list[ScoredPaperHit],
     ) -> list[ScoredPaperHit]:
+        """Return scored papers in their existing order."""
         return papers

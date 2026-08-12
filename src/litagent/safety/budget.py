@@ -11,6 +11,7 @@ class CostBudget:
     """Track token consumption and emit a single threshold warning."""
 
     def __init__(self, max_tokens: int = 500_000, warn_ratio: float = 0.8):
+        """Initialize the cost budget."""
         self._max_tokens = max_tokens
         self._warn_ratio = warn_ratio
         self._used_tokens = 0

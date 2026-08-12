@@ -29,6 +29,7 @@ from litagent.rag.sources import LocalPDFAdapter
 
 
 def _insert(page, text: str, *, x: float = 72, y: float = 72) -> None:
+    """Insert text at a stable character offset."""
     page.insert_text((x, y), text, fontsize=10)
 
 
@@ -52,6 +53,7 @@ def _write_fixture(
     *,
     revision: int = 1,
 ) -> Path | None:
+    """Write one deterministic generated-ingestion fixture."""
     kind = case.fixture_type
     if kind == "metadata_only":
         return None
@@ -140,21 +142,29 @@ class _InMemoryStateRepository:
     """Implement the production state protocol without external PostgreSQL."""
 
     def __init__(self) -> None:
+        """Initialize the in-memory state repository."""
         self.states: dict[tuple[str, str], Any] = {}
 
     async def get_paper(self, collection_name: str, paper_id: str):
+        """Return the stored state for one paper."""
         return self.states.get((collection_name, paper_id))
 
     async def mark_running(self, collection_name, paper_id, batch_id) -> None:
+        """Record an in-memory running state."""
         return None
 
     async def mark_succeeded(self, state) -> None:
+        """Record an in-memory successful state."""
         self.states[(state.collection_name, state.paper_id)] = state
 
-    async def mark_failed(self, collection_name, paper_id, batch_id, error_code) -> None:
+    async def mark_failed(
+        self, collection_name, paper_id, batch_id, error_code
+    ) -> None:
+        """Record an in-memory failed state."""
         return None
 
     async def list_papers(self, collection_name: str) -> list[Any]:
+        """List stored paper states for one collection."""
         return [
             state
             for (collection, _), state in self.states.items()
@@ -162,6 +172,7 @@ class _InMemoryStateRepository:
         ]
 
     async def delete_paper(self, collection_name: str, paper_id: str) -> None:
+        """Delete one stored paper state."""
         self.states.pop((collection_name, paper_id), None)
 
 
@@ -169,17 +180,21 @@ class _InMemoryPaperIndex:
     """Retain the exact Qdrant write contract for benchmark assertions."""
 
     def __init__(self) -> None:
+        """Initialize the in-memory paper index."""
         self.payloads: dict[str, dict[str, Any]] = {}
 
     async def upsert_chunks(self, writes) -> None:
+        """Store generated chunks in the in-memory paper index."""
         for write in writes:
             self.payloads[write.point_id] = write.payload
 
     async def update_payloads(self, updates) -> None:
+        """Update in-memory point payloads for benchmark assertions."""
         for update in updates:
             self.payloads[update.point_id] = update.payload
 
     async def delete_points(self, point_ids) -> None:
+        """Delete in-memory points by identifier."""
         for point_id in point_ids:
             self.payloads.pop(point_id, None)
 
@@ -190,6 +205,7 @@ class _DeterministicEmbedder:
     dim = 3
 
     def embed_documents(self, documents) -> list[list[float]]:
+        """Embed documents with deterministic fixture vectors."""
         return [
             [float(len(document.title)), float(len(document.text)), 1.0]
             for document in documents
@@ -197,11 +213,15 @@ class _DeterministicEmbedder:
 
 
 class _UnexpectedRemotePDFAdapter:
+    """Reject remote PDF access from deterministic ingestion fixtures."""
+
     async def materialize(self, asset):
+        """Reject unexpected remote PDF materialization."""
         raise AssertionError("generated ingestion fixtures must remain local")
 
 
 def _effective_config(config: RAGConfig, root: Path) -> RAGConfig:
+    """Build deterministic generated-ingestion configuration."""
     values = config.model_dump(mode="json")
     values.update(
         {
@@ -215,6 +235,7 @@ def _effective_config(config: RAGConfig, root: Path) -> RAGConfig:
 
 
 def _fixture_identity(case: IngestionFixtureCase) -> tuple[str, str]:
+    """Return the stable identity for a generated fixture."""
     digest = hashlib.sha256(case.case_id.encode("utf-8")).hexdigest()
     arxiv_id = f"9999.{int(digest[:8], 16) % 100000:05d}"
     return arxiv_id, f"arxiv:{arxiv_id}"
@@ -227,6 +248,7 @@ def _write_manifest(
     manifest_path: Path,
     pdf_path: Path | None,
 ) -> str:
+    """Write the deterministic generated-ingestion manifest."""
     arxiv_id, paper_id = _fixture_identity(case)
     paper: dict[str, Any] = {
         "paper_id": paper_id,
@@ -258,12 +280,14 @@ class GeneratedIngestionCaseExecutor:
     """Run fixtures through CorpusIngestor with deterministic local storage."""
 
     def __init__(self, config: RAGConfig) -> None:
+        """Initialize the generated ingestion case executor."""
         self._config = config
 
     async def __call__(
         self,
         case: IngestionFixtureCase,
     ) -> IngestionCaseObservation:
+        """Execute one generated ingestion case executor invocation."""
         started = time.perf_counter()
         with tempfile.TemporaryDirectory(
             prefix=f"litagent-{case.case_id}-",
@@ -300,9 +324,7 @@ class GeneratedIngestionCaseExecutor:
                 config=config,
                 service=service,
                 parser=parser,
-                local_pdf_adapter=LocalPDFAdapter(
-                    max_pdf_bytes=config.max_pdf_bytes
-                ),
+                local_pdf_adapter=LocalPDFAdapter(max_pdf_bytes=config.max_pdf_bytes),
                 pdf_adapter=_UnexpectedRemotePDFAdapter(),
                 quarantine=QuarantineRepository(Path(config.quarantine_root)),
                 audit_repository=ParsedAuditRepository(Path(config.parsed_root)),

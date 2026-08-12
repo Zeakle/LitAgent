@@ -5,8 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from litagent.logging import get_logger
 from litagent.context.templates import wrap_xml
+from litagent.logging import get_logger
 from litagent.rag.embedder import get_embedder
 
 logger = get_logger("skills.manager")
@@ -27,6 +27,7 @@ class SkillManager:
     """Discover local skills and expose semantic metadata retrieval."""
 
     def __init__(self, skills_dir: str = "src/litagent/skills"):
+        """Initialize the skill manager."""
         self._skills: dict[str, Skill] = {}
         skill_path = _find_skills_dir(skills_dir)
         logger.debug(f"Scanning skills from: {skill_path}")

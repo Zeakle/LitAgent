@@ -52,6 +52,7 @@ class ContextConfig(BaseModel):
 
     @model_validator(mode="after")
     def _check_synthesis_budget_fits(self):
+        """Validate that the synthesis allocation fits the total budget."""
         if (
             self.synthesis_evidence_max_tokens + self.synthesis_papers_max_tokens
             > self.max_tokens
@@ -65,6 +66,7 @@ class ContextConfig(BaseModel):
 
     @model_validator(mode="after")
     def _check_review_budget_fits(self):
+        """Validate that the review allocation fits the total budget."""
         if (
             self.review_evidence_max_tokens
             + self.review_draft_max_tokens
@@ -180,6 +182,7 @@ class RelevanceConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_policy(self):
+        """Validate relevance thresholds and paper limits."""
         if self.min_papers > self.max_papers:
             raise ValueError("relevance.min_papers must be <= max_papers")
         if self.cross_encoder_min_score is not None and not math.isfinite(
@@ -265,6 +268,7 @@ class RAGConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_retrieval_policy(self):
+        """Validate retrieval, chunking, and backend constraints."""
         if self.candidate_k < self.top_k:
             raise ValueError("rag.candidate_k must be >= rag.top_k")
         if self.paper_collection == self.benchmark_collection:
@@ -317,12 +321,14 @@ class AppConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_cross_component_limits(self):
+        """Validate limits shared across configuration components."""
         if self.relevance.max_papers > self.extractor.max_papers:
             raise ValueError("relevance.max_papers must be <= extractor.max_papers")
         return self
 
 
 def _find_project_root() -> Path:
+    """Locate the project root containing pyproject.toml."""
     current = Path(__file__).resolve().parent
     for parent in current.parents:
         if (parent / "pyproject.toml").exists():

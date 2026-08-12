@@ -58,6 +58,7 @@ class SearchWorker(Worker):
         memory_manager: MemoryManager | None = None,
         trace_hook=None,
     ) -> None:
+        """Initialize the search worker and outcome recorder."""
         self._executor = executor
         self._memory = memory_manager
         self._trace_hook = trace_hook
@@ -77,6 +78,7 @@ class SearchWorker(Worker):
         return tuple(self._outcomes.values())
 
     def _emit(self, event: str, data: dict[str, Any]) -> None:
+        """Emit a search-worker trace event."""
         if self._trace_hook:
             try:
                 self._trace_hook(event, data)
@@ -87,6 +89,7 @@ class SearchWorker(Worker):
     def _classify(
         task_id: str, source: str, result: ToolResult, elapsed_ms: float
     ) -> tuple[list[dict[str, Any]], SearchSourceOutcome]:
+        """Classify a provider exception into a stable source status."""
         if result.error is not None:
             if result.error_code in {"tool_rate_limited", "http_rate_limited"}:
                 status = SearchSourceStatus.RATE_LIMITED
@@ -166,6 +169,7 @@ class SearchWorker(Worker):
         )
 
     async def _record_outcome(self, outcome: SearchSourceOutcome) -> None:
+        """Record one normalized provider-search outcome."""
         self._outcomes[outcome.task_id] = outcome
         self._emit("search.source.complete", asdict(outcome))
 

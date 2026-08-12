@@ -16,6 +16,7 @@ class ManifestValidationError(ValueError):
     """Carry a stable source-boundary code and a safe diagnostic message."""
 
     def __init__(self, code: str, message: str | None = None) -> None:
+        """Initialize the manifest validation error."""
         super().__init__(message or code)
         self.code = code
 
@@ -32,6 +33,7 @@ class PDFSource(BaseModel):
 
     @model_validator(mode="after")
     def _validate_kind(self):
+        """Validate source fields for the selected PDF kind."""
         if self.kind not in {SourceKind.LOCAL_PDF, SourceKind.ARXIV_PDF}:
             raise ValueError("pdf.kind must be local_pdf or arxiv_pdf")
         return self

@@ -46,6 +46,7 @@ class RawTextBlock(BaseModel):
 
     @classmethod
     def from_text(cls, *, text: str, **kwargs) -> "RawTextBlock":
+        """Build a raw text block with derived measurements."""
         return cls(
             raw_text=text,
             raw_content_hash=hashlib.sha256(text.encode("utf-8")).hexdigest(),
@@ -83,6 +84,8 @@ class ExcludedTextBlock(BaseModel):
 
 
 class DocumentQualityMetrics(BaseModel):
+    """Store normalized parser and content-quality measurements."""
+
     page_count: int = 0
     text_page_count: int = 0
     text_page_ratio: float = 0.0
@@ -94,6 +97,8 @@ class DocumentQualityMetrics(BaseModel):
 
 
 class DocumentQualityReport(BaseModel):
+    """Describe a document-quality decision and its stable reasons."""
+
     decision: QualityDecision
     reason_codes: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
@@ -113,6 +118,8 @@ class PaperIngestionReport(BaseModel):
 
 
 class CleanedDocument(BaseModel):
+    """Join cleaned blocks, excluded content, and the quality report."""
+
     source_blocks: list[RawTextBlock]
     blocks: list[CleanTextBlock]
     excluded_blocks: list[ExcludedTextBlock]
@@ -124,6 +131,7 @@ _PAGE_NUMBER = re.compile(r"^(?:page\s+)?\d+(?:\s*/\s*\d+)?$", re.IGNORECASE)
 
 
 def _normalize_text(raw: str) -> tuple[str, list[str]]:
+    """Normalize extracted text and return applied repair codes."""
     transformations: list[str] = []
     text = unicodedata.normalize("NFKC", raw).translate(_LIGATURES)
     if text != raw:
@@ -138,6 +146,7 @@ def _normalize_text(raw: str) -> tuple[str, list[str]]:
 
 
 def _gibberish_ratio(text: str) -> float:
+    """Estimate the fraction of non-readable characters."""
     if not text:
         return 1.0
     bad = sum(
@@ -149,12 +158,14 @@ def _gibberish_ratio(text: str) -> float:
 
 
 def _is_margin(block: RawTextBlock, margin_ratio: float) -> bool:
+    """Return whether a block lies in a page margin."""
     top = block.bbox[1] <= block.page_height * margin_ratio
     bottom = block.bbox[3] >= block.page_height * (1.0 - margin_ratio)
     return top or bottom
 
 
 def _has_double_column(blocks: list[RawTextBlock]) -> bool:
+    """Return whether blocks indicate a two-column layout."""
     by_page: dict[int, list[RawTextBlock]] = {}
     for block in blocks:
         by_page.setdefault(block.page, []).append(block)
@@ -192,6 +203,7 @@ class CorpusTextQualityGate:
         repeated_margin_min_pages: int = 2,
         margin_ratio: float = 0.10,
     ) -> None:
+        """Initialize the corpus text quality gate."""
         self._detector = detector or InjectionDetector()
         self._max_gibberish_ratio = max_gibberish_ratio
         self._min_text_page_ratio = min_text_page_ratio
@@ -206,6 +218,7 @@ class CorpusTextQualityGate:
         image_only_pages: int,
         metadata_completeness: float = 0.0,
     ) -> CleanedDocument:
+        """Clean text blocks and produce a document-quality decision."""
         normalized = [(block, *_normalize_text(block.raw_text)) for block in blocks]
         margin_pages: dict[str, set[int]] = {}
         for block, text, _ in normalized:
@@ -323,6 +336,7 @@ class CorpusTextQualityGate:
         reason: str,
         risk: str = "none",
     ) -> ExcludedTextBlock:
+        """Build an excluded-block quality result."""
         return ExcludedTextBlock(
             raw_text=block.raw_text,
             raw_content_hash=block.raw_content_hash,
@@ -340,6 +354,7 @@ class CorpusTextQualityGate:
         page_count: int,
         reason: str,
     ) -> CleanedDocument:
+        """Build a quarantined-document result."""
         return CleanedDocument(
             source_blocks=blocks,
             blocks=[],

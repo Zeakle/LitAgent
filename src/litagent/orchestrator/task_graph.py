@@ -43,6 +43,7 @@ class TaskGraph:
     """Track task dependencies and enforce terminal state propagation."""
 
     def __init__(self):
+        """Initialize the task graph."""
         self._tasks: dict[str, SubTask] = {}
 
         self._deps: dict[str, set[str]] = {}

@@ -52,6 +52,7 @@ class IngestionSummary:
         results,
         reports: list[PaperIngestionReport] | None = None,
     ) -> "IngestionSummary":
+        """Build an ingestion summary from paper results and reports."""
         results = list(results)
         paper_ids = {result.paper_id for result in results}
         failed = [
@@ -81,6 +82,7 @@ class QuarantineRepository:
     """Persist only safe failure metadata beside ignored corpus assets."""
 
     def __init__(self, root: Path) -> None:
+        """Initialize the quarantine repository."""
         self._root = root
 
     async def record(self, asset, *, reason_code: str) -> None:
@@ -119,9 +121,11 @@ class ParsedAuditRepository:
     """Persist local-only quality details excluded from external telemetry."""
 
     def __init__(self, root: Path) -> None:
+        """Initialize the parsed audit repository."""
         self._root = root.resolve()
 
     async def record(self, asset, parsed) -> dict[str, Any]:
+        """Persist one parsed-document audit record."""
         self._root.mkdir(parents=True, exist_ok=True)
         safe_id = asset.paper_id.replace(":", "_").replace("/", "_")
         target = self._root / f"{safe_id}.json"
@@ -194,6 +198,7 @@ class CorpusIngestor:
         quarantine,
         audit_repository=None,
     ) -> None:
+        """Initialize the corpus ingestor."""
         self._config = config
         self._service = service
         self._parser = parser

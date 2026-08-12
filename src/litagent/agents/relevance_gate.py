@@ -69,6 +69,7 @@ def _select_ranked(
     max_papers: int,
     mode: Literal["threshold", "rank_cap_only", "lexical_fallback"],
 ) -> RelevanceSelection:
+    """Select accepted papers from ranked relevance scores."""
     if max_papers <= 0 or min_papers < 0 or min_papers > max_papers:
         raise ValueError("invalid relevance min/max policy")
 
@@ -123,6 +124,7 @@ class RelevanceGateWorker(Worker):
         lexical_min_score: float = 0.0,
         trace_hook=None,
     ) -> None:
+        """Initialize the relevance gate worker."""
         if max_papers <= 0 or min_papers < 0 or min_papers > max_papers:
             raise ValueError("invalid relevance min/max policy")
         if not 0.0 <= lexical_min_score <= 3.0:
@@ -135,6 +137,7 @@ class RelevanceGateWorker(Worker):
         self._trace_hook = trace_hook
 
     def _emit(self, event: str, data: dict[str, Any]) -> None:
+        """Emit a trace event."""
         if self._trace_hook:
             try:
                 self._trace_hook(event, data)
@@ -147,6 +150,7 @@ class RelevanceGateWorker(Worker):
         selection: RelevanceSelection,
         method: str,
     ) -> list[dict[str, Any]]:
+        """Normalize upstream candidates into paper records."""
         output: list[dict[str, Any]] = []
         seen_indices: set[int] = set()
 
@@ -240,6 +244,7 @@ class RelevanceGateWorker(Worker):
         query: str,
         papers: list[dict],
     ) -> list[dict[str, Any]]:
+        """Rank papers with the configured cross-encoder."""
         docs = [
             ScoredDoc(
                 doc=Document(
@@ -273,6 +278,7 @@ class RelevanceGateWorker(Worker):
     def _lexical_rank(
         self, query: str, papers: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
+        """Rank papers with deterministic lexical scoring."""
         query_tokens = set(_WORD_RE.findall(query.lower()))
         scored: list[ScoredDoc] = []
 

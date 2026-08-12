@@ -15,6 +15,7 @@ class MCPConnection:
     """Manage an MCP transport and session with one async exit stack."""
 
     def __init__(self, transport: str, **kwargs):
+        """Initialize the MCP connection."""
         self._transport = transport
         self._kwargs = kwargs
 

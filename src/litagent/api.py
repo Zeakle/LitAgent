@@ -196,6 +196,7 @@ async def _run_flow_demo(run_id: str, recorder: RunRecorder) -> None:
 
 
 def _flow_artifact(run_id: str) -> dict[str, Any] | None:
+    """Load one flow-demo artifact."""
     entry = app.state.flow_runs.get(run_id)
     if entry:
         return entry["recorder"].snapshot()
@@ -209,6 +210,7 @@ def _flow_artifact(run_id: str) -> dict[str, Any] | None:
 
 
 def _flow_summary(artifact: dict[str, Any]) -> dict[str, Any]:
+    """Build a compact summary for a flow-demo run."""
     report = artifact.get("report") or {}
     return {
         "run_id": artifact["run_id"],
@@ -260,6 +262,7 @@ async def stream_flow_demo_events(run_id: str):
         raise HTTPException(status_code=404, detail=f"Flow run '{run_id}' not found")
 
     async def event_stream():
+        """Yield flow-demo events as SSE frames."""
         offset = 0
         while True:
             artifact = _flow_artifact(run_id)

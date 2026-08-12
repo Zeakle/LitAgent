@@ -21,6 +21,7 @@ class RecallWorker(Worker):
     """Retrieve related papers from the configured hybrid index."""
 
     def __init__(self, retriever: HybridRetriever | None, *, trace_hook=None):
+        """Initialize the recall worker."""
         self._retriever = retriever
         self._trace_hook = trace_hook
 
@@ -30,6 +31,7 @@ class RecallWorker(Worker):
         return "recall"
 
     def _emit(self, event: str, data: dict[str, Any]) -> None:
+        """Emit a trace event."""
         if self._trace_hook:
             try:
                 self._trace_hook(event, data)

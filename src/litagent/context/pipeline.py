@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Any, Awaitable
+from typing import Any, Awaitable, Callable
 
 from litagent.context.budget import BudgetManager
 from litagent.logging import get_logger
@@ -25,6 +25,7 @@ class ContextPipeline:
     """Build ordered context layers under a shared token budget."""
 
     def __init__(self, budget: BudgetManager):
+        """Initialize the context pipeline."""
         self._layers: list[ContextLayer] = []
         self._budget = budget
 

@@ -26,6 +26,7 @@ class ExtractorWorker(Worker):
         detector: InjectionDetector = None,
         max_papers: int = 50,
     ):
+        """Initialize the extractor worker."""
         if max_papers <= 0:
             raise ValueError("max_papers must be positive")
 
@@ -130,5 +131,6 @@ class ExtractorWorker(Worker):
         ]
 
     async def _extract_one(self, paper: dict) -> dict:
+        """Extract one paper under the configured concurrency limit."""
         async with self._sem:
             return await self._strategy.extract(paper)

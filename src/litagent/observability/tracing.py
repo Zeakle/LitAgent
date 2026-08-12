@@ -13,6 +13,7 @@ class LangFuseTracer:
     """Manage survey, worker, model, tool, and I/O observations in LangFuse."""
 
     def __init__(self, host: str, public_key: str, secret_key: str):
+        """Initialize the LangFuse tracer."""
         self._client = None
         self._root = None
         # Worker spans are keyed by task ID for nested event attribution.
@@ -36,6 +37,7 @@ class LangFuseTracer:
             self._client = None
 
     def __call__(self, event: str, data: dict[str, Any]) -> None:
+        """Forward one lifecycle event to LangFuse."""
         if not self._client:
             return
 
@@ -45,6 +47,7 @@ class LangFuseTracer:
             logger.debug(f"Tracer error on {event}, {e}")
 
     def _handle(self, event: str, data: dict[str, Any]) -> None:
+        """Route one trace lifecycle event."""
         if event == "survey.start":
             self._root = self._client.start_observation(
                 as_type="span",
@@ -219,12 +222,14 @@ class LangFuseTracer:
     _IO_NAMESPACES = ("tool", "claims", "memory", "evidence")
 
     def _is_io_lifecycle(self, event: str) -> bool:
+        """Return whether an event belongs to an I/O lifecycle."""
         root = event.split(".", 1)[0]
         return root in self._IO_NAMESPACES and event.endswith(
             (".start", ".complete", ".failed")
         )
 
     def _handle_io_event(self, event: str, data: dict[str, Any]) -> None:
+        """Create or close one I/O lifecycle span."""
         namespace, phase = event.rsplit(".", 1)
         op_id = data.get("operation_id")
         if not op_id:
@@ -296,6 +301,7 @@ class LangFuseTracer:
                 pass
 
     def _close_orphans(self) -> None:
+        """Close any unfinished LangFuse observations."""
         for tid, span in list(self._spans.items()):
             try:
                 span.update(

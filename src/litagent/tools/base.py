@@ -56,5 +56,6 @@ class RegisteredTool:
     """Bind a tool definition to its callable implementation."""
 
     def __init__(self, definition: ToolDefinition, func: Callable):
+        """Initialize the registered tool."""
         self.definition = definition
         self.func = func

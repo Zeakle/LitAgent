@@ -11,9 +11,9 @@ from dataclasses import dataclass, field
 
 from openai import AsyncOpenAI
 
+from litagent.logging import get_logger
 from litagent.observability.context import get_task_id
 from litagent.safety.budget import CostBudget
-from litagent.logging import get_logger
 
 logger = get_logger("llm.client")
 
@@ -51,6 +51,7 @@ class OpenAICompatibleClient(BaseLLMClient):
         cost_budget: CostBudget | None = None,
         trace_hook=None,
     ):
+        """Initialize the OpenAI-compatible client."""
         api_key = os.environ.get("LLM_API_KEY") or os.environ.get("OPENAI_API_KEY", "")
         if not api_key:
             logger.warning("NO LLM API key found (LLM_API_KEY / OPENAI_API_KEY)")
@@ -62,6 +63,7 @@ class OpenAICompatibleClient(BaseLLMClient):
         self._trace_hook = trace_hook
 
     def _emit(self, event: str, data: dict) -> None:
+        """Emit a trace event."""
         if self._trace_hook:
             try:
                 self._trace_hook(event, data)
@@ -197,6 +199,7 @@ class MockLLMClient(BaseLLMClient):
     """Return deterministic responses for tests and offline workflows."""
 
     def __init__(self, responses: list[str] | None = None):
+        """Initialize the mock LLM client."""
         self._responses = list(responses or ["Mock LLM response"])
         self._call_count = 0
 

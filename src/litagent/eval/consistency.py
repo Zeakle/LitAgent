@@ -5,9 +5,9 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from litagent.eval.base import Evaluator, EvalResult
-from litagent.llm.client import BaseLLMClient
 from litagent.context.templates import wrap_xml
+from litagent.eval.base import EvalResult, Evaluator
+from litagent.llm.client import BaseLLMClient
 from litagent.logging import get_logger
 
 logger = get_logger("eval.consistency")
@@ -41,6 +41,7 @@ class ConsistencyEvaluator(Evaluator):
         penalty: float = 0.2,
         max_tokens: int = 16384,
     ):
+        """Initialize the consistency evaluator."""
         super().__init__(threshold)
         self._llm = llm
         self._penalty = penalty

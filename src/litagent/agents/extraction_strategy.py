@@ -112,6 +112,7 @@ class RegexStrategy(ExtractionStrategy):
     """Extract paper fields with registered rule-based tools."""
 
     def __init__(self, executor: ToolExecutor):
+        """Initialize the regex strategy."""
         self._executor = executor
 
     async def extract(self, paper: dict) -> dict:
@@ -186,6 +187,7 @@ class LLMStrategy(ExtractionStrategy):
     """Extract structured paper fields with an LLM and skill metadata."""
 
     def __init__(self, llm: BaseLLMClient, skill_manager: SkillManager):
+        """Initialize the LLM strategy."""
         self._llm = llm
         self._skill_manager = skill_manager
 
@@ -233,6 +235,7 @@ class ResilientExtractionStrategy(ExtractionStrategy):
         regex_strategy: RegexStrategy,
         per_paper_timeout_ms: int = 20000,
     ):
+        """Initialize the resilient extraction strategy."""
         self._llm = llm_strategy
         self._regex_strategy = regex_strategy
 
@@ -266,6 +269,7 @@ class ResilientExtractionStrategy(ExtractionStrategy):
     async def _fallback(
         self, paper: dict, paper_id: str, reason: str, error_type: str
     ) -> dict:
+        """Run the fallback extraction strategy."""
         logger.warning(
             "LLM extract degraded for paper=%s reason=%s error_type=%s",
             paper_id,

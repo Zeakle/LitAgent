@@ -47,6 +47,7 @@ class BudgetManager:
         compact_threshold: float = 0.7,
         counter: TokenCounter | None = None,
     ):
+        """Initialize the budget manager."""
         self._max_tokens = max_tokens
         self._compact_threshold = compact_threshold
         self._counter = counter or CharBasedCounter()

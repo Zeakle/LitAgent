@@ -70,6 +70,7 @@ class SurveyPlanner:
         memory_manager: "MemoryManager | None" = None,
         rag_config: RAGConfig | None = None,
     ) -> None:
+        """Initialize the survey planner."""
         self._llm = llm
         self._config = config or PlannerConfig()
         self._rag_config = rag_config or RAGConfig()
@@ -77,6 +78,7 @@ class SurveyPlanner:
         self._memory = memory_manager
 
     def _emit(self, event: str, data: dict) -> None:
+        """Emit a trace event."""
         if self._trace_hook:
             try:
                 self._trace_hook(event, data)
@@ -220,6 +222,7 @@ class SurveyPlanner:
         return graph
 
     async def _decompose(self, query: str) -> list[str]:
+        """Decompose a survey query into focused subqueries."""
         fallback = [query]
         if not self._llm or not self._config.decompose_enabled:
             return fallback
@@ -263,6 +266,7 @@ class SurveyPlanner:
             return fallback
 
     async def _decompose_traced(self, query: str) -> list[str]:
+        """Decompose a query while emitting LLM lifecycle events."""
         self._emit(
             "subspan.start",
             {

@@ -21,9 +21,11 @@ class CompositeTraceHook:
     """Fan out events while keeping the local recorder independent of sinks."""
 
     def __init__(self, *hooks: Any) -> None:
+        """Initialize the composite trace hook."""
         self._hooks = [hook for hook in hooks if hook is not None]
 
     def __call__(self, event: str, data: dict[str, Any]) -> None:
+        """Forward a trace event to each configured sink."""
         for hook in self._hooks:
             hook(event, data)
 
@@ -81,10 +83,12 @@ class RedactingTraceHook:
     }
 
     def __init__(self, sink: Any, payload_mode: str = "full_redacted") -> None:
+        """Initialize the redacting trace hook."""
         self._sink = sink
         self._payload_mode = payload_mode
 
     def __call__(self, event: str, data: dict[str, Any]) -> None:
+        """Redact and forward one trace event to the wrapped sink."""
         if self._payload_mode == "metadata_only":
             payload = {
                 key: _redact_trace_value(value)
@@ -106,6 +110,7 @@ class ArchiveRepository:
     """Store completed run artifacts on the local filesystem."""
 
     def __init__(self, root: Path | str = "artifacts/runs") -> None:
+        """Initialize the archive repository."""
         self._root = Path(root)
 
     def path_for(self, run_id: str) -> Path:
@@ -154,6 +159,7 @@ class ArchiveRepository:
         )
 
     def _read(self, path: Path) -> dict[str, Any] | None:
+        """Read and validate one archived run artifact."""
         try:
             value = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
@@ -166,6 +172,7 @@ class RunRecorder:
     """Trace hook that preserves full local payloads and assembles replay nodes."""
 
     def __init__(self, run_id: str, query: str, repository: ArchiveRepository) -> None:
+        """Initialize the run recorder."""
         now = _now()
         self._started_monotonic = time.perf_counter()
         self.run_id = run_id
@@ -197,6 +204,7 @@ class RunRecorder:
         }
 
     def __call__(self, event: str, data: dict[str, Any]) -> None:
+        """Record one lifecycle event for the active run."""
         payload = _snapshot(data)
         record = {
             "sequence": len(self._artifact["events"]),
@@ -327,6 +335,7 @@ class RunRecorder:
         return _snapshot(self._artifact)
 
     def _apply_event(self, event: str, data: dict[str, Any], at: str) -> None:
+        """Apply one event to the in-memory run artifact."""
         node_key, lifecycle = _node_identity(event, data)
         if node_key is None:
             return
@@ -383,6 +392,7 @@ class RunRecorder:
             )
 
     def _close_unfinished_nodes(self) -> None:
+        """Mark unfinished recorded nodes as interrupted."""
         completed_at = self._artifact["completed_at"]
         for node in self._artifact["nodes"].values():
             if node["status"] in {"pending", "running"}:
@@ -395,6 +405,7 @@ class RunRecorder:
 
 
 def _node_identity(event: str, data: dict[str, Any]) -> tuple[str | None, str | None]:
+    """Return a stable recorder identity for an event node."""
     if event == "worker.input":
         return f"worker:{data.get('task_id', '')}", None
     if event.startswith("worker."):
@@ -413,14 +424,17 @@ def _node_identity(event: str, data: dict[str, Any]) -> tuple[str | None, str | 
 
 
 def _now() -> str:
+    """Return the current UTC timestamp."""
     return datetime.now(timezone.utc).isoformat()
 
 
 def _snapshot(value: Any) -> Any:
+    """Return an isolated JSON-safe snapshot."""
     return json.loads(json.dumps(value, ensure_ascii=False, default=_json_default))
 
 
 def _event_input(event: str, data: dict[str, Any]) -> Any:
+    """Extract normalized input from a lifecycle event."""
     if event == "worker.start":
         return None
     if event == "llm.start":
@@ -437,6 +451,7 @@ def _event_input(event: str, data: dict[str, Any]) -> Any:
 
 
 def _event_output(event: str, data: dict[str, Any]) -> Any:
+    """Extract normalized output from a lifecycle event."""
     if "output" in data:
         return data["output"]
     if event == "llm.complete":
@@ -461,6 +476,7 @@ def _event_output(event: str, data: dict[str, Any]) -> Any:
 
 
 def _event_metadata(event: str, data: dict[str, Any]) -> dict[str, Any]:
+    """Extract normalized metadata from a lifecycle event."""
     if event == "llm.complete":
         return {"tool_calls": data.get("tool_calls", [])}
     if "output" in data:
@@ -481,6 +497,7 @@ def _event_elapsed_ms(
     started_at: str | None,
     completed_at: str | None,
 ) -> int | None:
+    """Extract elapsed milliseconds from a lifecycle event."""
     explicit = data.get("elapsed_ms")
     if explicit is not None:
         return int(explicit)
@@ -495,6 +512,7 @@ def _event_elapsed_ms(
 
 
 def _json_default(value: Any) -> Any:
+    """Convert unsupported values into JSON-safe representations."""
     if dataclasses.is_dataclass(value):
         return dataclasses.asdict(value)
     if hasattr(value, "model_dump"):
@@ -532,10 +550,12 @@ _SECRET_VALUE_RE = re.compile(
 
 
 def _normalized_key(key: Any) -> str:
+    """Normalize a mapping key for secret detection."""
     return str(key).strip().lower().replace("-", "_")
 
 
 def _is_secret_key(key: Any) -> bool:
+    """Return whether a normalized key denotes a secret."""
     normalized = _normalized_key(key)
     return normalized in _SECRET_KEYS or any(
         normalized.endswith(f"_{suffix}")
@@ -551,6 +571,7 @@ def _is_secret_key(key: Any) -> bool:
 
 
 def _redact_trace_value(value: Any) -> Any:
+    """Recursively redact secrets from a trace value."""
     if isinstance(value, dict):
         return {
             str(key): _redact_trace_value(item)

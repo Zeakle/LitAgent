@@ -12,6 +12,7 @@ class ProceduralMemory:
     """Persist aggregate tool-execution profiles in PostgreSQL."""
 
     def __init__(self, pool: asyncpg.Pool):
+        """Initialize the procedural memory."""
         self._pool = pool
 
     async def ensure_tables(self) -> None:
@@ -29,7 +30,8 @@ class ProceduralMemory:
 
     async def _ensure_profile_table(self) -> None:
         """Create the profile table and migrate legacy duration precision."""
-        await self._pool.execute("""
+        await self._pool.execute(
+            """
             CREATE TABLE IF NOT EXISTS procedural_profiles (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 profile_type VARCHAR(64) NOT NULL,
@@ -49,19 +51,24 @@ class ProceduralMemory:
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
                 UNIQUE(profile_type, profile_key, scope)
             )
-        """)
+        """
+        )
 
-        await self._pool.execute("""
+        await self._pool.execute(
+            """
             CREATE INDEX IF NOT EXISTS idx_profiles_type_scope
             ON procedural_profiles(profile_type, scope)
-        """)
+        """
+        )
 
         # Preserve fractional rolling averages when upgrading legacy INTEGER schemas.
-        await self._pool.execute("""
+        await self._pool.execute(
+            """
             ALTER TABLE procedural_profiles
             ALTER COLUMN avg_duration_ms TYPE DOUBLE PRECISION
             USING avg_duration_ms::DOUBLE PRECISION
-        """)
+        """
+        )
 
     async def upsert_profile(
         self,

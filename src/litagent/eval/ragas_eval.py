@@ -9,19 +9,19 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from litagent.config import AppConfig
+from litagent.context.templates import wrap_xml
 from litagent.eval.base import (
-    Evaluator,
-    EvalResult,
     CTX_EVIDENCE,
     CTX_QUERY,
     CTX_REFERENCED_EVIDENCE,
     CTX_REFERENCED_EVIDENCE_IDS,
     CTX_SELECTED_EVIDENCE,
     CTX_UNRESOLVED_EVIDENCE_IDS,
+    EvalResult,
+    Evaluator,
 )
-from litagent.context.templates import wrap_xml
 from litagent.llm.client import BaseLLMClient
-from litagent.config import AppConfig
 from litagent.logging import get_logger
 
 logger = get_logger("eval.ragas")
@@ -51,6 +51,7 @@ class ResolvedFaithfulnessContext:
 
 
 def _format_evidence_item(item: Mapping[str, Any]) -> str:
+    """Format one evidence item for RAGAS evaluation."""
     return (
         f"[E:{item.get('evidence_id', '')}] "
         f"({item.get('paper_title', '')}; "
@@ -68,6 +69,7 @@ class RagasFaithfulnessEvaluator(Evaluator):
         threshold: float = 0.8,
         llm: BaseLLMClient | None = None,
     ):
+        """Initialize the RAGAS faithfulness evaluator."""
         super().__init__(threshold)
         self._cfg = config
         self._llm = llm

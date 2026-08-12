@@ -18,6 +18,7 @@ class ArxivMetadataAdapter:
     """Normalize the existing arXiv loader at the corpus source boundary."""
 
     def __init__(self, loader: ArxivLoader | None = None) -> None:
+        """Initialize the arXiv metadata adapter."""
         self._loader = loader or ArxivLoader()
 
     async def load(self, arxiv_id: str) -> RawPaperAsset:
@@ -63,6 +64,7 @@ class LocalPDFAdapter:
     """Verify an allowlisted local PDF before parser access."""
 
     def __init__(self, *, max_pdf_bytes: int) -> None:
+        """Initialize the local PDF adapter."""
         self._max_pdf_bytes = max_pdf_bytes
 
     async def materialize(self, asset: RawPaperAsset) -> RawPaperAsset:
@@ -110,6 +112,7 @@ class ArxivPDFAdapter:
         raw_root: Path,
         max_pdf_bytes: int,
     ) -> None:
+        """Initialize the arXiv PDF adapter."""
         self._client = client
         self._raw_root = raw_root.resolve()
         self._max_pdf_bytes = max_pdf_bytes

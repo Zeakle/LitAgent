@@ -107,6 +107,7 @@ class CorpusStateRepository:
     """Use PostgreSQL as the authoritative incremental-state backend."""
 
     def __init__(self, pool) -> None:
+        """Initialize the corpus state repository."""
         self._pool = pool
 
     @staticmethod

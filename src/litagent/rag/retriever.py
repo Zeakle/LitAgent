@@ -23,6 +23,7 @@ def aggregate_chunk_hits(
     top_k: int,
     max_chunks_per_paper: int = 4,
 ) -> list[ScoredPaperHit]:
+    """Aggregate chunk hits into ranked parent papers."""
     if top_k <= 0 or max_chunks_per_paper <= 0:
         raise ValueError("top_k and max_chunks_per_paper must be positive")
     grouped: dict[str, list[ScoredChunkHit]] = {}
@@ -100,11 +101,13 @@ class HybridRetriever:
         reranker: Reranker | None = None,
         trace_hook=None,
     ) -> None:
+        """Initialize the hybrid retriever."""
         self._store = store
         self._reranker = reranker
         self._trace_hook = trace_hook
 
     def _emit(self, event: str, data: dict) -> None:
+        """Emit a trace event."""
         if self._trace_hook:
             try:
                 self._trace_hook(event, data)

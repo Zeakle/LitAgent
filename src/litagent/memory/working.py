@@ -14,6 +14,7 @@ class WorkingMemory:
     """Persist active session state in Redis."""
 
     def __init__(self, redis: Redis, config: MemoryConfig):
+        """Initialize the working memory."""
         self._redis = redis
         self._ttl = config.working_ttl_seconds
 

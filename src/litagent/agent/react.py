@@ -1,11 +1,11 @@
 """Build and run the LangGraph-based ReAct loop."""
 
 import json
-from typing import Literal, AsyncIterator
+from typing import AsyncIterator, Literal
 
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import Runnable, RunnableLambda
-from langchain_core.messages import AIMessage, SystemMessage, HumanMessage
-from langgraph.graph import StateGraph, END
+from langgraph.graph import END, StateGraph
 from langgraph.prebuilt import ToolNode
 
 from litagent.agent.state import AgentState
@@ -30,6 +30,7 @@ def build_react_graph(
             graph_tool_names.add(name)
 
     def _route_after_agent(state: AgentState) -> Literal["validate", "end"]:
+        """Route an agent step to tool execution or termination."""
         if state.get("final_answer") is not None:
             return "end"
 
@@ -45,6 +46,7 @@ def build_react_graph(
         return "end"
 
     def _step_node(state: AgentState) -> dict:
+        """Run one model step and append its message."""
         result = {"loop_count": state.get("loop_count", 0) + 1}
 
         # Stop after three identical consecutive tool calls.
@@ -97,6 +99,7 @@ def _make_validate_node(graph_tool_names: set[str] | None = None):
     """Create a graph node that validates the pending tool call."""
 
     def validate_node(state: AgentState) -> dict:
+        """Validate pending tool calls before tool execution."""
         action = state.get("current_action")
         if action is None:
             return {"_validation_result": {"valid": True}}
@@ -128,6 +131,7 @@ def _client_to_runnable(llm_client: BaseLLMClient, tools: list | None = None):
     tools_spec = _tools_to_api_format(tools) if tools else None
 
     async def _call(state: dict) -> dict:
+        """Forward graph messages to the configured LLM client."""
         messages = state.get("messages", [])
         formatted = []
         for m in messages:
@@ -260,6 +264,7 @@ class ReActRunner:
         tools: list | None = None,
         config: AgentConfig | None = None,
     ):
+        """Initialize the ReAct runner."""
         self._llm = llm_client
         self._tools = tools or []
         self._config = config or AgentConfig()

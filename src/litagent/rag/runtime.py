@@ -37,6 +37,7 @@ class CorpusRuntime:
         *,
         purpose: Literal["runtime", "benchmark"] = "runtime",
     ) -> "CorpusRuntime":
+        """Connect the corpus runtime dependencies."""
         identity = CollectionIdentity.from_config(config.rag, purpose=purpose)
         embedder = build_retrieval_embedder(config.rag)
         dim = await asyncio.to_thread(lambda: embedder.dim)

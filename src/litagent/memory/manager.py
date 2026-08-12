@@ -1,15 +1,15 @@
 """Coordinate working, episodic, semantic, and procedural memory backends."""
 
 from litagent.llm.client import BaseLLMClient
-from litagent.memory.working import WorkingMemory
-from litagent.memory.episodic import EpisodicMemory
-from litagent.memory.semantic import SemanticMemory
-from litagent.memory.procedural import ProceduralMemory
-from litagent.memory.models import Episode
+from litagent.logging import get_logger
 from litagent.memory.consolidate import consolidate_session
+from litagent.memory.episodic import EpisodicMemory
+from litagent.memory.models import Episode
+from litagent.memory.procedural import ProceduralMemory
+from litagent.memory.semantic import SemanticMemory
+from litagent.memory.working import WorkingMemory
 from litagent.observability.context import get_task_id
 from litagent.observability.lifecycle import traced_io
-from litagent.logging import get_logger
 
 logger = get_logger("memory.manager")
 
@@ -29,6 +29,7 @@ class MemoryManager:
         procedural: ProceduralMemory | None = None,
         trace_hook=None,
     ):
+        """Initialize the memory manager."""
         self.working = working
         self.episodic = episodic
         self.semantic = semantic
@@ -189,6 +190,7 @@ class MemoryManager:
                 stats: dict[str, dict] = {p["subject"]: p for p in profiles}
 
                 def _reliability(subject: str) -> float:
+                    """Score a search source from its execution profile."""
                     p = stats.get(subject)
                     if p is None or p["execution_count"] < min_samples:
                         return 0.5

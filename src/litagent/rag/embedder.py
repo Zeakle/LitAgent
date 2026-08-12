@@ -29,11 +29,13 @@ class LocalEmbedder(Embedder):
         *,
         model_factory: Callable[[str], Any] = SentenceTransformer,
     ) -> None:
+        """Initialize the local embedder."""
         self._model_name = model_name
         self._model_factory = model_factory
         self._model: Any | None = None
 
     def _ensure_model(self) -> Any:
+        """Load the local embedding model on first use."""
         if self._model is None:
             logger.info("loading sentence-transformer model: %s", self._model_name)
             self._model = self._model_factory(self._model_name)
@@ -81,6 +83,7 @@ class Specter2Embedder:
         tokenizer_factory: Callable[[str], Any] | None = None,
         model_factory: Callable[[str], Any] | None = None,
     ) -> None:
+        """Initialize the SPECTER2 embedder."""
         self._model_name = model_name
         self._document_adapter = document_adapter
         self._query_adapter = query_adapter
@@ -94,6 +97,7 @@ class Specter2Embedder:
         self._lock = threading.RLock()
 
     def _ensure_model(self) -> tuple[Any, Any]:
+        """Load the SPECTER2 model and adapters on first use."""
         with self._lock:
             if self._model is not None and self._tokenizer is not None:
                 return self._tokenizer, self._model
@@ -138,6 +142,7 @@ class Specter2Embedder:
             return tokenizer, model
 
     def _encode(self, texts: Sequence[str], *, adapter_name: str) -> list[list[float]]:
+        """Encode text with the configured transformer adapter."""
         if not texts:
             return []
         try:

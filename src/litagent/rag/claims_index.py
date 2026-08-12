@@ -64,6 +64,7 @@ class ClaimsIndex:
         collection_name: str = COLLECTION_NAME,
         embedder=None,
     ) -> None:
+        """Initialize the claims index."""
         self._client = client
         self._trace_hook = trace_hook
         self._collection = collection_name

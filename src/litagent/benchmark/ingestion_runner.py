@@ -22,6 +22,7 @@ IngestionCaseExecutor = Callable[
 
 
 def _dataset_fingerprint(cases: Sequence[IngestionFixtureCase]) -> str:
+    """Return a stable ingestion-dataset fingerprint."""
     payload = [case.model_dump(mode="json") for case in cases]
     encoded = json.dumps(
         payload,
@@ -36,12 +37,14 @@ class IngestionRobustnessRunner:
     """Execute every case independently and preserve failed observations."""
 
     def __init__(self, executor: IngestionCaseExecutor) -> None:
+        """Initialize the ingestion robustness runner."""
         self._executor = executor
 
     async def run(
         self,
         cases: Sequence[IngestionFixtureCase],
     ) -> IngestionBenchmarkResult:
+        """Run the ingestion robustness runner workflow."""
         if not cases:
             raise ValueError("ingestion benchmark requires cases")
         ids = [case.case_id for case in cases]

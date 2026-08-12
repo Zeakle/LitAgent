@@ -15,11 +15,14 @@ from pydantic import BaseModel
 
 @dataclass(frozen=True)
 class BenchmarkArtifactPaths:
+    """Identify the JSON and Markdown files for one benchmark run."""
+
     json_path: Path
     markdown_path: Path
 
 
 def _atomic_write(path: Path, text: str) -> None:
+    """Atomically replace an artifact file."""
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
     try:
@@ -31,6 +34,7 @@ def _atomic_write(path: Path, text: str) -> None:
 
 
 def _markdown(payload: Mapping[str, Any]) -> str:
+    """Render benchmark results as Markdown."""
     run_id = str(payload.get("run_id") or "unknown")
     status = str(payload.get("status") or "unknown")
     summary = payload.get("summary") or {}
@@ -81,12 +85,14 @@ class BenchmarkArtifactRepository:
     """Own atomic local benchmark artifact persistence."""
 
     def __init__(self, root: Path) -> None:
+        """Initialize the benchmark artifact repository."""
         self._root = root
 
     def write(
         self,
         result: BaseModel | Mapping[str, Any],
     ) -> BenchmarkArtifactPaths:
+        """Persist one benchmark result as JSON and Markdown artifacts."""
         payload = (
             result.model_dump(mode="json")
             if isinstance(result, BaseModel)

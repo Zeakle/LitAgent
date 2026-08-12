@@ -145,6 +145,7 @@ def main() -> None:
 
 
 async def _dispatch_async(args: argparse.Namespace) -> None:
+    """Dispatch the selected asynchronous CLI command."""
     if args.command == "survey":
         await _cmd_survey(args)
     elif args.command == "tools":

@@ -56,12 +56,14 @@ def _safe_key(key: Any) -> str:
 
 
 def _sanitize_string(value: str) -> str:
+    """Redact sensitive substrings from one string."""
     if _SECRET_VALUE_RE.search(value):
         return "<redacted>"
     return value[:_MAX_STR] + "..." if len(value) > _MAX_STR else value
 
 
 def _sanitize_mapping(d: Mapping[str, Any], depth: int) -> dict[str, Any]:
+    """Recursively sanitize a lifecycle mapping."""
     out: dict[str, Any] = {}
     for i, (k, v) in enumerate(d.items()):
         if i >= _MAX_ITEMS:
@@ -78,11 +80,13 @@ def _sanitize_mapping(d: Mapping[str, Any], depth: int) -> dict[str, Any]:
 
 
 def _is_sensitive_key(key: str) -> bool:
+    """Return whether a lifecycle key is sensitive."""
     low = key.lower()
     return any(t in low for t in _SENSITIVE_KEY_TOKENS)
 
 
 def _sanitize_value(v: Any, depth: int) -> Any:
+    """Recursively sanitize one lifecycle value."""
     if v is None or isinstance(v, (bool, int, float)):
         return v
 

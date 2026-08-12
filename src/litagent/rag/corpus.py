@@ -267,14 +267,20 @@ def build_manifest_prune_plan(
 class PaperIndex(Protocol):
     """Define side effects required from the Qdrant adapter."""
 
-    async def upsert_chunks(self, writes: Sequence[ChunkWrite]) -> None: ...
+    async def upsert_chunks(self, writes: Sequence[ChunkWrite]) -> None:
+        """Insert or replace chunk vectors and payloads."""
+        ...
 
     async def update_payloads(
         self,
         updates: Sequence[PayloadUpdate],
-    ) -> None: ...
+    ) -> None:
+        """Update payload metadata without replacing vectors."""
+        ...
 
-    async def delete_points(self, point_ids: Sequence[str]) -> None: ...
+    async def delete_points(self, point_ids: Sequence[str]) -> None:
+        """Delete indexed points by identifier."""
+        ...
 
 
 class CorpusService:
@@ -288,6 +294,7 @@ class CorpusService:
         paper_index: PaperIndex,
         embedder,
     ) -> None:
+        """Initialize the corpus service."""
         self.identity = identity
         self._state = state_repository
         self._index = paper_index

@@ -38,6 +38,7 @@ _SCOPE_RANK = {
 
 
 def _digest(value: Any) -> str:
+    """Return a stable content digest."""
     encoded = json.dumps(
         value,
         ensure_ascii=False,
@@ -117,6 +118,7 @@ class ChunkSourceSpan(BaseModel):
 
     @model_validator(mode="after")
     def _validate_span(self):
+        """Validate source-span offsets and page bounds."""
         if self.start_char >= self.end_char:
             raise ValueError("source span start_char must be smaller than end_char")
         if not all(math.isfinite(value) for value in self.bbox):
@@ -197,6 +199,7 @@ class ContentChunk(BaseModel):
 
     @model_validator(mode="after")
     def _validate_locator(self):
+        """Validate locator requirements for the chunk type."""
         locator_values = (self.page, self.block_index, self.bbox)
         if self.content_scope is ContentScope.ABSTRACT:
             if any(value is not None for value in locator_values) or self.source_spans:

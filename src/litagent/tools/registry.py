@@ -2,8 +2,8 @@
 
 from typing import Callable
 
-from litagent.tools.base import ToolDefinition, RegisteredTool, ToolCategory
 from litagent.logging import get_logger
+from litagent.tools.base import RegisteredTool, ToolCategory, ToolDefinition
 
 logger = get_logger("tools.registry")
 
@@ -12,6 +12,7 @@ class ToolRegistry:
     """Store registered tools by unique name."""
 
     def __init__(self):
+        """Initialize the tool registry."""
         self._tools: dict[str, RegisteredTool] = {}
 
     def register(self, definition: ToolDefinition, func: Callable) -> None:
@@ -44,9 +45,11 @@ class ToolRegistry:
         return [tool.definition.to_llm_format() for tool in tools]
 
     def __len__(self) -> int:
+        """Return the number of tool registry items."""
         return len(self._tools)
 
     def __contains__(self, name: str) -> bool:
+        """Return whether the tool registry contains an item."""
         return name in self._tools
 
 

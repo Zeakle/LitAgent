@@ -4,9 +4,9 @@ import json
 
 from langchain_core.messages import HumanMessage
 
-from litagent.memory.models import Episode
 from litagent.llm.client import BaseLLMClient
 from litagent.logging import get_logger
+from litagent.memory.models import Episode
 
 logger = get_logger("memory.consolidate")
 
@@ -113,6 +113,7 @@ def _format_messages(messages: list) -> str:
 
 
 def _extract_user_query(messages: list) -> str:
+    """Extract the first user query from session messages."""
     for msg in messages:
         if isinstance(msg, dict):
             if msg.get("type") == "human":
@@ -125,6 +126,7 @@ def _extract_user_query(messages: list) -> str:
 
 
 def _classify_intent(query: str) -> str:
+    """Classify the query into a stable intent category."""
     q = query.lower()
     if any(w in q for w in ["survey", "review", "综述", "文献"]):
         return "literature_review"

@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any
 from collections.abc import Mapping
+from typing import Any
 
+from litagent.logging import get_logger
 from litagent.orchestrator.scheduler import Worker
 from litagent.orchestrator.task_graph import SubTask
-from litagent.logging import get_logger
 
 logger = get_logger("agents.graph")
 
@@ -19,6 +19,7 @@ class GraphWorker(Worker):
     TIER2_THRESHOLD = 50
 
     def __init__(self, max_papers: int = 50) -> None:
+        """Initialize the graph worker."""
         if max_papers <= 0:
             raise ValueError("max_papers must be positive")
 
@@ -48,6 +49,7 @@ class GraphWorker(Worker):
         }
 
     def _get_papers_from_upstream(self, upstream: dict) -> list[dict]:
+        """Return papers from upstream."""
         if not isinstance(upstream, Mapping):
             return []
 

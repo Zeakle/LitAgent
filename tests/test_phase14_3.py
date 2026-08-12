@@ -522,6 +522,7 @@ async def test_typed_qdrant_search_executes_the_selected_retrieval_mode(
 
 @pytest.mark.asyncio
 async def test_strict_parent_search_uses_exact_dense_candidates():
+    """Require exact dense candidates for strict parent-level retrieval."""
     from litagent.config import RetrievalMode
     from litagent.rag.retriever import HybridRetriever
 
@@ -542,6 +543,7 @@ async def test_strict_parent_search_uses_exact_dense_candidates():
 
 @pytest.mark.asyncio
 async def test_parent_search_preserves_a_chunk_budget_for_unique_papers():
+    """Reserve enough chunk candidates to return unique parent papers."""
     from litagent.config import RetrievalMode
     from litagent.rag.retriever import HybridRetriever
 
@@ -669,10 +671,12 @@ def test_retrieval_metrics_match_a_hand_checked_example():
 
 
 def test_parent_paper_aggregation_breaks_equal_score_ties_deterministically():
+    """Break equal parent-paper scores with a stable paper identifier."""
     from litagent.rag.models import ContentChunk, ContentScope, ScoredChunkHit
     from litagent.rag.retriever import aggregate_chunk_hits
 
     def hit(paper_id: str, score: float) -> ScoredChunkHit:
+        """Build one scored abstract chunk for a paper."""
         chunk = ContentChunk.from_text(
             paper_id=paper_id,
             chunk_key="abstract",
@@ -709,10 +713,12 @@ def test_parent_paper_aggregation_breaks_equal_score_ties_deterministically():
 
 
 def test_cross_encoder_reranker_breaks_equal_score_ties_deterministically():
+    """Break equal reranker scores with a stable paper identifier."""
     from litagent.rag.models import ContentChunk, ContentScope, ScoredPaperHit
     from litagent.rag.reranker import CrossEncoderReranker
 
     def paper(paper_id: str) -> ScoredPaperHit:
+        """Build one scored paper with an abstract chunk."""
         chunk = ContentChunk.from_text(
             paper_id=paper_id,
             chunk_key="abstract",

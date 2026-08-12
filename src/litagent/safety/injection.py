@@ -50,6 +50,7 @@ class InjectionDetector:
     """Classify text with compiled high-risk and suspicious patterns."""
 
     def __init__(self):
+        """Initialize the injection detector."""
         self._high = [re.compile(p, re.IGNORECASE) for p in _HIGH_PATTERNS]
         self._suspicious = [re.compile(p, re.IGNORECASE) for p in _SUSPICIOUS_PATTERNS]
 

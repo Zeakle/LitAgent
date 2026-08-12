@@ -14,6 +14,8 @@ _CLAIM_NAMESPACE = uuid.UUID("a9506bd8-35d8-59e9-8180-2f0f018c99e5")
 
 @dataclass(frozen=True)
 class ClaimPromotionSummary:
+    """Summarize trusted-claim promotion for one completed run."""
+
     status: str
     attempted_count: int
     promoted_count: int
@@ -21,6 +23,7 @@ class ClaimPromotionSummary:
     reason_code: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
+        """Serialize the claim-promotion summary."""
         return asdict(self)
 
 
@@ -60,6 +63,7 @@ def _to_trusted_claim(
     quality_status: str,
     delivery_status: str,
 ) -> TrustedClaim | None:
+    """Convert eligible evidence into a trusted claim."""
     required = (
         "evidence_id",
         "paper_id",
@@ -109,7 +113,10 @@ def _to_trusted_claim(
 
 
 class ClaimsPromoter:
+    """Promote evidence-backed claims from publishable survey runs."""
+
     def __init__(self, index: ClaimsIndex) -> None:
+        """Initialize the claims promoter."""
         self._index = index
 
     async def promote(
@@ -120,6 +127,7 @@ class ClaimsPromoter:
         report_data: Mapping[str, Any],
         extractions: Sequence[Mapping[str, Any]],
     ) -> ClaimPromotionSummary:
+        """Promote eligible claims into the trusted index."""
         if not is_publishable_report(report_data):
             return ClaimPromotionSummary("skipped", 0, 0, 0, "run_not_publishable")
         quality_status = str(report_data["quality"].get("status") or "")

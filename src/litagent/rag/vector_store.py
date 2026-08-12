@@ -46,6 +46,7 @@ class QdrantVectorStore(VectorStore):
         identity=None,
         embedder=None,
     ):
+        """Initialize the Qdrant vector store."""
         self._client = client
         self._collection = collection_name
         self._identity = identity
@@ -68,6 +69,7 @@ class QdrantVectorStore(VectorStore):
         """
 
         async def _create() -> None:
+            """Create the configured dense and sparse Qdrant collection."""
             await client.create_collection(
                 collection_name=collection_name,
                 vectors_config={

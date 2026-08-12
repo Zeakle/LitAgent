@@ -35,6 +35,7 @@ class RAGProfileSet(BaseModel):
 
 
 def _load_yaml(path: Path) -> dict:
+    """Load and validate a YAML mapping from disk."""
     if not path.is_file():
         raise FileNotFoundError(f"benchmark input not found: {path}")
     payload = yaml.safe_load(path.read_text(encoding="utf-8"))
@@ -44,14 +45,17 @@ def _load_yaml(path: Path) -> dict:
 
 
 def load_ingestion_dataset(path: Path) -> IngestionFixtureDataset:
+    """Load and validate an ingestion benchmark dataset."""
     return IngestionFixtureDataset.model_validate(_load_yaml(path))
 
 
 def load_retrieval_dataset(path: Path) -> RAGBenchmarkDataset:
+    """Load and validate a retrieval benchmark dataset."""
     return RAGBenchmarkDataset.model_validate(_load_yaml(path))
 
 
 def load_profiles(path: Path) -> list[RAGBenchmarkProfile]:
+    """Load and validate benchmark profiles."""
     profile_set = RAGProfileSet.model_validate(_load_yaml(path))
     ids = [profile.profile_id for profile in profile_set.profiles]
     fingerprints = [profile.fingerprint for profile in profile_set.profiles]

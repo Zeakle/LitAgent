@@ -5,9 +5,9 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from litagent.eval.base import Evaluator, EvalResult, CTX_PAPERS
-from litagent.llm.client import BaseLLMClient
 from litagent.context.templates import wrap_xml
+from litagent.eval.base import CTX_PAPERS, EvalResult, Evaluator
+from litagent.llm.client import BaseLLMClient
 from litagent.logging import get_logger
 
 logger = get_logger("eval.citation")
@@ -35,6 +35,7 @@ class CitationEvaluator(Evaluator):
     def __init__(
         self, llm: BaseLLMClient, threshold: float = 0.8, max_tokens: int = 16384
     ):
+        """Initialize the citation evaluator."""
         super().__init__(threshold)
         self._llm = llm
         self._max_tokens = max_tokens

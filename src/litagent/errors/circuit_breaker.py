@@ -22,6 +22,7 @@ class CircuitBreaker:
     """Block calls after repeated failures and allow one cooldown probe."""
 
     def __init__(self, fail_threshold: int = 5, cooldown_seconds: int = 60):
+        """Initialize the circuit breaker."""
         self._fail_threshold = fail_threshold
         self._cooldown = cooldown_seconds
         self._state = CircuitState.CLOSED

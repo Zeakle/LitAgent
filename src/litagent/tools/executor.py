@@ -11,11 +11,11 @@ from typing import Any, Callable
 import httpx
 
 from litagent.errors.circuit_breaker import CircuitBreaker
-from litagent.observability.context import get_task_id
-from litagent.tools.base import ToolDefinition, RateLimitConfig, FallbackStep
-from litagent.tools.registry import ToolRegistry
-from litagent.observability.lifecycle import sanitize_input
 from litagent.logging import get_logger
+from litagent.observability.context import get_task_id
+from litagent.observability.lifecycle import sanitize_input
+from litagent.tools.base import FallbackStep, RateLimitConfig, ToolDefinition
+from litagent.tools.registry import ToolRegistry
 
 logger = get_logger("tools.executor")
 
@@ -64,6 +64,7 @@ class ToolExecutor:
         cb_cooldown_seconds: int = 60,
         trace_hook=None,
     ):
+        """Initialize the tool executor."""
         self._registry = registry
         self._cache: dict[str, Any] = {}
         self._rate_limits: dict[str, _RateLimitState] = {}
@@ -81,6 +82,7 @@ class ToolExecutor:
                 logger.debug(f"Trace hook failed for '{event}': {e}")
 
     def _get_breaker(self, name: str) -> CircuitBreaker:
+        """Return the circuit breaker assigned to a tool."""
         if name not in self._breakers:
             self._breakers[name] = CircuitBreaker(
                 self._cb_fail_threshold, self._cb_cooldown
@@ -93,6 +95,7 @@ class ToolExecutor:
         args: dict,
         exc: BaseException,
     ) -> ToolResult:
+        """Build a normalized failed tool result."""
         if isinstance(exc, asyncio.TimeoutError):
             code = "tool_timeout"
             error_type = "TimeoutError"
@@ -273,6 +276,7 @@ class ToolExecutor:
     async def _execute_with_retry(
         self, name: str, args: dict, func: Callable, timeout_ms: int, max_retries: int
     ) -> ToolResult:
+        """Execute a tool with timeout, retry, and circuit-breaker handling."""
         last_failure: ToolResult | None = None
 
         for attempt in range(max_retries + 1):
@@ -347,11 +351,13 @@ class ToolExecutor:
         return ToolResult(name=name, args=args, error=msg, from_fallback=True)
 
     def _make_cache_key(self, name: str, args: dict) -> str:
+        """Build a stable cache key from a tool name and arguments."""
         raw = json.dumps({"name": name, "args": args}, sort_keys=True)
 
         return hashlib.sha256(raw.encode()).hexdigest()
 
     def _check_rate_limit(self, name: str, config: RateLimitConfig) -> bool:
+        """Enforce the configured per-tool rate limit."""
         if name not in self._rate_limits:
             self._rate_limits[name] = _RateLimitState(
                 max_calls=config.max_calls, window_seconds=config.window_seconds

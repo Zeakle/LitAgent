@@ -3,13 +3,13 @@
 import uuid
 
 from qdrant_client import AsyncQdrantClient
-from qdrant_client.models import Distance, VectorParams, PointStruct
 from qdrant_client.http.exceptions import UnexpectedResponse
+from qdrant_client.models import Distance, PointStruct, VectorParams
 
 from litagent.config import MemoryConfig
+from litagent.logging import get_logger
 from litagent.memory.models import Episode
 from litagent.rag.embedder import get_embedder
-from litagent.logging import get_logger
 
 logger = get_logger("memory.episodic")
 
@@ -20,6 +20,7 @@ class EpisodicMemory:
     """Persist summarized research sessions as vector-searchable episodes."""
 
     def __init__(self, client: AsyncQdrantClient):
+        """Initialize the episodic memory."""
         self._client = client
 
     @staticmethod

@@ -5,11 +5,11 @@ import json
 from mcp import ClientSession
 
 from litagent.config import MCPServerConfig
-from litagent.mcp.connection import MCPConnection
-from litagent.tools.registry import get_registry
-from litagent.tools.base import ToolDefinition, ToolCategory
 from litagent.exceptions import MCPError
 from litagent.logging import get_logger
+from litagent.mcp.connection import MCPConnection
+from litagent.tools.base import ToolCategory, ToolDefinition
+from litagent.tools.registry import get_registry
 
 logger = get_logger("mcp.bridge")
 
@@ -18,7 +18,7 @@ class MCPBridge:
     """Manage MCP sessions and expose remote tools through the registry."""
 
     def __init__(self):
-
+        """Initialize the MCP bridge."""
         self._sessions: dict[str, ClientSession] = {}
         self._connections: dict[str, MCPConnection] = {}
 
@@ -86,6 +86,7 @@ class MCPBridge:
             async def _call_mcp(
                 _session: ClientSession = session, _mcp_name: str = mcp_name, **kwargs
             ) -> str:
+                """Call the bound MCP tool and normalize its content blocks."""
 
                 result = await _session.call_tool(_mcp_name, arguments=kwargs)
 

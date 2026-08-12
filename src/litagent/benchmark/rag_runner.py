@@ -48,6 +48,7 @@ from litagent.rag.vector_store import QdrantVectorStore
 
 
 def _environment() -> dict[str, object]:
+    """Capture reproducible benchmark environment metadata."""
     packages = {}
     for distribution in (
         "qdrant-client",
@@ -69,6 +70,7 @@ def _environment() -> dict[str, object]:
 
 
 def _embedding_input_strategy(profile: RAGBenchmarkProfile) -> str:
+    """Describe the profile embedding-input strategy."""
     if profile.embedding_backend.value == "specter2":
         return "title_sep_chunk_text"
     return "chunk_text"
@@ -83,10 +85,12 @@ class RAGBenchmarkRunner:
         base_config: AppConfig,
         artifacts: BenchmarkArtifactRepository,
     ) -> None:
+        """Initialize the RAG benchmark runner."""
         self._base_config = base_config
         self._artifacts = artifacts
 
     def _config_for(self, profile: RAGBenchmarkProfile) -> AppConfig:
+        """Build configuration for one benchmark profile."""
         rag = profile.apply(self._base_config.rag)
         return self._base_config.model_copy(update={"rag": rag}, deep=True)
 
@@ -97,6 +101,7 @@ class RAGBenchmarkRunner:
         runtime: CorpusRuntime,
         manifest_path: Path,
     ) -> None:
+        """Ingest benchmark assets for the selected profile."""
         async with httpx.AsyncClient() as client:
             parser = PyMuPDFParser(
                 quality_gate=CorpusTextQualityGate(**config.rag.quality.model_dump()),
@@ -133,6 +138,7 @@ class RAGBenchmarkRunner:
         reason_code: str,
         run_id: str,
     ) -> RAGBenchmarkResult:
+        """Build a complete failed benchmark result."""
         return RAGBenchmarkResult(
             run_id=run_id,
             status="failed",
@@ -162,6 +168,7 @@ class RAGBenchmarkRunner:
         git_sha: str,
         git_dirty: bool = False,
     ) -> list[RAGBenchmarkResult]:
+        """Run all configured RAG benchmark profiles."""
         if not profiles:
             raise ValueError("retrieval benchmark requires profiles")
         profile_ids = [profile.profile_id for profile in profiles]
@@ -173,8 +180,7 @@ class RAGBenchmarkRunner:
 
         manifest_path = Path(dataset.manifest_path)
         manifest_hash = (
-            "sha256:"
-            + hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+            "sha256:" + hashlib.sha256(manifest_path.read_bytes()).hexdigest()
         )
         manifest = load_manifest(
             manifest_path,

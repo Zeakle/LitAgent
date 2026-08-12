@@ -8,15 +8,15 @@ import re
 import time
 import uuid
 from collections.abc import Mapping
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from typing import Any, Callable
 
 from langchain_core.documents import Document
 
 from litagent.context.budget import BudgetManager
-from litagent.rag.interfaces import Reranker, ScoredDoc
 from litagent.logging import get_logger
 from litagent.observability.context import get_task_id
+from litagent.rag.interfaces import Reranker, ScoredDoc
 
 logger = get_logger("context.evidence_selector")
 
@@ -216,6 +216,7 @@ class EvidenceSelector:
         per_paper_cap: int = 3,
         trace_hook: Callable[[str, dict], None] | None = None,
     ) -> None:
+        """Initialize the evidence selector."""
         if top_k_per_section <= 0:
             raise ValueError("top_k_per_section must be positive")
 
@@ -233,6 +234,7 @@ class EvidenceSelector:
         self._trace_hook = trace_hook
 
     def _emit(self, event: str, data: dict) -> None:
+        """Emit a trace event."""
         if self._trace_hook is None:
             return
 
@@ -335,6 +337,7 @@ class EvidenceSelector:
     ) -> EvidenceSelection:
 
         # Reject malformed ledger entries before ranking.
+        """Select evidence within section and token-budget constraints."""
         valid_items: list[tuple[str, dict[str, Any]]] = []
 
         for eid, item in ledger.items():

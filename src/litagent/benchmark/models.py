@@ -17,6 +17,7 @@ from litagent.config import (
 
 
 def _fingerprint(value: Any) -> str:
+    """Return a stable configuration fingerprint."""
     encoded = json.dumps(
         value,
         ensure_ascii=False,
@@ -52,6 +53,7 @@ class RAGBenchmarkProfile(BaseModel):
 
     @model_validator(mode="after")
     def _validate_profile(self):
+        """Validate profile-specific embedding and reranking requirements."""
         if self.chunk_overlap >= self.chunk_size:
             raise ValueError("chunk_overlap must be smaller than chunk_size")
         if self.candidate_k < self.top_k:
@@ -103,6 +105,7 @@ class RetrievalJudgment(BaseModel):
 
     @model_validator(mode="after")
     def _validate_relevance(self):
+        """Validate graded relevance identifiers and scores."""
         if len(set(self.relevant_paper_ids)) != len(self.relevant_paper_ids):
             raise ValueError("relevant_paper_ids must be unique")
         unknown = set(self.relevant_locators) - set(self.relevant_paper_ids)
@@ -127,6 +130,7 @@ class RAGBenchmarkDataset(BaseModel):
 
     @model_validator(mode="after")
     def _validate_dataset(self):
+        """Validate query identifiers and relevance judgments."""
         corpus_ids = set(self.corpus_paper_ids)
         if len(corpus_ids) != len(self.corpus_paper_ids):
             raise ValueError("corpus_paper_ids must be unique")
@@ -144,6 +148,7 @@ class RAGBenchmarkDataset(BaseModel):
 
     @property
     def fingerprint(self) -> str:
+        """Return a stable configuration fingerprint."""
         return _fingerprint(self.model_dump(mode="json"))
 
 

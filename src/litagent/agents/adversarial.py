@@ -30,6 +30,7 @@ class AdversarialReviewWorker(Worker):
         pass_threshold: float = 0.8,
         trace_hook=None,
     ):
+        """Initialize the adversarial review worker."""
         self._synthesis = synthesis
         self._reviewer = reviewer
         self._llm = llm
@@ -43,6 +44,7 @@ class AdversarialReviewWorker(Worker):
         return "adversarial_review"
 
     def _emit(self, event: str, data: dict) -> None:
+        """Emit a trace event."""
         if self._trace_hook:
             try:
                 self._trace_hook(event, data)

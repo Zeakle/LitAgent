@@ -31,10 +31,12 @@ class CorpusChunker(Protocol):
 
 
 def _digest(text: str) -> str:
+    """Return a stable content digest."""
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
 
 
 def _section(value: str) -> str:
+    """Normalize a source block section name."""
     normalized = re.sub(r"[^a-z0-9]+", "_", value.casefold()).strip("_")
     return normalized or "unknown"
 
@@ -43,6 +45,7 @@ def _validate_blocks(
     paper_id: str,
     blocks: Sequence[CleanTextBlock],
 ) -> list[CleanTextBlock]:
+    """Validate source-block ordering and paper ownership."""
     ordered = list(blocks)
     previous: tuple[int, int] | None = None
     for block in ordered:
@@ -101,6 +104,7 @@ def _span(
     start_char: int,
     end_char: int,
 ) -> ChunkSourceSpan:
+    """Build a source span for one chunk slice."""
     return ChunkSourceSpan(
         page=block.page,
         block_index=block.block_index,
@@ -120,6 +124,7 @@ def _build_chunk(
     spans: Sequence[ChunkSourceSpan],
     transformations: Sequence[str],
 ) -> ContentChunk:
+    """Build one content chunk with stable provenance metadata."""
     if not spans:
         raise ValueError("selected-fulltext chunks require source spans")
     first = spans[0]
@@ -146,6 +151,7 @@ class PageBlockChunker:
         paper_id: str,
         blocks: Sequence[CleanTextBlock],
     ) -> list[ContentChunk]:
+        """Split input text into content chunks."""
         chunks: list[ContentChunk] = []
         for block in _validate_blocks(paper_id, blocks):
             if not block.text.strip():
@@ -167,6 +173,7 @@ class RecursiveChunker:
     """Split each clean block independently with deterministic overlap."""
 
     def __init__(self, *, chunk_size: int, chunk_overlap: int) -> None:
+        """Initialize the recursive chunker."""
         if chunk_overlap >= chunk_size:
             raise ValueError("chunk_overlap must be smaller than chunk_size")
         self.chunk_size = chunk_size
@@ -178,6 +185,7 @@ class RecursiveChunker:
         paper_id: str,
         blocks: Sequence[CleanTextBlock],
     ) -> list[ContentChunk]:
+        """Split input text into content chunks."""
         chunks: list[ContentChunk] = []
         for block in _validate_blocks(paper_id, blocks):
             for ordinal, (start, end) in enumerate(
@@ -209,6 +217,7 @@ class SectionAwareChunker:
     """Window consecutive blocks without crossing section boundaries."""
 
     def __init__(self, *, chunk_size: int, chunk_overlap: int) -> None:
+        """Initialize the section-aware chunker."""
         if chunk_overlap >= chunk_size:
             raise ValueError("chunk_overlap must be smaller than chunk_size")
         self.chunk_size = chunk_size
@@ -218,6 +227,7 @@ class SectionAwareChunker:
     def _groups(
         blocks: Sequence[CleanTextBlock],
     ) -> list[tuple[str, list[CleanTextBlock]]]:
+        """Group adjacent blocks by normalized section."""
         groups: list[tuple[str, list[CleanTextBlock]]] = []
         for block in blocks:
             section = _section(block.section)
@@ -234,6 +244,7 @@ class SectionAwareChunker:
         section: str,
         blocks: Sequence[CleanTextBlock],
     ) -> list[ContentChunk]:
+        """Split one section group into bounded chunks."""
         parts: list[str] = []
         ranges: list[tuple[int, int, CleanTextBlock]] = []
         cursor = 0
@@ -290,6 +301,7 @@ class SectionAwareChunker:
         paper_id: str,
         blocks: Sequence[CleanTextBlock],
     ) -> list[ContentChunk]:
+        """Split input text into content chunks."""
         ordered = [
             block for block in _validate_blocks(paper_id, blocks) if block.text.strip()
         ]

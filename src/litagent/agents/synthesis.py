@@ -10,22 +10,22 @@ from typing import Any
 
 from litagent.agent.react import ReActRunner
 from litagent.config import AgentConfig, ContextConfig
-from litagent.context.pipeline import ContextPipeline, ContextLayer
 from litagent.context.budget import BudgetManager
 from litagent.context.evidence_selector import (
-    EvidenceSelector,
     EvidenceSelection,
+    EvidenceSelector,
     format_evidence_selection,
 )
+from litagent.context.pipeline import ContextLayer, ContextPipeline
+from litagent.context.templates import build_system_prompt, wrap_xml
+from litagent.evidence import collect_ledger
+from litagent.llm.client import BaseLLMClient
+from litagent.logging import get_logger
 from litagent.memory.manager import MemoryManager
 from litagent.orchestrator.scheduler import Worker
 from litagent.orchestrator.task_graph import SubTask
-from litagent.llm.client import BaseLLMClient
-from litagent.context.templates import build_system_prompt, wrap_xml
-from litagent.logging import get_logger
 from litagent.skills.manager import SkillManager
 from litagent.tools.worker_tools import make_load_skill_tool
-from litagent.evidence import collect_ledger
 
 logger = get_logger("agents.synthesis")
 
@@ -120,6 +120,7 @@ class SynthesisWorker(Worker):
         evidence_selector: EvidenceSelector | None = None,
         context_config: ContextConfig | None = None,
     ):
+        """Initialize the synthesis worker."""
         self._llm = llm
         self._memory = memory
         self._context_config = context_config or ContextConfig()
@@ -199,6 +200,7 @@ class SynthesisWorker(Worker):
         evidence_text = format_evidence_selection(selection)
 
         async def _evidence_layer(state: dict) -> str:
+            """Build the selected-evidence context layer."""
             return evidence_text
 
         # Give selected evidence priority over structural paper metadata.
@@ -359,6 +361,7 @@ class SynthesisWorker(Worker):
         return result if isinstance(result, dict) else {}
 
     async def _papers_layer(self, state: dict) -> str:
+        """Build the bounded paper context layer."""
         ctx = self._build_papers_context(
             state["extractions"],
             state["graph_data"],

@@ -6,10 +6,10 @@ import asyncio
 from abc import ABC, abstractmethod
 from typing import Any, Callable
 
-from litagent.safety.budget import CostBudget
-from litagent.orchestrator.task_graph import TaskGraph, SubTask, TaskStatus
-from litagent.observability.context import set_task_id, reset_task_id
 from litagent.logging import get_logger
+from litagent.observability.context import reset_task_id, set_task_id
+from litagent.orchestrator.task_graph import SubTask, TaskGraph, TaskStatus
+from litagent.safety.budget import CostBudget
 
 logger = get_logger("orchestrator.scheduler")
 
@@ -33,7 +33,7 @@ class CancellationToken:
     """Expose cooperative cancellation state to an orchestration run."""
 
     def __init__(self):
-
+        """Initialize the cancellation token."""
         self._event = asyncio.Event()
 
     def cancel(self) -> None:
@@ -58,6 +58,7 @@ class Scheduler:
         cost_budget: CostBudget | None = None,
         trace_hook: Callable | None = None,
     ):
+        """Initialize the scheduler."""
         self._workers: dict[str, Worker] = {w.agent_type: w for w in workers}
         self._semaphore = asyncio.Semaphore(max_concurrent)
         self._timeout_ms = timeout_ms
@@ -125,6 +126,7 @@ class Scheduler:
         return graph.get_results()
 
     def _finalize_incomplete(self, graph: TaskGraph, reason: str) -> None:
+        """Move unfinished graph tasks into terminal states."""
         transitions = graph.finalize_incomplete(reason)
         for task_id in transitions["cancelled"]:
             task = graph.get_task(task_id)

@@ -42,6 +42,7 @@ class Evaluator(ABC):
     """Define the evaluator interface and threshold handling."""
 
     def __init__(self, threshold: float = 0.8):
+        """Initialize the evaluator."""
         self._threshold = threshold
 
     @property
@@ -56,6 +57,7 @@ class Evaluator(ABC):
         ...
 
     def _make_result(self, score: float, details: dict | None = None) -> EvalResult:
+        """Build a normalized evaluation result."""
         return EvalResult(
             metric=self.metric_name,
             score=score,

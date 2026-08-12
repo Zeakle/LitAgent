@@ -124,6 +124,7 @@ class ReviewerWorker(Worker):
         trusted_claim_recall_top_k: int = 0,
         trusted_claim_context_max_chars: int = 4000,
     ):
+        """Initialize the reviewer worker."""
         self._llm = llm
         self._claims_index = claims_index
         self._context_config = context_config or ContextConfig()
@@ -290,6 +291,7 @@ class ReviewerWorker(Worker):
         pipeline = ContextPipeline(self._budget)
 
         async def _draft_builder(state: dict) -> str:
+            """Return the draft context layer."""
             return wrap_xml("survey_draft", state["draft"])
 
         pipeline.add_layer(
@@ -305,6 +307,7 @@ class ReviewerWorker(Worker):
             _ev_text = format_evidence_selection(selection)
 
             async def _ev_builder(state: dict) -> str:
+                """Return the preformatted evidence-selection context."""
                 return _ev_text
 
             pipeline.add_layer(
@@ -320,6 +323,7 @@ class ReviewerWorker(Worker):
             _previous_review = json.dumps(previous_review, ensure_ascii=False)
 
             async def _previous_review_builder(state: dict) -> str:
+                """Return the prior review wrapped as untrusted context."""
                 return wrap_xml("previous_review", _previous_review)
 
             pipeline.add_layer(
@@ -336,6 +340,7 @@ class ReviewerWorker(Worker):
             if _advisory:
 
                 async def _advisory_builder(state: dict) -> str:
+                    """Return recalled trusted claims as advisory context."""
                     return _advisory
 
                 pipeline.add_layer(
@@ -438,6 +443,7 @@ class ReviewerWorker(Worker):
         return review
 
     def _parse_review(self, content: str) -> dict[str, Any]:
+        """Parse the reviewer response into a structured result."""
         try:
             parsed = json.loads(content)
             parsed["score"] = max(0.0, min(1.0, float(parsed.get("score", 0))))
@@ -465,6 +471,7 @@ class ReviewerWorker(Worker):
             }
 
     def _extract_key_phrases(self, draft: str) -> list[str]:
+        """Extract normalized phrases for trusted-claim lookup."""
         sentences = re.split(r"(?<=[.!?])\s+", draft)
         return [
             s.strip()

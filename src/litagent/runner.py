@@ -99,6 +99,8 @@ _PLACEHOLDER_LINE_RE = re.compile(
 
 @dataclass(frozen=True)
 class RewriteValidation:
+    """Describe structural validation of a rewritten survey candidate."""
+
     accepted: bool
     reason_codes: tuple[str, ...]
     referenced_evidence_ids: tuple[str, ...]
@@ -107,6 +109,8 @@ class RewriteValidation:
 
 @dataclass(frozen=True)
 class RewriteOutcome:
+    """Capture the transactional outcome of one rewrite attempt."""
+
     attempted: bool
     committed: bool
     candidate: str | None
@@ -163,6 +167,7 @@ def _cleanup_incomplete_wiring(func):
 
     @wraps(func)
     async def wrapped(self, *args, **kwargs):
+        """Close partially initialized resources when wiring fails."""
         try:
             return await func(self, *args, **kwargs)
         except BaseException:
@@ -219,6 +224,7 @@ class LitAgent:
     """Assemble components, execute surveys, and release shared resources."""
 
     def __init__(self, config: AppConfig, trace_hook: TraceHook | None = None) -> None:
+        """Initialize the LitAgent runtime and optional integrations."""
         self._config = config
         self._config_summary = build_config_summary(config)
         self._session_id = str(uuid.uuid4())[:8]
@@ -254,10 +260,12 @@ class LitAgent:
         self._wired = False
 
     async def __aenter__(self) -> "LitAgent":
+        """Enter the LitAgent asynchronous context."""
         await self._wire()
         return self
 
     async def __aexit__(self, *args: Any) -> None:
+        """Exit the LitAgent context and close owned resources."""
         await self.cleanup()
 
     async def run(self, query: str) -> dict[str, Any]:
@@ -269,7 +277,6 @@ class LitAgent:
         logger.info("Starting survey: %s", query)
 
         try:
-            # Reset source outcomes from prior runs so cross-run contamination is avoided.
             if self._search is not None:
                 self._search.reset_source_outcomes()
 
@@ -394,6 +401,7 @@ class LitAgent:
         budget_exceeded: bool,
         final_output_present: bool,
     ) -> dict[str, Any]:
+        """Derive the final execution status from graph outcomes."""
         summary = graph.execution_summary()
         reason_codes: list[str] = []
         if budget_exceeded:
@@ -417,7 +425,7 @@ class LitAgent:
 
     @staticmethod
     def _summarize_search_outcomes(outcomes) -> tuple[list[dict], list[str]]:
-        """Convert SearchSourceOutcome objects into JSON-safe metadata and degradation codes."""
+        """Serialize search outcomes and collect degradation codes."""
         serialized: list[dict] = []
         degradation_codes: list[str] = []
         unavailable = {"rate_limited", "timeout", "failed"}
@@ -483,6 +491,7 @@ class LitAgent:
 
     @staticmethod
     def _format_review_history(rounds: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Format bounded adversarial-review history for evaluation."""
         history = []
         for item in rounds:
             review = item.get("review", {})
@@ -776,6 +785,7 @@ class LitAgent:
 
     @staticmethod
     def _create_reranker(model_name: str | None = None) -> Reranker | None:
+        """Create the configured reranker implementation."""
         try:
             return (
                 CrossEncoderReranker(model_name)
@@ -944,6 +954,7 @@ class LitAgent:
 
     @staticmethod
     def _get_embedding_dim() -> int:
+        """Return the active embedder dimension when available."""
         from litagent.rag.embedder import get_embedder
 
         return get_embedder().dim
@@ -1001,7 +1012,8 @@ class LitAgent:
             for evaluator, result in zip(self._evaluators, evaluated):
                 if isinstance(result, BaseException):
                     logger.warning(
-                        f"Evaluator {evaluator.metric_name} failed error_type = {type(result).__name__}"
+                        f"Evaluator {evaluator.metric_name} failed "
+                        f"error_type = {type(result).__name__}"
                     )
                     continue
 
@@ -1025,6 +1037,7 @@ class LitAgent:
 
     @staticmethod
     def _collect_extractions(results: dict[str, Any]) -> list[dict]:
+        """Collect normalized paper extractions from task results."""
         for result in results.values():
             if (
                 isinstance(result, list)
@@ -1101,7 +1114,7 @@ class LitAgent:
         initial: Mapping[str, Any],
         candidate: Mapping[str, Any],
     ) -> bool:
-        """Rewrite must only repair failures, never degrade previously passing metrics."""
+        """Reject rewrites that degrade previously passing metrics."""
         for metric, initial_result in initial.items():
             if not isinstance(initial_result, Mapping):
                 continue
@@ -1230,7 +1243,7 @@ class LitAgent:
             max_chars=rewrite_cfg.max_chars,
         )
 
-        # ── LLM rewrite ──────────────────────────────────────────────
+        # Ask the model to repair the unsupported evidence claims.
         self._emit(
             "subspan.start",
             {
@@ -1283,7 +1296,7 @@ class LitAgent:
                 reason_code,
             )
 
-        # ── validation ───────────────────────────────────────────────
+        # Validate the candidate before running evaluators again.
         validation = self._validate_rewrite_candidate(
             original=original_survey,
             candidate=candidate,
@@ -1315,7 +1328,7 @@ class LitAgent:
                 "validation_failed",
             )
 
-        # ── re-evaluate ──────────────────────────────────────────────
+        # Re-evaluate the validated candidate as a separate trace phase.
         candidate_evaluation = await self._evaluate(
             query=query,
             survey=candidate,
@@ -1369,7 +1382,7 @@ class LitAgent:
                 "quality_still_failed",
             )
 
-        # ── atomic commit ────────────────────────────────────────────
+        # Commit the survey, evaluation, and quality fields together.
         report_data["survey"] = candidate
         report_data["evaluation"] = candidate_evaluation
         report_data["quality"] = candidate_quality
@@ -1398,6 +1411,7 @@ class LitAgent:
 
     @staticmethod
     def _derive_quality(evaluation: dict[str, dict]) -> dict[str, Any]:
+        """Derive the aggregate quality decision from evaluation metrics."""
         required = ["citation_accuracy", "faithfulness"]
         failed: list[str] = []
         unverified: list[str] = []
@@ -1461,7 +1475,7 @@ class LitAgent:
         current_heading: str | None = None
         body: list[str] = []
 
-        # 保留出现顺序并标准化 heading 空白/大小写，供相对结构比较。
+        # Preserve order while normalizing heading whitespace and case.
         for line in (text or "").splitlines():
             match = _MARKDOWN_HEADING_RE.match(line)
             if match:
@@ -1487,6 +1501,7 @@ class LitAgent:
         evidence_ledger: Mapping[str, Mapping[str, Any]],
         allowed_removed_refs: Sequence[str] = (),
     ) -> RewriteValidation:
+        """Validate a rewritten survey against structural constraints."""
         reasons: list[str] = []
         stripped = (candidate or "").strip()
         if not stripped:
