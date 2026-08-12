@@ -166,7 +166,13 @@ class HybridRetriever:
         """Run a typed chunk search and return unique ranked papers."""
         if top_k <= 0 or max_chunks_per_paper <= 0:
             raise ValueError("top_k and max_chunks_per_paper must be positive")
-        requested = max(candidate_k or top_k * max_chunks_per_paper, top_k)
+        # A chunk-level candidate budget must still be large enough to produce
+        # the requested number of unique parent papers after aggregation.
+        requested = max(
+            candidate_k or 0,
+            top_k * max_chunks_per_paper,
+            top_k,
+        )
         operation_id = uuid.uuid4().hex
         started = time.perf_counter()
         store_mode = RetrievalMode.RRF if mode is RetrievalMode.RRF_RERANK else mode

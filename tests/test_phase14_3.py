@@ -536,6 +536,26 @@ async def test_strict_parent_search_uses_exact_dense_candidates():
     )
 
     assert store.search_chunks.await_args.kwargs["exact"] is True
+    assert store.search_chunks.await_args.args[1] == 40
+
+
+@pytest.mark.asyncio
+async def test_parent_search_preserves_a_chunk_budget_for_unique_papers():
+    from litagent.config import RetrievalMode
+    from litagent.rag.retriever import HybridRetriever
+
+    store = SimpleNamespace(search_chunks=AsyncMock(return_value=[]))
+    retriever = HybridRetriever(store)
+
+    await retriever.search_papers(
+        "few-shot vision",
+        top_k=20,
+        candidate_k=40,
+        max_chunks_per_paper=4,
+        mode=RetrievalMode.RRF,
+    )
+
+    assert store.search_chunks.await_args.args[1] == 80
 
 
 def test_retrieval_metrics_match_a_hand_checked_example():
