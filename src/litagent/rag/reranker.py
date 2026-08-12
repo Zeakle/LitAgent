@@ -75,7 +75,7 @@ class CrossEncoderReranker(Reranker):
             paper.model_copy(update={"score": float(score)})
             for paper, score in zip(papers, scores, strict=True)
         ]
-        return sorted(rescored, key=lambda item: item.score, reverse=True)
+        return sorted(rescored, key=lambda item: (-item.score, item.paper_id))
 
 
 class NoopReranker(Reranker):

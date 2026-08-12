@@ -31,7 +31,14 @@ def aggregate_chunk_hits(
 
     papers: list[ScoredPaperHit] = []
     for paper_hits in grouped.values():
-        ordered = sorted(paper_hits, key=lambda item: item.score, reverse=True)
+        ordered = sorted(
+            paper_hits,
+            key=lambda item: (
+                -item.score,
+                item.chunk.chunk_key,
+                item.chunk.content_hash,
+            ),
+        )
         first = ordered[0]
         chunks: list[ContentChunk] = []
         seen: set[str] = set()
@@ -79,7 +86,9 @@ def aggregate_chunk_hits(
                 embedding_document_adapter=first.embedding_document_adapter,
             )
         )
-    return sorted(papers, key=lambda item: item.score, reverse=True)[:top_k]
+    # Qdrant does not guarantee order for equal ANN/RRF scores. A stable
+    # paper-id tie break keeps runtime output and repeated benchmarks aligned.
+    return sorted(papers, key=lambda item: (-item.score, item.paper_id))[:top_k]
 
 
 class HybridRetriever:

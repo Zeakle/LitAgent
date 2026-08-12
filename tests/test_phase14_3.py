@@ -535,6 +535,84 @@ def test_retrieval_metrics_match_a_hand_checked_example():
     assert metrics.duplicate_paper_ratio == pytest.approx(0.25)
 
 
+def test_parent_paper_aggregation_breaks_equal_score_ties_deterministically():
+    from litagent.rag.models import ContentChunk, ContentScope, ScoredChunkHit
+    from litagent.rag.retriever import aggregate_chunk_hits
+
+    def hit(paper_id: str, score: float) -> ScoredChunkHit:
+        chunk = ContentChunk.from_text(
+            paper_id=paper_id,
+            chunk_key="abstract",
+            text=f"Evidence for {paper_id}",
+            section="abstract",
+            content_scope=ContentScope.ABSTRACT,
+        )
+        return ScoredChunkHit(
+            chunk=chunk,
+            title=paper_id,
+            score=score,
+            collection="papers-benchmark",
+            corpus_version="v1",
+            schema_version="paper-v1",
+            parser_version="pymupdf-v1",
+            chunking_version="page-block-v1",
+            embedding_model="all-MiniLM-L6-v2",
+        )
+
+    forward = aggregate_chunk_hits(
+        [hit("paper:b", 0.25), hit("paper:a", 0.25)],
+        top_k=2,
+    )
+    reversed_input = aggregate_chunk_hits(
+        [hit("paper:a", 0.25), hit("paper:b", 0.25)],
+        top_k=2,
+    )
+
+    assert [paper.paper_id for paper in forward] == ["paper:a", "paper:b"]
+    assert [paper.paper_id for paper in reversed_input] == [
+        "paper:a",
+        "paper:b",
+    ]
+
+
+def test_cross_encoder_reranker_breaks_equal_score_ties_deterministically():
+    from litagent.rag.models import ContentChunk, ContentScope, ScoredPaperHit
+    from litagent.rag.reranker import CrossEncoderReranker
+
+    def paper(paper_id: str) -> ScoredPaperHit:
+        chunk = ContentChunk.from_text(
+            paper_id=paper_id,
+            chunk_key="abstract",
+            text=f"Evidence for {paper_id}",
+            section="abstract",
+            content_scope=ContentScope.ABSTRACT,
+        )
+        return ScoredPaperHit(
+            paper_id=paper_id,
+            title=paper_id,
+            content_scope=ContentScope.ABSTRACT,
+            chunks=[chunk],
+            score=0.25,
+            collection="papers-benchmark",
+            corpus_version="v1",
+            schema_version="paper-v1",
+            parser_version="pymupdf-v1",
+            chunking_version="page-block-v1",
+            embedding_model="all-MiniLM-L6-v2",
+        )
+
+    model = SimpleNamespace(predict=lambda pairs: [0.5] * len(pairs))
+    reranker = CrossEncoderReranker(model=model)
+
+    forward = reranker.rerank_papers("few-shot", [paper("paper:b"), paper("paper:a")])
+    reversed_input = reranker.rerank_papers(
+        "few-shot", [paper("paper:a"), paper("paper:b")]
+    )
+
+    assert [item.paper_id for item in forward] == ["paper:a", "paper:b"]
+    assert [item.paper_id for item in reversed_input] == ["paper:a", "paper:b"]
+
+
 def test_retrieval_metrics_reject_empty_ground_truth():
     from litagent.benchmark.metrics import evaluate_retrieval_case
 
@@ -686,11 +764,16 @@ def test_versioned_benchmark_inputs_cover_required_ablation_dimensions():
     )
 
     assert 15 <= len(ingestion["cases"]) <= 20
-    assert len(dataset["queries"]) >= 10
+    assert len(dataset_model.corpus_paper_ids) >= 25
+    assert len(dataset["queries"]) >= 15
     assert dataset_model.judgment_status == "source_reviewed"
     assert set(dataset_model.corpus_paper_ids) == {
         asset.paper_id for asset in materialize_manifest_assets(manifest)
     }
+    assert max(len(query.relevant_paper_ids) for query in dataset_model.queries) <= 5
+    assert len(dataset_model.corpus_paper_ids) > 2 * max(
+        len(query.relevant_paper_ids) for query in dataset_model.queries
+    )
     assert {profile["chunk_strategy"] for profile in profiles} >= {
         "page_block",
         "recursive",
@@ -790,7 +873,7 @@ async def test_rag_runner_persists_complete_failure_artifact(tmp_path, monkeypat
     assert len(results) == 1
     result = results[0]
     assert result.status == "failed"
-    assert result.dataset_version == "v2"
+    assert result.dataset_version == "v3"
     assert result.judgment_status == "source_reviewed"
     assert result.manifest_hash.startswith("sha256:")
     assert result.profile_config["repetitions"] == 3
