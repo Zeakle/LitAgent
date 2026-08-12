@@ -1,7 +1,8 @@
 # LitAgent RAG Benchmark
 
 本目录只保存可审计输入：dirty-data case 定义、retrieval judgments 和显式 profiles。
-完整运行结果保存在 `artifacts/benchmarks/rag/`，不提交论文正文、PDF 或模型缓存。
+完整运行结果保存在 `artifacts/benchmarks/phase14-3-final/`，不提交论文正文、PDF
+或模型缓存。
 
 ## 运行
 
@@ -18,6 +19,8 @@ litagent benchmark retrieval --live `
 - 约束：empty/duplicate ratio、p50/p95 latency、index time 与 footprint。
 - 不计算单一总分；默认配置变更必须同时满足质量收益与工程约束。
 - chunk 对比只在 selected-fulltext profile 中有效。
+- 冻结的 Phase 14.3 结果与选型结论见 `RESULTS.md`，机器可读摘要见
+  `phase14_3_results.json`；完整逐 query artifact 仍只保存在本地 ignored 目录。
 
 ## 限制
 
@@ -25,3 +28,4 @@ litagent benchmark retrieval --live `
   冒充 `human_reviewed`；正式发布模型结论前仍需人工逐条签核相关性。
 - Live latency 依赖硬件、模型缓存和 Qdrant 状态，必须结合 artifact 环境字段解释。
 - 本阶段不包含 OCR、公式、表格、图片理解或 Survey 成品质量 benchmark。
+- 当前 25 篇 corpus 会让 Recall@20 接近饱和，不能只用 Recall@20 选择模型。
