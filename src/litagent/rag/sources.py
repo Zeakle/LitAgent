@@ -114,6 +114,43 @@ class ArxivPDFAdapter:
         self._raw_root = raw_root.resolve()
         self._max_pdf_bytes = max_pdf_bytes
 
+    @staticmethod
+    def _expected_hash(asset: RawPaperAsset) -> str | None:
+        """Return the optional manifest checksum for the arXiv PDF source."""
+        return next(
+            (
+                source.sha256
+                for source in asset.sources
+                if source.kind is SourceKind.ARXIV_PDF and source.sha256
+            ),
+            None,
+        )
+
+    async def _reuse_cached(
+        self,
+        asset: RawPaperAsset,
+        target: Path,
+    ) -> RawPaperAsset | None:
+        """Reuse a complete cached PDF after validating its bounded content."""
+        if not target.is_file():
+            return None
+        size = target.stat().st_size
+        if size == 0 or size > self._max_pdf_bytes:
+            return None
+        content = await asyncio.to_thread(target.read_bytes)
+        if content[:5] != b"%PDF-":
+            return None
+        actual_hash = hashlib.sha256(content).hexdigest()
+        expected_hash = self._expected_hash(asset)
+        if expected_hash and actual_hash.lower() != expected_hash.lower():
+            return None
+        return asset.model_copy(
+            update={
+                "pdf_path": target,
+                "asset_hash": actual_hash,
+            }
+        )
+
     async def materialize(self, asset: RawPaperAsset) -> RawPaperAsset:
         """Return a copied asset with a verified local PDF path."""
         url = validate_arxiv_pdf_url(asset.pdf_url)
@@ -125,6 +162,9 @@ class ArxivPDFAdapter:
                 "source_not_allowlisted",
                 "download target escapes raw_root",
             )
+        cached = await self._reuse_cached(asset, target)
+        if cached is not None:
+            return cached
         temporary = target.with_suffix(".pdf.tmp")
         digest = hashlib.sha256()
         total = 0
@@ -161,14 +201,7 @@ class ArxivPDFAdapter:
                     "not_pdf", "downloaded asset is not a PDF"
                 )
             actual_hash = digest.hexdigest()
-            expected_hash = next(
-                (
-                    source.sha256
-                    for source in asset.sources
-                    if source.kind is SourceKind.ARXIV_PDF and source.sha256
-                ),
-                None,
-            )
+            expected_hash = self._expected_hash(asset)
             if expected_hash and actual_hash.lower() != expected_hash.lower():
                 raise ManifestValidationError(
                     "asset_hash_mismatch",

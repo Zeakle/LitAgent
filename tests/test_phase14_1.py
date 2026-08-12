@@ -520,6 +520,74 @@ async def test_arxiv_metadata_adapter_normalizes_loader_document():
     assert asset.arxiv_id == "2401.00001v2"
 
 
+@pytest.mark.asyncio
+async def test_arxiv_pdf_adapter_reuses_a_valid_local_cache(tmp_path):
+    """Avoid a second network request for a verified cached arXiv PDF."""
+    from litagent.rag.models import SourceRef
+    from litagent.rag.sources import ArxivPDFAdapter
+
+    payload = b"%PDF-1.7\ncached paper"
+    target = tmp_path / "arxiv_2401.00001.pdf"
+    target.write_bytes(payload)
+    asset = _asset().model_copy(
+        update={
+            "pdf_url": "https://arxiv.org/pdf/2401.00001",
+            "sources": [
+                SourceRef(
+                    kind="arxiv_pdf",
+                    source_id="2401.00001",
+                    uri="https://arxiv.org/pdf/2401.00001",
+                    sha256=hashlib.sha256(payload).hexdigest(),
+                )
+            ],
+        }
+    )
+    client = SimpleNamespace(stream=MagicMock(side_effect=AssertionError("network")))
+
+    materialized = await ArxivPDFAdapter(
+        client,
+        raw_root=tmp_path,
+        max_pdf_bytes=1024,
+    ).materialize(asset)
+
+    assert materialized.pdf_path == target.resolve()
+    assert materialized.asset_hash == hashlib.sha256(payload).hexdigest()
+    client.stream.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_arxiv_pdf_adapter_does_not_reuse_checksum_mismatch(tmp_path):
+    """Reject a cached PDF whose bytes disagree with the manifest checksum."""
+    from litagent.rag.models import SourceRef
+    from litagent.rag.sources import ArxivPDFAdapter
+
+    target = tmp_path / "arxiv_2401.00001.pdf"
+    target.write_bytes(b"%PDF-1.7\nstale paper")
+    asset = _asset().model_copy(
+        update={
+            "pdf_url": "https://arxiv.org/pdf/2401.00001",
+            "sources": [
+                SourceRef(
+                    kind="arxiv_pdf",
+                    source_id="2401.00001",
+                    uri="https://arxiv.org/pdf/2401.00001",
+                    sha256=hashlib.sha256(b"%PDF-1.7\nexpected").hexdigest(),
+                )
+            ],
+        }
+    )
+    client = SimpleNamespace(stream=MagicMock(side_effect=RuntimeError("download")))
+
+    with pytest.raises(RuntimeError, match="download"):
+        await ArxivPDFAdapter(
+            client,
+            raw_root=tmp_path,
+            max_pdf_bytes=1024,
+        ).materialize(asset)
+
+    client.stream.assert_called_once()
+
+
 def test_scanned_pdf_degrades_without_creating_empty_chunks(tmp_path):
     from litagent.rag.pdf_parser import PyMuPDFParser
 
