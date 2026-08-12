@@ -519,6 +519,25 @@ async def test_typed_qdrant_search_executes_the_selected_retrieval_mode(
         assert "using" not in kwargs
 
 
+@pytest.mark.asyncio
+async def test_strict_parent_search_uses_exact_dense_candidates():
+    from litagent.config import RetrievalMode
+    from litagent.rag.retriever import HybridRetriever
+
+    store = SimpleNamespace(search_chunks=AsyncMock(return_value=[]))
+    retriever = HybridRetriever(store)
+
+    await retriever.search_papers(
+        "few-shot vision",
+        top_k=10,
+        candidate_k=40,
+        mode=RetrievalMode.RRF,
+        strict=True,
+    )
+
+    assert store.search_chunks.await_args.kwargs["exact"] is True
+
+
 def test_retrieval_metrics_match_a_hand_checked_example():
     from litagent.benchmark.metrics import evaluate_retrieval_case
 

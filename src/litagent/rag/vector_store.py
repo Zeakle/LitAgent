@@ -17,6 +17,7 @@ from qdrant_client.models import (
     PointIdsList,
     PointStruct,
     Prefetch,
+    SearchParams,
     SparseVectorParams,
     VectorParams,
 )
@@ -217,6 +218,7 @@ class QdrantVectorStore(VectorStore):
         top_k: int,
         *,
         mode: RetrievalMode = RetrievalMode.RRF,
+        exact: bool = False,
     ) -> list[ScoredChunkHit]:
         """Execute one typed retrieval mode and restore chunk contracts."""
         if top_k <= 0:
@@ -239,13 +241,19 @@ class QdrantVectorStore(VectorStore):
                 **common,
                 query=query_vector,
                 using=DENSE_KEY,
+                params=SearchParams(exact=exact),
             )
         elif mode in (RetrievalMode.RRF, RetrievalMode.RRF_RERANK):
             query_vector = await self._query_vector(query)
             response = await self._client.query_points(
                 **common,
                 prefetch=[
-                    Prefetch(query=query_vector, using=DENSE_KEY, limit=top_k),
+                    Prefetch(
+                        query=query_vector,
+                        using=DENSE_KEY,
+                        limit=top_k,
+                        params=SearchParams(exact=exact),
+                    ),
                     Prefetch(
                         query=QdrantDocument(text=query, model="Qdrant/bm25"),
                         using=SPARSE_KEY,

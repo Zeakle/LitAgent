@@ -189,6 +189,7 @@ class HybridRetriever:
                 query,
                 requested,
                 mode=store_mode,
+                exact=strict,
             )
             papers = aggregate_chunk_hits(
                 hits,
