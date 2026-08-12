@@ -513,6 +513,7 @@ async def test_typed_qdrant_search_executes_the_selected_retrieval_mode(
         assert "prefetch" not in kwargs
     elif mode == "dense":
         assert kwargs["using"] == "dense"
+        assert kwargs["search_params"].exact is False
         assert "prefetch" not in kwargs
     else:
         assert len(kwargs["prefetch"]) == 2

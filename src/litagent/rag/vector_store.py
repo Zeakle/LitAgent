@@ -241,7 +241,7 @@ class QdrantVectorStore(VectorStore):
                 **common,
                 query=query_vector,
                 using=DENSE_KEY,
-                params=SearchParams(exact=exact),
+                search_params=SearchParams(exact=exact),
             )
         elif mode in (RetrievalMode.RRF, RetrievalMode.RRF_RERANK):
             query_vector = await self._query_vector(query)
