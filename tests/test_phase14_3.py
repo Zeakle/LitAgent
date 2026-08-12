@@ -558,6 +558,99 @@ async def test_parent_search_preserves_a_chunk_budget_for_unique_papers():
     assert store.search_chunks.await_args.args[1] == 80
 
 
+@pytest.mark.asyncio
+async def test_parent_search_expands_candidates_until_top_k_is_reached():
+    """Widen a full-text window when many chunks map to one parent paper."""
+    from litagent.config import RetrievalMode
+    from litagent.rag.models import ContentChunk, ContentScope, ScoredChunkHit
+    from litagent.rag.retriever import HybridRetriever
+
+    def hit(paper_id: str, chunk_index: int, score: float) -> ScoredChunkHit:
+        """Build one scored chunk for a parent paper."""
+        chunk = ContentChunk.from_text(
+            paper_id=paper_id,
+            chunk_key=f"chunk:{chunk_index}",
+            text=f"Evidence {chunk_index} for {paper_id}",
+            section="abstract",
+            content_scope=ContentScope.ABSTRACT,
+        )
+        return ScoredChunkHit(
+            chunk=chunk,
+            title=paper_id,
+            score=score,
+            collection="papers-benchmark",
+            corpus_version="v1",
+            schema_version="paper-v1",
+            parser_version="pymupdf-v1",
+            chunking_version="page-block-v1",
+            embedding_model="all-MiniLM-L6-v2",
+        )
+
+    first_window = [hit("paper-a", index, 0.9) for index in range(8)]
+    expanded_window = [*first_window, hit("paper-b", 0, 0.8)]
+    store = SimpleNamespace(
+        search_chunks=AsyncMock(side_effect=[first_window, expanded_window])
+    )
+    retriever = HybridRetriever(store)
+
+    papers = await retriever.search_papers(
+        "query",
+        top_k=2,
+        candidate_k=8,
+        max_chunks_per_paper=4,
+        mode=RetrievalMode.RRF,
+        strict=True,
+    )
+
+    assert [paper.paper_id for paper in papers] == ["paper-a", "paper-b"]
+    assert [call.args[1] for call in store.search_chunks.await_args_list] == [8, 16]
+
+
+@pytest.mark.asyncio
+async def test_parent_search_stops_expanding_when_store_is_exhausted():
+    """Avoid another query after a short result proves the index is exhausted."""
+    from litagent.config import RetrievalMode
+    from litagent.rag.models import ContentChunk, ContentScope, ScoredChunkHit
+    from litagent.rag.retriever import HybridRetriever
+
+    hits = []
+    for index in range(3):
+        chunk = ContentChunk.from_text(
+            paper_id="paper-a",
+            chunk_key=f"chunk:{index}",
+            text=f"Evidence {index}",
+            section="abstract",
+            content_scope=ContentScope.ABSTRACT,
+        )
+        hits.append(
+            ScoredChunkHit(
+                chunk=chunk,
+                title="paper-a",
+                score=0.9,
+                collection="papers-benchmark",
+                corpus_version="v1",
+                schema_version="paper-v1",
+                parser_version="pymupdf-v1",
+                chunking_version="page-block-v1",
+                embedding_model="all-MiniLM-L6-v2",
+            )
+        )
+    store = SimpleNamespace(search_chunks=AsyncMock(return_value=hits))
+    retriever = HybridRetriever(store)
+
+    papers = await retriever.search_papers(
+        "query",
+        top_k=2,
+        candidate_k=8,
+        max_chunks_per_paper=4,
+        mode=RetrievalMode.RRF,
+        strict=True,
+    )
+
+    assert [paper.paper_id for paper in papers] == ["paper-a"]
+    store.search_chunks.assert_awaited_once()
+
+
 def test_retrieval_metrics_match_a_hand_checked_example():
     from litagent.benchmark.metrics import evaluate_retrieval_case
 

@@ -191,17 +191,32 @@ class HybridRetriever:
         rerank_applied = False
         degradation_reason: str | None = None
         try:
-            hits = await self._store.search_chunks(
-                query,
-                requested,
-                mode=store_mode,
-                exact=strict,
-            )
-            papers = aggregate_chunk_hits(
-                hits,
-                top_k=requested,
-                max_chunks_per_paper=max_chunks_per_paper,
-            )
+            initial_requested = requested
+            expansion_count = 0
+            max_requested = max(initial_requested, min(initial_requested * 8, 2000))
+            while True:
+                hits = await self._store.search_chunks(
+                    query,
+                    requested,
+                    mode=store_mode,
+                    exact=strict,
+                )
+                papers = aggregate_chunk_hits(
+                    hits,
+                    top_k=requested,
+                    max_chunks_per_paper=max_chunks_per_paper,
+                )
+                # Full-text indexes can fill a chunk window with only a few long
+                # papers. Widen it until parent-level top_k can be satisfied or
+                # the backend signals exhaustion with a short response.
+                if (
+                    len(papers) >= top_k
+                    or len(hits) < requested
+                    or requested >= max_requested
+                ):
+                    break
+                requested = min(requested * 2, max_requested)
+                expansion_count += 1
             if mode is RetrievalMode.RRF_RERANK:
                 if self._reranker is None:
                     if strict:
@@ -235,7 +250,9 @@ class HybridRetriever:
                     "task_id": get_task_id(),
                     "retrieval_mode": mode.value,
                     "strict": strict,
+                    "initial_chunk_candidates": initial_requested,
                     "requested_chunk_candidates": requested,
+                    "candidate_expansion_count": expansion_count,
                     "raw_hit_count": len(hits),
                     "parent_paper_count": len(papers),
                     "result_count": len(results),
