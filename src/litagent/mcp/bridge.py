@@ -1,6 +1,8 @@
 """Connect MCP servers and register their advertised tools locally."""
 
-import json
+import re
+from collections.abc import Mapping
+from typing import Any
 
 from mcp import ClientSession
 
@@ -9,16 +11,24 @@ from litagent.exceptions import MCPError
 from litagent.logging import get_logger
 from litagent.mcp.connection import MCPConnection
 from litagent.tools.base import ToolCategory, ToolDefinition
-from litagent.tools.registry import get_registry
+from litagent.tools.registry import ToolRegistry, get_registry
 
 logger = get_logger("mcp.bridge")
+
+_MCP_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
+_EMPTY_OBJECT_SCHEMA = {
+    "type": "object",
+    "properties": {},
+    "additionalProperties": False,
+}
 
 
 class MCPBridge:
     """Manage MCP sessions and expose remote tools through the registry."""
 
-    def __init__(self):
-        """Initialize the MCP bridge."""
+    def __init__(self, registry: ToolRegistry | None = None):
+        """Initialize the bridge with a run-local registry when provided."""
+        self._registry = registry if registry is not None else get_registry()
         self._sessions: dict[str, ClientSession] = {}
         self._connections: dict[str, MCPConnection] = {}
 
@@ -43,6 +53,8 @@ class MCPBridge:
 
     async def _connect_one(self, name: str, cfg: MCPServerConfig) -> list[str]:
         """Open one MCP session and register its advertised tools."""
+        if not _MCP_NAME_PATTERN.fullmatch(name):
+            raise MCPError(f"Invalid MCP server namespace: '{name}'")
 
         transport_type = getattr(cfg, "transport", "stdio")
 
@@ -69,53 +81,114 @@ class MCPBridge:
         tools = response.tools
         logger.debug(f"MCP '{name}': found {len(tools)} tools")
 
-        return self._register_mcp_tools(session, tools, name)
+        capabilities = getattr(cfg, "allowed_tools", {}) or {}
+        advertised_names = {
+            tool.name for tool in tools if isinstance(getattr(tool, "name", None), str)
+        }
+        for tool_name, capability in capabilities.items():
+            if self._capability_field(capability, "enabled", True):
+                if tool_name not in advertised_names:
+                    logger.warning(
+                        "MCP '%s': configured tool '%s' was not advertised",
+                        name,
+                        tool_name,
+                    )
+
+        return self._register_mcp_tools(session, tools, name, capabilities)
 
     def _register_mcp_tools(
-        self, session: ClientSession, tools: list, server_name: str
+        self,
+        session: ClientSession,
+        tools: list[Any],
+        server_name: str,
+        capabilities: Mapping[str, Any],
     ) -> list[str]:
-        """Wrap advertised MCP tools as local tool definitions."""
-        registry = get_registry()
-        names = []
+        """Register the trusted intersection of capabilities and advertised tools."""
+        if not _MCP_NAME_PATTERN.fullmatch(server_name):
+            raise MCPError(f"Invalid MCP server namespace: '{server_name}'")
+
+        names: list[str] = []
 
         for tool in tools:
-            mcp_name = tool.name
-            reg_name = f"mcp_{mcp_name}"
+            remote_name = getattr(tool, "name", None)
+            if not isinstance(remote_name, str) or not _MCP_NAME_PATTERN.fullmatch(
+                remote_name
+            ):
+                logger.warning(
+                    "MCP '%s': skipping invalid remote tool name (%s)",
+                    server_name,
+                    "invalid_remote_tool_name",
+                )
+                continue
 
-            # Bind loop values as defaults so each wrapper targets its own tool.
-            async def _call_mcp(
-                _session: ClientSession = session, _mcp_name: str = mcp_name, **kwargs
-            ) -> str:
-                """Call the bound MCP tool and normalize its content blocks."""
+            capability = capabilities.get(remote_name)
+            if capability is None or not self._capability_field(
+                capability, "enabled", True
+            ):
+                logger.debug(
+                    "MCP '%s': tool '%s' is not enabled by local capability policy",
+                    server_name,
+                    remote_name,
+                )
+                continue
 
-                result = await _session.call_tool(_mcp_name, arguments=kwargs)
+            category_value = self._capability_field(capability, "category", None)
+            try:
+                category = (
+                    category_value
+                    if isinstance(category_value, ToolCategory)
+                    else ToolCategory(category_value)
+                )
+            except (TypeError, ValueError):
+                logger.warning(
+                    "MCP '%s': tool '%s' has an invalid local category",
+                    server_name,
+                    remote_name,
+                )
+                continue
 
-                # Preserve text blocks; stringify non-text-only MCP results.
-                texts = []
-                for block in result.content:
-                    if hasattr(block, "text"):
-                        texts.append(block.text)
+            reg_name = f"mcp.{server_name}.{remote_name}"
 
-                return "\n".join(texts) if texts else str(result)
+            # A closure factory prevents tool arguments from overriding the bound
+            # session or remote name through specially crafted schema properties.
+            def _make_call(bound_name: str):
+                async def _call_mcp(**kwargs) -> str:
+                    """Call one bound MCP tool and normalize its content blocks."""
 
+                    result = await session.call_tool(bound_name, arguments=kwargs)
+
+                    texts = [
+                        block.text for block in result.content if hasattr(block, "text")
+                    ]
+                    return "\n".join(texts) if texts else str(result)
+
+                return _call_mcp
+
+            schema = getattr(tool, "inputSchema", None)
             definition = ToolDefinition(
                 name=reg_name,
-                description=f"[MCP:{server_name}] {tool.description or mcp_name}",
-                parameters=(
-                    tool.inputSchema
-                    if tool.inputSchema
-                    else {"type": "object", "properties": {}}
+                description=(
+                    f"[MCP:{server_name}] "
+                    f"{getattr(tool, 'description', None) or remote_name}"
                 ),
-                category=ToolCategory.READ,
+                parameters=schema if schema else dict(_EMPTY_OBJECT_SCHEMA),
+                category=category,
                 timeout_ms=30000,
                 max_retries=1,
             )
 
-            registry.register(definition, _call_mcp)
+            self._registry.register(definition, _make_call(remote_name))
             names.append(reg_name)
-            logger.debug(f"  Registered: {reg_name} ({mcp_name})")
+            logger.debug(f"  Registered: {reg_name} ({remote_name})")
 
         return names
+
+    @staticmethod
+    def _capability_field(capability: Any, field: str, default: Any) -> Any:
+        """Read capability fields from Pydantic models or mapping test doubles."""
+        if isinstance(capability, Mapping):
+            return capability.get(field, default)
+        return getattr(capability, field, default)
 
     async def disconnect_all(self) -> None:
         """Close all connections without stopping on individual failures."""

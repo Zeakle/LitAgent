@@ -9,7 +9,7 @@ import httpx
 
 from litagent.logging import get_logger
 from litagent.tools.base import FallbackStep, ToolCategory, ToolDefinition
-from litagent.tools.registry import get_registry
+from litagent.tools.registry import ToolRegistry, get_registry
 
 logger = get_logger("tools.search")
 
@@ -116,13 +116,23 @@ async def search_huggingface(query: str = "", max_results: int = 20) -> list[dic
     return papers
 
 
-def register_search_tools():
-    """Register paper-search tools and their fallback chain."""
-    r = get_registry()
+def register_search_tools(registry: ToolRegistry | None = None) -> None:
+    """Register paper-search tools in an injected or compatibility registry."""
+    r = registry if registry is not None else get_registry()
+    parameters = {
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "minLength": 1},
+            "max_results": {"type": "integer", "minimum": 1, "maximum": 100},
+        },
+        "required": ["query"],
+        "additionalProperties": False,
+    }
     r.register(
         ToolDefinition(
             name="search_arxiv",
             description="Search arxiv by keyword",
+            parameters=parameters,
             category=ToolCategory.READ,
             timeout_ms=30000,
             max_retries=2,
@@ -142,6 +152,7 @@ def register_search_tools():
         ToolDefinition(
             name="search_semantic_scholar",
             description="Search Semantic Scholar",
+            parameters=parameters,
             category=ToolCategory.READ,
             timeout_ms=30000,
             max_retries=2,
@@ -152,6 +163,7 @@ def register_search_tools():
         ToolDefinition(
             name="search_huggingface",
             description="Search HuggingFace papers",
+            parameters=parameters,
             category=ToolCategory.READ,
             timeout_ms=30000,
             max_retries=2,

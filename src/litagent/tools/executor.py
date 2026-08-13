@@ -5,16 +5,24 @@ import hashlib
 import json
 import time
 import uuid
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
 import httpx
+from jsonschema import Draft202012Validator
+from jsonschema.exceptions import SchemaError, ValidationError
 
 from litagent.errors.circuit_breaker import CircuitBreaker
 from litagent.logging import get_logger
 from litagent.observability.context import get_task_id
 from litagent.observability.lifecycle import sanitize_input
-from litagent.tools.base import FallbackStep, RateLimitConfig, ToolDefinition
+from litagent.tools.base import (
+    FallbackStep,
+    RateLimitConfig,
+    RegisteredTool,
+    ToolCategory,
+)
 from litagent.tools.registry import ToolRegistry
 
 logger = get_logger("tools.executor")
@@ -32,6 +40,8 @@ class ToolResult:
     error_type: str | None = None
     from_cache: bool = False
     from_fallback: bool = False
+    fallback_tool: str | None = None
+    policy_stage: str | None = None
     elapsed_ms: float = 0
 
 
@@ -63,9 +73,14 @@ class ToolExecutor:
         cb_fail_threshold: int = 5,
         cb_cooldown_seconds: int = 60,
         trace_hook=None,
-    ):
+        *,
+        allowed_names: Collection[str],
+        allowed_categories: Collection[ToolCategory] = (ToolCategory.READ,),
+    ) -> None:
         """Initialize the tool executor."""
         self._registry = registry
+        self._allowed_names = frozenset(allowed_names)
+        self._allowed_categories = frozenset(allowed_categories)
         self._cache: dict[str, Any] = {}
         self._rate_limits: dict[str, _RateLimitState] = {}
         self._breakers: dict[str, CircuitBreaker] = {}
@@ -117,21 +132,37 @@ class ToolExecutor:
             error_type=error_type,
         )
 
-    async def execute(self, name: str, args: dict, session_id: str = "") -> ToolResult:
+    async def execute(self, name: str, args: Any, session_id: str = "") -> ToolResult:
         """Execute a registered tool and emit one terminal lifecycle event."""
         op_id = uuid.uuid4().hex
         t0 = time.monotonic()
+        arguments_valid = isinstance(args, Mapping)
+        try:
+            stable_args = dict(args) if arguments_valid else {}
+        except Exception:
+            arguments_valid = False
+            stable_args = {}
         self._emit(
             "tool.start",
             {
                 "operation_id": op_id,
                 "task_id": get_task_id(),
                 "name": name,
-                "args": sanitize_input(args),
+                "args": sanitize_input(stable_args),
             },
         )
         try:
-            result = await self._execute_inner(name, args, session_id)
+            if arguments_valid:
+                result = await self._execute_inner(name, stable_args, session_id)
+            else:
+                result = ToolResult(
+                    name=name,
+                    args={},
+                    error="Tool arguments must be a stable mapping",
+                    error_code="tool_arguments_invalid",
+                    error_type="ValidationError",
+                    policy_stage="schema",
+                )
         # Trace cancellation without converting it into a normal tool result.
         except BaseException as exc:
             elapsed_ms = (time.monotonic() - t0) * 1000
@@ -167,6 +198,8 @@ class ToolExecutor:
                     "error_code": result.error_code or "tool_execution_failed",
                     "error_type": result.error_type or "ToolError",
                     "error": result.error[:512],
+                    "policy_stage": result.policy_stage,
+                    "fallback_tool": result.fallback_tool,
                 },
             )
         else:
@@ -179,6 +212,7 @@ class ToolExecutor:
                     "elapsed_ms": result.elapsed_ms,
                     "from_cache": result.from_cache,
                     "from_fallback": result.from_fallback,
+                    "fallback_tool": result.fallback_tool,
                     "output_size": (
                         len(result.output)
                         if isinstance(result.output, (list, str))
@@ -191,23 +225,130 @@ class ToolExecutor:
         return result
 
     async def _execute_inner(
-        self, name: str, args: dict, session_id: str = ""
+        self, name: str, args: Any, session_id: str = ""
     ) -> ToolResult:
         """Apply circuit breaking, limits, caching, retries, and fallbacks."""
-        t0 = time.monotonic()
+        if not isinstance(args, Mapping):
+            return ToolResult(
+                name=name,
+                args={},
+                error="Tool arguments must be a mapping",
+                error_code="tool_arguments_invalid",
+                error_type="ValidationError",
+                policy_stage="schema",
+            )
 
+        stable_args = dict(args)
+        preflight = self._preflight(name, stable_args)
+        if isinstance(preflight, ToolResult):
+            return preflight
+
+        return await self._execute_registered(
+            name,
+            stable_args,
+            preflight,
+            allow_fallback=True,
+        )
+
+    def _preflight(
+        self, name: str, args: Mapping[str, Any]
+    ) -> RegisteredTool | ToolResult:
+        """Validate registry, policy, and schema before execution side effects."""
+        stable_args = dict(args)
         try:
             registered = self._registry.get(name)
         except KeyError:
             return ToolResult(
                 name=name,
-                args=args,
+                args=stable_args,
                 error=f"Tool {name} not registered",
                 error_code="tool_not_registered",
                 error_type="KeyError",
-                elapsed_ms=0,
+                policy_stage="registry",
             )
 
+        if name not in self._allowed_names:
+            return ToolResult(
+                name=name,
+                args=stable_args,
+                error=f"Tool {name} is not allowed",
+                error_code="tool_not_allowed",
+                error_type="ToolPolicyViolation",
+                policy_stage="allowlist",
+            )
+
+        category = registered.definition.category
+        if not isinstance(category, ToolCategory):
+            return ToolResult(
+                name=name,
+                args=stable_args,
+                error=f"Tool {name} has an unknown capability",
+                error_code="tool_capability_unknown",
+                error_type="ToolPolicyViolation",
+                policy_stage="category",
+            )
+        if category not in self._allowed_categories:
+            return ToolResult(
+                name=name,
+                args=stable_args,
+                error=f"Tool category {category.value} is not allowed",
+                error_code="tool_category_denied",
+                error_type="ToolPolicyViolation",
+                policy_stage="category",
+            )
+
+        schema = registered.definition.parameters
+        try:
+            Draft202012Validator.check_schema(schema)
+            Draft202012Validator(schema).validate(stable_args)
+        except SchemaError:
+            return ToolResult(
+                name=name,
+                args=stable_args,
+                error=f"Tool {name} has an invalid argument schema",
+                error_code="tool_schema_invalid",
+                error_type="SchemaError",
+                policy_stage="schema",
+            )
+        except ValidationError as exc:
+            path = ".".join(str(part) for part in exc.absolute_path)
+            location = f"$.{path}" if path else "$"
+            return ToolResult(
+                name=name,
+                args=stable_args,
+                error=(
+                    f"Invalid tool arguments at {location}: "
+                    f"failed {exc.validator} validation"
+                ),
+                error_code="tool_arguments_invalid",
+                error_type="ValidationError",
+                policy_stage="schema",
+            )
+
+        try:
+            json.dumps(stable_args, sort_keys=True, allow_nan=False)
+        except (TypeError, ValueError):
+            return ToolResult(
+                name=name,
+                args=stable_args,
+                error="Tool arguments are not JSON serializable",
+                error_code="tool_arguments_invalid",
+                error_type="ValidationError",
+                policy_stage="schema",
+            )
+
+        return registered
+
+    async def _execute_registered(
+        self,
+        name: str,
+        args: dict[str, Any],
+        registered: RegisteredTool,
+        *,
+        allow_fallback: bool,
+    ) -> ToolResult:
+        """Apply runtime policies after a tool has passed preflight."""
+        t0 = time.monotonic()
         td = registered.definition
 
         breaker = self._get_breaker(name)
@@ -255,7 +396,7 @@ class ToolExecutor:
             breaker.record_success()
 
         original_failure = result
-        if result.error and td.fallback:
+        if result.error and allow_fallback and td.fallback:
             result = await self._apply_fallback(name, args, td.fallback, result.error)
             result.from_fallback = True
 
@@ -334,17 +475,23 @@ class ToolExecutor:
             elif step.type == "skip":
                 return ToolResult(name=name, args=args, output=None, from_fallback=True)
             elif step.type == "alternative_tool" and step.alternative_tool:
-                try:
-                    alt = self._registry.get(step.alternative_tool)
-                    return await self._execute_with_retry(
-                        step.alternative_tool,
-                        args,
-                        alt.func,
-                        alt.definition.timeout_ms,
-                        alt.definition.max_retries,
-                    )
-                except KeyError:
-                    continue
+                preflight = self._preflight(step.alternative_tool, args)
+                if isinstance(preflight, ToolResult):
+                    preflight.name = name
+                    preflight.from_fallback = True
+                    preflight.fallback_tool = step.alternative_tool
+                    return preflight
+
+                result = await self._execute_registered(
+                    step.alternative_tool,
+                    args,
+                    preflight,
+                    allow_fallback=False,
+                )
+                result.name = name
+                result.from_fallback = True
+                result.fallback_tool = step.alternative_tool
+                return result
         msg = f"All fallback steps exhausted"
         if original_error:
             msg += f". Original: {original_error}"
@@ -352,7 +499,7 @@ class ToolExecutor:
 
     def _make_cache_key(self, name: str, args: dict) -> str:
         """Build a stable cache key from a tool name and arguments."""
-        raw = json.dumps({"name": name, "args": args}, sort_keys=True)
+        raw = json.dumps({"name": name, "args": args}, sort_keys=True, allow_nan=False)
 
         return hashlib.sha256(raw.encode()).hexdigest()
 

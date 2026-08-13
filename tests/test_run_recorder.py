@@ -2,8 +2,11 @@
 
 import json
 
+import pytest
+
 from litagent.observability.recorder import (
     ArchiveRepository,
+    ArtifactContractError,
     RedactingTraceHook,
     RunRecorder,
 )
@@ -105,6 +108,53 @@ def test_completed_artifact_rejects_stale_graph_state(tmp_path):
 
     assert artifact["status"] == "failed"
     assert artifact["error"] == "incomplete_graph_state"
+
+
+def test_cancelled_artifact_requires_partial_delivery_contract(tmp_path):
+    recorder = RunRecorder("run-invalid-cancel", "query", ArchiveRepository(tmp_path))
+
+    with pytest.raises(ArtifactContractError, match="invalid_terminal_status_contract"):
+        recorder.finalize(
+            {"survey": "draft", "partial": False, "delivery": {"status": "ready"}},
+            terminal_status="cancelled",
+        )
+
+    assert recorder.snapshot()["status"] == "running"
+
+
+def test_cancelled_artifact_has_no_unfinished_graph_or_nodes(tmp_path):
+    recorder = RunRecorder("run-cancelled", "query", ArchiveRepository(tmp_path))
+    graph = TaskGraph()
+    graph.add_task(SubTask("running", "running", "search"))
+    graph.add_task(SubTask("pending", "pending", "extractor"), depends_on=["running"])
+    recorder.capture_graph(graph)
+    graph.mark_running("running")
+    recorder("worker.start", {"task_id": "running", "agent_type": "search"})
+    graph.finalize_incomplete("user_cancelled")
+    recorder(
+        "worker.cancelled",
+        {"task_id": "running", "agent_type": "search", "error": "user_cancelled"},
+    )
+    recorder.capture_graph_state(graph)
+
+    artifact = recorder.finalize(
+        {
+            "survey": "partial",
+            "partial": True,
+            "delivery": {"status": "partial", "publishable": False},
+        },
+        terminal_status="cancelled",
+    )
+
+    assert artifact["status"] == "cancelled"
+    assert {task["status"] for task in artifact["graph"]["tasks"].values()} == {
+        "cancelled",
+        "skipped",
+    }
+    assert all(
+        node["status"] not in {"pending", "running"}
+        for node in artifact["nodes"].values()
+    )
 
 
 def test_recorder_maps_rag_memory_and_usage_payloads(tmp_path):

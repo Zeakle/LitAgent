@@ -17,7 +17,38 @@ from litagent.tools.registry import ToolRegistry
 
 def _mock_executor() -> ToolExecutor:
     """Return a tool executor backed by an isolated registry."""
-    return ToolExecutor(ToolRegistry())
+    return ToolExecutor(ToolRegistry(), allowed_names=set())
+
+
+class TestInjectedBuiltinToolRegistry:
+    """Tests that built-in tools can be scoped to one agent run."""
+
+    def test_search_and_regex_extraction_use_declared_allowed_tools(self):
+        from litagent.tools.builtin.extract import register_extract_tools
+        from litagent.tools.builtin.search import register_search_tools
+        from litagent.tools.registry import get_registry, reset_registry
+
+        reset_registry()
+        registry = ToolRegistry()
+        register_search_tools(registry)
+        register_extract_tools(registry)
+
+        expected_names = {
+            "search_arxiv",
+            "search_semantic_scholar",
+            "search_huggingface",
+            "extract_claims",
+            "extract_metrics",
+            "extract_methods",
+            "extract_datasets",
+        }
+        assert {tool.name for tool in registry.list_all()} == expected_names
+        assert len(get_registry()) == 0
+        for definition in registry.list_all():
+            assert definition.category.value == "read"
+            assert definition.parameters["type"] == "object"
+            assert definition.parameters["additionalProperties"] is False
+            assert definition.parameters["required"]
 
 
 class TestSearchWorker:

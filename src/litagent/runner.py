@@ -65,7 +65,7 @@ from litagent.memory.working import WorkingMemory
 from litagent.observability.context import reset_task_id, set_task_id
 from litagent.observability.recorder import RedactingTraceHook
 from litagent.observability.tracing import LangFuseTracer
-from litagent.orchestrator.scheduler import Scheduler, Worker
+from litagent.orchestrator.scheduler import CancellationToken, Scheduler, Worker
 from litagent.orchestrator.task_graph import TaskGraph
 from litagent.rag.claim_promotion import (
     ClaimPromotionSummary,
@@ -85,7 +85,7 @@ from litagent.skills.manager import SkillManager
 from litagent.tools.builtin.extract import register_extract_tools
 from litagent.tools.builtin.search import register_search_tools
 from litagent.tools.executor import ToolExecutor
-from litagent.tools.registry import get_registry
+from litagent.tools.registry import ToolRegistry
 
 logger = get_logger("runner")
 
@@ -220,6 +220,36 @@ TraceHook = Callable[[str, dict[str, Any]], Any]
 """Trace callback invoked with a stable event name and payload."""
 
 
+class _RunCancelled(Exception):
+    """Stop the survey at an explicit cooperative cancellation boundary."""
+
+
+async def _await_with_cancellation(awaitable, cancellation: CancellationToken | None):
+    """Await one phase while allowing the run token to preempt pending work."""
+    if cancellation is None:
+        return await awaitable
+    if cancellation.is_cancelled:
+        if asyncio.iscoroutine(awaitable):
+            awaitable.close()
+        raise _RunCancelled
+
+    work = asyncio.create_task(awaitable)
+    cancel_waiter = asyncio.create_task(cancellation.wait())
+    try:
+        done, _ = await asyncio.wait(
+            {work, cancel_waiter}, return_when=asyncio.FIRST_COMPLETED
+        )
+        # Preserve a business result that completed in the same event-loop tick.
+        if work in done:
+            return await work
+        work.cancel()
+        await asyncio.gather(work, return_exceptions=True)
+        raise _RunCancelled
+    finally:
+        cancel_waiter.cancel()
+        await asyncio.gather(cancel_waiter, return_exceptions=True)
+
+
 class LitAgent:
     """Assemble components, execute surveys, and release shared resources."""
 
@@ -268,22 +298,38 @@ class LitAgent:
         """Exit the LitAgent context and close owned resources."""
         await self.cleanup()
 
-    async def run(self, query: str) -> dict[str, Any]:
+    async def run(
+        self,
+        query: str,
+        cancellation: CancellationToken | None = None,
+    ) -> dict[str, Any]:
         """Run planning, scheduling, evaluation, and delivery for one query."""
+        if cancellation and cancellation.is_cancelled:
+            return self._build_cancelled_report(query)
         if not self._wired:
             await self._wire()
+        if cancellation and cancellation.is_cancelled:
+            return self._build_cancelled_report(query)
 
         self._emit("survey.start", {"query": query, "session_id": self._session_id})
         logger.info("Starting survey: %s", query)
+
+        graph: TaskGraph | None = None
+        results: dict[str, Any] = {}
+        report_data: dict[str, Any] | None = None
+        degradation_codes: list[str] = []
+        search_outcomes: list[dict[str, Any]] = []
 
         try:
             if self._search is not None:
                 self._search.reset_source_outcomes()
 
-            graph = await self._planner.plan(query)
+            graph = await _await_with_cancellation(
+                self._planner.plan(query), cancellation
+            )
             if hasattr(self._trace_hook, "capture_graph"):
                 self._trace_hook.capture_graph(graph)
-            results = await self._scheduler.run(graph)
+            results = await self._scheduler.run(graph, cancellation=cancellation)
             if hasattr(self._trace_hook, "capture_graph_state"):
                 self._trace_hook.capture_graph_state(graph)
 
@@ -291,6 +337,9 @@ class LitAgent:
             search_outcomes, degradation_codes = self._summarize_search_outcomes(
                 self._search.get_source_outcomes() if self._search else ()
             )
+
+            if cancellation and cancellation.is_cancelled:
+                raise _RunCancelled
 
             report_data = self._extract_report(results, query)
             execution = self._derive_execution(
@@ -302,6 +351,7 @@ class LitAgent:
                     isinstance(results.get("adversarial_review"), dict)
                     and results["adversarial_review"].get("final_draft")
                 ),
+                run_cancelled=False,
             )
             report_data["partial"] = execution["partial"]
             report_data.setdefault("metadata", {})["execution"] = execution
@@ -310,11 +360,14 @@ class LitAgent:
             ] = search_outcomes
 
             # Phase 1: initial evaluation.
-            initial_evaluation = await self._evaluate(
-                query=query,
-                survey=report_data["survey"],
-                results=results,
-                phase="initial",
+            initial_evaluation = await _await_with_cancellation(
+                self._evaluate(
+                    query=query,
+                    survey=report_data["survey"],
+                    results=results,
+                    phase="initial",
+                ),
+                cancellation,
             )
             initial_quality = self._derive_quality(initial_evaluation)
             report_data.update(
@@ -326,12 +379,15 @@ class LitAgent:
 
             # Phase 2: evidence rewrite on quality failure.
             if initial_quality["status"] == "failed":
-                rewrite_outcome = await self._attempt_evidence_rewrite(
-                    query=query,
-                    report_data=report_data,
-                    results=results,
-                    initial_evaluation=initial_evaluation,
-                    initial_quality=initial_quality,
+                rewrite_outcome = await _await_with_cancellation(
+                    self._attempt_evidence_rewrite(
+                        query=query,
+                        report_data=report_data,
+                        results=results,
+                        initial_evaluation=initial_evaluation,
+                        initial_quality=initial_quality,
+                    ),
+                    cancellation,
                 )
                 report_data.setdefault("metadata", {})["evidence_rewrite"] = {
                     "attempted": rewrite_outcome.attempted,
@@ -352,23 +408,25 @@ class LitAgent:
                 final_quality,
                 degradation_codes,
             )
-            promotion = (
-                await ClaimsPromoter(self._infra.claims_index).promote(
-                    run_id=self._session_id,
-                    domain=query,
-                    report_data=report_data,
-                    extractions=self._collect_extractions(results),
+            if self._infra.claims_index is not None:
+                promotion = await _await_with_cancellation(
+                    ClaimsPromoter(self._infra.claims_index).promote(
+                        run_id=self._session_id,
+                        domain=query,
+                        report_data=report_data,
+                        extractions=self._collect_extractions(results),
+                    ),
+                    cancellation,
                 )
-                if self._infra.claims_index is not None
-                else ClaimPromotionSummary(
+            else:
+                promotion = ClaimPromotionSummary(
                     "skipped", 0, 0, 0, "claims_index_unavailable"
                 )
-            )
             report_data.setdefault("metadata", {})[
                 "claims_promotion"
             ] = promotion.to_dict()
-            report_data["metadata"]["memory"] = await self._finalize_memory(
-                report_data=report_data
+            report_data["metadata"]["memory"] = await _await_with_cancellation(
+                self._finalize_memory(report_data=report_data), cancellation
             )
 
             report_data = normalize_survey_result(
@@ -391,19 +449,58 @@ class LitAgent:
             logger.info("Survey complete: %d chars", len(report_data.get("survey", "")))
             return report_data
 
+        except _RunCancelled:
+            if graph is not None:
+                graph.finalize_incomplete("user_cancelled")
+                if hasattr(self._trace_hook, "capture_graph_state"):
+                    self._trace_hook.capture_graph_state(graph)
+            cancelled_report = self._build_cancelled_report(
+                query,
+                graph=graph,
+                results=results,
+                report_data=report_data,
+                search_outcomes=search_outcomes,
+                degradation_codes=degradation_codes,
+            )
+            self._emit(
+                "survey.complete",
+                {
+                    "query": query,
+                    "cancelled": True,
+                    "quality_status": cancelled_report["quality"]["status"],
+                    "delivery_status": cancelled_report["delivery"]["status"],
+                    "total_tokens": self._cost_budget.used if self._cost_budget else 0,
+                    "config_fingerprint": cancelled_report["config_fingerprint"],
+                },
+            )
+            return cancelled_report
+
         except Exception as e:
             self._emit("survey.error", {"query": query, "error": str(e)})
             raise
 
     @staticmethod
     def _derive_execution(
-        graph: TaskGraph,
+        graph: TaskGraph | None,
         budget_exceeded: bool,
         final_output_present: bool,
+        run_cancelled: bool = False,
     ) -> dict[str, Any]:
         """Derive the final execution status from graph outcomes."""
-        summary = graph.execution_summary()
+        summary = (
+            graph.execution_summary()
+            if graph is not None
+            else {
+                "status": "incomplete",
+                "counts": {},
+                "failed_task_ids": [],
+                "cancelled_task_ids": [],
+                "skipped_task_ids": [],
+            }
+        )
         reason_codes: list[str] = []
+        if run_cancelled:
+            reason_codes.append("run_cancelled")
         if budget_exceeded:
             reason_codes.append("cost_budget_exceeded")
         if summary["failed_task_ids"]:
@@ -422,6 +519,69 @@ class LitAgent:
             "partial": partial,
             "reason_codes": reason_codes,
         }
+
+    def _build_cancelled_report(
+        self,
+        query: str,
+        *,
+        graph: TaskGraph | None = None,
+        results: Mapping[str, Any] | None = None,
+        report_data: Mapping[str, Any] | None = None,
+        search_outcomes: Sequence[Mapping[str, Any]] = (),
+        degradation_codes: Sequence[str] = (),
+    ) -> dict[str, Any]:
+        """Build the canonical partial result for cooperative cancellation."""
+        result_map = dict(results or {})
+        payload = (
+            dict(report_data)
+            if report_data is not None
+            else self._extract_report(result_map, query)
+        )
+        final_output_present = bool(
+            isinstance(result_map.get("adversarial_review"), dict)
+            and result_map["adversarial_review"].get("final_draft")
+        )
+        execution = self._derive_execution(
+            graph,
+            budget_exceeded=(
+                self._cost_budget.is_exceeded() if self._cost_budget else False
+            ),
+            final_output_present=final_output_present,
+            run_cancelled=True,
+        )
+        payload["partial"] = True
+        payload.setdefault("evaluation", {})
+        payload.setdefault(
+            "quality",
+            {
+                "status": "unverified",
+                "failed_metrics": [],
+                "unverified_metrics": [],
+            },
+        )
+        metadata = payload.setdefault("metadata", {})
+        metadata["execution"] = execution
+        metadata["search_source_outcomes"] = list(search_outcomes)
+        metadata["claims_promotion"] = {
+            "status": "skipped",
+            "attempted_count": 0,
+            "promoted_count": 0,
+            "rejected_count": 0,
+            "reason_code": "run_cancelled",
+        }
+        metadata["memory"] = {
+            "attempted": False,
+            "content_saved": False,
+            "consolidated": False,
+            "reason_code": "run_cancelled",
+            "error_type": None,
+        }
+        payload["delivery"] = derive_delivery(
+            True, payload["quality"], degradation_codes
+        )
+        return normalize_survey_result(
+            payload, config_fingerprint=self._config_summary["fingerprint"]
+        )
 
     @staticmethod
     def _summarize_search_outcomes(outcomes) -> tuple[list[dict], list[str]]:
@@ -550,19 +710,12 @@ class LitAgent:
             raise ConfigError(f"Failed to create LLM client: {e}") from e
 
         try:
-            self._registry = get_registry()
-            register_search_tools()
-            register_extract_tools()
+            self._registry = ToolRegistry()
+            register_search_tools(self._registry)
+            register_extract_tools(self._registry)
             logger.info("ToolRegistry: %d tools registered", len(self._registry))
         except Exception as e:
             raise ConfigError(f"Failed to register tools: {e}") from e
-
-        self._executor = ToolExecutor(
-            registry=self._registry,
-            cb_fail_threshold=cfg.resilience.cb_fail_threshold,
-            cb_cooldown_seconds=cfg.resilience.cb_cooldown_seconds,
-            trace_hook=self._trace_hook,
-        )
 
         self._budget_manager = BudgetManager(
             max_tokens=cfg.context.max_tokens,
@@ -576,12 +729,13 @@ class LitAgent:
 
         skills_dir = str(Path(__file__).resolve().parent / "skills")
         self._skill_manager = SkillManager(skills_dir=skills_dir)
+        registered_mcp_names: list[str] = []
         if cfg.mcp_servers:
-            bridge = MCPBridge()
+            bridge = MCPBridge(registry=self._registry)
             self._mcp_bridge = bridge
             try:
-                registered = await bridge.connect_all(cfg.mcp_servers)
-                logger.info("MCP: %d tools registered", len(registered))
+                registered_mcp_names = await bridge.connect_all(cfg.mcp_servers)
+                logger.info("MCP: %d tools registered", len(registered_mcp_names))
             except Exception as exc:
                 logger.warning(
                     "MCP bridge failed, continuing without MCP tools: %s",
@@ -593,6 +747,19 @@ class LitAgent:
                 except Exception as close_exc:
                     logger.debug("MCP rollback disconnect error: %s", close_exc)
                 self._mcp_bridge = None
+
+        allowed_names = {
+            *cfg.safety.tool_policy.allowed_names,
+            *registered_mcp_names,
+        }
+        self._executor = ToolExecutor(
+            registry=self._registry,
+            cb_fail_threshold=cfg.resilience.cb_fail_threshold,
+            cb_cooldown_seconds=cfg.resilience.cb_cooldown_seconds,
+            trace_hook=self._trace_hook,
+            allowed_names=allowed_names,
+            allowed_categories=cfg.safety.tool_policy.allowed_categories,
+        )
 
         regex_strategy = RegexStrategy(self._executor)
         if cfg.extractor.enable_llm:

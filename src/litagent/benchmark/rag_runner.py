@@ -118,6 +118,8 @@ class RAGBenchmarkRunner:
                     client,
                     raw_root=Path(config.rag.raw_root),
                     max_pdf_bytes=config.rag.max_pdf_bytes,
+                    download_timeout_seconds=config.rag.download_timeout_seconds,
+                    allowed_content_types=config.rag.allowed_pdf_content_types,
                 ),
                 quarantine=QuarantineRepository(Path(config.rag.quarantine_root)),
                 audit_repository=ParsedAuditRepository(Path(config.rag.parsed_root)),

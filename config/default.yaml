@@ -74,6 +74,12 @@ rag:
   raw_root: "artifacts/corpus/raw"
   quarantine_root: "artifacts/corpus/quarantine"
   max_pdf_bytes: 52428800
+  download_timeout_seconds: 60.0
+  parser_timeout_seconds: 30.0
+  max_concurrent_parsers: 2
+  allowed_pdf_content_types:
+    - "application/pdf"
+    - "application/octet-stream"
   parsed_root: "artifacts/corpus/parsed"
   max_representative_chunks: 4
   trusted_claim_recall_top_k: 5
@@ -94,6 +100,21 @@ mcp_servers: {}
 safety:
   max_cost_tokens: 500000
   cost_warn_ratio: 0.8
+  tool_policy:
+    allowed_names:
+      - "search_arxiv"
+      - "search_semantic_scholar"
+      - "search_huggingface"
+      - "extract_claims"
+      - "extract_metrics"
+      - "extract_methods"
+      - "extract_datasets"
+    allowed_categories:
+      - "read"
+
+api:
+  max_concurrent_surveys: 2
+  cancellation_grace_seconds: 5.0
 
 resilience:
   cb_fail_threshold: 5       # 连续失败 5 次熔断

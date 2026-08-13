@@ -47,6 +47,14 @@ def _mcp_summary(config: AppConfig) -> list[dict[str, Any]]:
                 "sandbox_network": server.sandbox_network,
                 "command": (Path(server.command).name if server.command else None),
                 "origin": _safe_origin(server.url),
+                "allowed_tools": [
+                    {
+                        "name": tool_name,
+                        "enabled": capability.enabled,
+                        "category": capability.category.value,
+                    }
+                    for tool_name, capability in sorted(server.allowed_tools.items())
+                ],
             }
         )
     return projected
@@ -81,6 +89,11 @@ def _rag_summary(config: AppConfig) -> dict[str, Any] | None:
         "reranker_enabled",
         "reranker_model",
         "writeback_enabled",
+        "max_pdf_bytes",
+        "download_timeout_seconds",
+        "parser_timeout_seconds",
+        "max_concurrent_parsers",
+        "allowed_pdf_content_types",
     )
     serialized = rag.model_dump(mode="json")
     return {field: serialized[field] for field in allowed}
@@ -103,7 +116,8 @@ def build_config_summary(config: AppConfig) -> dict[str, Any]:
         "context": config.context.model_dump(),
         "orchestrator": config.orchestrator.model_dump(),
         "adversarial": config.adversarial.model_dump(),
-        "safety": config.safety.model_dump(),
+        "safety": config.safety.model_dump(mode="json"),
+        "api": config.api.model_dump(mode="json"),
         "resilience": config.resilience.model_dump(),
         "extractor": config.extractor.model_dump(),
         "relevance": config.relevance.model_dump(),

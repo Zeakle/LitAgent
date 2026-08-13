@@ -6,13 +6,13 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from litagent.tools.base import (
-    ToolDefinition,
-    ToolCategory,
-    RateLimitConfig,
     FallbackStep,
+    RateLimitConfig,
+    ToolCategory,
+    ToolDefinition,
 )
-from litagent.tools.registry import ToolRegistry, get_registry, reset_registry
 from litagent.tools.executor import ToolExecutor
+from litagent.tools.registry import ToolRegistry, get_registry, reset_registry
 
 
 def echo_tool(message: str) -> str:
@@ -125,7 +125,7 @@ class TestToolExecutor:
             ),
             lambda: asyncio.sleep(1),
         )
-        self.executor = ToolExecutor(registry)
+        self.executor = ToolExecutor(registry, allowed_names={"echo", "slow"})
 
     @pytest.mark.asyncio
     async def test_successful_execution(self):
@@ -151,12 +151,207 @@ class TestToolExecutor:
             ToolDefinition(name="cached", description="c", cache_ttl_ms=60000),
             lambda x: f"result: {x}",
         )
-        executor = ToolExecutor(registry)
+        executor = ToolExecutor(registry, allowed_names={"cached"})
         r1 = await executor.execute("cached", {"x": "a"})
         assert r1.from_cache is False
         r2 = await executor.execute("cached", {"x": "a"})
         assert r2.from_cache is True
         assert r2.output == r1.output
+
+    @pytest.mark.asyncio
+    async def test_executor_rejects_tool_outside_allowlist_before_callable(self):
+        called = False
+        registry = ToolRegistry()
+
+        async def forbidden() -> None:
+            nonlocal called
+            called = True
+
+        registry.register(
+            ToolDefinition(name="forbidden", description="forbidden"), forbidden
+        )
+        executor = ToolExecutor(registry, allowed_names=set())
+
+        result = await executor.execute("forbidden", {})
+
+        assert result.error_code == "tool_not_allowed"
+        assert result.policy_stage == "allowlist"
+        assert called is False
+        assert executor._breakers == {}
+        assert executor._rate_limits == {}
+        assert executor._cache == {}
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("category", [ToolCategory.WRITE, ToolCategory.DESTRUCTIVE])
+    async def test_executor_rejects_write_and_destructive_categories(self, category):
+        called = False
+        registry = ToolRegistry()
+
+        async def mutate() -> None:
+            nonlocal called
+            called = True
+
+        registry.register(
+            ToolDefinition(name="mutate", description="mutate", category=category),
+            mutate,
+        )
+        executor = ToolExecutor(registry, allowed_names={"mutate"})
+
+        result = await executor.execute("mutate", {})
+
+        assert result.error_code == "tool_category_denied"
+        assert result.policy_stage == "category"
+        assert called is False
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "args",
+        [
+            {},
+            {"message": 1},
+            {"message": "ok", "unexpected": True},
+            ["not", "a", "mapping"],
+        ],
+    )
+    async def test_executor_rejects_missing_wrong_and_extra_arguments(self, args):
+        registry = ToolRegistry()
+        strict_definition = echo_definition.model_copy(
+            update={
+                "parameters": {
+                    **echo_definition.parameters,
+                    "additionalProperties": False,
+                }
+            }
+        )
+        registry.register(strict_definition, echo_tool)
+        executor = ToolExecutor(registry, allowed_names={"echo"})
+
+        result = await executor.execute("echo", args)
+
+        assert result.error_code == "tool_arguments_invalid"
+        assert result.policy_stage == "schema"
+
+    @pytest.mark.asyncio
+    async def test_executor_accepts_valid_nested_json_schema(self):
+        registry = ToolRegistry()
+        registry.register(
+            ToolDefinition(
+                name="nested",
+                description="nested",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "request": {
+                            "type": "object",
+                            "properties": {"query": {"type": "string"}},
+                            "required": ["query"],
+                            "additionalProperties": False,
+                        }
+                    },
+                    "required": ["request"],
+                    "additionalProperties": False,
+                },
+            ),
+            lambda request: request["query"],
+        )
+        executor = ToolExecutor(registry, allowed_names={"nested"})
+
+        result = await executor.execute("nested", {"request": {"query": "rag"}})
+
+        assert result.error is None
+        assert result.output == "rag"
+
+    @pytest.mark.asyncio
+    async def test_invalid_tool_schema_fails_closed(self):
+        registry = ToolRegistry()
+        registry.register(
+            ToolDefinition(
+                name="invalid_schema",
+                description="invalid",
+                parameters={"type": "definitely-not-a-json-schema-type"},
+            ),
+            lambda: "must not run",
+        )
+        executor = ToolExecutor(registry, allowed_names={"invalid_schema"})
+
+        result = await executor.execute("invalid_schema", {})
+
+        assert result.error_code == "tool_schema_invalid"
+        assert result.policy_stage == "schema"
+        assert executor._breakers == {}
+
+    @pytest.mark.asyncio
+    async def test_non_json_arguments_fail_before_runtime_policy(self):
+        registry = ToolRegistry()
+        registry.register(
+            ToolDefinition(name="generic", description="generic"), lambda **_: "run"
+        )
+        executor = ToolExecutor(registry, allowed_names={"generic"})
+
+        result = await executor.execute("generic", {"value": object()})
+
+        assert result.error_code == "tool_arguments_invalid"
+        assert executor._breakers == {}
+
+    @pytest.mark.asyncio
+    async def test_policy_rejection_does_not_touch_fallback(self):
+        registry = ToolRegistry()
+        registry.register(
+            ToolDefinition(
+                name="primary",
+                description="primary",
+                fallback=[FallbackStep(type="default_value", default_result="unsafe")],
+                cache_ttl_ms=60_000,
+                rate_limit=RateLimitConfig(max_calls=1),
+            ),
+            lambda: "primary",
+        )
+        executor = ToolExecutor(registry, allowed_names=set())
+
+        result = await executor.execute("primary", {})
+
+        assert result.error_code == "tool_not_allowed"
+        assert result.from_fallback is False
+        assert executor._breakers == {}
+        assert executor._rate_limits == {}
+        assert executor._cache == {}
+
+    @pytest.mark.asyncio
+    async def test_alternative_tool_fallback_cannot_bypass_policy(self):
+        called = False
+        registry = ToolRegistry()
+
+        async def primary() -> None:
+            raise RuntimeError("primary failed")
+
+        async def alternative() -> str:
+            nonlocal called
+            called = True
+            return "unsafe"
+
+        registry.register(
+            ToolDefinition(
+                name="primary",
+                description="primary",
+                max_retries=0,
+                fallback=[
+                    FallbackStep(
+                        type="alternative_tool", alternative_tool="alternative"
+                    )
+                ],
+            ),
+            primary,
+        )
+        registry.register(
+            ToolDefinition(name="alternative", description="alternative"), alternative
+        )
+        executor = ToolExecutor(registry, allowed_names={"primary"})
+
+        result = await executor.execute("primary", {})
+
+        assert result.error_code == "tool_not_allowed"
+        assert result.fallback_tool == "alternative"
+        assert called is False
 
 
 class TestBuiltinSearch:

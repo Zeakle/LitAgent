@@ -382,6 +382,8 @@ async def _cmd_corpus(args: argparse.Namespace) -> None:
                 http_client,
                 raw_root=Path(config.rag.raw_root),
                 max_pdf_bytes=config.rag.max_pdf_bytes,
+                download_timeout_seconds=config.rag.download_timeout_seconds,
+                allowed_content_types=config.rag.allowed_pdf_content_types,
             )
             ingestor = CorpusIngestor(
                 config=config.rag,

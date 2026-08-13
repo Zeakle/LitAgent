@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Iterator, Mapping
 
 import pytest
 
 from litagent.observability.lifecycle import sanitize_input, traced_io
 from litagent.observability.tracing import LangFuseTracer
-from litagent.tools.base import RateLimitConfig, ToolDefinition
+from litagent.tools.base import FallbackStep, RateLimitConfig, ToolDefinition
 from litagent.tools.executor import ToolExecutor
 from litagent.tools.registry import ToolRegistry
 
@@ -216,8 +217,15 @@ class TestTracedIO:
 
 def _executor_with_events(registry=None, **kw):
     events = []
+    registry = registry or ToolRegistry()
+    allowed_names = kw.pop(
+        "allowed_names", {definition.name for definition in registry.list_all()}
+    )
     ex = ToolExecutor(
-        registry or ToolRegistry(), trace_hook=lambda e, d: events.append((e, d)), **kw
+        registry,
+        trace_hook=lambda e, d: events.append((e, d)),
+        allowed_names=allowed_names,
+        **kw,
     )
     return ex, events
 
@@ -352,6 +360,94 @@ class TestToolExecutorLifecycle:
         args = events[0][1]["args"]
         assert "api_key" not in args
         assert len(args["query"]) < 500
+
+    @pytest.mark.asyncio
+    async def test_tool_policy_rejection_emits_one_failed_terminal_event(self):
+        registry = ToolRegistry()
+        registry.register(ToolDefinition(name="denied", description="d"), lambda: 1)
+        ex, events = _executor_with_events(registry, allowed_names=set())
+
+        result = await ex.execute("denied", {})
+
+        assert result.error_code == "tool_not_allowed"
+        assert [event for event, _ in events] == ["tool.start", "tool.failed"]
+        assert events[1][1]["policy_stage"] == "allowlist"
+
+    @pytest.mark.asyncio
+    async def test_tool_argument_error_trace_does_not_echo_secret_payload(self):
+        registry = ToolRegistry()
+        registry.register(
+            ToolDefinition(
+                name="strict",
+                description="d",
+                parameters={
+                    "type": "object",
+                    "properties": {"query": {"type": "string"}},
+                    "required": ["query"],
+                    "additionalProperties": False,
+                },
+            ),
+            lambda query: query,
+        )
+        ex, events = _executor_with_events(registry, allowed_names={"strict"})
+
+        result = await ex.execute(
+            "strict", {"query": 123, "password": "do-not-leak-this"}
+        )
+
+        assert result.error_code == "tool_arguments_invalid"
+        assert "do-not-leak-this" not in str(events)
+
+    @pytest.mark.asyncio
+    async def test_unstable_mapping_still_emits_one_terminal_event(self):
+        class BrokenMapping(Mapping):
+            def __getitem__(self, key):
+                raise KeyError(key)
+
+            def __iter__(self) -> Iterator:
+                raise RuntimeError("cannot copy")
+
+            def __len__(self) -> int:
+                return 1
+
+        ex, events = _executor_with_events()
+
+        result = await ex.execute("unused", BrokenMapping())
+
+        assert result.error_code == "tool_arguments_invalid"
+        assert [event for event, _ in events] == ["tool.start", "tool.failed"]
+
+    @pytest.mark.asyncio
+    async def test_alternative_tool_fallback_keeps_one_lifecycle_pair(self):
+        registry = ToolRegistry()
+
+        async def primary() -> None:
+            raise RuntimeError("failed")
+
+        registry.register(
+            ToolDefinition(
+                name="primary",
+                description="d",
+                max_retries=0,
+                fallback=[
+                    FallbackStep(type="alternative_tool", alternative_tool="backup")
+                ],
+            ),
+            primary,
+        )
+        registry.register(
+            ToolDefinition(name="backup", description="d"), lambda: "recovered"
+        )
+        ex, events = _executor_with_events(
+            registry, allowed_names={"primary", "backup"}
+        )
+
+        result = await ex.execute("primary", {})
+
+        assert result.output == "recovered"
+        assert result.fallback_tool == "backup"
+        assert [event for event, _ in events] == ["tool.start", "tool.complete"]
+        assert events[1][1]["fallback_tool"] == "backup"
 
 
 class _MockSpan:

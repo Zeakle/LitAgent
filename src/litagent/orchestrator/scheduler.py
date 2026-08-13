@@ -45,6 +45,10 @@ class CancellationToken:
         """Return whether cancellation was requested."""
         return self._event.is_set()
 
+    async def wait(self) -> None:
+        """Wait until cancellation is requested."""
+        await self._event.wait()
+
 
 class Scheduler:
     """Execute ready DAG tasks under concurrency and budget limits."""
@@ -118,10 +122,14 @@ class Scheduler:
                 await asyncio.sleep(0.05)
                 continue
 
-            coros = [self._dispatch(graph, task) for task in ready]
+            coros = [self._dispatch(graph, task, cancellation) for task in ready]
 
             # Each dispatcher records its own failure, so siblings remain independent.
             await asyncio.gather(*coros, return_exceptions=True)
+
+            if cancellation and cancellation.is_cancelled:
+                self._finalize_incomplete(graph, "user_cancelled")
+                return graph.get_results()
 
         return graph.get_results()
 
@@ -139,9 +147,17 @@ class Scheduler:
                 },
             )
 
-    async def _dispatch(self, graph: TaskGraph, task: SubTask) -> None:
+    async def _dispatch(
+        self,
+        graph: TaskGraph,
+        task: SubTask,
+        cancellation: CancellationToken | None = None,
+    ) -> None:
         """Execute one task with tracing, validation, retries, and timeout."""
         async with self._semaphore:
+
+            if cancellation and cancellation.is_cancelled:
+                return
 
             worker = self._workers.get(task.agent_type)
             if not worker:
@@ -177,8 +193,9 @@ class Scheduler:
                 for attempt in range(task.max_retries + 1):
                     try:
 
-                        result = await asyncio.wait_for(
+                        result = await self._await_worker(
                             worker.execute(task),
+                            cancellation=cancellation,
                             timeout=task.timeout_ms / 1000,
                         )
 
@@ -207,6 +224,12 @@ class Scheduler:
                         )
 
                         return
+                    except asyncio.CancelledError:
+                        # Cooperative user cancellation is finalized once by
+                        # _loop after every sibling dispatcher has unwound.
+                        if cancellation and cancellation.is_cancelled:
+                            return
+                        raise
                     except asyncio.TimeoutError:
                         last_error = f"Timeout after {task.timeout_ms}ms"
                     except Exception as e:
@@ -217,7 +240,15 @@ class Scheduler:
                         logger.debug(
                             f"Retry {attempt + 1} for '{task.task_id}', waiting {wait}s"
                         )
-                        await asyncio.sleep(wait)
+                        try:
+                            await self._await_worker(
+                                asyncio.sleep(wait),
+                                cancellation=cancellation,
+                            )
+                        except asyncio.CancelledError:
+                            if cancellation and cancellation.is_cancelled:
+                                return
+                            raise
 
                 graph.mark_failed(task.task_id, last_error or "Unknown error")
                 self._emit(
@@ -230,6 +261,39 @@ class Scheduler:
                 )
             finally:
                 reset_task_id(_ctx_token)
+
+    @staticmethod
+    async def _await_worker(
+        awaitable,
+        *,
+        cancellation: CancellationToken | None,
+        timeout: float | None = None,
+    ):
+        """Wait for work while allowing cooperative cancellation to preempt it."""
+        work = asyncio.create_task(awaitable)
+        if cancellation is None:
+            return await asyncio.wait_for(work, timeout=timeout)
+
+        cancel_waiter = asyncio.create_task(cancellation.wait())
+        try:
+            done, _ = await asyncio.wait(
+                {work, cancel_waiter},
+                timeout=timeout,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if work in done:
+                return await work
+            if cancel_waiter in done:
+                work.cancel()
+                await asyncio.gather(work, return_exceptions=True)
+                raise asyncio.CancelledError
+
+            work.cancel()
+            await asyncio.gather(work, return_exceptions=True)
+            raise asyncio.TimeoutError
+        finally:
+            cancel_waiter.cancel()
+            await asyncio.gather(cancel_waiter, return_exceptions=True)
 
     def _inject_upstream_results(self, graph: TaskGraph, task: SubTask) -> None:
         """Inject successful dependency results into the task input."""

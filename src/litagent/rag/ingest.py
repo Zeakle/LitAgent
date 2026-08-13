@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import time
@@ -17,8 +18,12 @@ from litagent.rag.manifest import (
     load_manifest,
     materialize_manifest_assets,
 )
-from litagent.rag.models import PaperRecord, merge_paper_records
-from litagent.rag.pdf_parser import CorpusParseError, metadata_completeness
+from litagent.rag.models import PaperRecord, RawPaperAsset, merge_paper_records
+from litagent.rag.pdf_parser import (
+    CorpusParseError,
+    ParsedPaper,
+    metadata_completeness,
+)
 from litagent.rag.quality import (
     DocumentQualityMetrics,
     DocumentQualityReport,
@@ -205,9 +210,55 @@ class CorpusIngestor:
         self._local_pdf_adapter = local_pdf_adapter
         self._pdf_adapter = pdf_adapter
         self._quarantine = quarantine
+        self._parser_timeout_seconds = float(
+            getattr(config, "parser_timeout_seconds", 30.0)
+        )
+        self._parser_semaphore = asyncio.Semaphore(
+            int(getattr(config, "max_concurrent_parsers", 2))
+        )
         self._audit = audit_repository or ParsedAuditRepository(
             Path(getattr(config, "parsed_root", "artifacts/corpus/parsed"))
         )
+
+    def _release_parser_slot(self, task: asyncio.Task[ParsedPaper]) -> None:
+        """Release a deferred parser slot and consume any orphaned exception."""
+        self._parser_semaphore.release()
+        if task.cancelled():
+            return
+        try:
+            task.exception()
+        except Exception:
+            # The foreground caller already recorded a stable timeout/cancel result.
+            pass
+
+    async def _parse_with_timeout(self, asset: RawPaperAsset) -> ParsedPaper:
+        """Run the synchronous parser without blocking or overloading the loop."""
+        await self._parser_semaphore.acquire()
+        parse_task = asyncio.create_task(
+            asyncio.to_thread(self._parser.parse_with_quality, asset)
+        )
+        release_deferred = False
+        try:
+            return await asyncio.wait_for(
+                asyncio.shield(parse_task),
+                timeout=self._parser_timeout_seconds,
+            )
+        except TimeoutError as exc:
+            # Python cannot stop a running parser thread. Keep its slot occupied
+            # until the real work exits so repeated timeouts cannot exceed the cap.
+            release_deferred = True
+            parse_task.add_done_callback(self._release_parser_slot)
+            raise CorpusParseError(
+                "parser_timeout",
+                "PDF parser timed out",
+            ) from exc
+        except asyncio.CancelledError:
+            release_deferred = True
+            parse_task.add_done_callback(self._release_parser_slot)
+            raise
+        finally:
+            if not release_deferred:
+                self._parser_semaphore.release()
 
     async def ingest_manifest(
         self,
@@ -245,7 +296,7 @@ class CorpusIngestor:
                     elif asset.pdf_path is not None:
                         asset = await self._local_pdf_adapter.materialize(asset)
                     if asset.pdf_path is not None:
-                        parsed = self._parser.parse_with_quality(asset)
+                        parsed = await self._parse_with_timeout(asset)
                         # The full local audit is written before any cleaned
                         # content crosses the Qdrant storage boundary.
                         try:

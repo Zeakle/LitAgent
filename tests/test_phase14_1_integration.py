@@ -8,6 +8,33 @@ import uuid
 import pytest
 import pytest_asyncio
 
+_TEST_COLLECTION_PREFIX = "test_papers_"
+
+
+def _isolated_rag_config(tmp_path, suffix):
+    """Build one fixture-owned corpus namespace and filesystem layout."""
+    from litagent.config import RAGConfig
+
+    return RAGConfig(
+        paper_collection=f"{_TEST_COLLECTION_PREFIX}{suffix}",
+        benchmark_collection=f"test_benchmark_{suffix}",
+        corpus_version=f"test-{suffix}",
+        content_mode="abstract_and_selected_fulltext",
+        embedding_model="all-MiniLM-L6-v2",
+        manifest_path=str(tmp_path / suffix / "manifest.yaml"),
+        raw_root=str(tmp_path / suffix / "raw"),
+        parsed_root=str(tmp_path / suffix / "parsed"),
+        quarantine_root=str(tmp_path / suffix / "quarantine"),
+    )
+
+
+def _assert_fixture_owned_collection(collection_name):
+    """Fail closed before an integration teardown can touch shared storage."""
+    if not collection_name.startswith(_TEST_COLLECTION_PREFIX):
+        raise AssertionError(
+            f"refusing to clean non-test collection: {collection_name!r}"
+        )
+
 
 class _IntegrationEmbedder:
     """Provide deterministic vectors while exercising real storage backends."""
@@ -66,13 +93,13 @@ def _record(*, texts=("Abstract evidence.", "Method evidence."), keys=None):
 
 
 @pytest_asyncio.fixture
-async def corpus_runtime(monkeypatch):
+async def corpus_runtime(monkeypatch, tmp_path):
     qdrant_url = os.getenv("TEST_QDRANT_URL")
     pg_url = os.getenv("TEST_PG_URL")
     if not qdrant_url or not pg_url:
         pytest.skip("TEST_QDRANT_URL and TEST_PG_URL are required")
 
-    from litagent.config import MemoryConfig, RAGConfig, load_config
+    from litagent.config import MemoryConfig, load_config
     from litagent.rag import runtime as runtime_module
     from litagent.rag.runtime import CorpusRuntime
 
@@ -86,13 +113,7 @@ async def corpus_runtime(monkeypatch):
     config = load_config().model_copy(
         update={
             "memory": MemoryConfig(qdrant_url=qdrant_url, pg_url=pg_url),
-            "rag": RAGConfig(
-                paper_collection=f"test_papers_{suffix}",
-                benchmark_collection=f"test_benchmark_{suffix}",
-                corpus_version=f"test-{suffix}",
-                content_mode="abstract_and_selected_fulltext",
-                embedding_model="all-MiniLM-L6-v2",
-            ),
+            "rag": _isolated_rag_config(tmp_path, suffix),
         },
         deep=True,
     )
@@ -100,13 +121,42 @@ async def corpus_runtime(monkeypatch):
     try:
         yield runtime
     finally:
+        collection_name = runtime.identity.collection_name
+        _assert_fixture_owned_collection(collection_name)
         try:
-            await runtime.qdrant_client.delete_collection(
-                runtime.identity.collection_name
-            )
+            await runtime.qdrant_client.delete_collection(collection_name)
         finally:
-            await runtime.state.reset_collection(runtime.identity.collection_name)
+            _assert_fixture_owned_collection(collection_name)
+            await runtime.state.reset_collection(collection_name)
             await runtime.close()
+
+
+def test_integration_fixture_uses_unique_storage_namespaces(tmp_path):
+    from litagent.rag.corpus import CollectionIdentity
+
+    first = _isolated_rag_config(tmp_path, "first")
+    second = _isolated_rag_config(tmp_path, "second")
+    first_identity = CollectionIdentity.from_config(first)
+    second_identity = CollectionIdentity.from_config(second)
+
+    assert first_identity.collection_name != second_identity.collection_name
+    assert first.corpus_version != second.corpus_version
+    assert first.raw_root != second.raw_root
+    for configured_path in (
+        first.manifest_path,
+        first.raw_root,
+        first.parsed_root,
+        first.quarantine_root,
+    ):
+        assert str(tmp_path) in configured_path
+
+
+@pytest.mark.parametrize("collection_name", ["papers", "claims", "papers-v1"])
+def test_integration_cleanup_refuses_default_collection_or_corpus_paths(
+    collection_name,
+):
+    with pytest.raises(AssertionError, match="refusing to clean non-test collection"):
+        _assert_fixture_owned_collection(collection_name)
 
 
 @pytest.mark.integration

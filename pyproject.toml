@@ -22,6 +22,7 @@ dependencies = [
     "langchain-text-splitters>=0.3",
     "openai>=1.0",
     "mcp>=1.27,<2",
+    "jsonschema>=4.23,<5",
     "pymupdf>=1.24,<2",
 ]
 
@@ -71,7 +72,9 @@ profile = "black"
 line_length = 88
 
 [tool.pytest.ini_options]
-addopts = "-m \"not integration\""
+addopts = "-m \"not integration and not live\""
+norecursedirs = ["artifacts", ".git", ".venv", "build", "dist"]
 markers = [
-    "integration: requires explicitly configured isolated Redis/Qdrant/PostgreSQL services",
+    "integration: requires explicitly configured isolated Redis/Qdrant/PostgreSQL/Docker services",
+    "live: requires network access, remote APIs, a real LLM, or runtime model downloads",
 ]

@@ -1,11 +1,12 @@
 """Tests for survey API models, endpoints, and delivery state."""
 
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi import Response
 from fastapi.testclient import TestClient
 
-from litagent.api import app, SurveyRequest, SurveyStatus, SurveyReport
+from litagent.api import SurveyReport, SurveyRequest, SurveyStatus, app
 from litagent.observability.recorder import ArchiveRepository
 
 client = TestClient(app)
@@ -17,20 +18,19 @@ class TestSurveyRequest:
     def test_valid_minimal(self):
         req = SurveyRequest(query="review attention in LLMs")
         assert req.query == "review attention in LLMs"
-        assert req.config_path is None
+        assert "config_path" not in SurveyRequest.model_fields
 
-    def test_valid_with_config(self):
-        req = SurveyRequest(query="test", config_path="config/custom.yaml")
-        assert req.config_path == "config/custom.yaml"
+    def test_config_path_is_rejected(self):
+        with pytest.raises(Exception):
+            SurveyRequest(query="test", config_path="config/custom.yaml")
 
     def test_query_empty_rejected(self):
         with pytest.raises(Exception):
             SurveyRequest(query="")
 
-    def test_query_whitespace_only(self):
-        """Whitespace-only queries retain the current model semantics."""
-        req = SurveyRequest(query="   ")
-        assert req.query == "   "
+    def test_query_whitespace_only_rejected(self):
+        with pytest.raises(Exception):
+            SurveyRequest(query="   ")
 
     def test_query_too_long(self):
         with pytest.raises(Exception):
@@ -107,10 +107,11 @@ class TestFlowDemo:
 
     def test_starts_fixed_live_demo(self, tmp_path, monkeypatch):
         monkeypatch.setattr(app.state, "flow_repository", ArchiveRepository(tmp_path))
-        with patch("litagent.api._run_flow_demo", new_callable=AsyncMock):
+        with patch("litagent.api._run_survey", new_callable=AsyncMock):
             response = client.post("/flow-demo/runs")
         assert response.status_code == 201
         assert response.json()["query"] == "few-shot learning in computer vision"
+        assert response.json()["status"] == "queued"
 
     def test_reads_persisted_archive_and_downloads_it(self, tmp_path, monkeypatch):
         repository = ArchiveRepository(tmp_path)
@@ -135,18 +136,25 @@ class TestFlowDemo:
 class TestCreateSurvey:
     """Tests survey creation."""
 
-    def test_create_returns_201(self):
+    def test_create_returns_202(self):
         with patch("litagent.api._run_survey", new_callable=AsyncMock):
             resp = client.post("/survey", json={"query": "test query"})
-            assert resp.status_code == 201
+            assert resp.status_code == 202
 
     def test_create_returns_task(self):
         with patch("litagent.api._run_survey", new_callable=AsyncMock):
             resp = client.post("/survey", json={"query": "test query"})
             body = resp.json()
             assert "task_id" in body
-            assert body["status"] == "running"
-            assert body["progress"] == "planner"
+            assert body["status"] == "queued"
+            assert body["progress"] == "queued"
+
+    def test_client_config_path_is_rejected(self):
+        resp = client.post(
+            "/survey",
+            json={"query": "test query", "config_path": "config/custom.yaml"},
+        )
+        assert resp.status_code == 422
 
     def test_missing_query_rejected(self):
         resp = client.post("/survey", json={})
@@ -155,6 +163,51 @@ class TestCreateSurvey:
     def test_empty_query_rejected(self):
         resp = client.post("/survey", json={"query": ""})
         assert resp.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_queued_survey_cancellation_converges_report_and_artifact(
+        self, tmp_path, monkeypatch
+    ):
+        import asyncio
+
+        from litagent.api import _new_entry, cancel_survey
+        from litagent.config import load_config
+
+        config = load_config()
+        config = config.model_copy(
+            update={
+                "observability": config.observability.model_copy(
+                    update={"enabled": False}
+                )
+            },
+            deep=True,
+        )
+        monkeypatch.setattr(app.state, "config", config)
+        monkeypatch.setattr(app.state, "flow_repository", ArchiveRepository(tmp_path))
+        semaphore = asyncio.Semaphore(0)
+        monkeypatch.setattr(app.state, "survey_semaphore", semaphore)
+
+        entry = _new_entry("queued cancellation")
+        await asyncio.sleep(0)
+        assert entry.status == "queued"
+
+        first_http_response = Response()
+        response = await cancel_survey(entry.task_id, first_http_response)
+        assert response.status == "cancelling"
+        assert first_http_response.status_code == 202
+
+        repeated_http_response = Response()
+        repeated = await cancel_survey(entry.task_id, repeated_http_response)
+        assert repeated.status == "cancelling"
+        assert repeated_http_response.status_code == 200
+        semaphore.release()
+        await asyncio.wait_for(entry.task, timeout=1)
+
+        assert entry.status == "cancelled"
+        assert entry.result["partial"] is True
+        assert entry.result["delivery"]["status"] == "partial"
+        assert entry.recorder.snapshot()["status"] == "cancelled"
+        app.state.tasks.pop(entry.task_id, None)
 
 
 class TestGetSurveyStatus:
@@ -311,14 +364,14 @@ class TestTTLCleanup:
             "_created_at": time.time(),
         }
 
-        from litagent.api import _TASK_TTL_SECONDS
+        from litagent.api import _TASK_TTL_SECONDS, _entry_value
 
         now = time.time()
         expired = [
             tid
             for tid, t in app.state.tasks.items()
-            if t["status"] in ("completed", "failed")
-            and (now - t.get("_created_at", 0)) > _TASK_TTL_SECONDS
+            if _entry_value(t, "status") in ("completed", "failed", "cancelled")
+            and (now - _entry_value(t, "created_at", 0)) > _TASK_TTL_SECONDS
         ]
         for tid in expired:
             del app.state.tasks[tid]

@@ -249,6 +249,9 @@ class RagasFaithfulnessEvaluator(Evaluator):
 
     async def evaluate(self, survey: str, context: dict[str, Any]) -> EvalResult:
         """Score a survey against report-referenced or selected evidence."""
+        if not survey.strip():
+            return EvalResult.skip(self.metric_name, "survey is empty")
+
         resolved = self._resolve_contexts(context)
         if not resolved.texts:
             return EvalResult.skip(

@@ -2,11 +2,11 @@
 
 import pytest
 
-from litagent.errors.circuit_breaker import CircuitBreaker, CircuitState
 from litagent.agents.extraction_strategy import ResilientExtractionStrategy
-from litagent.tools.registry import ToolRegistry
-from litagent.tools.base import ToolDefinition, ToolCategory
+from litagent.errors.circuit_breaker import CircuitBreaker, CircuitState
+from litagent.tools.base import ToolCategory, ToolDefinition
 from litagent.tools.executor import ToolExecutor
+from litagent.tools.registry import ToolRegistry
 
 
 class TestCircuitBreaker:
@@ -131,7 +131,12 @@ class TestExecutorCircuitBreaker:
             ),
             _boom,
         )
-        ex = ToolExecutor(reg, cb_fail_threshold=2, cb_cooldown_seconds=60)
+        ex = ToolExecutor(
+            reg,
+            cb_fail_threshold=2,
+            cb_cooldown_seconds=60,
+            allowed_names={"boom"},
+        )
 
         await ex.execute("boom", {})
         await ex.execute("boom", {})

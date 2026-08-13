@@ -57,7 +57,7 @@ _registry: ToolRegistry | None = None
 
 
 def get_registry() -> ToolRegistry:
-    """Return the process-wide tool registry."""
+    """Return the compatibility-only process-wide tool registry."""
     global _registry
     if _registry is None:
         _registry = ToolRegistry()
@@ -65,6 +65,6 @@ def get_registry() -> ToolRegistry:
 
 
 def reset_registry() -> None:
-    """Replace the process-wide registry with an empty instance."""
+    """Reset the compatibility registry used by legacy callers and tests."""
     global _registry
     _registry = ToolRegistry()

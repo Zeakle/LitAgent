@@ -34,7 +34,7 @@ class ToolDefinition(BaseModel):
 
     name: str
     description: str
-    parameters: dict = Field(default_factory=dict)
+    parameters: dict[str, Any] = Field(default_factory=dict)
     category: ToolCategory = ToolCategory.READ
     timeout_ms: int = 30000
     max_retries: int = 2

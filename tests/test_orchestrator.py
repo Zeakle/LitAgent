@@ -5,9 +5,9 @@ from typing import Any
 
 import pytest
 
-from litagent.orchestrator.task_graph import TaskGraph, SubTask, TaskStatus
-from litagent.orchestrator.scheduler import Scheduler, Worker
 from litagent.agents.planner import SurveyPlanner
+from litagent.orchestrator.scheduler import CancellationToken, Scheduler, Worker
+from litagent.orchestrator.task_graph import SubTask, TaskGraph, TaskStatus
 
 
 class MockWorker(Worker):
@@ -263,6 +263,43 @@ class TestScheduler:
             }
         ]
 
+    @pytest.mark.asyncio
+    async def test_cancel_interrupts_running_worker_and_skips_downstream(self):
+        started = asyncio.Event()
+        worker_cancelled = asyncio.Event()
+
+        class BlockingWorker(MockWorker):
+            async def execute(self, task: SubTask) -> Any:
+                started.set()
+                try:
+                    await asyncio.Event().wait()
+                finally:
+                    worker_cancelled.set()
+
+        graph = TaskGraph()
+        graph.add_task(SubTask("root", "root", "blocking", max_retries=2))
+        graph.add_task(
+            SubTask("downstream", "downstream", "search"), depends_on=["root"]
+        )
+        events = []
+        token = CancellationToken()
+        scheduler = Scheduler(
+            workers=[BlockingWorker("blocking"), MockWorker("search")],
+            trace_hook=lambda event, data: events.append((event, data)),
+        )
+
+        run_task = asyncio.create_task(scheduler.run(graph, token))
+        await asyncio.wait_for(started.wait(), timeout=1)
+        token.cancel()
+        assert await asyncio.wait_for(run_task, timeout=1) == {}
+
+        assert worker_cancelled.is_set()
+        assert graph.get_task("root").status is TaskStatus.CANCELLED
+        assert graph.get_task("downstream").status is TaskStatus.SKIPPED
+        terminal = [event for event, _ in events if event.startswith("worker.")]
+        assert terminal.count("worker.cancelled") == 1
+        assert "worker.failed" not in terminal
+
 
 class TestSurveyPlanner:
     """Tests survey-plan task construction."""
@@ -358,7 +395,7 @@ class TestSchedulerPriority:
     @pytest.mark.asyncio
     async def test_scheduler_starts_lower_priority_task_first(self):
         from litagent.orchestrator.scheduler import Scheduler, Worker
-        from litagent.orchestrator.task_graph import TaskGraph, SubTask
+        from litagent.orchestrator.task_graph import SubTask, TaskGraph
 
         started: list[str] = []
 

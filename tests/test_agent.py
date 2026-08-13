@@ -2,11 +2,11 @@
 
 import pytest
 
-from litagent.agent.state import AgentState
 from litagent.agent.react import (
-    build_react_graph,
     _route_after_validate,
+    build_react_graph,
 )
+from litagent.agent.state import AgentState
 from litagent.agent.validation import validate_tool_call
 from litagent.config import AgentConfig
 from litagent.llm.client import BaseLLMClient
@@ -125,6 +125,16 @@ class TestValidateToolCallWithGraphTools:
         result = validate_tool_call(
             {"name": "nonexistent_tool", "args": {}}, graph_tool_names={"recall_memory"}
         )
+        assert result["_validation_result"]["valid"] is False
+        assert "not registered" in str(result["_validation_result"]["errors"])
+
+    def test_explicit_empty_graph_tool_set_rejects_every_tool(self):
+        """An empty graph capability is fail-closed, not an absent policy."""
+        result = validate_tool_call(
+            {"name": "search_arxiv", "args": {"q": "x"}},
+            graph_tool_names=set(),
+        )
+
         assert result["_validation_result"]["valid"] is False
         assert "not registered" in str(result["_validation_result"]["errors"])
 

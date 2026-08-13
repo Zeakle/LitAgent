@@ -33,6 +33,7 @@ from litagent.memory.procedural import ProceduralMemory
 from litagent.memory.semantic import SemanticMemory
 from litagent.memory.working import WorkingMemory
 from litagent.observability.recorder import RedactingTraceHook
+from litagent.orchestrator.scheduler import CancellationToken
 from litagent.orchestrator.task_graph import SubTask, TaskGraph
 from litagent.rag.claims_index import ClaimsIndex
 from litagent.rag.interfaces import Reranker, ScoredDoc, VectorStore
@@ -58,6 +59,9 @@ def _minimal_config(**overrides) -> AppConfig:
         adversarial=AdversarialConfig(max_rounds=1, pass_threshold=0.5),
         safety=SafetyConfig(max_cost_tokens=100000),
         resilience=ResilienceConfig(cb_fail_threshold=3, cb_cooldown_seconds=10),
+        observability=overrides.pop(
+            "observability", ObservabilityConfig(enabled=False)
+        ),
         extractor=overrides.pop("extractor", ExtractorConfig(max_concurrent=2)),
         **overrides,
     )
@@ -157,7 +161,10 @@ class TestLitAgentWiring:
         config = _minimal_config()
         agent = LitAgent(config)
 
-        with patch("litagent.runner.OpenAICompatibleClient") as mock_llm_cls:
+        with (
+            patch("litagent.runner.OpenAICompatibleClient") as mock_llm_cls,
+            patch.object(agent, "_connect_infra", new=AsyncMock(return_value=Infra())),
+        ):
             mock_llm = MockLLMClient(["test"])
             mock_llm_cls.return_value = mock_llm
 
@@ -181,7 +188,10 @@ class TestLitAgentWiring:
         config = _minimal_config()
         agent = LitAgent(config)
 
-        with patch("litagent.runner.OpenAICompatibleClient") as mock_llm_cls:
+        with (
+            patch("litagent.runner.OpenAICompatibleClient") as mock_llm_cls,
+            patch.object(agent, "_connect_infra", new=AsyncMock(return_value=Infra())),
+        ):
             mock_llm_cls.return_value = MockLLMClient(["test"])
             await agent._wire()
 
@@ -239,10 +249,14 @@ class TestLitAgentWiring:
     async def test_context_manager(self):
         """The async context manager wires and closes the agent."""
         config = _minimal_config()
-        with patch("litagent.runner.OpenAICompatibleClient") as mock_llm_cls:
+        agent = LitAgent(config)
+        with (
+            patch("litagent.runner.OpenAICompatibleClient") as mock_llm_cls,
+            patch.object(agent, "_connect_infra", new=AsyncMock(return_value=Infra())),
+        ):
             mock_llm_cls.return_value = MockLLMClient(["test"])
-            async with LitAgent(config) as agent:
-                assert agent._wired is True
+            async with agent as active_agent:
+                assert active_agent._wired is True
             assert agent._wired is False
 
     @pytest.mark.asyncio
@@ -251,7 +265,10 @@ class TestLitAgentWiring:
         config = _minimal_config()
         agent = LitAgent(config)
 
-        with patch("litagent.runner.OpenAICompatibleClient") as mock_llm_cls:
+        with (
+            patch("litagent.runner.OpenAICompatibleClient") as mock_llm_cls,
+            patch.object(agent, "_connect_infra", new=AsyncMock(return_value=Infra())),
+        ):
             mock_llm_cls.return_value = MockLLMClient(["test"])
             await agent._wire()
             await agent._wire()
@@ -289,7 +306,10 @@ class TestLitAgentRun:
         agent = LitAgent(config)
         stub_llm = StubLLMClient()
 
-        with patch("litagent.runner.OpenAICompatibleClient") as mock_llm_cls:
+        with (
+            patch("litagent.runner.OpenAICompatibleClient") as mock_llm_cls,
+            patch.object(agent, "_connect_infra", new=AsyncMock(return_value=Infra())),
+        ):
             mock_llm_cls.return_value = stub_llm
 
             await agent._wire()
@@ -323,7 +343,10 @@ class TestLitAgentRun:
         agent = LitAgent(config)
         stub_llm = StubLLMClient()
 
-        with patch("litagent.runner.OpenAICompatibleClient") as mock_llm_cls:
+        with (
+            patch("litagent.runner.OpenAICompatibleClient") as mock_llm_cls,
+            patch.object(agent, "_connect_infra", new=AsyncMock(return_value=Infra())),
+        ):
             mock_llm_cls.return_value = stub_llm
             await agent._wire()
 
@@ -581,6 +604,23 @@ class TestExecutionSummary:
         assert execution["partial"] is False
         assert execution["status"] == "complete"
         assert execution["reason_codes"] == []
+
+    @pytest.mark.asyncio
+    async def test_cancel_before_planning_returns_normalized_partial_report(self):
+        token = CancellationToken()
+        token.cancel()
+
+        result = await _minimal_agent().run("cancelled query", cancellation=token)
+
+        assert result["partial"] is True
+        assert result["quality"]["status"] == "unverified"
+        assert result["delivery"]["status"] == "partial"
+        assert result["metadata"]["execution"]["reason_codes"] == [
+            "run_cancelled",
+            "final_output_missing",
+        ]
+        assert result["metadata"]["claims_promotion"]["reason_code"] == "run_cancelled"
+        assert result["metadata"]["memory"]["reason_code"] == "run_cancelled"
 
 
 class TestDeriveDelivery:

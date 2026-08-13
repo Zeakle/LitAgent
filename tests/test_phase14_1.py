@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import threading
+import time
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 import yaml
 
@@ -84,6 +87,39 @@ def _record(
         chunks=chunks,
         asset_hash="asset-v1",
     )
+
+
+def _arxiv_pdf_asset():
+    """Build a remote-PDF asset for source-boundary tests."""
+    from litagent.rag.models import SourceRef
+
+    return _asset().model_copy(
+        update={
+            "pdf_url": "https://arxiv.org/pdf/2401.00001",
+            "sources": [
+                SourceRef(
+                    kind="arxiv_pdf",
+                    source_id="2401.00001",
+                    uri="https://arxiv.org/pdf/2401.00001",
+                )
+            ],
+        }
+    )
+
+
+class _TrackingAsyncByteStream(httpx.AsyncByteStream):
+    """Expose whether source validation consumed a response body."""
+
+    def __init__(self, payload: bytes) -> None:
+        self.payload = payload
+        self.consumed = False
+
+    async def __aiter__(self):
+        self.consumed = True
+        yield self.payload
+
+    async def aclose(self) -> None:
+        return None
 
 
 class _FakePage:
@@ -586,6 +622,350 @@ async def test_arxiv_pdf_adapter_does_not_reuse_checksum_mismatch(tmp_path):
         ).materialize(asset)
 
     client.stream.assert_called_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("content_type", [None, "text/html; charset=utf-8"])
+async def test_arxiv_pdf_rejects_missing_or_non_pdf_content_type_before_body_write(
+    tmp_path,
+    content_type,
+):
+    from litagent.rag.manifest import ManifestValidationError
+    from litagent.rag.sources import ArxivPDFAdapter
+
+    body = _TrackingAsyncByteStream(b"%PDF-1.7\nshould not be consumed")
+
+    async def respond(request):
+        headers = {} if content_type is None else {"content-type": content_type}
+        return httpx.Response(200, headers=headers, stream=body, request=request)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        adapter = ArxivPDFAdapter(
+            client,
+            raw_root=tmp_path,
+            max_pdf_bytes=1024,
+            download_timeout_seconds=1.0,
+            allowed_content_types=("application/pdf", "application/octet-stream"),
+        )
+        with pytest.raises(ManifestValidationError) as exc_info:
+            await adapter.materialize(_arxiv_pdf_asset())
+
+    assert exc_info.value.code == "invalid_content_type"
+    assert body.consumed is False
+    assert not list(tmp_path.glob("*.tmp"))
+    assert not list(tmp_path.glob("*.pdf"))
+
+
+@pytest.mark.asyncio
+async def test_octet_stream_still_requires_pdf_magic(tmp_path):
+    from litagent.rag.manifest import ManifestValidationError
+    from litagent.rag.sources import ArxivPDFAdapter
+
+    async def respond(request):
+        return httpx.Response(
+            200,
+            headers={"content-type": "application/octet-stream"},
+            content=b"not a pdf",
+            request=request,
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        adapter = ArxivPDFAdapter(
+            client,
+            raw_root=tmp_path,
+            max_pdf_bytes=1024,
+            download_timeout_seconds=1.0,
+            allowed_content_types=("application/pdf", "application/octet-stream"),
+        )
+        with pytest.raises(ManifestValidationError) as exc_info:
+            await adapter.materialize(_arxiv_pdf_asset())
+
+    assert exc_info.value.code == "not_pdf"
+    assert not list(tmp_path.glob("*.tmp"))
+    assert not list(tmp_path.glob("*.pdf"))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "content_length",
+    ["not-a-number", "-1", "10, 11"],
+)
+async def test_invalid_content_length_becomes_stable_validation_reason(
+    tmp_path,
+    content_length,
+):
+    from litagent.rag.manifest import ManifestValidationError
+    from litagent.rag.sources import ArxivPDFAdapter
+
+    body = _TrackingAsyncByteStream(b"%PDF-1.7\nfixture")
+
+    async def respond(request):
+        return httpx.Response(
+            200,
+            headers={
+                "content-type": "application/pdf",
+                "content-length": content_length,
+            },
+            stream=body,
+            request=request,
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        adapter = ArxivPDFAdapter(
+            client,
+            raw_root=tmp_path,
+            max_pdf_bytes=1024,
+            download_timeout_seconds=1.0,
+            allowed_content_types=("application/pdf",),
+        )
+        with pytest.raises(ManifestValidationError) as exc_info:
+            await adapter.materialize(_arxiv_pdf_asset())
+
+    assert exc_info.value.code == "invalid_content_length"
+    assert body.consumed is False
+    assert not list(tmp_path.glob("*.tmp"))
+
+
+@pytest.mark.asyncio
+async def test_download_timeout_removes_temporary_file_and_keeps_cache_unchanged(
+    tmp_path,
+):
+    from litagent.rag.manifest import ManifestValidationError
+    from litagent.rag.sources import ArxivPDFAdapter
+
+    target = tmp_path / "arxiv_2401.00001.pdf"
+    target.write_bytes(b"stale cache")
+    temporary = target.with_suffix(".pdf.tmp")
+    temporary.write_bytes(b"partial download")
+
+    async def timeout(request):
+        raise httpx.ReadTimeout("private upstream detail", request=request)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(timeout)) as client:
+        adapter = ArxivPDFAdapter(
+            client,
+            raw_root=tmp_path,
+            max_pdf_bytes=1024,
+            download_timeout_seconds=0.01,
+            allowed_content_types=("application/pdf",),
+        )
+        with pytest.raises(ManifestValidationError) as exc_info:
+            await adapter.materialize(_arxiv_pdf_asset())
+
+    assert exc_info.value.code == "download_timeout"
+    assert str(exc_info.value) == "arxiv PDF download timed out"
+    assert target.read_bytes() == b"stale cache"
+    assert temporary.exists() is False
+
+
+@pytest.mark.asyncio
+async def test_http_error_is_normalized_without_exposing_upstream_details(tmp_path):
+    from litagent.rag.manifest import ManifestValidationError
+    from litagent.rag.sources import ArxivPDFAdapter
+
+    async def respond(request):
+        return httpx.Response(
+            503,
+            content=b"private upstream response body",
+            request=request,
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        adapter = ArxivPDFAdapter(
+            client,
+            raw_root=tmp_path,
+            max_pdf_bytes=1024,
+            download_timeout_seconds=1.0,
+            allowed_content_types=("application/pdf",),
+        )
+        with pytest.raises(ManifestValidationError) as exc_info:
+            await adapter.materialize(_arxiv_pdf_asset())
+
+    assert exc_info.value.code == "source_download_failed"
+    assert str(exc_info.value) == "arxiv PDF download failed"
+    assert "arxiv.org" not in str(exc_info.value)
+    assert "private upstream" not in str(exc_info.value)
+    assert not list(tmp_path.glob("*.tmp"))
+
+
+@pytest.mark.asyncio
+async def test_parser_runs_off_event_loop_and_times_out_per_paper(tmp_path):
+    from litagent.rag.ingest import CorpusIngestor
+    from litagent.rag.pdf_parser import CorpusParseError
+
+    parser_started = threading.Event()
+    parser_release = threading.Event()
+
+    class BlockingParser:
+        def parse_with_quality(self, _asset):
+            parser_started.set()
+            parser_release.wait(timeout=1.0)
+            return object()
+
+    ingestor = CorpusIngestor(
+        config=SimpleNamespace(
+            parsed_root=str(tmp_path / "parsed"),
+            parser_timeout_seconds=0.05,
+            max_concurrent_parsers=1,
+        ),
+        service=SimpleNamespace(),
+        parser=BlockingParser(),
+        local_pdf_adapter=SimpleNamespace(),
+        pdf_adapter=SimpleNamespace(),
+        quarantine=SimpleNamespace(),
+    )
+
+    parse_task = asyncio.create_task(ingestor._parse_with_timeout(_asset()))
+    while not parser_started.is_set():
+        await asyncio.sleep(0)
+    await asyncio.sleep(0.01)
+    assert parse_task.done() is False
+
+    with pytest.raises(CorpusParseError) as exc_info:
+        await parse_task
+    parser_release.set()
+    assert exc_info.value.code == "parser_timeout"
+
+
+@pytest.mark.asyncio
+async def test_timed_out_parser_holds_concurrency_slot_until_thread_finishes(tmp_path):
+    from litagent.rag.ingest import CorpusIngestor
+    from litagent.rag.pdf_parser import CorpusParseError
+
+    first_release = threading.Event()
+    calls: list[str] = []
+
+    class BlockingParser:
+        def parse_with_quality(self, asset):
+            calls.append(asset.paper_id)
+            if asset.paper_id.endswith("00001"):
+                first_release.wait(timeout=1.0)
+            return asset.paper_id
+
+    ingestor = CorpusIngestor(
+        config=SimpleNamespace(
+            parsed_root=str(tmp_path / "parsed"),
+            parser_timeout_seconds=0.02,
+            max_concurrent_parsers=1,
+        ),
+        service=SimpleNamespace(),
+        parser=BlockingParser(),
+        local_pdf_adapter=SimpleNamespace(),
+        pdf_adapter=SimpleNamespace(),
+        quarantine=SimpleNamespace(),
+    )
+    first = _asset(paper_id="arxiv:2401.00001")
+    second = _asset(paper_id="arxiv:2401.00002")
+
+    with pytest.raises(CorpusParseError) as exc_info:
+        await ingestor._parse_with_timeout(first)
+    assert exc_info.value.code == "parser_timeout"
+
+    second_task = asyncio.create_task(ingestor._parse_with_timeout(second))
+    await asyncio.sleep(0.05)
+    assert calls == ["arxiv:2401.00001"]
+
+    first_release.set()
+    assert await asyncio.wait_for(second_task, timeout=0.5) == second.paper_id
+    assert calls == ["arxiv:2401.00001", "arxiv:2401.00002"]
+
+
+@pytest.mark.asyncio
+async def test_parser_timeout_quarantines_one_paper_and_continues_batch(tmp_path):
+    from litagent.rag.corpus import PaperSyncResult
+    from litagent.rag.ingest import CorpusIngestor
+    from litagent.rag.models import PaperRecord
+    from litagent.rag.pdf_parser import ParsedPaper
+    from litagent.rag.quality import (
+        CleanedDocument,
+        DocumentQualityReport,
+        QualityDecision,
+    )
+    from litagent.rag.state import IngestionStatus
+
+    raw_root = tmp_path / "raw"
+    raw_root.mkdir()
+    manifest_path = tmp_path / "manifest.yaml"
+    papers = []
+    for suffix in ("00001", "00002"):
+        pdf_name = f"{suffix}.pdf"
+        (raw_root / pdf_name).write_bytes(b"%PDF-fixture")
+        papers.append(
+            {
+                "paper_id": f"arxiv:2401.{suffix}",
+                "title": f"Paper {suffix}",
+                "abstract": "Evidence.",
+                "arxiv_id": f"2401.{suffix}",
+                "license": "arxiv",
+                "pdf": {
+                    "kind": "local_pdf",
+                    "path": pdf_name,
+                    "sha256": hashlib.sha256(pdf_name.encode("utf-8")).hexdigest(),
+                },
+            }
+        )
+    manifest_path.write_text(
+        yaml.safe_dump(
+            {"schema_version": 1, "corpus_version": "cv1", "papers": papers}
+        ),
+        encoding="utf-8",
+    )
+
+    quality = DocumentQualityReport(decision=QualityDecision.ACCEPTED)
+
+    class PerPaperParser:
+        def parse_with_quality(self, asset):
+            if asset.paper_id.endswith("00001"):
+                time.sleep(0.25)
+            record = PaperRecord.from_abstract_asset(asset)
+            audit = CleanedDocument(
+                source_blocks=[],
+                blocks=[],
+                excluded_blocks=[],
+                report=quality,
+            )
+            return ParsedPaper(record=record, quality=quality, audit=audit)
+
+    service = SimpleNamespace(
+        sync_record=AsyncMock(
+            side_effect=lambda record, **_: PaperSyncResult(
+                paper_id=record.paper_id,
+                status=IngestionStatus.SUCCEEDED,
+                embedded_count=1,
+            )
+        ),
+        prune_missing=AsyncMock(return_value=[]),
+    )
+    quarantine = SimpleNamespace(record=AsyncMock())
+    identity_adapter = SimpleNamespace(
+        materialize=AsyncMock(side_effect=lambda asset: asset)
+    )
+    ingestor = CorpusIngestor(
+        config=SimpleNamespace(
+            corpus_version="cv1",
+            raw_root=str(raw_root),
+            parsed_root=str(tmp_path / "parsed"),
+            content_mode="abstract_and_selected_fulltext",
+            parser_timeout_seconds=0.1,
+            max_concurrent_parsers=1,
+        ),
+        service=service,
+        parser=PerPaperParser(),
+        local_pdf_adapter=identity_adapter,
+        pdf_adapter=identity_adapter,
+        quarantine=quarantine,
+        audit_repository=SimpleNamespace(record=AsyncMock(return_value={})),
+    )
+
+    summary = await ingestor.ingest_manifest(manifest_path)
+
+    assert summary.failed_count == 1
+    assert summary.succeeded_count == 1
+    assert summary.reason_codes == ["parser_timeout"]
+    quarantine.record.assert_awaited_once()
+    assert quarantine.record.await_args.kwargs["reason_code"] == "parser_timeout"
+    service.sync_record.assert_awaited_once()
+    assert service.sync_record.await_args.args[0].paper_id == "arxiv:2401.00002"
 
 
 def test_scanned_pdf_degrades_without_creating_empty_chunks(tmp_path):

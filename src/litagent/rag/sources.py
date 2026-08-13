@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import os
+import re
+from collections.abc import Collection
 from pathlib import Path
 
 import httpx
@@ -111,11 +113,53 @@ class ArxivPDFAdapter:
         *,
         raw_root: Path,
         max_pdf_bytes: int,
+        download_timeout_seconds: float = 60.0,
+        allowed_content_types: Collection[str] = (
+            "application/pdf",
+            "application/octet-stream",
+        ),
     ) -> None:
         """Initialize the arXiv PDF adapter."""
+        if download_timeout_seconds <= 0:
+            raise ValueError("download_timeout_seconds must be positive")
         self._client = client
         self._raw_root = raw_root.resolve()
         self._max_pdf_bytes = max_pdf_bytes
+        self._timeout = httpx.Timeout(download_timeout_seconds)
+        self._allowed_content_types = frozenset(
+            content_type.split(";", 1)[0].strip().lower()
+            for content_type in allowed_content_types
+            if content_type.strip()
+        )
+        if not self._allowed_content_types:
+            raise ValueError("allowed_content_types must not be empty")
+
+    def _validate_content_type(self, response: httpx.Response) -> None:
+        """Reject non-PDF response media types before consuming body bytes."""
+        raw_value = response.headers.get("content-type")
+        content_type = raw_value.split(";", 1)[0].strip().lower() if raw_value else ""
+        if content_type not in self._allowed_content_types:
+            raise ManifestValidationError(
+                "invalid_content_type",
+                "arxiv PDF response has an invalid content type",
+            )
+
+    def _declared_content_length(self, response: httpx.Response) -> int | None:
+        """Parse a single consistent decimal Content-Length value."""
+        raw_value = response.headers.get("content-length")
+        if raw_value is None:
+            return None
+        values = [value.strip() for value in raw_value.split(",")]
+        if (
+            not values
+            or any(not re.fullmatch(r"[0-9]+", value) for value in values)
+            or len(set(values)) != 1
+        ):
+            raise ManifestValidationError(
+                "invalid_content_length",
+                "arxiv PDF response has an invalid content length",
+            )
+        return int(values[0])
 
     @staticmethod
     def _expected_hash(asset: RawPaperAsset) -> str | None:
@@ -177,12 +221,13 @@ class ArxivPDFAdapter:
                 "GET",
                 url,
                 follow_redirects=True,
-                timeout=60,
+                timeout=self._timeout,
             ) as response:
                 response.raise_for_status()
                 validate_arxiv_pdf_url(str(response.url))
-                declared = int(response.headers.get("content-length") or 0)
-                if declared > self._max_pdf_bytes:
+                self._validate_content_type(response)
+                declared = self._declared_content_length(response)
+                if declared is not None and declared > self._max_pdf_bytes:
                     raise ManifestValidationError(
                         "asset_too_large",
                         "arxiv PDF exceeds max_pdf_bytes",
@@ -217,6 +262,16 @@ class ArxivPDFAdapter:
                     "asset_hash": actual_hash,
                 }
             )
+        except httpx.TimeoutException as exc:
+            raise ManifestValidationError(
+                "download_timeout",
+                "arxiv PDF download timed out",
+            ) from exc
+        except httpx.HTTPError as exc:
+            raise ManifestValidationError(
+                "source_download_failed",
+                "arxiv PDF download failed",
+            ) from exc
         finally:
             if temporary.exists():
                 temporary.unlink()

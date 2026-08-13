@@ -17,6 +17,10 @@ from litagent.logging import get_logger
 logger = get_logger("observability.recorder")
 
 
+class ArtifactContractError(ValueError):
+    """Report an invalid requested terminal artifact state."""
+
+
 class CompositeTraceHook:
     """Fan out events while keeping the local recorder independent of sinks."""
 
@@ -282,46 +286,72 @@ class RunRecorder:
         self,
         report: dict[str, Any] | None = None,
         error: str | None = None,
+        *,
+        terminal_status: str | None = None,
     ) -> dict[str, Any]:
         """Finalize and persist one internally consistent terminal artifact."""
+        if terminal_status not in {None, "completed", "failed", "cancelled"}:
+            raise ArtifactContractError("invalid_terminal_status_contract")
+        requested_status = terminal_status or ("failed" if error else "completed")
+        if requested_status == "failed" and not error:
+            raise ArtifactContractError("invalid_terminal_status_contract")
+        if terminal_status in {"completed", "cancelled"} and error:
+            raise ArtifactContractError("invalid_terminal_status_contract")
+        if requested_status == "cancelled" and (
+            not report
+            or report.get("partial") is not True
+            or (report.get("delivery") or {}).get("status") != "partial"
+        ):
+            raise ArtifactContractError("invalid_terminal_status_contract")
+
+        # Assemble terminal state on a copy so a rejected contract cannot
+        # corrupt the live snapshot observed by SSE readers.
+        artifact = _snapshot(self._artifact)
         terminal_error = error
         report_data = report or {}
         report_fingerprint = report_data.get("config_fingerprint")
-        artifact_fingerprint = self._artifact.get("config_fingerprint")
+        artifact_fingerprint = artifact.get("config_fingerprint")
 
         if artifact_fingerprint is None and report_fingerprint:
             # Non-flow callers may attach the identity through the report first.
-            self._artifact["config_fingerprint"] = report_fingerprint
+            artifact["config_fingerprint"] = report_fingerprint
         elif (
             terminal_error is None
             and artifact_fingerprint
             and report_fingerprint
             and artifact_fingerprint != report_fingerprint
         ):
+            if terminal_status is not None:
+                raise ArtifactContractError("config_fingerprint_mismatch")
             terminal_error = "config_fingerprint_mismatch"
 
-        self._artifact["status"] = "failed" if terminal_error else "completed"
-        self._artifact["completed_at"] = _now()
-        self._artifact["elapsed_ms"] = int(
+        artifact["status"] = "failed" if terminal_error else requested_status
+        artifact["completed_at"] = _now()
+        artifact["elapsed_ms"] = int(
             (time.perf_counter() - self._started_monotonic) * 1000
         )
-        self._artifact["report"] = _snapshot(report) if report is not None else None
-        self._artifact["error"] = terminal_error
-        self._artifact["quality"] = _snapshot(report_data.get("quality"))
-        self._artifact["delivery"] = _snapshot(report_data.get("delivery"))
+        artifact["report"] = _snapshot(report) if report is not None else None
+        artifact["error"] = terminal_error
+        artifact["quality"] = _snapshot(report_data.get("quality"))
+        artifact["delivery"] = _snapshot(report_data.get("delivery"))
 
         statuses: dict[str, int] = {}
         unfinished_graph_tasks: list[str] = []
-        for task in self._artifact["graph"]["tasks"].values():
+        for task in artifact["graph"]["tasks"].values():
             status = task.get("status", "unknown")
             statuses[status] = statuses.get(status, 0) + 1
             if status in {"pending", "running"}:
                 unfinished_graph_tasks.append(task.get("task_id", ""))
-        self._artifact["task_statuses"] = statuses
+        artifact["task_statuses"] = statuses
 
-        if self._artifact["error"] is None and unfinished_graph_tasks:
-            self._artifact["status"] = "failed"
-            self._artifact["error"] = "incomplete_graph_state"
+        if artifact["error"] is None and unfinished_graph_tasks:
+            if terminal_status is None:
+                artifact["status"] = "failed"
+                artifact["error"] = "incomplete_graph_state"
+            else:
+                raise ArtifactContractError("incomplete_graph_state")
+
+        self._artifact = artifact
 
         # Every persisted terminal artifact must close lifecycle nodes even when
         # the run itself failed or its graph snapshot was incomplete.

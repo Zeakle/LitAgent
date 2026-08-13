@@ -2,6 +2,7 @@
 
 import math
 import os
+import re
 from enum import Enum
 from pathlib import Path
 from typing import Literal
@@ -9,6 +10,8 @@ from typing import Literal
 import yaml
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationError, model_validator
+
+from litagent.tools.base import ToolCategory
 
 load_dotenv()
 
@@ -118,6 +121,13 @@ class PlannerConfig(BaseModel):
     procedural_min_samples: int = Field(default=3, ge=1)
 
 
+class MCPToolCapability(BaseModel):
+    """Declare the locally trusted category for one remote MCP tool."""
+
+    category: ToolCategory
+    enabled: bool = True
+
+
 class MCPServerConfig(BaseModel):
     """Configure one MCP server connection and its sandbox policy."""
 
@@ -130,6 +140,26 @@ class MCPServerConfig(BaseModel):
     enabled: bool = True
     sandboxed: bool = False
     sandbox_network: str = "none"
+    allowed_tools: dict[str, MCPToolCapability] = Field(default_factory=dict)
+
+
+class ToolPolicyConfig(BaseModel):
+    """Define the immutable tool capabilities available to one run."""
+
+    allowed_names: list[str] = Field(
+        default_factory=lambda: [
+            "search_arxiv",
+            "search_semantic_scholar",
+            "search_huggingface",
+            "extract_claims",
+            "extract_metrics",
+            "extract_methods",
+            "extract_datasets",
+        ]
+    )
+    allowed_categories: set[ToolCategory] = Field(
+        default_factory=lambda: {ToolCategory.READ}
+    )
 
 
 class SafetyConfig(BaseModel):
@@ -137,6 +167,14 @@ class SafetyConfig(BaseModel):
 
     max_cost_tokens: int = Field(default=500_000, gt=0)
     cost_warn_ratio: float = Field(default=0.8, gt=0, le=1.0)
+    tool_policy: ToolPolicyConfig = Field(default_factory=ToolPolicyConfig)
+
+
+class APIConfig(BaseModel):
+    """Configure API-owned survey concurrency and shutdown cancellation."""
+
+    max_concurrent_surveys: int = Field(default=2, ge=1, le=32)
+    cancellation_grace_seconds: float = Field(default=5.0, gt=0, le=60)
 
 
 class ResilienceConfig(BaseModel):
@@ -265,6 +303,13 @@ class RAGConfig(BaseModel):
     raw_root: str = "artifacts/corpus/raw"
     quarantine_root: str = "artifacts/corpus/quarantine"
     max_pdf_bytes: int = Field(default=50 * 1024 * 1024, ge=1024)
+    download_timeout_seconds: float = Field(default=60.0, gt=0, le=600)
+    parser_timeout_seconds: float = Field(default=30.0, gt=0, le=300)
+    max_concurrent_parsers: int = Field(default=2, ge=1, le=16)
+    allowed_pdf_content_types: tuple[str, ...] = (
+        "application/pdf",
+        "application/octet-stream",
+    )
 
     @model_validator(mode="after")
     def _validate_retrieval_policy(self):
@@ -311,6 +356,7 @@ class AppConfig(BaseModel):
     adversarial: AdversarialConfig = AdversarialConfig()
     mcp_servers: dict[str, MCPServerConfig] = {}
     safety: SafetyConfig = SafetyConfig()
+    api: APIConfig = APIConfig()
     resilience: ResilienceConfig = ResilienceConfig()
     extractor: ExtractorConfig = ExtractorConfig()
     relevance: RelevanceConfig = RelevanceConfig()
@@ -324,6 +370,13 @@ class AppConfig(BaseModel):
         """Validate limits shared across configuration components."""
         if self.relevance.max_papers > self.extractor.max_papers:
             raise ValueError("relevance.max_papers must be <= extractor.max_papers")
+        invalid_names = [
+            name
+            for name in self.mcp_servers
+            if re.fullmatch(r"[A-Za-z0-9_-]+", name) is None
+        ]
+        if invalid_names:
+            raise ValueError("mcp server names must match [A-Za-z0-9_-]+")
         return self
 
 

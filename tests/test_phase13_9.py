@@ -572,7 +572,9 @@ class TestToolAndSearchDegradationContract:
             ),
             lambda: asyncio.sleep(0.1),
         )
-        result = await ToolExecutor(registry).execute("slow", {})
+        result = await ToolExecutor(registry, allowed_names={"slow"}).execute(
+            "slow", {}
+        )
 
         assert result.error_code == "tool_timeout"
         assert result.error_type == "TimeoutError"
@@ -592,7 +594,9 @@ class TestToolAndSearchDegradationContract:
             ToolDefinition(name="remote", description="remote", max_retries=0),
             rate_limited,
         )
-        result = await ToolExecutor(registry).execute("remote", {})
+        result = await ToolExecutor(registry, allowed_names={"remote"}).execute(
+            "remote", {}
+        )
 
         assert result.error_code == "http_rate_limited"
         assert result.error_type == "HTTPStatusError"

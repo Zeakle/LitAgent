@@ -2,8 +2,8 @@
 
 import re
 
-from litagent.tools.base import ToolDefinition, ToolCategory
-from litagent.tools.registry import get_registry
+from litagent.tools.base import ToolCategory, ToolDefinition
+from litagent.tools.registry import ToolRegistry, get_registry
 
 
 async def extract_claims(abstract: str = "") -> list[str]:
@@ -58,13 +58,19 @@ async def extract_datasets(text: str = "") -> list[str]:
     return [d for d in known if d.lower() in text]
 
 
-def register_extract_tools():
-    """Register extraction tools in the shared registry."""
-    r = get_registry()
+def register_extract_tools(registry: ToolRegistry | None = None) -> None:
+    """Register extraction tools in an injected or compatibility registry."""
+    r = registry if registry is not None else get_registry()
     r.register(
         ToolDefinition(
             name="extract_claims",
             description="Extract claims from abstract",
+            parameters={
+                "type": "object",
+                "properties": {"abstract": {"type": "string"}},
+                "required": ["abstract"],
+                "additionalProperties": False,
+            },
             category=ToolCategory.READ,
         ),
         extract_claims,
@@ -73,6 +79,12 @@ def register_extract_tools():
         ToolDefinition(
             name="extract_metrics",
             description="Extract numerical metrics",
+            parameters={
+                "type": "object",
+                "properties": {"abstract": {"type": "string"}},
+                "required": ["abstract"],
+                "additionalProperties": False,
+            },
             category=ToolCategory.READ,
         ),
         extract_metrics,
@@ -81,6 +93,12 @@ def register_extract_tools():
         ToolDefinition(
             name="extract_methods",
             description="Extract method names",
+            parameters={
+                "type": "object",
+                "properties": {"text": {"type": "string"}},
+                "required": ["text"],
+                "additionalProperties": False,
+            },
             category=ToolCategory.READ,
         ),
         extract_methods,
@@ -89,6 +107,12 @@ def register_extract_tools():
         ToolDefinition(
             name="extract_datasets",
             description="Extract dataset names",
+            parameters={
+                "type": "object",
+                "properties": {"text": {"type": "string"}},
+                "required": ["text"],
+                "additionalProperties": False,
+            },
             category=ToolCategory.READ,
         ),
         extract_datasets,
