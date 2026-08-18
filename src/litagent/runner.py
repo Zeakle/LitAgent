@@ -120,6 +120,26 @@ class RewriteOutcome:
     reason_code: str
 
 
+@dataclass(frozen=True)
+class RunPolicy:
+    """Control cross-run state reads and writes for one LitAgent instance."""
+
+    memory_reads: bool = True
+    memory_writes: bool = True
+    claims_reads: bool = True
+    claims_writes: bool = True
+
+    @classmethod
+    def isolated_benchmark(cls) -> "RunPolicy":
+        """Return a policy that prevents benchmark runs from sharing state."""
+        return cls(
+            memory_reads=False,
+            memory_writes=False,
+            claims_reads=False,
+            claims_writes=False,
+        )
+
+
 def derive_delivery(
     partial: bool,
     quality: Mapping[str, Any] | None,
@@ -253,12 +273,19 @@ async def _await_with_cancellation(awaitable, cancellation: CancellationToken | 
 class LitAgent:
     """Assemble components, execute surveys, and release shared resources."""
 
-    def __init__(self, config: AppConfig, trace_hook: TraceHook | None = None) -> None:
+    def __init__(
+        self,
+        config: AppConfig,
+        trace_hook: TraceHook | None = None,
+        *,
+        run_policy: RunPolicy | None = None,
+    ) -> None:
         """Initialize the LitAgent runtime and optional integrations."""
         self._config = config
         self._config_summary = build_config_summary(config)
         self._session_id = str(uuid.uuid4())[:8]
         self._trace_hook = trace_hook
+        self._run_policy = run_policy or RunPolicy()
 
         self._cost_budget: CostBudget | None = None
         self._llm: BaseLLMClient | None = None
@@ -408,7 +435,7 @@ class LitAgent:
                 final_quality,
                 degradation_codes,
             )
-            if self._infra.claims_index is not None:
+            if self._run_policy.claims_writes and self._infra.claims_index is not None:
                 promotion = await _await_with_cancellation(
                     ClaimsPromoter(self._infra.claims_index).promote(
                         run_id=self._session_id,
@@ -417,6 +444,10 @@ class LitAgent:
                         extractions=self._collect_extractions(results),
                     ),
                     cancellation,
+                )
+            elif not self._run_policy.claims_writes:
+                promotion = ClaimPromotionSummary(
+                    "skipped", 0, 0, 0, "claims_write_disabled"
                 )
             else:
                 promotion = ClaimPromotionSummary(
@@ -776,7 +807,9 @@ class LitAgent:
 
         self._search = SearchWorker(
             executor=self._executor,
-            memory_manager=self._infra.memory,
+            memory_manager=(
+                self._infra.memory if self._run_policy.memory_writes else None
+            ),
             trace_hook=self._trace_hook,
         )
         workers.append(self._search)
@@ -821,7 +854,7 @@ class LitAgent:
 
         self._synthesis = SynthesisWorker(
             llm=self._llm,
-            memory=self._infra.memory,
+            memory=self._infra.memory if self._run_policy.memory_reads else None,
             budget=self._budget_manager,
             skill_manager=self._skill_manager,
             agent_config=cfg.agent,
@@ -832,7 +865,9 @@ class LitAgent:
 
         self._reviewer = ReviewerWorker(
             llm=self._llm,
-            claims_index=self._infra.claims_index,
+            claims_index=(
+                self._infra.claims_index if self._run_policy.claims_reads else None
+            ),
             budget=self._budget_manager,
             skill_manager=self._skill_manager,
             config=cfg.adversarial,
@@ -866,7 +901,9 @@ class LitAgent:
             llm=self._llm,
             config=cfg.planner,
             trace_hook=self._trace_hook,
-            memory_manager=self._infra.memory,
+            memory_manager=(
+                self._infra.memory if self._run_policy.memory_reads else None
+            ),
             rag_config=cfg.rag,
         )
 
@@ -901,6 +938,9 @@ class LitAgent:
             "reason_code": "",
             "error_type": None,
         }
+        if not self._run_policy.memory_writes:
+            result["reason_code"] = "memory_write_disabled"
+            return result
         memory = self._infra.memory
         if memory is None:
             result["reason_code"] = "memory_unavailable"

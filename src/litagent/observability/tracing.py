@@ -12,7 +12,14 @@ logger = get_logger("observability.tracing")
 class LangFuseTracer:
     """Manage survey, worker, model, tool, and I/O observations in LangFuse."""
 
-    def __init__(self, host: str, public_key: str, secret_key: str):
+    def __init__(
+        self,
+        host: str,
+        public_key: str,
+        secret_key: str,
+        *,
+        trace_seed: str | None = None,
+    ):
         """Initialize the LangFuse tracer."""
         self._client = None
         self._root = None
@@ -20,6 +27,9 @@ class LangFuseTracer:
         self._spans: dict[str, Any] = {}
         self._operations: dict[str, Any] = {}
         self._worker_inputs: dict[str, Any] = {}
+        self._trace_seed = trace_seed
+        self._trace_id: str | None = None
+        self._trace_url: str | None = None
 
         try:
             if not (public_key and secret_key):
@@ -49,12 +59,17 @@ class LangFuseTracer:
     def _handle(self, event: str, data: dict[str, Any]) -> None:
         """Route one trace lifecycle event."""
         if event == "survey.start":
+            self._trace_id = self._client.create_trace_id(
+                seed=self._trace_seed or data.get("session_id") or None
+            )
             self._root = self._client.start_observation(
+                trace_context={"trace_id": self._trace_id},
                 as_type="span",
                 name="survey",
                 input={"query": data.get("query", "")},
             )
             self._root.update_trace(session_id=data.get("session_id", ""))
+            self._trace_url = self._client.get_trace_url(trace_id=self._trace_id)
 
         elif event == "worker.input":
             self._worker_inputs[data.get("task_id", "")] = data.get("input", {})
@@ -73,6 +88,32 @@ class LangFuseTracer:
                     else {"description": data.get("description", "")}
                 ),
             )
+
+        elif event == "worker.retry":
+            span = self._spans.get(data.get("task_id", ""))
+            if span:
+                span.update(
+                    level="WARNING",
+                    metadata={
+                        "retry_attempt": data.get("attempt", 0),
+                        "max_attempts": data.get("max_attempts", 0),
+                        "reason_code": data.get("reason_code", ""),
+                        "backoff_ms": data.get("backoff_ms", 0),
+                    },
+                )
+
+        elif event == "tool.retry":
+            observation = self._operations.get(data.get("operation_id", ""))
+            if observation:
+                observation.update(
+                    level="WARNING",
+                    metadata={
+                        "retry_attempt": data.get("attempt", 0),
+                        "max_attempts": data.get("max_attempts", 0),
+                        "reason_code": data.get("reason_code", ""),
+                        "backoff_ms": data.get("backoff_ms", 0),
+                    },
+                )
 
         elif event in ("worker.complete", "worker.failed", "worker.cancelled"):
             tid = data.get("task_id", "")
@@ -331,3 +372,13 @@ class LangFuseTracer:
                 self._client.flush()
             except Exception as e:
                 logger.debug("Flush error: %s", e)
+
+    @property
+    def trace_id(self) -> str | None:
+        """Return the current or most recently completed LangFuse trace ID."""
+        return self._trace_id
+
+    @property
+    def trace_url(self) -> str | None:
+        """Return the current or most recently completed LangFuse trace URL."""
+        return self._trace_url

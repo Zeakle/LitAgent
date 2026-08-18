@@ -15,9 +15,8 @@ from dataclasses import asdict
 from importlib import metadata
 from pathlib import Path
 
-import httpx
-
 from litagent.benchmark.artifacts import BenchmarkArtifactRepository
+from litagent.benchmark.corpus import ingest_benchmark_manifest
 from litagent.benchmark.metrics import (
     aggregate_retrieval_cases,
     evaluate_retrieval_case,
@@ -29,21 +28,12 @@ from litagent.benchmark.models import (
     RetrievalCaseResult,
 )
 from litagent.config import AppConfig, RetrievalMode
-from litagent.rag.chunking import build_corpus_chunker
 from litagent.rag.corpus import CollectionIdentity
 from litagent.rag.embedder import build_retrieval_embedder
-from litagent.rag.ingest import (
-    CorpusIngestor,
-    ParsedAuditRepository,
-    QuarantineRepository,
-)
 from litagent.rag.manifest import load_manifest, materialize_manifest_assets
-from litagent.rag.pdf_parser import PyMuPDFParser
-from litagent.rag.quality import CorpusTextQualityGate
 from litagent.rag.reranker import CrossEncoderReranker
 from litagent.rag.retriever import HybridRetriever
 from litagent.rag.runtime import CorpusRuntime
-from litagent.rag.sources import ArxivPDFAdapter, LocalPDFAdapter
 from litagent.rag.vector_store import QdrantVectorStore
 
 
@@ -102,31 +92,11 @@ class RAGBenchmarkRunner:
         manifest_path: Path,
     ) -> None:
         """Ingest benchmark assets for the selected profile."""
-        async with httpx.AsyncClient() as client:
-            parser = PyMuPDFParser(
-                quality_gate=CorpusTextQualityGate(**config.rag.quality.model_dump()),
-                chunker=build_corpus_chunker(config.rag),
-            )
-            ingestor = CorpusIngestor(
-                config=config.rag,
-                service=runtime.service,
-                parser=parser,
-                local_pdf_adapter=LocalPDFAdapter(
-                    max_pdf_bytes=config.rag.max_pdf_bytes
-                ),
-                pdf_adapter=ArxivPDFAdapter(
-                    client,
-                    raw_root=Path(config.rag.raw_root),
-                    max_pdf_bytes=config.rag.max_pdf_bytes,
-                    download_timeout_seconds=config.rag.download_timeout_seconds,
-                    allowed_content_types=config.rag.allowed_pdf_content_types,
-                ),
-                quarantine=QuarantineRepository(Path(config.rag.quarantine_root)),
-                audit_repository=ParsedAuditRepository(Path(config.rag.parsed_root)),
-            )
-            summary = await ingestor.ingest_manifest(manifest_path, resume=True)
-            if summary.status != "succeeded":
-                raise RuntimeError("benchmark_ingestion_failed")
+        await ingest_benchmark_manifest(
+            config=config,
+            runtime=runtime,
+            manifest_path=manifest_path,
+        )
 
     @staticmethod
     def _failed_result(

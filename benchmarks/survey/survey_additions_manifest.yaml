@@ -1,0 +1,20 @@
+schema_version: 1
+corpus_version: survey-cv-v1.1
+papers:
+  - paper_id: arxiv:2210.03117
+    arxiv_id: "2210.03117"
+    title: "MaPLe: Multi-modal Prompt Learning"
+    authors:
+      - Muhammad Uzair Khattak
+      - Hanoona Rasheed
+      - Muhammad Maaz
+      - Salman Khan
+      - Fahad Shahbaz Khan
+    year: 2022
+    abstract: >-
+      MaPLe adapts CLIP by learning coupled prompts in both the vision and language branches. It evaluates
+      generalization to novel classes, new target datasets, and unseen domain shifts, making it a direct
+      source for the benchmark's vision-language adaptation and generalization topic.
+    pdf:
+      kind: arxiv_pdf
+      url: https://arxiv.org/pdf/2210.03117

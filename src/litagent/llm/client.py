@@ -50,12 +50,18 @@ class OpenAICompatibleClient(BaseLLMClient):
         temperature: float = 0.1,
         cost_budget: CostBudget | None = None,
         trace_hook=None,
+        *,
+        api_key: str | None = None,
     ):
         """Initialize the OpenAI-compatible client."""
-        api_key = os.environ.get("LLM_API_KEY") or os.environ.get("OPENAI_API_KEY", "")
-        if not api_key:
+        resolved_api_key = (
+            api_key
+            or os.environ.get("LLM_API_KEY")
+            or os.environ.get("OPENAI_API_KEY", "")
+        )
+        if not resolved_api_key:
             logger.warning("NO LLM API key found (LLM_API_KEY / OPENAI_API_KEY)")
-        self._client = AsyncOpenAI(base_url=base_url, api_key=api_key)
+        self._client = AsyncOpenAI(base_url=base_url, api_key=resolved_api_key)
         self._model = model
         self._max_tokens = max_tokens
         self._temperature = temperature

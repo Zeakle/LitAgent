@@ -153,7 +153,12 @@ class ToolExecutor:
         )
         try:
             if arguments_valid:
-                result = await self._execute_inner(name, stable_args, session_id)
+                result = await self._execute_inner(
+                    name,
+                    stable_args,
+                    session_id,
+                    operation_id=op_id,
+                )
             else:
                 result = ToolResult(
                     name=name,
@@ -225,7 +230,12 @@ class ToolExecutor:
         return result
 
     async def _execute_inner(
-        self, name: str, args: Any, session_id: str = ""
+        self,
+        name: str,
+        args: Any,
+        session_id: str = "",
+        *,
+        operation_id: str = "",
     ) -> ToolResult:
         """Apply circuit breaking, limits, caching, retries, and fallbacks."""
         if not isinstance(args, Mapping):
@@ -248,6 +258,7 @@ class ToolExecutor:
             stable_args,
             preflight,
             allow_fallback=True,
+            operation_id=operation_id,
         )
 
     def _preflight(
@@ -346,6 +357,7 @@ class ToolExecutor:
         registered: RegisteredTool,
         *,
         allow_fallback: bool,
+        operation_id: str,
     ) -> ToolResult:
         """Apply runtime policies after a tool has passed preflight."""
         t0 = time.monotonic()
@@ -386,7 +398,12 @@ class ToolExecutor:
                 )
 
         result = await self._execute_with_retry(
-            name, args, registered.func, td.timeout_ms, td.max_retries
+            name,
+            args,
+            registered.func,
+            td.timeout_ms,
+            td.max_retries,
+            operation_id=operation_id,
         )
 
         # Record the primary attempt before fallback changes the outward result.
@@ -397,7 +414,13 @@ class ToolExecutor:
 
         original_failure = result
         if result.error and allow_fallback and td.fallback:
-            result = await self._apply_fallback(name, args, td.fallback, result.error)
+            result = await self._apply_fallback(
+                name,
+                args,
+                td.fallback,
+                result.error,
+                operation_id=operation_id,
+            )
             result.from_fallback = True
 
             # Preserve the primary failure classification after fallback recovery.
@@ -415,7 +438,14 @@ class ToolExecutor:
         return result
 
     async def _execute_with_retry(
-        self, name: str, args: dict, func: Callable, timeout_ms: int, max_retries: int
+        self,
+        name: str,
+        args: dict,
+        func: Callable,
+        timeout_ms: int,
+        max_retries: int,
+        *,
+        operation_id: str,
     ) -> ToolResult:
         """Execute a tool with timeout, retry, and circuit-breaker handling."""
         last_failure: ToolResult | None = None
@@ -433,7 +463,27 @@ class ToolExecutor:
                 last_failure = self._tool_failure(name, args, exc)
 
             if attempt < max_retries:
-                await asyncio.sleep(2**attempt)
+                wait = 2**attempt
+                self._emit(
+                    "tool.retry",
+                    {
+                        "operation_id": operation_id,
+                        "task_id": get_task_id(),
+                        "name": name,
+                        "attempt": attempt + 2,
+                        "max_attempts": max_retries + 1,
+                        "reason_code": (
+                            last_failure.error_code
+                            if last_failure
+                            else "tool_execution_failed"
+                        ),
+                        "error_type": (
+                            last_failure.error_type if last_failure else "ToolError"
+                        ),
+                        "backoff_ms": wait * 1000,
+                    },
+                )
+                await asyncio.sleep(wait)
 
         return last_failure or ToolResult(
             name=name,
@@ -456,6 +506,8 @@ class ToolExecutor:
         args: dict,
         fallback: list[FallbackStep],
         original_error: str = "",
+        *,
+        operation_id: str = "",
     ) -> ToolResult:
         """Run fallback steps in order and return the first applicable result."""
         for step in fallback:
@@ -487,6 +539,7 @@ class ToolExecutor:
                     args,
                     preflight,
                     allow_fallback=False,
+                    operation_id=operation_id,
                 )
                 result.name = name
                 result.from_fallback = True

@@ -35,6 +35,8 @@ def _atomic_write(path: Path, text: str) -> None:
 
 def _markdown(payload: Mapping[str, Any]) -> str:
     """Render benchmark results as Markdown."""
+    if payload.get("benchmark_type") == "survey":
+        return _survey_markdown(payload)
     run_id = str(payload.get("run_id") or "unknown")
     status = str(payload.get("status") or "unknown")
     summary = payload.get("summary") or {}
@@ -81,12 +83,101 @@ def _markdown(payload: Mapping[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _survey_markdown(payload: Mapping[str, Any]) -> str:
+    """Render separated quality, delivery, and cost Survey metrics."""
+    lines = [
+        f"# Survey Benchmark {payload.get('run_id', 'unknown')}",
+        "",
+        f"- Status: `{payload.get('status', 'unknown')}`",
+        f"- Stage: `{payload.get('stage', 'unknown')}`",
+        f"- Dataset: `{payload.get('dataset_fingerprint', 'unknown')}`",
+        f"- Formal eligible: `{payload.get('formal_eligible', False)}`",
+        f"- Recommended profile: `{payload.get('recommended_profile_id') or 'none'}`",
+    ]
+    fields = (
+        ("coverage_evidence", "Evidence coverage"),
+        ("citation_recall", "Citation recall"),
+        ("citation_precision", "Citation precision"),
+        ("topic_coverage", "Topic coverage"),
+        ("faithfulness", "Faithfulness"),
+        ("unsupported_claim_rate", "Unsupported claim rate"),
+        ("contradiction_rate", "Contradiction rate"),
+        ("delivery_accuracy", "Delivery accuracy"),
+        ("total_tokens", "Product tokens"),
+        ("latency_p50_ms", "Latency p50 ms"),
+        ("latency_p95_ms", "Latency p95 ms"),
+    )
+    summaries = list(payload.get("profile_summaries") or [])
+    if not summaries and payload.get("summary"):
+        summaries = [dict(payload["summary"], profile_id="summary")]
+    for summary in summaries:
+        lines.extend(
+            [
+                "",
+                f"## Profile `{summary.get('profile_id', 'unknown')}`",
+                "",
+                "| Metric | Value |",
+                "|---|---:|",
+            ]
+        )
+        for field, label in fields:
+            value = summary.get(field)
+            rendered = "unavailable" if value is None else f"{float(value):.6f}"
+            lines.append(f"| {label} | {rendered} |")
+        distribution = summary.get("delivery_distribution") or {}
+        if distribution:
+            rendered_distribution = ", ".join(
+                f"{status}={count}" for status, count in sorted(distribution.items())
+            )
+            lines.append(f"| Delivery distribution | {rendered_distribution} |")
+        lines.append(
+            f"| Judge tokens | {int(summary.get('judge_total_tokens') or 0)} |"
+        )
+    comparisons = payload.get("profile_comparisons") or []
+    if comparisons:
+        lines.extend(["", "## Pairwise Deltas", ""])
+        for comparison in comparisons:
+            pair = (
+                f"{comparison.get('left_profile_id')} - "
+                f"{comparison.get('right_profile_id')}"
+            )
+            if not comparison.get("comparable"):
+                lines.append(f"- `{pair}`: non-comparable external inputs")
+                continue
+            deltas = comparison.get("metric_deltas") or {}
+            rendered = ", ".join(
+                f"{name}={value:.6f}" if value is not None else f"{name}=unavailable"
+                for name, value in sorted(deltas.items())
+            )
+            lines.append(f"- `{pair}`: {rendered}")
+    lines.extend(
+        [
+            "",
+            "## Interpretation Boundaries",
+            "",
+            "- Judge metrics are separate from runtime evaluation and product token cost.",
+            "- Missing Judge or evaluator metrics remain unavailable rather than being scored as zero.",
+            "- Profile deltas require matching external-input fingerprints.",
+        ]
+    )
+    reasons = payload.get("reason_codes") or []
+    if reasons:
+        lines.extend(["", "## Reason Codes", ""])
+        lines.extend(f"- `{reason}`" for reason in reasons)
+    return "\n".join(lines) + "\n"
+
+
 class BenchmarkArtifactRepository:
     """Own atomic local benchmark artifact persistence."""
 
     def __init__(self, root: Path) -> None:
         """Initialize the benchmark artifact repository."""
         self._root = root
+
+    @property
+    def root(self) -> Path:
+        """Return the owned artifact root for related private assets."""
+        return self._root
 
     def write(
         self,

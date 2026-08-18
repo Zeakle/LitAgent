@@ -45,6 +45,24 @@ def _add_benchmark_commands(subparsers) -> None:
         help="Allow model loading and isolated Qdrant/PostgreSQL access",
     )
 
+    survey = benchmark_sub.add_parser("survey")
+    survey.add_argument("--stage", choices=["ablation", "baseline"], required=True)
+    survey.add_argument("--dataset", required=True)
+    survey.add_argument("--profiles", required=True)
+    survey.add_argument("--judge-config", required=True)
+    survey.add_argument("--reuse-ablation", default=None)
+    survey.add_argument(
+        "--output-root",
+        default="artifacts/benchmarks/survey",
+    )
+    survey.add_argument("--run-artifact-root", default="artifacts/runs")
+    survey.add_argument("--config", default=None)
+    survey.add_argument(
+        "--live",
+        action="store_true",
+        help="Allow 30-run ablation or 9-run baseline execution",
+    )
+
 
 def build_parser() -> argparse.ArgumentParser:
     """Build the CLI grammar without executing a command."""
@@ -165,12 +183,18 @@ async def _cmd_benchmark(args: argparse.Namespace) -> None:
         load_ingestion_dataset,
         load_profiles,
         load_retrieval_dataset,
+        load_survey_dataset,
+        load_survey_judge_config,
+        load_survey_profiles,
     )
     from litagent.benchmark.generated_ingestion import (
         GeneratedIngestionCaseExecutor,
     )
     from litagent.benchmark.ingestion_runner import IngestionRobustnessRunner
     from litagent.benchmark.rag_runner import RAGBenchmarkRunner
+    from litagent.benchmark.survey_models import SurveyBenchmarkResult
+    from litagent.benchmark.survey_runner import SurveyBenchmarkRunner
+    from litagent.observability.recorder import ArchiveRepository
 
     config = load_config(args.config)
     artifacts = BenchmarkArtifactRepository(Path(args.output_root))
@@ -191,6 +215,49 @@ async def _cmd_benchmark(args: argparse.Namespace) -> None:
             raise SystemExit(1)
         return
 
+    if args.benchmark_command == "survey":
+        if not args.live:
+            raise SystemExit("survey benchmark requires explicit --live")
+        dataset = load_survey_dataset(Path(args.dataset))
+        profiles = load_survey_profiles(Path(args.profiles))
+        judge_config = load_survey_judge_config(Path(args.judge_config))
+        git_sha, git_dirty = _git_state(subprocess)
+        runner = SurveyBenchmarkRunner(
+            base_config=config,
+            judge_config=judge_config,
+            artifacts=artifacts,
+            run_archive=ArchiveRepository(Path(args.run_artifact_root)),
+        )
+        if args.stage == "ablation":
+            if args.reuse_ablation:
+                raise SystemExit("--reuse-ablation is valid only for baseline")
+            result = await runner.run_ablation(
+                dataset=dataset,
+                profiles=profiles,
+                git_sha=git_sha,
+                git_dirty=git_dirty,
+            )
+        else:
+            if not args.reuse_ablation:
+                raise SystemExit("baseline requires --reuse-ablation")
+            ablation_path = Path(args.reuse_ablation)
+            if not ablation_path.is_file():
+                raise SystemExit(f"ablation artifact not found: {ablation_path}")
+            ablation = SurveyBenchmarkResult.model_validate_json(
+                ablation_path.read_text(encoding="utf-8")
+            )
+            result = await runner.run_baseline(
+                dataset=dataset,
+                profiles=profiles,
+                ablation=ablation,
+                git_sha=git_sha,
+                git_dirty=git_dirty,
+            )
+        print(json.dumps(result.model_dump(mode="json"), ensure_ascii=False, indent=2))
+        if result.status == "failed":
+            raise SystemExit(1)
+        return
+
     if not args.live:
         raise SystemExit("retrieval benchmark requires explicit --live")
     dataset = load_retrieval_dataset(Path(args.dataset))
@@ -202,26 +269,7 @@ async def _cmd_benchmark(args: argparse.Namespace) -> None:
         if unknown:
             raise SystemExit(f"unknown benchmark profiles: {sorted(unknown)}")
         profiles = [profile for profile in profiles if profile.profile_id in selected]
-    try:
-        git_sha = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"],
-            check=True,
-            capture_output=True,
-            text=True,
-        ).stdout.strip()
-    except (OSError, subprocess.CalledProcessError):
-        git_sha = "unknown"
-    try:
-        git_dirty = bool(
-            subprocess.run(
-                ["git", "status", "--porcelain"],
-                check=True,
-                capture_output=True,
-                text=True,
-            ).stdout.strip()
-        )
-    except (OSError, subprocess.CalledProcessError):
-        git_dirty = True
+    git_sha, git_dirty = _git_state(subprocess)
     results = await RAGBenchmarkRunner(
         base_config=config,
         artifacts=artifacts,
@@ -250,6 +298,31 @@ async def _cmd_benchmark(args: argparse.Namespace) -> None:
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     if summary["status"] != "succeeded":
         raise SystemExit(1)
+
+
+def _git_state(subprocess_module) -> tuple[str, bool]:
+    """Read the reproducibility identity without making Git a hard dependency."""
+    try:
+        git_sha = subprocess_module.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+    except (OSError, subprocess_module.CalledProcessError):
+        git_sha = "unknown"
+    try:
+        git_dirty = bool(
+            subprocess_module.run(
+                ["git", "status", "--porcelain"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+        )
+    except (OSError, subprocess_module.CalledProcessError):
+        git_dirty = True
+    return git_sha, git_dirty
 
 
 async def _cmd_corpus(args: argparse.Namespace) -> None:

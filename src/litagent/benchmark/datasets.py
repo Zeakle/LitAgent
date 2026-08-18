@@ -12,6 +12,11 @@ from litagent.benchmark.models import (
     RAGBenchmarkDataset,
     RAGBenchmarkProfile,
 )
+from litagent.benchmark.survey_models import (
+    SurveyBenchmarkDataset,
+    SurveyBenchmarkProfile,
+    SurveyJudgeConfig,
+)
 
 
 class IngestionFixtureDataset(BaseModel):
@@ -32,6 +37,15 @@ class RAGProfileSet(BaseModel):
 
     schema_version: int = 1
     profiles: list[RAGBenchmarkProfile] = Field(min_length=1)
+
+
+class SurveyProfileSet(BaseModel):
+    """Validate the three explicit product-benchmark profiles."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: int = 1
+    profiles: list[SurveyBenchmarkProfile] = Field(min_length=1)
 
 
 def _load_yaml(path: Path) -> dict:
@@ -64,3 +78,25 @@ def load_profiles(path: Path) -> list[RAGBenchmarkProfile]:
     if len(set(fingerprints)) != len(fingerprints):
         raise ValueError("benchmark profiles contain duplicate behavior")
     return profile_set.profiles
+
+
+def load_survey_dataset(path: Path) -> SurveyBenchmarkDataset:
+    """Load and validate the formal Survey benchmark dataset."""
+    return SurveyBenchmarkDataset.model_validate(_load_yaml(path))
+
+
+def load_survey_profiles(path: Path) -> list[SurveyBenchmarkProfile]:
+    """Load unique Survey benchmark profiles."""
+    profile_set = SurveyProfileSet.model_validate(_load_yaml(path))
+    ids = [profile.profile_id for profile in profile_set.profiles]
+    fingerprints = [profile.fingerprint for profile in profile_set.profiles]
+    if len(set(ids)) != len(ids):
+        raise ValueError("survey benchmark profile_id values must be unique")
+    if len(set(fingerprints)) != len(fingerprints):
+        raise ValueError("survey benchmark profiles contain duplicate behavior")
+    return profile_set.profiles
+
+
+def load_survey_judge_config(path: Path) -> SurveyJudgeConfig:
+    """Load a non-secret Judge configuration from YAML."""
+    return SurveyJudgeConfig.model_validate(_load_yaml(path))

@@ -1,0 +1,243 @@
+schema_version: 1
+corpus_version: survey-cv-v1
+papers:
+  - paper_id: arxiv:2010.11929
+    arxiv_id: "2010.11929"
+    title: "An Image is Worth 16x16 Words: Transformers for Image Recognition at Scale"
+    year: 2020
+    abstract: >-
+      A pure transformer applied to sequences of image patches performs well on image classification
+      when pretrained at scale and transferred to downstream recognition benchmarks.
+    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2010.11929}
+  - paper_id: arxiv:1512.03385
+    arxiv_id: "1512.03385"
+    title: Deep Residual Learning for Image Recognition
+    year: 2015
+    abstract: >-
+      Residual learning makes substantially deeper convolutional networks easier to optimize and
+      establishes a strong ImageNet and dense-prediction backbone for comparison with vision transformers.
+    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/1512.03385}
+  - paper_id: arxiv:2201.03545
+    arxiv_id: "2201.03545"
+    title: A ConvNet for the 2020s
+    year: 2022
+    abstract: >-
+      ConvNeXt modernizes a ResNet using design choices associated with vision transformers and shows
+      that a pure convolutional network can compete on classification and dense prediction.
+    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2201.03545}
+  - paper_id: arxiv:2012.12877
+    arxiv_id: "2012.12877"
+    title: Training data-efficient image transformers and distillation through attention
+    year: 2020
+    abstract: >-
+      DeiT trains competitive convolution-free transformers on ImageNet without massive external data
+      and introduces a distillation token for teacher-student training through attention.
+    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2012.12877}
+  - paper_id: arxiv:2101.11986
+    arxiv_id: "2101.11986"
+    title: "Tokens-to-Token ViT: Training Vision Transformers from Scratch on ImageNet"
+    year: 2021
+    abstract: >-
+      T2T-ViT recursively aggregates neighboring tokens to model local structure and uses a deep-narrow
+      transformer backbone to improve sample efficiency when training on ImageNet from scratch.
+    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2101.11986}
+  - paper_id: arxiv:2103.14030
+    arxiv_id: "2103.14030"
+    title: "Swin Transformer: Hierarchical Vision Transformer using Shifted Windows"
+    year: 2021
+    abstract: >-
+      Swin Transformer uses a hierarchical representation and shifted local windows to obtain linear
+      image-size complexity and serve as a general-purpose vision backbone.
+    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2103.14030}
+  - paper_id: arxiv:2102.12122
+    arxiv_id: "2102.12122"
+    title: "Pyramid Vision Transformer: A Versatile Backbone for Dense Prediction without Convolutions"
+    year: 2021
+    abstract: >-
+      PVT builds a progressive shrinking pyramid that produces multi-scale, high-resolution features for
+      object detection and segmentation without a convolutional backbone.
+    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2102.12122}
+  - paper_id: arxiv:2103.15808
+    arxiv_id: "2103.15808"
+    title: "CvT: Introducing Convolutions to Vision Transformers"
+    year: 2021
+    abstract: >-
+      CvT introduces convolutional token embedding, hierarchy, and convolutional projections to combine
+      CNN inductive biases with global transformer context.
+    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2103.15808}
+  - paper_id: arxiv:2104.14294
+    arxiv_id: "2104.14294"
+    title: Emerging Properties in Self-Supervised Vision Transformers
+    year: 2021
+    abstract: >-
+      DINO studies self-supervised vision transformers and finds emergent semantic segmentation and strong
+      nearest-neighbor features using momentum encoders, multi-crop training, and small patches.
+    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2104.14294}
+  - paper_id: arxiv:2111.06377
+    arxiv_id: "2111.06377"
+    title: Masked Autoencoders Are Scalable Vision Learners
+    year: 2021
+    abstract: >-
+      MAE masks most image patches and uses an asymmetric encoder-decoder to reconstruct pixels, enabling
+      efficient scalable self-supervised pretraining of large vision transformers.
+    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2111.06377}
+  - paper_id: arxiv:2104.01136
+    arxiv_id: "2104.01136"
+    title: "LeViT: a Vision Transformer in ConvNet's Clothing for Faster Inference"
+    year: 2021
+    abstract: >-
+      LeViT combines attention architectures with decreasing-resolution convolutional design principles
+      to optimize the high-speed inference accuracy trade-off.
+    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2104.01136}
+  - paper_id: arxiv:2110.02178
+    arxiv_id: "2110.02178"
+    title: "MobileViT: Light-weight, General-purpose, and Mobile-friendly Vision Transformer"
+    year: 2021
+    abstract: >-
+      MobileViT combines local convolutional processing with global transformer representations to build
+      lightweight models for classification, detection, and mobile deployment.
+    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2110.02178}
+  - paper_id: arxiv:2206.01191
+    arxiv_id: "2206.01191"
+    title: "EfficientFormer: Vision Transformers at MobileNet Speed"
+    year: 2022
+    abstract: >-
+      EfficientFormer removes latency-heavy operators and applies latency-driven slimming to produce pure
+      transformers with mobile-device inference speed and competitive ImageNet accuracy.
+    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2206.01191}
+  - paper_id: arxiv:2105.01601
+    arxiv_id: "2105.01601"
+    title: "MLP-Mixer: An all-MLP Architecture for Vision"
+    year: 2021
+    abstract: >-
+      MLP-Mixer performs channel and spatial token mixing using only multilayer perceptrons, providing a
+      neighboring non-attention architecture for the vision-transformer corpus.
+    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2105.01601}
+  - paper_id: arxiv:2105.03404
+    arxiv_id: "2105.03404"
+    title: "ResMLP: Feedforward networks for image classification with data-efficient training"
+    year: 2021
+    abstract: >-
+      ResMLP alternates cross-patch linear layers and per-patch feed-forward networks without convolution
+      or attention, providing a neighboring non-transformer visual architecture.
+    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2105.03404}
+  - paper_id: arxiv:2003.08934
+    arxiv_id: "2003.08934"
+    title: "NeRF: Representing Scenes as Neural Radiance Fields for View Synthesis"
+    year: 2020
+    abstract: >-
+      NeRF represents a scene as a continuous 5D function of position and viewing direction and uses
+      differentiable volume rendering to synthesize novel views from posed images.
+    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2003.08934}
+  - paper_id: arxiv:2201.05989
+    arxiv_id: "2201.05989"
+    title: Instant Neural Graphics Primitives with a Multiresolution Hash Encoding
+    year: 2022
+    abstract: >-
+      A trainable multiresolution hash encoding reduces neural graphics primitive training and rendering
+      cost by enabling small networks and fully fused GPU execution.
+    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2201.05989}
+  - paper_id: arxiv:2112.05131
+    arxiv_id: "2112.05131"
+    title: "Plenoxels: Radiance Fields without Neural Networks"
+    year: 2021
+    abstract: >-
+      Plenoxels uses a sparse voxel grid with spherical harmonics and direct optimization to train radiance
+      fields much faster without neural network components.
+    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2112.05131}
+  - paper_id: arxiv:2111.11215
+    arxiv_id: "2111.11215"
+    title: "Direct Voxel Grid Optimization: Super-fast Convergence for Radiance Fields Reconstruction"
+    year: 2021
+    abstract: >-
+      Direct voxel-grid optimization combines density and feature grids with interpolation and priors to
+      achieve NeRF-like quality with much faster per-scene convergence.
+    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2111.11215}
+  - paper_id: arxiv:2012.02190
+    arxiv_id: "2012.02190"
+    title: "pixelNeRF: Neural Radiance Fields from One or Few Images"
+    year: 2020
+    abstract: >-
+      pixelNeRF conditions a continuous radiance field on image features and learns across scenes, enabling
+      feed-forward novel-view synthesis from one or a few input images.
+    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2012.02190}
+  - paper_id: arxiv:2102.13090
+    arxiv_id: "2102.13090"
+    title: "IBRNet: Learning Multi-View Image-Based Rendering"
+    year: 2021
+    abstract: >-
+      IBRNet draws appearance from nearby source views at render time and learns a generic multi-view
+      interpolation function that generalizes to novel scenes.
+    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2102.13090}
+  - paper_id: arxiv:2103.15595
+    arxiv_id: "2103.15595"
+    title: "MVSNeRF: Fast Generalizable Radiance Field Reconstruction from Multi-View Stereo"
+    year: 2021
+    abstract: >-
+      MVSNeRF combines plane-swept cost volumes with volume rendering to reconstruct generalizable radiance
+      fields from three input views and optionally fine-tune per scene.
+    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2103.15595}
+  - paper_id: arxiv:2103.13415
+    arxiv_id: "2103.13415"
+    title: "Mip-NeRF: A Multiscale Representation for Anti-Aliasing Neural Radiance Fields"
+    year: 2021
+    abstract: >-
+      Mip-NeRF renders conical frustums rather than individual rays so a radiance field can represent
+      continuously varying scale and reduce blur and aliasing.
+    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2103.13415}
+  - paper_id: arxiv:2111.12077
+    arxiv_id: "2111.12077"
+    title: "Mip-NeRF 360: Unbounded Anti-Aliased Neural Radiance Fields"
+    year: 2021
+    abstract: >-
+      Mip-NeRF 360 adds a nonlinear unbounded-scene parameterization, online distillation, and distortion
+      regularization for detailed 360-degree captures.
+    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2111.12077}
+  - paper_id: arxiv:2010.07492
+    arxiv_id: "2010.07492"
+    title: "NeRF++: Analyzing and Improving Neural Radiance Fields"
+    year: 2020
+    abstract: >-
+      NeRF++ analyzes shape-radiance ambiguity and introduces a parameterization for 360-degree captures
+      of objects embedded in large unbounded scenes.
+    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2010.07492}
+  - paper_id: arxiv:2011.13961
+    arxiv_id: "2011.13961"
+    title: "D-NeRF: Neural Radiance Fields for Dynamic Scenes"
+    year: 2020
+    abstract: >-
+      D-NeRF adds time and a learned deformation into canonical space to reconstruct and render rigid and
+      non-rigid dynamic scenes from a moving monocular camera.
+    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2011.13961}
+  - paper_id: arxiv:2011.12948
+    arxiv_id: "2011.12948"
+    title: "Nerfies: Deformable Neural Radiance Fields"
+    year: 2020
+    abstract: >-
+      Nerfies augments NeRF with a continuous deformation field, coarse-to-fine optimization, and elastic
+      regularization for casually captured deformable scenes.
+    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2011.12948}
+  - paper_id: arxiv:2106.13228
+    arxiv_id: "2106.13228"
+    title: "HyperNeRF: A Higher-Dimensional Representation for Topologically Varying Neural Radiance Fields"
+    year: 2021
+    abstract: >-
+      HyperNeRF lifts dynamic radiance fields into a higher-dimensional space so slices can represent
+      topological changes that continuous canonical deformation fields cannot.
+    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2106.13228}
+  - paper_id: arxiv:2308.04079
+    arxiv_id: "2308.04079"
+    title: 3D Gaussian Splatting for Real-Time Radiance Field Rendering
+    year: 2023
+    abstract: >-
+      3D Gaussian Splatting uses optimized anisotropic Gaussian primitives and a visibility-aware rasterizer
+      for real-time novel-view synthesis, serving as a close non-NeRF distractor.
+    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2308.04079}
+  - paper_id: arxiv:1906.07751
+    arxiv_id: "1906.07751"
+    title: "Neural Volumes: Learning Dynamic Renderable Volumes from Images"
+    year: 2019
+    abstract: >-
+      Neural Volumes learns dynamic 3D volume representations and differentiable ray marching from
+      multi-view images, serving as a neighboring pre-NeRF volumetric rendering paper.
+    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/1906.07751}

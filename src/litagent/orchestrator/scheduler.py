@@ -189,7 +189,7 @@ class Scheduler:
 
             try:
                 last_error = None
-                validation_attempts = 0
+                last_error_type = "WorkerError"
                 for attempt in range(task.max_retries + 1):
                     try:
 
@@ -207,10 +207,8 @@ class Scheduler:
                                 adapter = TypeAdapter(task.output_schema)
                                 adapter.validate_python(result)
                             except ValidationError as e:
-                                validation_attempts += 1
-                                if validation_attempts <= 3:
-                                    continue
                                 last_error = f"Schema validation exhausted {e}"
+                                last_error_type = type(e).__name__
                                 raise
 
                         graph.mark_done(task.task_id, result)
@@ -232,11 +230,34 @@ class Scheduler:
                         raise
                     except asyncio.TimeoutError:
                         last_error = f"Timeout after {task.timeout_ms}ms"
+                        last_error_type = "TimeoutError"
                     except Exception as e:
                         last_error = str(e)
+                        last_error_type = type(e).__name__
 
                     if attempt < task.max_retries:
                         wait = 2**attempt
+                        self._emit(
+                            "worker.retry",
+                            {
+                                "task_id": task.task_id,
+                                "agent_type": task.agent_type,
+                                "name": task.agent_type,
+                                "attempt": attempt + 2,
+                                "max_attempts": task.max_retries + 1,
+                                "reason_code": (
+                                    "worker_timeout"
+                                    if last_error_type == "TimeoutError"
+                                    else (
+                                        "worker_output_invalid"
+                                        if last_error_type == "ValidationError"
+                                        else "worker_execution_failed"
+                                    )
+                                ),
+                                "error_type": last_error_type,
+                                "backoff_ms": wait * 1000,
+                            },
+                        )
                         logger.debug(
                             f"Retry {attempt + 1} for '{task.task_id}', waiting {wait}s"
                         )
