@@ -19,6 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from litagent.config import AppConfig, load_config
 from litagent.contracts import SurveyResult, build_config_summary
+from litagent.demo import load_bundled_samples, project_flow_demo_view
 from litagent.logging import get_logger
 from litagent.observability.recorder import (
     ArchiveRepository,
@@ -91,6 +92,7 @@ class SurveyTaskEntry:
     error: str | None = None
     created_at: float = field(default_factory=time.time)
     flow_demo: bool = False
+    tracer: LangFuseTracer | None = None
 
 
 def _entry_value(entry: SurveyTaskEntry | dict[str, Any], name: str, default=None):
@@ -175,6 +177,7 @@ app = FastAPI(
 app.state.tasks: dict[str, SurveyTaskEntry | dict[str, Any]] = {}
 app.state.flow_repository = ArchiveRepository()
 app.state.flow_runs: dict[str, SurveyTaskEntry] = {}
+app.state.flow_samples = load_bundled_samples()
 app.state.flow_archive_index = {
     artifact["run_id"]: artifact for artifact in app.state.flow_repository.list()
 }
@@ -241,11 +244,20 @@ def _build_survey_trace_hook(config: AppConfig, entry: SurveyTaskEntry):
             host=config.observability.langfuse_host,
             public_key=os.getenv("LANGFUSE_PUBLIC_KEY", ""),
             secret_key=os.getenv("LANGFUSE_SECRET_KEY", ""),
+            trace_seed=entry.task_id,
         )
+        entry.tracer = tracer
         hooks.append(
             RedactingTraceHook(tracer, payload_mode=config.observability.payload_mode)
         )
     return CompositeTraceHook(*hooks)
+
+
+def _capture_trace_reference(entry: SurveyTaskEntry) -> None:
+    """Copy the optional LangFuse reference into the persistent artifact."""
+    if entry.tracer is None:
+        return
+    entry.recorder.set_trace_reference(entry.tracer.trace_id, entry.tracer.trace_url)
 
 
 def _new_entry(query: str, *, task_id: str | None = None, flow_demo: bool = False):
@@ -285,6 +297,8 @@ async def _run_survey(entry: SurveyTaskEntry) -> None:
                         entry.query, cancellation=entry.cancellation
                     )
 
+            _capture_trace_reference(entry)
+
             cancelled = entry.cancellation.is_cancelled or (
                 "run_cancelled"
                 in (
@@ -307,6 +321,7 @@ async def _run_survey(entry: SurveyTaskEntry) -> None:
         entry.progress = "failed"
         entry.error = "task_force_cancelled"
         try:
+            _capture_trace_reference(entry)
             entry.recorder.finalize(error=entry.error, terminal_status="failed")
         except Exception:
             logger.exception(
@@ -318,6 +333,7 @@ async def _run_survey(entry: SurveyTaskEntry) -> None:
         entry.progress = "failed"
         entry.error = f"{type(exc).__name__}: {exc}"[:1024]
         try:
+            _capture_trace_reference(entry)
             artifact = entry.recorder.finalize(
                 error=entry.error, terminal_status="failed"
             )
@@ -445,6 +461,8 @@ async def flow_demo_page():
 @app.post("/flow-demo/runs", status_code=201)
 async def create_flow_demo():
     """Start the fixed live query through the shared survey task owner."""
+    if os.getenv("LITAGENT_DEMO_MODE", "live").lower() != "live":
+        raise HTTPException(status_code=403, detail="live_demo_disabled")
     entry = _new_entry(
         FLOW_DEMO_QUERY,
         task_id=f"flow-{uuid.uuid4().hex[:12]}",
@@ -463,7 +481,18 @@ def _flow_artifact(run_id: str) -> dict[str, Any] | None:
         artifact = app.state.flow_repository.get(run_id)
         if artifact is not None:
             app.state.flow_archive_index[run_id] = artifact
+    if artifact is None:
+        artifact = app.state.flow_samples.get(run_id)
     return artifact
+
+
+def _flow_source(run_id: str) -> Literal["sample", "archive", "live"]:
+    """Identify the owner of a flow-demo run without trusting its payload."""
+    if run_id in app.state.flow_runs:
+        return "live"
+    if run_id in app.state.flow_samples:
+        return "sample"
+    return "archive"
 
 
 def _flow_summary(artifact: dict[str, Any]) -> dict[str, Any]:
@@ -479,13 +508,40 @@ def _flow_summary(artifact: dict[str, Any]) -> dict[str, Any]:
         "quality": report.get("quality"),
         "delivery": report.get("delivery"),
         "config_fingerprint": artifact.get("config_fingerprint"),
+        "source": _flow_source(str(artifact["run_id"])),
+        "partial": bool(report.get("partial", False)),
+        "trace_url": (artifact.get("trace") or {}).get("trace_url"),
+    }
+
+
+@app.get("/flow-demo/context")
+async def get_flow_demo_context():
+    """Return public demo capabilities without initializing runtime services."""
+    mode = os.getenv("LITAGENT_DEMO_MODE", "live").lower()
+    live_enabled = mode == "live"
+    return {
+        "schema_version": 1,
+        "mode": "live" if live_enabled else "offline",
+        "live_enabled": live_enabled,
+        "default_run_id": "sample-ready",
+        "benchmarks": {
+            "rag": {
+                "status": "completed",
+                "result": "benchmarks/rag/RESULTS.md",
+            },
+            "survey": {
+                "status": "implementation_complete_live_acceptance_pending",
+                "result": None,
+            },
+        },
     }
 
 
 @app.get("/flow-demo/runs")
 async def list_flow_demo_runs():
     """List live and archived flow-demo runs."""
-    artifacts = dict(app.state.flow_archive_index)
+    artifacts = dict(app.state.flow_samples)
+    artifacts.update(app.state.flow_archive_index)
     artifacts.update(
         {item["run_id"]: item for item in app.state.flow_repository.list()}
     )
@@ -512,6 +568,15 @@ async def get_flow_demo_run(run_id: str):
     return artifact
 
 
+@app.get("/flow-demo/runs/{run_id}/view")
+async def get_flow_demo_view(run_id: str):
+    """Return one normalized, browser-facing flow-demo projection."""
+    artifact = _flow_artifact(run_id)
+    if artifact is None:
+        raise HTTPException(status_code=404, detail=f"Flow run '{run_id}' not found")
+    return project_flow_demo_view(artifact, source=_flow_source(run_id))
+
+
 @app.get("/flow-demo/runs/{run_id}/events")
 async def stream_flow_demo_events(run_id: str):
     """Stream flow-demo trace events over server-sent events."""
@@ -534,6 +599,14 @@ async def stream_flow_demo_events(run_id: str):
 async def download_flow_demo_run(run_id: str):
     """Download a completed flow-demo artifact."""
     artifact = app.state.flow_repository.get(run_id)
+    if artifact is None and run_id in app.state.flow_samples:
+        return Response(
+            content=json.dumps(
+                app.state.flow_samples[run_id], ensure_ascii=False, indent=2
+            ),
+            media_type="application/json",
+            headers={"Content-Disposition": f'attachment; filename="{run_id}.json"'},
+        )
     if artifact is None:
         raise HTTPException(
             status_code=404, detail=f"Completed flow run '{run_id}' not found"

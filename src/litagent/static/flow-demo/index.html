@@ -8,40 +8,92 @@
 </head>
 <body>
   <header class="topbar">
-    <div>
-      <p class="eyebrow">LITAGENT / LIVE EXECUTION REPLAY</p>
-      <h1>few-shot learning in computer vision</h1>
+    <div class="identity">
+      <p class="eyebrow">LITAGENT / REPRODUCIBLE FLOW REPLAY</p>
+      <h1>Survey execution archive</h1>
+      <p id="query" class="query">Loading run...</p>
     </div>
     <div class="controls">
-      <select id="archive-select" aria-label="Archived runs"><option>Loading archive...</option></select>
-      <button id="new-run" title="Start one real survey">Run live survey</button>
-      <a id="download" class="disabled" download>Download JSON</a>
+      <span id="mode" class="mode">OFFLINE</span>
+      <select id="archive-select" aria-label="Run archive"><option>Loading...</option></select>
+      <button id="new-run" type="button">Run live</button>
+      <button id="cancel-run" class="secondary" type="button" disabled>Cancel</button>
+      <a id="trace-link" class="disabled" target="_blank" rel="noreferrer">LangFuse</a>
+      <a id="download" class="disabled" download>JSON</a>
     </div>
   </header>
-  <section class="summary" id="summary">
-    <span>Run <strong id="run-id">No run selected</strong></span>
+
+  <section class="summary" aria-label="Run summary">
+    <span>Run <strong id="run-id">-</strong></span>
+    <span>Source <strong id="run-source">-</strong></span>
     <span>Status <strong id="run-status">-</strong></span>
     <span>Tokens <strong id="total-tokens">0</strong></span>
     <span>Elapsed <strong id="total-elapsed">-</strong></span>
     <span>Quality <strong id="quality">-</strong></span>
     <span>Delivery <strong id="delivery">-</strong></span>
   </section>
-  <main class="workspace">
-    <section class="panel dag-panel">
-      <div class="panel-title"><h2>Actual DAG</h2><span id="dag-count">0 tasks</span></div>
-      <p class="hint">Planner output and scheduler state. Dependency arrows point to prerequisites.</p>
-      <div id="dag" class="dag"></div>
+
+  <div id="delivery-alert" class="delivery-alert" hidden></div>
+
+  <nav class="tabs" role="tablist" aria-label="Replay views">
+    <button role="tab" aria-selected="true" data-tab="flow">Flow / 流程</button>
+    <button role="tab" aria-selected="false" data-tab="report">Report / 报告</button>
+    <button role="tab" aria-selected="false" data-tab="evidence">Evidence / 证据</button>
+    <button role="tab" aria-selected="false" data-tab="graph">Graph / 图谱</button>
+    <button role="tab" aria-selected="false" data-tab="evaluation">Evaluation / 评估</button>
+    <button role="tab" aria-selected="false" data-tab="rag">RAG / Benchmark</button>
+  </nav>
+
+  <main>
+    <section id="tab-flow" class="tab-panel flow-workspace" role="tabpanel">
+      <section class="panel dag-panel">
+        <div class="panel-title"><h2>Actual DAG / 实际任务图</h2><span id="dag-count">0 tasks</span></div>
+        <p class="hint">Tasks are grouped by dependency depth. Each node retains its runtime terminal state.</p>
+        <div id="dag" class="dag"></div>
+      </section>
+      <section class="panel timeline-panel">
+        <div class="panel-title"><h2>Timeline / 调用时间线</h2><span id="event-count">0 events</span></div>
+        <p class="hint">Worker, LLM, Tool, RAG, Memory and Evaluation lifecycle events in recorded order.</p>
+        <div id="timeline" class="timeline"></div>
+      </section>
+      <aside class="panel inspector-panel">
+        <div class="panel-title"><h2>Inspector / 节点检查</h2><span id="node-kind">Select a node</span></div>
+        <pre id="inspector" class="inspector empty">Choose a task or event to inspect its local payload.</pre>
+      </aside>
     </section>
-    <section class="panel timeline-panel">
-      <div class="panel-title"><h2>Execution timeline</h2><span id="event-count">0 events</span></div>
-      <p class="hint">Scheduler completion is followed by memory consolidation, evaluation, quality and delivery.</p>
-      <div id="timeline" class="timeline"></div>
+
+    <section id="tab-report" class="tab-panel content-view" role="tabpanel" hidden>
+      <div class="section-heading"><h2>Final report / 最终报告</h2><span id="review-rounds">0 review rounds</span></div>
+      <pre id="report-text" class="report-text"></pre>
     </section>
-    <aside class="panel inspector-panel">
-      <div class="panel-title"><h2>Node inspector</h2><span id="node-kind">Select a node</span></div>
-      <div id="inspector" class="inspector empty">Choose a DAG task or execution node to inspect its complete local payload.</div>
-    </aside>
+
+    <section id="tab-evidence" class="tab-panel content-view" role="tabpanel" hidden>
+      <div class="section-heading"><h2>Selected evidence / 已选证据</h2><span id="evidence-count">0 items</span></div>
+      <div id="evidence-list" class="evidence-list"></div>
+    </section>
+
+    <section id="tab-graph" class="tab-panel content-view" role="tabpanel" hidden>
+      <div class="section-heading"><h2>Paper graph / 论文图谱</h2><span id="paper-count">0 papers</span></div>
+      <div id="graph-summary" class="metric-strip"></div>
+      <div id="paper-list" class="paper-list"></div>
+    </section>
+
+    <section id="tab-evaluation" class="tab-panel content-view" role="tabpanel" hidden>
+      <div class="section-heading"><h2>Quality and delivery / 质量与交付</h2></div>
+      <div id="evaluation-grid" class="evaluation-grid"></div>
+      <div class="delivery-detail">
+        <h3>Delivery policy result</h3>
+        <pre id="delivery-detail"></pre>
+      </div>
+    </section>
+
+    <section id="tab-rag" class="tab-panel content-view" role="tabpanel" hidden>
+      <div class="section-heading"><h2>Corpus and benchmark / 语料与基准</h2></div>
+      <div id="benchmark-list" class="benchmark-list"></div>
+      <p class="boundary-note">Offline fixtures demonstrate contracts only. They are not benchmark evidence.</p>
+    </section>
   </main>
+
   <template id="node-template">
     <button class="node" type="button"><span class="node-name"></span><small></small></button>
   </template>

@@ -203,6 +203,7 @@ class RunRecorder:
             "task_statuses": {},
             "quality": None,
             "delivery": None,
+            "trace": {"trace_id": None, "trace_url": None},
             "events": [],
             "nodes": {},
             "graph": {"tasks": {}, "dependencies": {}},
@@ -233,6 +234,13 @@ class RunRecorder:
         snapshot = _snapshot(summary)
         self._artifact["config"] = snapshot
         self._artifact["config_fingerprint"] = snapshot.get("fingerprint")
+
+    def set_trace_reference(self, trace_id: str | None, trace_url: str | None) -> None:
+        """Attach the optional remote trace reference to the local artifact."""
+        self._artifact["trace"] = {
+            "trace_id": trace_id,
+            "trace_url": trace_url,
+        }
 
     def capture_graph(self, graph: Any) -> None:
         """Capture the planned graph definition before execution."""

@@ -3,6 +3,12 @@ services:
     image: redis:7-alpine
     ports:
       - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
 
   qdrant:
     image: qdrant/qdrant:latest
@@ -12,6 +18,13 @@ services:
     volumes:
       # Qdrant indexes and episodic memory survive container recreation.
       - qdrant_data:/qdrant/storage
+    healthcheck:
+      # The official image ships Bash but intentionally omits curl and wget.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/6333"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
 
   postgres:
     image: pgvector/pgvector:pg16
@@ -24,6 +37,12 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./src/litagent/memory/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U litagent -d litagent"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
 volumes:
   pgdata:

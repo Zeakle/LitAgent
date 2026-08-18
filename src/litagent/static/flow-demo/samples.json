@@ -1,0 +1,154 @@
+{
+  "schema_version": 1,
+  "samples": [
+    {
+      "version": 2,
+      "run_id": "sample-ready",
+      "query": "few-shot learning in computer vision",
+      "status": "completed",
+      "started_at": "2026-08-01T08:00:00+00:00",
+      "completed_at": "2026-08-01T08:00:04+00:00",
+      "elapsed_ms": 4000,
+      "provenance": "synthetic_offline_fixture",
+      "formal_benchmark_evidence": false,
+      "usage": {"prompt_tokens": 640, "completion_tokens": 280, "total_tokens": 920},
+      "task_statuses": {"done": 4},
+      "graph": {
+        "tasks": {
+          "relevance_gate": {"task_id": "relevance_gate", "agent_type": "relevance", "description": "Select relevant synthetic records", "status": "done", "input": {"query": "few-shot learning in computer vision"}},
+          "extract": {"task_id": "extract", "agent_type": "extractor", "description": "Build bounded evidence", "status": "done", "input": {}},
+          "graph_analysis": {"task_id": "graph_analysis", "agent_type": "graph", "description": "Summarize paper relationships", "status": "done", "input": {}},
+          "adversarial_review": {"task_id": "adversarial_review", "agent_type": "adversarial", "description": "Review the evidence-grounded draft", "status": "done", "input": {}}
+        },
+        "dependencies": {
+          "relevance_gate": [],
+          "extract": ["relevance_gate"],
+          "graph_analysis": ["extract"],
+          "adversarial_review": ["extract"]
+        }
+      },
+      "nodes": {
+        "worker:relevance_gate": {"id": "worker:relevance_gate", "kind": "worker", "task_id": "relevance_gate", "name": "relevance", "status": "completed", "input": {"query": "few-shot learning in computer vision"}, "output": [{"paper_id": "demo:metric", "title": "Metric-based Visual Adaptation"}]},
+        "worker:extract": {"id": "worker:extract", "kind": "worker", "task_id": "extract", "name": "extractor", "status": "completed", "input": {"paper_count": 1}, "output": []},
+        "worker:graph_analysis": {"id": "worker:graph_analysis", "kind": "worker", "task_id": "graph_analysis", "name": "graph", "status": "completed", "input": {"paper_count": 1}, "output": {"papers": [{"paper_id": "demo:metric", "title": "Metric-based Visual Adaptation", "tier": "core"}], "tier_counts": {"core": 1}, "seminal_papers": ["demo:metric"]}},
+        "worker:adversarial_review": {"id": "worker:adversarial_review", "kind": "worker", "task_id": "adversarial_review", "name": "adversarial", "status": "completed", "input": {"evidence_ids": ["E:demo-1"]}, "output": {"accepted": true, "total_rounds": 2}},
+        "evidence.retrieve:sample": {"id": "evidence.retrieve:sample", "kind": "evidence.retrieve", "task_id": "adversarial_review", "name": "evidence.retrieve", "status": "completed", "input": {"section": "Methods"}, "output": {"selected_items": {"E:demo-1": {"evidence_id": "E:demo-1", "paper_id": "demo:metric", "paper_title": "Metric-based Visual Adaptation", "text": "The synthetic study compares a metric-based baseline with adaptation under limited labels.", "content_scope": "abstract", "source_locator": "Abstract", "confidence": 0.9}}}},
+        "subspan:evaluation.initial": {"id": "subspan:evaluation.initial", "kind": "subspan", "task_id": "evaluation.initial", "name": "evaluation.initial", "status": "completed", "input": {"evidence_ids": ["E:demo-1"]}, "output": {"faithfulness": 0.94}}
+      },
+      "events": [
+        {"sequence": 0, "at": "2026-08-01T08:00:00+00:00", "event": "survey.start", "data": {"query": "few-shot learning in computer vision"}},
+        {"sequence": 1, "at": "2026-08-01T08:00:01+00:00", "event": "worker.complete", "data": {"task_id": "relevance_gate"}},
+        {"sequence": 2, "at": "2026-08-01T08:00:02+00:00", "event": "evidence.retrieve.complete", "data": {"operation_id": "sample"}},
+        {"sequence": 3, "at": "2026-08-01T08:00:04+00:00", "event": "survey.complete", "data": {"delivery_status": "ready"}}
+      ],
+      "report": {
+        "survey": "# Reproducible Survey\n\n## Scope\nThis synthetic replay demonstrates the report contract without external services.\n\n## Findings\nThe bounded claim is supported by [E:demo-1].",
+        "metadata": {"query": "few-shot learning in computer vision", "total_rounds": 2, "accepted": true},
+        "review_history": [{"round": 1, "score": 0.82}, {"round": 2, "score": 0.93}],
+        "graph_data": {"papers": [{"paper_id": "demo:metric", "title": "Metric-based Visual Adaptation", "tier": "core"}], "tier_counts": {"core": 1}, "seminal_papers": ["demo:metric"]},
+        "partial": false,
+        "evaluation": {"citation_accuracy": {"score": 1.0, "passed": true}, "internal_consistency": {"score": 0.96, "passed": true}, "faithfulness": {"score": 0.94, "passed": true}},
+        "quality": {"status": "passed", "failed_metrics": [], "unverified_metrics": []},
+        "delivery": {"status": "ready", "publishable": true, "reason_codes": []}
+      },
+      "quality": {"status": "passed", "failed_metrics": [], "unverified_metrics": []},
+      "delivery": {"status": "ready", "publishable": true, "reason_codes": []},
+      "trace": {"trace_id": null, "trace_url": null},
+      "error": null
+    },
+    {
+      "version": 2,
+      "run_id": "sample-blocked",
+      "query": "few-shot learning in computer vision",
+      "status": "completed",
+      "started_at": "2026-08-01T09:00:00+00:00",
+      "completed_at": "2026-08-01T09:00:03+00:00",
+      "elapsed_ms": 3000,
+      "provenance": "synthetic_offline_fixture",
+      "formal_benchmark_evidence": false,
+      "usage": {"prompt_tokens": 510, "completion_tokens": 210, "total_tokens": 720},
+      "task_statuses": {"done": 4},
+      "graph": {
+        "tasks": {
+          "relevance_gate": {"task_id": "relevance_gate", "agent_type": "relevance", "description": "Select relevant synthetic records", "status": "done", "input": {}},
+          "extract": {"task_id": "extract", "agent_type": "extractor", "description": "Build bounded evidence", "status": "done", "input": {}},
+          "graph_analysis": {"task_id": "graph_analysis", "agent_type": "graph", "description": "Summarize paper relationships", "status": "done", "input": {}},
+          "adversarial_review": {"task_id": "adversarial_review", "agent_type": "adversarial", "description": "Review the draft", "status": "done", "input": {}}
+        },
+        "dependencies": {"relevance_gate": [], "extract": ["relevance_gate"], "graph_analysis": ["extract"], "adversarial_review": ["extract"]}
+      },
+      "nodes": {
+        "worker:relevance_gate": {"id": "worker:relevance_gate", "kind": "worker", "task_id": "relevance_gate", "name": "relevance", "status": "completed", "input": {}, "output": []},
+        "worker:extract": {"id": "worker:extract", "kind": "worker", "task_id": "extract", "name": "extractor", "status": "completed", "input": {}, "output": []},
+        "worker:graph_analysis": {"id": "worker:graph_analysis", "kind": "worker", "task_id": "graph_analysis", "name": "graph", "status": "completed", "input": {}, "output": {"papers": [], "tier_counts": {}, "seminal_papers": []}},
+        "worker:adversarial_review": {"id": "worker:adversarial_review", "kind": "worker", "task_id": "adversarial_review", "name": "adversarial", "status": "completed", "input": {}, "output": {"accepted": false}},
+        "subspan:evaluation.initial": {"id": "subspan:evaluation.initial", "kind": "subspan", "task_id": "evaluation.initial", "name": "evaluation.initial", "status": "completed", "input": {}, "output": {"faithfulness": 0.35}}
+      },
+      "events": [
+        {"sequence": 0, "at": "2026-08-01T09:00:00+00:00", "event": "survey.start", "data": {}},
+        {"sequence": 1, "at": "2026-08-01T09:00:03+00:00", "event": "survey.complete", "data": {"delivery_status": "blocked"}}
+      ],
+      "report": {
+        "survey": "# Quality-blocked Survey\n\nThis synthetic draft is retained for inspection but is not publishable.",
+        "metadata": {"query": "few-shot learning in computer vision", "accepted": false},
+        "review_history": [],
+        "graph_data": {"papers": [], "tier_counts": {}, "seminal_papers": []},
+        "partial": false,
+        "evaluation": {"citation_accuracy": {"score": 0.4, "passed": false}, "internal_consistency": {"score": 0.8, "passed": true}, "faithfulness": {"score": 0.35, "passed": false}},
+        "quality": {"status": "failed", "failed_metrics": ["citation_accuracy", "faithfulness"], "unverified_metrics": []},
+        "delivery": {"status": "blocked", "publishable": false, "reason_codes": ["quality_failed"]}
+      },
+      "quality": {"status": "failed", "failed_metrics": ["citation_accuracy", "faithfulness"], "unverified_metrics": []},
+      "delivery": {"status": "blocked", "publishable": false, "reason_codes": ["quality_failed"]},
+      "trace": {"trace_id": null, "trace_url": null},
+      "error": null
+    },
+    {
+      "version": 2,
+      "run_id": "sample-partial",
+      "query": "few-shot learning in computer vision",
+      "status": "completed",
+      "started_at": "2026-08-01T10:00:00+00:00",
+      "completed_at": "2026-08-01T10:00:01+00:00",
+      "elapsed_ms": 1000,
+      "provenance": "synthetic_offline_fixture",
+      "formal_benchmark_evidence": false,
+      "usage": {"prompt_tokens": 120, "completion_tokens": 0, "total_tokens": 120},
+      "task_statuses": {"failed": 1, "skipped": 3},
+      "graph": {
+        "tasks": {
+          "relevance_gate": {"task_id": "relevance_gate", "agent_type": "relevance", "description": "Select relevant synthetic records", "status": "failed", "error": "offline_source_unavailable", "input": {}},
+          "extract": {"task_id": "extract", "agent_type": "extractor", "description": "Build bounded evidence", "status": "skipped", "error": "dependency_failed", "input": {}},
+          "graph_analysis": {"task_id": "graph_analysis", "agent_type": "graph", "description": "Summarize paper relationships", "status": "skipped", "error": "dependency_failed", "input": {}},
+          "adversarial_review": {"task_id": "adversarial_review", "agent_type": "adversarial", "description": "Review the draft", "status": "skipped", "error": "dependency_failed", "input": {}}
+        },
+        "dependencies": {"relevance_gate": [], "extract": ["relevance_gate"], "graph_analysis": ["extract"], "adversarial_review": ["extract"]}
+      },
+      "nodes": {
+        "worker:relevance_gate": {"id": "worker:relevance_gate", "kind": "worker", "task_id": "relevance_gate", "name": "relevance", "status": "failed", "input": {}, "output": null, "error": "offline_source_unavailable"},
+        "worker:extract": {"id": "worker:extract", "kind": "worker", "task_id": "extract", "name": "extractor", "status": "skipped", "input": {}, "output": null, "error": "dependency_failed"},
+        "worker:graph_analysis": {"id": "worker:graph_analysis", "kind": "worker", "task_id": "graph_analysis", "name": "graph", "status": "skipped", "input": {}, "output": null, "error": "dependency_failed"},
+        "worker:adversarial_review": {"id": "worker:adversarial_review", "kind": "worker", "task_id": "adversarial_review", "name": "adversarial", "status": "skipped", "input": {}, "output": null, "error": "dependency_failed"}
+      },
+      "events": [
+        {"sequence": 0, "at": "2026-08-01T10:00:00+00:00", "event": "survey.start", "data": {}},
+        {"sequence": 1, "at": "2026-08-01T10:00:01+00:00", "event": "worker.failed", "data": {"task_id": "relevance_gate", "error": "offline_source_unavailable"}},
+        {"sequence": 2, "at": "2026-08-01T10:00:01+00:00", "event": "survey.complete", "data": {"delivery_status": "partial"}}
+      ],
+      "report": {
+        "survey": "# Partial Survey\n\nNo evidence-backed synthesis was produced because the source stage failed.",
+        "metadata": {"query": "few-shot learning in computer vision", "execution": {"reason_codes": ["task_failure"], "abnormal_task_ids": ["relevance_gate"]}},
+        "review_history": [],
+        "graph_data": {},
+        "partial": true,
+        "evaluation": {},
+        "quality": {"status": "unverified", "failed_metrics": [], "unverified_metrics": ["citation_accuracy", "faithfulness"]},
+        "delivery": {"status": "partial", "publishable": false, "reason_codes": ["partial_execution", "task_failure"]}
+      },
+      "quality": {"status": "unverified", "failed_metrics": [], "unverified_metrics": ["citation_accuracy", "faithfulness"]},
+      "delivery": {"status": "partial", "publishable": false, "reason_codes": ["partial_execution", "task_failure"]},
+      "trace": {"trace_id": null, "trace_url": null},
+      "error": null
+    }
+  ]
+}

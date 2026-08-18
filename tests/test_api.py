@@ -107,6 +107,7 @@ class TestFlowDemo:
 
     def test_starts_fixed_live_demo(self, tmp_path, monkeypatch):
         monkeypatch.setattr(app.state, "flow_repository", ArchiveRepository(tmp_path))
+        monkeypatch.setenv("LITAGENT_DEMO_MODE", "live")
         with patch("litagent.api._run_survey", new_callable=AsyncMock):
             response = client.post("/flow-demo/runs")
         assert response.status_code == 201
@@ -126,7 +127,8 @@ class TestFlowDemo:
         monkeypatch.setattr(app.state, "flow_runs", {})
         monkeypatch.setattr(app.state, "flow_archive_index", {})
 
-        assert client.get("/flow-demo/runs").json()[0]["run_id"] == "flow-1"
+        run_ids = {item["run_id"] for item in client.get("/flow-demo/runs").json()}
+        assert "flow-1" in run_ids
         assert client.get("/flow-demo/runs/flow-1").json()["query"] == "few-shot"
         download = client.get("/flow-demo/runs/flow-1/download")
         assert download.status_code == 200

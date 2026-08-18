@@ -68,6 +68,22 @@ def test_recorder_pairs_lifecycle_events_and_persists_full_payload(tmp_path):
     )
 
 
+def test_recorder_persists_optional_remote_trace_reference(tmp_path):
+    repository = ArchiveRepository(tmp_path)
+    recorder = RunRecorder("run-trace", "query", repository)
+
+    recorder.set_trace_reference(
+        "stable-trace-id", "https://langfuse.example/trace/stable-trace-id"
+    )
+    artifact = recorder.finalize({"survey": "draft", "delivery": {"status": "ready"}})
+
+    assert artifact["trace"] == {
+        "trace_id": "stable-trace-id",
+        "trace_url": "https://langfuse.example/trace/stable-trace-id",
+    }
+    assert repository.get("run-trace")["trace"] == artifact["trace"]
+
+
 def test_recorder_syncs_final_graph_and_execution_summary(tmp_path):
     repository = ArchiveRepository(tmp_path)
     recorder = RunRecorder("run-graph", "query", repository)
