@@ -516,6 +516,95 @@ def test_survey_benchmark_markdown_renderer_is_family_specific(tmp_path):
     assert "Evidence coverage" in markdown
 
 
+def test_benchmark_checkpoint_round_trip_and_corruption_is_ignored(tmp_path):
+    from litagent.benchmark.artifacts import BenchmarkArtifactRepository
+
+    repository = BenchmarkArtifactRepository(tmp_path)
+    payload = {"run_id": "case-run", "status": "completed"}
+
+    path = repository.write_checkpoint("survey-observations", "a" * 64, payload)
+
+    assert repository.read_checkpoint("survey-observations", "a" * 64) == payload
+    path.write_text("not-json", encoding="utf-8")
+    assert repository.read_checkpoint("survey-observations", "a" * 64) is None
+    with pytest.raises(ValueError, match="safe checkpoint"):
+        repository.write_checkpoint("../outside", "a" * 64, payload)
+
+
+@pytest.mark.asyncio
+async def test_survey_matrix_reuses_complete_verified_checkpoint(tmp_path):
+    import hashlib
+
+    from litagent.benchmark.artifacts import BenchmarkArtifactRepository
+    from litagent.benchmark.survey_runner import SurveyBenchmarkRunner
+    from litagent.config import load_config
+    from litagent.observability.recorder import ArchiveRepository
+
+    dataset = load_survey_dataset(Path("benchmarks/survey/dataset.yaml"))
+    case = dataset.case_by_id(dataset.ablation_case_ids[0])
+    profile = load_survey_profiles(Path("benchmarks/survey/profiles.yaml"))[0]
+    artifact_path = tmp_path / "runs" / "verified.json"
+    artifact_path.parent.mkdir(parents=True)
+    artifact_path.write_text("{}", encoding="utf-8")
+    artifact_sha = f"sha256:{hashlib.sha256(artifact_path.read_bytes()).hexdigest()}"
+    calls = 0
+
+    async def execute(case, profile, config, repetition):
+        nonlocal calls
+        calls += 1
+        return SurveyCaseObservation(
+            run_id="verified-run",
+            case_id=case.case_id,
+            domain=case.domain,
+            profile_id=profile.profile_id,
+            repetition=repetition,
+            status="completed",
+            metrics=evaluate_survey_artifact(case=case, artifact=_artifact()),
+            judge=SurveyJudgeMetrics(
+                status="completed",
+                topic_coverage=1,
+                factual_claim_count=1,
+                faithfulness=1,
+                unsupported_claim_rate=0,
+                contradiction_rate=0,
+            ),
+            artifact_id="verified-run",
+            artifact_path=str(artifact_path),
+            artifact_sha256=artifact_sha,
+            survey_trace_id="survey-trace",
+            judge_trace_id="judge-trace",
+            external_input_fingerprint="sha256:external",
+        )
+
+    runner = SurveyBenchmarkRunner(
+        base_config=load_config(),
+        judge_config=SurveyJudgeConfig(
+            base_url="https://judge.example", model="independent-judge"
+        ),
+        artifacts=BenchmarkArtifactRepository(tmp_path / "benchmark"),
+        run_archive=ArchiveRepository(tmp_path / "runs"),
+        case_executor=execute,
+    )
+    kwargs = {
+        "dataset": dataset,
+        "cases": [case],
+        "profiles": [profile],
+        "repetition": 1,
+        "git_sha": "test-sha",
+        "git_dirty": False,
+    }
+
+    first = await runner._run_matrix(**kwargs)
+    second = await runner._run_matrix(**kwargs)
+
+    assert calls == 1
+    assert second == first
+
+    artifact_path.write_text('{"changed": true}', encoding="utf-8")
+    await runner._run_matrix(**kwargs)
+    assert calls == 2
+
+
 @pytest.mark.asyncio
 async def test_survey_runner_executes_39_case_runs_with_case_first_baseline(tmp_path):
     from litagent.benchmark.artifacts import BenchmarkArtifactRepository

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -200,3 +201,42 @@ class BenchmarkArtifactRepository:
         )
         _atomic_write(markdown_path, _markdown(payload))
         return BenchmarkArtifactPaths(json_path, markdown_path)
+
+    def _checkpoint_path(self, namespace: str, key: str) -> Path:
+        """Resolve one checkpoint path without allowing path traversal."""
+        if (
+            re.fullmatch(r"[A-Za-z0-9_-]+", namespace) is None
+            or re.fullmatch(r"[0-9a-f]{64}", key) is None
+        ):
+            raise ValueError("benchmark checkpoint requires a safe checkpoint path")
+        return self._root / "checkpoints" / namespace / f"{key}.json"
+
+    def write_checkpoint(
+        self,
+        namespace: str,
+        key: str,
+        payload: BaseModel | Mapping[str, Any],
+    ) -> Path:
+        """Atomically persist one resumable benchmark checkpoint."""
+        checkpoint = (
+            payload.model_dump(mode="json")
+            if isinstance(payload, BaseModel)
+            else dict(payload)
+        )
+        path = self._checkpoint_path(namespace, key)
+        _atomic_write(
+            path,
+            json.dumps(checkpoint, ensure_ascii=False, indent=2, sort_keys=True),
+        )
+        return path
+
+    def read_checkpoint(self, namespace: str, key: str) -> dict[str, Any] | None:
+        """Load a valid checkpoint, treating corruption as a cache miss."""
+        path = self._checkpoint_path(namespace, key)
+        if not path.is_file():
+            return None
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        return payload if isinstance(payload, dict) else None

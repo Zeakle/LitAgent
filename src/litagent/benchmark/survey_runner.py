@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import os
 import platform
 import sys
@@ -73,6 +74,44 @@ def _hash_files(paths: Sequence[Path]) -> str:
         digest.update(path.read_bytes())
         digest.update(b"\0")
     return f"sha256:{digest.hexdigest()}"
+
+
+def _observation_checkpoint_key(payload: Mapping[str, Any]) -> str:
+    """Bind one resumable observation to every reproducibility input."""
+    encoded = json.dumps(
+        dict(payload), ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _observation_checkpoint_is_reusable(
+    observation: SurveyCaseObservation,
+    *,
+    require_trace: bool,
+) -> bool:
+    """Accept only complete observations backed by an unchanged run artifact."""
+    if (
+        observation.status != "completed"
+        or observation.metrics is None
+        or observation.metrics.partial
+        or observation.judge is None
+        or observation.judge.status != "completed"
+        or not observation.artifact_path
+        or not observation.artifact_sha256
+        or (
+            require_trace
+            and (not observation.survey_trace_id or not observation.judge_trace_id)
+        )
+    ):
+        return False
+    artifact_path = Path(observation.artifact_path)
+    if not artifact_path.is_file():
+        return False
+    try:
+        actual = f"sha256:{hashlib.sha256(artifact_path.read_bytes()).hexdigest()}"
+    except OSError:
+        return False
+    return actual == observation.artifact_sha256
 
 
 def runtime_prompt_source_fingerprint() -> str:
@@ -321,39 +360,74 @@ class SurveyBenchmarkRunner:
         for case in cases:
             for profile in profiles:
                 config = self._config_for(profile, dataset.dataset_version)
-                try:
-                    observation = await self._case_executor(
-                        case, profile, config, repetition
-                    )
-                except asyncio.CancelledError:
-                    raise
-                except Exception as exc:
-                    observation = SurveyCaseObservation(
-                        run_id=(
-                            f"failed-{profile.profile_id}-{case.case_id}-"
-                            f"r{repetition}-{uuid.uuid4().hex[:8]}"
-                        ),
-                        case_id=case.case_id,
-                        domain=case.domain,
-                        profile_id=profile.profile_id,
-                        repetition=repetition,
-                        status="failed",
-                        reason_codes=[f"case_executor_failed:{type(exc).__name__}"],
-                    )
+                config_fingerprint = build_config_summary(config)["fingerprint"]
+                checkpoint_key = _observation_checkpoint_key(
+                    {
+                        "case_id": case.case_id,
+                        "profile_id": profile.profile_id,
+                        "profile_fingerprint": profile.fingerprint,
+                        "repetition": repetition,
+                        "generation_model": self._base_config.llm.model,
+                        "judge_model": self._judge_config.model,
+                        "judge_config_fingerprint": self._judge_config.fingerprint,
+                        "git_sha": git_sha,
+                        "git_dirty": git_dirty,
+                        "config_fingerprint": config_fingerprint,
+                        "prompt_source_fingerprint": prompt_fingerprint,
+                        "dataset_fingerprint": dataset_fingerprint,
+                        "manifest_fingerprint": manifest_fingerprint,
+                    }
+                )
+                checkpoint = self._artifacts.read_checkpoint(
+                    "survey-observations", checkpoint_key
+                )
+                observation = None
+                if checkpoint is not None:
+                    try:
+                        candidate = SurveyCaseObservation.model_validate(checkpoint)
+                    except ValueError:
+                        candidate = None
+                    if candidate is not None and _observation_checkpoint_is_reusable(
+                        candidate,
+                        require_trace=config.observability.enabled,
+                    ):
+                        observation = candidate
+
+                if observation is None:
+                    try:
+                        observation = await self._case_executor(
+                            case, profile, config, repetition
+                        )
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as exc:
+                        observation = SurveyCaseObservation(
+                            run_id=(
+                                f"failed-{profile.profile_id}-{case.case_id}-"
+                                f"r{repetition}-{uuid.uuid4().hex[:8]}"
+                            ),
+                            case_id=case.case_id,
+                            domain=case.domain,
+                            profile_id=profile.profile_id,
+                            repetition=repetition,
+                            status="failed",
+                            reason_codes=[f"case_executor_failed:{type(exc).__name__}"],
+                        )
                 observation = observation.model_copy(
                     update={
                         "generation_model": self._base_config.llm.model,
                         "judge_model": self._judge_config.model,
                         "git_sha": git_sha,
                         "git_dirty": git_dirty,
-                        "config_fingerprint": build_config_summary(config)[
-                            "fingerprint"
-                        ],
+                        "config_fingerprint": config_fingerprint,
                         "profile_fingerprint": profile.fingerprint,
                         "prompt_source_fingerprint": prompt_fingerprint,
                         "dataset_fingerprint": dataset_fingerprint,
                         "manifest_fingerprint": manifest_fingerprint,
                     }
+                )
+                self._artifacts.write_checkpoint(
+                    "survey-observations", checkpoint_key, observation
                 )
                 observations.append(observation)
         return observations

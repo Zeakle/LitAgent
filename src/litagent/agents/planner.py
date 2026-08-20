@@ -69,7 +69,7 @@ class SurveyPlanner:
         trace_hook: Callable[[str, dict], None] | None = None,
         memory_manager: "MemoryManager | None" = None,
         rag_config: RAGConfig | None = None,
-        adversarial_timeout_ms: int = 600000,
+        adversarial_timeout_ms: int = 720000,
     ) -> None:
         """Initialize the survey planner."""
         if adversarial_timeout_ms <= 0:

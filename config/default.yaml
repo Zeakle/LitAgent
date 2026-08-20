@@ -94,7 +94,7 @@ adversarial:
   max_rounds: 3
   pass_threshold: 0.8  # Reviewer评分 >= 0.8是未通过
   review_max_tokens: 12288  # output cap; includes reasoning tokens in thinking mode
-  task_timeout_ms: 600000  # synthesis/review/revision loop upper bound
+  task_timeout_ms: 720000  # synthesis/review/revision loop upper bound
 
 mcp_servers: {} 
 
