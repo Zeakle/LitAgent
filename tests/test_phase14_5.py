@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -839,6 +840,42 @@ def test_langfuse_trace_seed_exposes_stable_trace_identity():
     client.create_trace_id.assert_called_once_with(seed="survey-case-1")
     assert tracer.trace_id == "stable-trace-id"
     assert tracer.trace_url.endswith("stable-trace-id")
+
+
+def test_survey_benchmark_finalization_persists_trace_reference(tmp_path):
+    from litagent.benchmark.artifacts import BenchmarkArtifactRepository
+    from litagent.benchmark.survey_runner import SurveyBenchmarkRunner
+    from litagent.config import load_config
+    from litagent.observability.recorder import ArchiveRepository, RunRecorder
+
+    repository = ArchiveRepository(tmp_path / "runs")
+    recorder = RunRecorder("survey-run", "few-shot", repository)
+    tracer = SimpleNamespace(
+        trace_id="survey-trace-id",
+        trace_url="https://langfuse.example/trace/survey-trace-id",
+    )
+    runner = SurveyBenchmarkRunner(
+        base_config=load_config(),
+        judge_config=SurveyJudgeConfig(
+            base_url="https://judge.example", model="independent-judge"
+        ),
+        artifacts=BenchmarkArtifactRepository(tmp_path / "benchmarks"),
+        run_archive=repository,
+        case_executor=AsyncMock(),
+    )
+
+    artifact = runner._finalize_survey_artifact(
+        recorder,
+        tracer,
+        report={"survey": "draft", "delivery": {"status": "ready"}},
+        terminal_status="completed",
+    )
+
+    assert artifact["trace"] == {
+        "trace_id": "survey-trace-id",
+        "trace_url": "https://langfuse.example/trace/survey-trace-id",
+    }
+    assert repository.get("survey-run")["trace"] == artifact["trace"]
 
 
 @pytest.mark.asyncio

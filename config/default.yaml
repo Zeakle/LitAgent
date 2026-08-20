@@ -32,7 +32,7 @@ extractor:
   per_paper_timeout_ms: 20000
 
 orchestrator:
-  timeout_ms: 600000       # 整体编排超时 10 分钟
+  timeout_ms: 900000       # 整体编排超时 15 分钟
   max_concurrent: 5        # 最大并行 Worker 数
 
 llm:
@@ -94,6 +94,7 @@ adversarial:
   max_rounds: 3
   pass_threshold: 0.8  # Reviewer评分 >= 0.8是未通过
   review_max_tokens: 12288  # output cap; includes reasoning tokens in thinking mode
+  task_timeout_ms: 600000  # synthesis/review/revision loop upper bound
 
 mcp_servers: {} 
 

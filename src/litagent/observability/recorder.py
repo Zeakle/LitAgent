@@ -460,7 +460,13 @@ def _node_identity(event: str, data: dict[str, Any]) -> tuple[str | None, str | 
     if event == "subspan.start":
         return f"subspan:{data.get('task_id', '')}", "start"
     if event == "subspan.end":
-        return f"subspan:{data.get('task_id', '')}", "complete"
+        if data.get("error_type") == "CancelledError":
+            lifecycle = "cancelled"
+        elif data.get("error"):
+            lifecycle = "failed"
+        else:
+            lifecycle = "complete"
+        return f"subspan:{data.get('task_id', '')}", lifecycle
     return None, None
 
 

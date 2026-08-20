@@ -84,6 +84,33 @@ def test_recorder_persists_optional_remote_trace_reference(tmp_path):
     assert repository.get("run-trace")["trace"] == artifact["trace"]
 
 
+def test_recorder_marks_cancelled_subspan_as_cancelled(tmp_path):
+    recorder = RunRecorder(
+        "run-cancelled-subspan", "query", ArchiveRepository(tmp_path)
+    )
+    recorder(
+        "subspan.start",
+        {
+            "task_id": "adversarial_review:reviewer:r2",
+            "parent_task_id": "adversarial_review",
+            "name": "reviewer.r2",
+        },
+    )
+
+    recorder(
+        "subspan.end",
+        {
+            "task_id": "adversarial_review:reviewer:r2",
+            "error": "cancelled",
+            "error_type": "CancelledError",
+        },
+    )
+
+    node = recorder.snapshot()["nodes"]["subspan:adversarial_review:reviewer:r2"]
+    assert node["status"] == "cancelled"
+    assert node["error"] == "cancelled"
+
+
 def test_recorder_syncs_final_graph_and_execution_summary(tmp_path):
     repository = ArchiveRepository(tmp_path)
     recorder = RunRecorder("run-graph", "query", repository)

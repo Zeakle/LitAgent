@@ -69,13 +69,17 @@ class SurveyPlanner:
         trace_hook: Callable[[str, dict], None] | None = None,
         memory_manager: "MemoryManager | None" = None,
         rag_config: RAGConfig | None = None,
+        adversarial_timeout_ms: int = 600000,
     ) -> None:
         """Initialize the survey planner."""
+        if adversarial_timeout_ms <= 0:
+            raise ValueError("adversarial_timeout_ms must be positive")
         self._llm = llm
         self._config = config or PlannerConfig()
         self._rag_config = rag_config or RAGConfig()
         self._trace_hook = trace_hook
         self._memory = memory_manager
+        self._adversarial_timeout_ms = adversarial_timeout_ms
 
     def _emit(self, event: str, data: dict) -> None:
         """Emit a trace event."""
@@ -213,7 +217,7 @@ class SurveyPlanner:
                 description="Adversarial synthesis + review loop",
                 agent_type="adversarial_review",
                 input_data={"query": query},
-                timeout_ms=300000,
+                timeout_ms=self._adversarial_timeout_ms,
                 max_retries=0,
             ),
             depends_on=["extract", "graph_analysis"],

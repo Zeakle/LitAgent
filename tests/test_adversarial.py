@@ -1,5 +1,6 @@
 """Tests for adversarial synthesis, review, and acceptance."""
 
+import asyncio
 import json
 
 import pytest
@@ -35,6 +36,25 @@ def _make_task_with_data() -> SubTask:
             }
         },
     )
+
+
+@pytest.mark.asyncio
+async def test_subspan_marks_cooperative_cancellation():
+    events = []
+    worker = AdversarialReviewWorker(
+        llm=MockLLMClient(),
+        synthesis=SynthesisWorker(MockLLMClient()),
+        reviewer=ReviewerWorker(MockLLMClient()),
+        trace_hook=lambda event, data: events.append((event, data)),
+    )
+
+    with pytest.raises(asyncio.CancelledError):
+        async with worker._sub_span("adversarial_review", "reviewer", 2):
+            raise asyncio.CancelledError
+
+    terminal = next(data for event, data in events if event == "subspan.end")
+    assert terminal["error"] == "cancelled"
+    assert terminal["error_type"] == "CancelledError"
 
 
 class TestMockLLMClient:

@@ -88,7 +88,7 @@ class ContextConfig(BaseModel):
 class OrchestratorConfig(BaseModel):
     """Configure orchestrator settings."""
 
-    timeout_ms: int = Field(default=600000, gt=0)
+    timeout_ms: int = Field(default=900000, gt=0)
     max_concurrent: int = Field(default=5, gt=0)
 
 
@@ -108,6 +108,7 @@ class AdversarialConfig(BaseModel):
     max_rounds: int = Field(default=3, gt=0, le=5)
     pass_threshold: float = Field(default=0.8, gt=0, le=1.0)
     review_max_tokens: int = Field(default=12288, gt=0)
+    task_timeout_ms: int = Field(default=600000, gt=0)
 
 
 class PlannerConfig(BaseModel):

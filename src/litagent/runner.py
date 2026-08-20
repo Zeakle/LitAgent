@@ -905,6 +905,7 @@ class LitAgent:
                 self._infra.memory if self._run_policy.memory_reads else None
             ),
             rag_config=cfg.rag,
+            adversarial_timeout_ms=cfg.adversarial.task_timeout_ms,
         )
 
         eval_mt = cfg.eval.max_tokens

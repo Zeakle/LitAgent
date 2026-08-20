@@ -240,6 +240,23 @@ class SurveyBenchmarkRunner:
             deep=True,
         )
 
+    @staticmethod
+    def _finalize_survey_artifact(
+        recorder: RunRecorder,
+        tracer: LangFuseTracer,
+        *,
+        report: Mapping[str, Any] | None = None,
+        error: str | None = None,
+        terminal_status: str,
+    ) -> dict[str, Any]:
+        """Persist a run only after attaching its remote trace identity."""
+        recorder.set_trace_reference(tracer.trace_id, tracer.trace_url)
+        return recorder.finalize(
+            report,
+            error=error,
+            terminal_status=terminal_status,
+        )
+
     async def _prepare_corpora(
         self,
         dataset: SurveyBenchmarkDataset,
@@ -655,10 +672,20 @@ class SurveyBenchmarkRunner:
                 run_policy=RunPolicy.isolated_benchmark(),
             ) as agent:
                 report = await agent.run(case.query)
-            artifact = recorder.finalize(report, terminal_status="completed")
+            artifact = self._finalize_survey_artifact(
+                recorder,
+                survey_tracer,
+                report=report,
+                terminal_status="completed",
+            )
         except Exception as exc:
             error = f"survey_run_failed:{type(exc).__name__}"
-            recorder.finalize(error=error, terminal_status="failed")
+            self._finalize_survey_artifact(
+                recorder,
+                survey_tracer,
+                error=error,
+                terminal_status="failed",
+            )
             artifact_path = self._run_archive.path_for(run_id)
             return SurveyCaseObservation(
                 run_id=run_id,

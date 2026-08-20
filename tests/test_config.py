@@ -31,6 +31,14 @@ def test_default_yaml_enables_observability():
     assert cfg.observability.enabled is True
 
 
+def test_default_timeouts_cover_multi_round_adversarial_review():
+    project_root = Path(__file__).resolve().parents[1]
+    cfg = load_config(str(project_root / "config" / "default.yaml"))
+
+    assert cfg.adversarial.task_timeout_ms == AdversarialConfig().task_timeout_ms
+    assert cfg.orchestrator.timeout_ms > cfg.adversarial.task_timeout_ms
+
+
 def test_code_defaults_match_default_yaml_token_caps():
     project_root = Path(__file__).resolve().parents[1]
     cfg = load_config(str(project_root / "config" / "default.yaml"))
@@ -118,13 +126,15 @@ def temp_project(tmp_path):
     config_dir = tmp_path / "config"
     config_dir.mkdir()
     config_file = config_dir / "default.yaml"
-    config_file.write_text("""
+    config_file.write_text(
+        """
 agent:
   max_loops: 15
 logging:
   level: INFO
   format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-""")
+"""
+    )
     (tmp_path / "pyproject.toml").write_text("[project]\nname = 'litagent'\n")
     return tmp_path, config_file
 

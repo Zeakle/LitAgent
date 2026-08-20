@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Mapping
 from contextlib import asynccontextmanager
 from typing import Any
@@ -66,14 +67,23 @@ class AdversarialReviewWorker(Worker):
         )
         token = set_task_id(sub_tid)
         error = None
+        error_type = None
         try:
             yield
+        except asyncio.CancelledError:
+            error = "cancelled"
+            error_type = "CancelledError"
+            raise
         except Exception as e:
             error = str(e)
+            error_type = type(e).__name__
             raise
         finally:
             reset_task_id(token)
-            self._emit("subspan.end", {"task_id": sub_tid, "error": error})
+            self._emit(
+                "subspan.end",
+                {"task_id": sub_tid, "error": error, "error_type": error_type},
+            )
 
     async def execute(self, task: SubTask) -> Any:
         """Run synthesis and bounded evidence-aware review rounds."""

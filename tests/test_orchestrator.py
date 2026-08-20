@@ -336,6 +336,14 @@ class TestSurveyPlanner:
         assert "adversarial_review" not in ready_ids
 
     @pytest.mark.asyncio
+    async def test_adversarial_review_uses_configured_timeout(self):
+        planner = SurveyPlanner(adversarial_timeout_ms=600000)
+
+        graph = await planner.plan("test")
+
+        assert graph.get_task("adversarial_review").timeout_ms == 600000
+
+    @pytest.mark.asyncio
     async def test_query_propagated_to_search_input(self):
         planner = SurveyPlanner()
         graph = await planner.plan("vision transformers")
