@@ -9,7 +9,11 @@ from unittest.mock import AsyncMock
 import pytest
 from pydantic import ValidationError
 
-from litagent.benchmark.datasets import load_survey_dataset, load_survey_profiles
+from litagent.benchmark.datasets import (
+    load_survey_dataset,
+    load_survey_judge_config,
+    load_survey_profiles,
+)
 from litagent.benchmark.survey_metrics import (
     aggregate_survey_cases,
     evaluate_survey_artifact,
@@ -339,6 +343,40 @@ async def test_independent_judge_retries_malformed_output_then_fails(monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_independent_judge_supports_json_object_provider_mode():
+    from litagent.benchmark.survey_judge import SurveyBenchmarkJudge
+
+    llm = AsyncMock()
+    llm.chat.return_value = LLMResponse(
+        content=json.dumps(
+            {
+                "topic_assessments": [{"topic_id": "metric-space", "covered": True}],
+                "factual_claim_count": 1,
+                "unsupported_claims": [],
+                "contradictions": [],
+            }
+        )
+    )
+    judge = SurveyBenchmarkJudge(
+        llm,
+        SurveyJudgeConfig(
+            base_url="https://judge.example",
+            model="judge-v1",
+            response_format_mode="json_object",
+        ),
+    )
+
+    metrics, _ = await judge.evaluate(
+        case=_case(),
+        survey="Supported claim [E:e1].",
+        ledger={"e1": {"text": "Supported claim."}},
+    )
+
+    assert metrics.status == "completed"
+    assert llm.chat.await_args.kwargs["response_format"] == {"type": "json_object"}
+
+
+@pytest.mark.asyncio
 async def test_independent_judge_skips_empty_report_and_times_out(monkeypatch):
     import asyncio
 
@@ -421,6 +459,13 @@ def test_versioned_survey_inputs_cover_three_domains_and_profiles():
         "external-abstract",
         "external-fulltext",
     }
+
+
+def test_versioned_survey_judge_config_matches_runtime_contract():
+    config = load_survey_judge_config(Path("benchmarks/survey/judge.example.yaml"))
+
+    assert config.schema_version == 1
+    assert config.response_format_mode == "json_schema"
 
 
 def test_source_audit_corrections_remain_in_dataset_contract():
@@ -519,12 +564,13 @@ async def test_survey_runner_executes_39_case_runs_with_case_first_baseline(tmp_
             external_input_fingerprint=f"external:{case.case_id}:r{repetition}",
         )
 
+    judge_config = SurveyJudgeConfig(
+        base_url="https://judge.example",
+        model="independent-judge",
+    )
     runner = SurveyBenchmarkRunner(
         base_config=load_config(),
-        judge_config=SurveyJudgeConfig(
-            base_url="https://judge.example",
-            model="independent-judge",
-        ),
+        judge_config=judge_config,
         artifacts=BenchmarkArtifactRepository(tmp_path / "benchmark"),
         run_archive=ArchiveRepository(tmp_path / "runs"),
         case_executor=execute,
@@ -540,6 +586,7 @@ async def test_survey_runner_executes_39_case_runs_with_case_first_baseline(tmp_
     assert ablation.recommended_profile_id == "external-fulltext"
     assert len(ablation.profile_comparisons) == 3
     assert all(item.comparable for item in ablation.profile_comparisons)
+    assert ablation.judge_config_fingerprint == judge_config.fingerprint
 
     baseline = await runner.run_baseline(
         dataset=dataset,

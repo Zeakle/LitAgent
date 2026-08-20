@@ -478,6 +478,7 @@ class SurveyBenchmarkRunner:
             or ablation.judge_prompt_fingerprint != judge_prompt_fingerprint()
             or ablation.generation_model != self._base_config.llm.model
             or ablation.judge_model != self._judge_config.model
+            or ablation.judge_config_fingerprint != self._judge_config.fingerprint
         ):
             raise ValueError("ablation artifact is incompatible with baseline run")
         profile = next(
@@ -590,6 +591,7 @@ class SurveyBenchmarkRunner:
             git_dirty=git_dirty,
             generation_model=self._base_config.llm.model,
             judge_model=self._judge_config.model,
+            judge_config_fingerprint=self._judge_config.fingerprint,
             self_judged=self_judged,
             formal_eligible=formal_eligible,
             prompt_source_fingerprint=runtime_prompt_source_fingerprint(),

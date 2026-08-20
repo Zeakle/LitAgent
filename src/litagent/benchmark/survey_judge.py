@@ -113,6 +113,21 @@ class SurveyBenchmarkJudge:
         self._llm = llm
         self._config = config
 
+    def _response_format(self) -> dict[str, Any]:
+        """Build the strongest structured-output mode supported by the provider."""
+        if self._config.response_format_mode == "json_object":
+            # Providers without json_schema still pass through the same strict
+            # Pydantic validation and bounded retry path below.
+            return {"type": "json_object"}
+        return {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "survey_benchmark_judge",
+                "strict": True,
+                "schema": _JudgeResponse.model_json_schema(),
+            },
+        }
+
     async def evaluate(
         self,
         *,
@@ -165,14 +180,7 @@ class SurveyBenchmarkJudge:
                             {"role": "system", "content": JUDGE_SYSTEM_PROMPT},
                             {"role": "user", "content": user_message},
                         ],
-                        response_format={
-                            "type": "json_schema",
-                            "json_schema": {
-                                "name": "survey_benchmark_judge",
-                                "strict": True,
-                                "schema": _JudgeResponse.model_json_schema(),
-                            },
-                        },
+                        response_format=self._response_format(),
                         max_tokens=self._config.max_tokens,
                         temperature=0,
                     ),

@@ -219,9 +219,11 @@ class SurveyJudgeConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    schema_version: Literal[1] = 1
     base_url: str = Field(pattern=r"^https?://")
     model: str = Field(min_length=1)
     api_key_env: str = Field(default="BENCHMARK_JUDGE_API_KEY", min_length=1)
+    response_format_mode: Literal["json_schema", "json_object"] = "json_schema"
     max_tokens: int = Field(default=16384, ge=1024, le=65536)
     timeout_seconds: float = Field(default=180.0, gt=0, le=600)
     max_retries: int = Field(default=1, ge=0, le=2)
@@ -474,6 +476,7 @@ class SurveyBenchmarkResult(BaseModel):
     git_dirty: bool
     generation_model: str
     judge_model: str
+    judge_config_fingerprint: str = ""
     self_judged: bool
     formal_eligible: bool
     prompt_source_fingerprint: str
