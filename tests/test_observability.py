@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from litagent.observability.context import set_task_id, get_task_id, reset_task_id
+from litagent.observability.context import get_task_id, reset_task_id, set_task_id
 from litagent.observability.tracing import LangFuseTracer
 
 
@@ -482,6 +482,28 @@ class TestClientEmitsLLMCall:
         assert emitted["function"] == {
             "name": "load_skill",
             "arguments": {"name": "cv", "api_key": "secret"},
+        }
+
+    @pytest.mark.asyncio
+    async def test_client_forwards_provider_extra_body(self):
+        """Provider extensions reach the OpenAI-compatible request unchanged."""
+        from types import SimpleNamespace
+
+        from litagent.llm.client import OpenAICompatibleClient
+
+        create = AsyncMock(return_value=_FakeCompletion())
+        client = OpenAICompatibleClient(base_url="x", model="m")
+        client._client = SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=create))
+        )
+
+        await client.chat(
+            [{"role": "user", "content": "audit"}],
+            extra_body={"thinking": {"type": "disabled"}},
+        )
+
+        assert create.await_args.kwargs["extra_body"] == {
+            "thinking": {"type": "disabled"}
         }
 
     @pytest.mark.asyncio

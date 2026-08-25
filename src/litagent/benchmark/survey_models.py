@@ -224,6 +224,9 @@ class SurveyJudgeConfig(BaseModel):
     model: str = Field(min_length=1)
     api_key_env: str = Field(default="BENCHMARK_JUDGE_API_KEY", min_length=1)
     response_format_mode: Literal["json_schema", "json_object"] = "json_schema"
+    thinking_mode: Literal["provider_default", "enabled", "disabled"] = (
+        "provider_default"
+    )
     max_tokens: int = Field(default=16384, ge=1024, le=65536)
     timeout_seconds: float = Field(default=180.0, gt=0, le=600)
     max_retries: int = Field(default=1, ge=0, le=2)
@@ -300,6 +303,24 @@ class TopicAssessment(BaseModel):
     topic_id: str
     covered: bool
     explanation: str = ""
+
+
+class JudgeClaimAssessment(BaseModel):
+    """Store one factual claim and its explicit evidence-support decision."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    claim_text: str = Field(min_length=1)
+    supported: bool
+    evidence_ids: list[str] = Field(default_factory=list)
+    explanation: str = ""
+
+    @model_validator(mode="after")
+    def _supported_claim_requires_evidence(self):
+        """Reject a positive support decision without a cited evidence item."""
+        if self.supported and not self.evidence_ids:
+            raise ValueError("supported claim requires at least one evidence id")
+        return self
 
 
 class UnsupportedClaim(BaseModel):

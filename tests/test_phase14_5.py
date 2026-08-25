@@ -247,13 +247,31 @@ async def test_independent_judge_derives_claim_and_topic_metrics():
                         "explanation": "Covered.",
                     }
                 ],
-                "factual_claim_count": 4,
-                "unsupported_claims": [
+                "claim_assessments": [
+                    {
+                        "claim_text": "Supported one.",
+                        "supported": True,
+                        "evidence_ids": ["e1"],
+                        "explanation": "Entailed.",
+                    },
+                    {
+                        "claim_text": "Supported two.",
+                        "supported": True,
+                        "evidence_ids": ["e1"],
+                        "explanation": "Entailed.",
+                    },
+                    {
+                        "claim_text": "Supported three.",
+                        "supported": True,
+                        "evidence_ids": ["e1"],
+                        "explanation": "Entailed.",
+                    },
                     {
                         "claim_text": "Unsupported.",
+                        "supported": False,
                         "evidence_ids": ["e1"],
                         "explanation": "Overstated.",
-                    }
+                    },
                 ],
                 "contradictions": [],
             }
@@ -262,7 +280,11 @@ async def test_independent_judge_derives_claim_and_topic_metrics():
     )
     judge = SurveyBenchmarkJudge(
         llm,
-        SurveyJudgeConfig(base_url="https://judge.example", model="judge-v1"),
+        SurveyJudgeConfig(
+            base_url="https://judge.example",
+            model="judge-v1",
+            thinking_mode="disabled",
+        ),
     )
 
     metrics, usage = await judge.evaluate(
@@ -276,7 +298,13 @@ async def test_independent_judge_derives_claim_and_topic_metrics():
     assert metrics.faithfulness == 0.75
     assert metrics.unsupported_claim_rate == 0.25
     assert metrics.contradiction_rate == 0.0
+    assert [claim.claim_text for claim in metrics.unsupported_claims] == [
+        "Unsupported."
+    ]
     assert usage.total_tokens == 60
+    assert llm.chat.await_args.kwargs["extra_body"] == {
+        "thinking": {"type": "disabled"}
+    }
 
 
 @pytest.mark.asyncio
@@ -288,8 +316,13 @@ async def test_independent_judge_preserves_untrusted_xml_boundaries():
         content=json.dumps(
             {
                 "topic_assessments": [{"topic_id": "metric-space", "covered": True}],
-                "factual_claim_count": 1,
-                "unsupported_claims": [],
+                "claim_assessments": [
+                    {
+                        "claim_text": "Claim.",
+                        "supported": True,
+                        "evidence_ids": ["e1"],
+                    }
+                ],
                 "contradictions": [],
             }
         )
@@ -352,8 +385,13 @@ async def test_independent_judge_supports_json_object_provider_mode():
         content=json.dumps(
             {
                 "topic_assessments": [{"topic_id": "metric-space", "covered": True}],
-                "factual_claim_count": 1,
-                "unsupported_claims": [],
+                "claim_assessments": [
+                    {
+                        "claim_text": "Supported claim.",
+                        "supported": True,
+                        "evidence_ids": ["e1"],
+                    }
+                ],
                 "contradictions": [],
             }
         )
@@ -467,6 +505,14 @@ def test_versioned_survey_judge_config_matches_runtime_contract():
 
     assert config.schema_version == 1
     assert config.response_format_mode == "json_schema"
+    assert config.thinking_mode == "provider_default"
+
+
+def test_survey_judge_fingerprint_includes_thinking_mode():
+    default = SurveyJudgeConfig(base_url="https://judge.example", model="judge-v1")
+    disabled = default.model_copy(update={"thinking_mode": "disabled"})
+
+    assert default.fingerprint != disabled.fingerprint
 
 
 def test_source_audit_corrections_remain_in_dataset_contract():

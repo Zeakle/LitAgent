@@ -107,6 +107,9 @@ class OpenAICompatibleClient(BaseLLMClient):
             if "response_format" in kwargs:
                 create_kwargs["response_format"] = kwargs["response_format"]
 
+            if "extra_body" in kwargs:
+                create_kwargs["extra_body"] = kwargs["extra_body"]
+
             if "tools" in kwargs and kwargs["tools"]:
                 create_kwargs["tools"] = kwargs["tools"]
 
