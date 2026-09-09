@@ -235,8 +235,8 @@ def test_design_truth_no_longer_marks_completed_rag_work_as_pending() -> None:
     assert "PDF ingestion/provenance | implemented" in design_truth
     assert "RAG benchmark | completed" in design_truth
     assert (
-        "15-case Survey benchmark | implementation complete, live acceptance pending"
-        in design_truth
+        "15-case Survey benchmark | implementation and diagnostic pilots complete; "
+        "formal controlled baseline pending" in design_truth
     )
 
 

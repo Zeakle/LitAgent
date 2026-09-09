@@ -15,11 +15,20 @@ presented as completed behavior.
 | Incremental hybrid index | implemented | [`vector_store.py`](../src/litagent/rag/vector_store.py), [`retriever.py`](../src/litagent/rag/retriever.py), [`test_phase14_3.py`](../tests/test_phase14_3.py) |
 | RAG benchmark | completed | [`RESULTS.md`](../benchmarks/rag/RESULTS.md), [`phase14_3_results.json`](../benchmarks/rag/phase14_3_results.json) |
 | Reproducible runtime gate | implemented | [`ci.yml`](../.github/workflows/ci.yml), [`test_phase14_4_e2e.py`](../tests/test_phase14_4_e2e.py), [`test_tools.py`](../tests/test_tools.py), [`test_mcp.py`](../tests/test_mcp.py) |
-| 15-case Survey benchmark | implementation complete, live acceptance pending | [`dataset.yaml`](../benchmarks/survey/dataset.yaml), [`test_phase14_5.py`](../tests/test_phase14_5.py) |
+| 15-case Survey benchmark | implementation and diagnostic pilots complete; formal controlled baseline pending | [`2026-08-25 pilot`](../benchmarks/survey/results/pilot-2026-08-25.md), [`2026-09-08 post-repair pilot`](../benchmarks/survey/results/post-repair-pilot-2026-09-08.md), [`dataset.yaml`](../benchmarks/survey/dataset.yaml), [`test_phase14_5.py`](../tests/test_phase14_5.py) |
 
 ## Interpretation Boundary
 
-The Phase 14.3 retrieval summary is committed measured evidence. Phase 14.5 has
-versioned inputs, execution code, and deterministic tests, but its 39 live Survey
-runs have not been accepted. No winning Survey profile or full-text product gain
-may be claimed until those artifacts and traces exist.
+The Phase 14.3 retrieval summary is committed measured evidence. Phase 14.5 also
+has a measured 9-run live pilot with verified local artifacts and LangFuse traces,
+but every profile comparison was non-comparable because external inputs drifted,
+and one full-text observation was partial. No winning Survey profile or full-text
+product gain may be claimed until a controlled, accepted result exists.
+
+The current worktree repairs the observed control and failure paths with frozen
+external-input replay, stage-level paper-flow metrics, provider-aware evaluators,
+bounded long-context fallback, terminal-result gates, and explicit paid-run
+budgets. One post-repair NeRF full-text pilot completed with final runtime
+faithfulness 0.8958 and delivery `ready`. It was a self-judged dirty-worktree
+single observation, so it validates the repaired path but does not establish a
+profile comparison, a full-text product gain, or a formal baseline.

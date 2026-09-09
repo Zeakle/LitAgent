@@ -20,7 +20,7 @@ LangFuse trace.
 | Runtime DAG and adversarial survey flow | Implemented | [`runner.py`](./src/litagent/runner.py), [`test_phase14_4_e2e.py`](./tests/test_phase14_4_e2e.py) |
 | Persistent paper corpus and PDF ingestion | Implemented | [`rag/`](./src/litagent/rag), [`test_phase14_1.py`](./tests/test_phase14_1.py) |
 | Retrieval benchmark | Completed | [`RESULTS.md`](./benchmarks/rag/RESULTS.md) |
-| End-to-end Survey benchmark | Implementation complete; 39-run live acceptance pending | [`benchmarks/survey`](./benchmarks/survey), [`test_phase14_5.py`](./tests/test_phase14_5.py) |
+| End-to-end Survey benchmark | Diagnostic pilots complete; formal baseline not established | [`2026-08-25 pilot`](./benchmarks/survey/results/pilot-2026-08-25.md), [`2026-09-08 post-repair pilot`](./benchmarks/survey/results/post-repair-pilot-2026-09-08.md), [`test_phase14_5.py`](./tests/test_phase14_5.py) |
 | Reproducible flow replay | Implemented | [`demo.py`](./src/litagent/demo.py), [`test_phase14_6.py`](./tests/test_phase14_6.py) |
 
 The complete evidence ledger for public capability claims is maintained in
@@ -147,9 +147,23 @@ It compares:
 - external search plus abstract RAG
 - external search plus selected-fulltext RAG
 
-The implementation and deterministic tests are complete. The formal 39-run live
-execution and LangFuse/RunArtifact acceptance are still pending, so this README
-does not claim a winning profile or product-quality improvement.
+The implementation and deterministic tests are complete. A cost-bounded 9-run live
+pilot persisted all observations and Judges, verified 9 RunArtifact hashes, and
+verified input/output on all 18 Survey/Judge LangFuse traces. The result is still
+`partial`: no profile pair had identical external inputs, required-paper citation
+recall was zero, runtime faithfulness evaluation was skipped in every run, and one
+selected-fulltext Survey failed at synthesis. See the
+[`sanitized pilot result`](./benchmarks/survey/results/pilot-2026-08-25.md). The
+project therefore does not claim a winning profile or a full-text product gain.
+The failures exposed by that pilot now have tested repairs: benchmark
+profiles replay one frozen Planner/Search snapshot, paper flow is measured stage
+by stage, runtime evaluators use the configured provider, long-context generation
+has bounded compact fallback, and observation/token budgets stop paid work before
+the next run. A subsequent single-case
+[`post-repair live pilot`](./benchmarks/survey/results/post-repair-pilot-2026-09-08.md)
+completed with final runtime faithfulness 0.8958 and delivery `ready`, but it was
+self-judged and used a dirty worktree. It validates the repaired path, not a
+cross-profile gain or formal baseline.
 
 ## Quality, Safety, and Failure Semantics
 

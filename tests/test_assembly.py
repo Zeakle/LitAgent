@@ -783,6 +783,8 @@ class TestRelevanceGateWiring:
         fake_store = MagicMock(spec=VectorStore)
         infra = Infra(
             reranker=fake_reranker,
+            relevance_reranker=fake_reranker,
+            evidence_reranker=fake_reranker,
             retriever=HybridRetriever(fake_store, fake_reranker),
         )
         with (
@@ -841,7 +843,9 @@ class TestExtractorConfig:
 
         cfg = ExtractorConfig()
         assert cfg.max_papers == 50
-        assert cfg.per_paper_timeout_ms == 20000
+        assert cfg.max_tokens == 2048
+        assert cfg.thinking_mode == "disabled"
+        assert cfg.per_paper_timeout_ms == 60000
 
     def test_extractor_config_rejects_zero_max_papers(self):
         from litagent.config import ExtractorConfig
@@ -854,6 +858,12 @@ class TestExtractorConfig:
 
         with pytest.raises(Exception):
             ExtractorConfig(per_paper_timeout_ms=-1)
+
+    def test_extractor_max_tokens_rejects_zero(self):
+        from litagent.config import ExtractorConfig
+
+        with pytest.raises(Exception):
+            ExtractorConfig(max_tokens=0)
 
 
 class TestEvalContextAlignment:

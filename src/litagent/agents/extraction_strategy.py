@@ -186,10 +186,23 @@ Do not create a claim when no supplied chunk directly supports it."""
 class LLMStrategy(ExtractionStrategy):
     """Extract structured paper fields with an LLM and skill metadata."""
 
-    def __init__(self, llm: BaseLLMClient, skill_manager: SkillManager):
+    def __init__(
+        self,
+        llm: BaseLLMClient,
+        skill_manager: SkillManager,
+        *,
+        max_tokens: int = 2048,
+        thinking_mode: str = "disabled",
+    ):
         """Initialize the LLM strategy."""
+        if max_tokens <= 0:
+            raise ValueError("max_tokens must be positive")
+        if thinking_mode not in {"provider_default", "enabled", "disabled"}:
+            raise ValueError("unsupported thinking_mode")
         self._llm = llm
         self._skill_manager = skill_manager
+        self._max_tokens = max_tokens
+        self._thinking_mode = thinking_mode
 
     async def extract(self, paper: dict) -> dict:
         """Return normalized structured fields from an LLM JSON response."""
@@ -203,12 +216,19 @@ class LLMStrategy(ExtractionStrategy):
             f"{_REQUIRED_KEYS_INSTRUCTION}"
         )
 
+        kwargs: dict[str, Any] = {
+            "response_format": {"type": "json_object"},
+            "max_tokens": self._max_tokens,
+        }
+        if self._thinking_mode != "provider_default":
+            kwargs["extra_body"] = {"thinking": {"type": self._thinking_mode}}
+
         resp = await self._llm.chat(
             [
                 {"role": "system", "content": system},
                 {"role": "user", "content": wrap_xml("paper", context)},
             ],
-            response_format={"type": "json_object"},
+            **kwargs,
         )
 
         data = json.loads(resp.content)

@@ -134,6 +134,28 @@ def _survey_markdown(payload: Mapping[str, Any]) -> str:
         lines.append(
             f"| Judge tokens | {int(summary.get('judge_total_tokens') or 0)} |"
         )
+    if payload.get("observations"):
+        lines.extend(
+            [
+                "",
+                "## Runtime / Judge Audit",
+                "",
+                "| Case / Profile | Runtime claims | Runtime faithfulness | Judge claims | Judge faithfulness | Usage complete |",
+                "|---|---:|---:|---:|---:|---|",
+            ]
+        )
+        for observation in payload["observations"]:
+            metrics = observation.get("metrics") or {}
+            runtime = (metrics.get("runtime_evaluation") or {}).get(
+                "faithfulness"
+            ) or {}
+            judge = observation.get("judge") or {}
+            count = (runtime.get("details") or {}).get("factual_claim_count")
+            lines.append(
+                f"| {observation.get('case_id')} / {observation.get('profile_id')} "
+                f"| {count} | {runtime.get('score')} | {judge.get('factual_claim_count')} "
+                f"| {judge.get('faithfulness')} | {(metrics.get('cost') or {}).get('usage_complete', False)} |"
+            )
     comparisons = payload.get("profile_comparisons") or []
     if comparisons:
         lines.extend(["", "## Pairwise Deltas", ""])

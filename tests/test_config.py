@@ -76,8 +76,9 @@ def test_code_defaults_match_default_yaml_token_caps():
     assert (
         cfg.adversarial.review_max_tokens
         == (AdversarialConfig().review_max_tokens)
-        == 12_288
+        == 4_096
     )
+    assert cfg.adversarial.thinking_mode == "disabled"
     assert cfg.eval.max_tokens == EvalConfig().max_tokens == 16_384
     assert cfg.planner.max_tokens == PlannerConfig().max_tokens == 8_192
 

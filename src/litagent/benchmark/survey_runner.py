@@ -31,6 +31,8 @@ from litagent.benchmark.survey_metrics import (
     external_input_fingerprint,
 )
 from litagent.benchmark.survey_models import (
+    ExternalInputSnapshot,
+    SurveyBenchmarkBudget,
     SurveyBenchmarkCase,
     SurveyBenchmarkDataset,
     SurveyBenchmarkProfile,
@@ -53,7 +55,7 @@ from litagent.observability.tracing import LangFuseTracer
 from litagent.rag.corpus import CollectionIdentity
 from litagent.rag.manifest import load_manifest, materialize_manifest_assets
 from litagent.rag.runtime import CorpusRuntime
-from litagent.runner import LitAgent, RunPolicy
+from litagent.runner import ExternalInputReplay, LitAgent, RunPolicy
 
 CaseExecutor = Callable[
     [SurveyBenchmarkCase, SurveyBenchmarkProfile, AppConfig, int],
@@ -114,6 +116,108 @@ def _observation_checkpoint_is_reusable(
     return actual == observation.artifact_sha256
 
 
+def _observation_semantically_complete(observation: SurveyCaseObservation) -> bool:
+    """Require product, Judge, and delivery metrics to have terminal valid output."""
+    return bool(
+        observation.status == "completed"
+        and observation.metrics is not None
+        and not observation.metrics.partial
+        and observation.judge is not None
+        and observation.judge.status == "completed"
+    )
+
+
+def _capture_external_inputs_from_artifact(
+    *,
+    case: SurveyBenchmarkCase,
+    repetition: int,
+    artifact: Mapping[str, Any],
+) -> ExternalInputSnapshot:
+    """Extract the exact planner and external-search cohort from one run."""
+    nodes = artifact.get("nodes")
+    if not isinstance(nodes, Mapping):
+        raise ValueError("run artifact has no replayable execution nodes")
+
+    decomposition: list[str] | None = None
+    search_nodes: dict[str, Mapping[str, Any]] = {}
+    for node_id, node in nodes.items():
+        if not isinstance(node, Mapping):
+            continue
+        task_id = str(node.get("task_id") or "")
+        kind = str(node.get("kind") or "")
+        is_subspan = kind == "subspan" or str(node_id).startswith("subspan:")
+        is_worker = kind == "worker" or str(node_id).startswith("worker:")
+        if is_subspan and task_id in {
+            "query_decomposition",
+            "planner.query_decomposition",
+        }:
+            output = node.get("output")
+            raw_queries = (
+                output.get("sub_queries") if isinstance(output, Mapping) else None
+            )
+            if isinstance(raw_queries, list):
+                decomposition = [
+                    item.strip()
+                    for item in raw_queries
+                    if isinstance(item, str) and item.strip()
+                ]
+        elif is_worker and task_id.startswith("search_"):
+            search_nodes[task_id] = node
+
+    if not decomposition:
+        raise ValueError("run artifact has no planner decomposition output")
+    if not search_nodes:
+        raise ValueError("run artifact has no external search outputs")
+
+    report = artifact.get("report")
+    metadata = report.get("metadata") if isinstance(report, Mapping) else None
+    raw_outcomes = (
+        metadata.get("search_source_outcomes")
+        if isinstance(metadata, Mapping)
+        else None
+    )
+    outcomes = {
+        str(item.get("task_id")): item
+        for item in raw_outcomes or []
+        if isinstance(item, Mapping) and item.get("task_id")
+    }
+
+    search_outputs: dict[str, dict[str, Any]] = {}
+    for task_id, node in sorted(search_nodes.items()):
+        input_data = node.get("input")
+        output = node.get("output")
+        if not isinstance(input_data, Mapping) or not isinstance(output, list):
+            raise ValueError(f"search node {task_id} is not replayable")
+        outcome = outcomes.get(task_id)
+        if not isinstance(outcome, Mapping):
+            source = str(input_data.get("source") or "")
+            outcome = {
+                "task_id": task_id,
+                "source": source,
+                "status": "success" if output else "empty",
+                "result_count": len(output),
+                "elapsed_ms": 0,
+                "reason_code": None if output else "provider_empty",
+                "error_type": None,
+                "from_fallback": False,
+            }
+        search_outputs[task_id] = {
+            "task_id": task_id,
+            "input": dict(input_data),
+            "output": output,
+            "outcome": dict(outcome),
+        }
+
+    return ExternalInputSnapshot(
+        case_id=case.case_id,
+        repetition=repetition,
+        query=case.query,
+        decomposition=decomposition,
+        search_outputs=search_outputs,
+        external_input_fingerprint=external_input_fingerprint(artifact),
+    )
+
+
 def runtime_prompt_source_fingerprint() -> str:
     """Hash the production files that define planning and report prompts."""
     root = Path(__file__).resolve().parents[1]
@@ -123,6 +227,12 @@ def runtime_prompt_source_fingerprint() -> str:
             root / "agents" / "synthesis.py",
             root / "agents" / "reviewer.py",
             root / "agents" / "adversarial.py",
+            root / "context" / "evidence_selector.py",
+            root / "eval" / "ragas_eval.py",
+            root / "eval" / "ragas_contract.py",
+            root / "llm" / "client.py",
+            root / "benchmark" / "survey_metrics.py",
+            root / "rag" / "models.py",
         ]
     )
 
@@ -236,6 +346,7 @@ class SurveyBenchmarkRunner:
         artifacts: BenchmarkArtifactRepository,
         run_archive: ArchiveRepository,
         case_executor: CaseExecutor | None = None,
+        budget: SurveyBenchmarkBudget | None = None,
     ) -> None:
         """Store configuration and optional offline execution boundary."""
         self._base_config = base_config
@@ -245,6 +356,52 @@ class SurveyBenchmarkRunner:
         self._case_executor = case_executor or self._run_live_case
         self._uses_live_executor = case_executor is None
         self._judged_paper_ids: set[str] = set()
+        self._budget = budget
+        self._budget_observations: list[SurveyCaseObservation] = []
+        self._halt_reason_codes: list[str] = []
+
+    def _reset_budget_state(self) -> None:
+        """Reset accounting before one top-level benchmark stage."""
+        self._budget_observations = []
+        self._halt_reason_codes = []
+
+    def _budget_allows_new_observation(self) -> bool:
+        """Stop before the next paid run once any configured cap is reached."""
+        if self._budget is None:
+            return True
+        product_tokens = sum(
+            item.metrics.cost.total_tokens
+            for item in self._budget_observations
+            if item.metrics is not None
+        )
+        judge_tokens = sum(
+            item.judge_usage.total_tokens for item in self._budget_observations
+        )
+        checks = (
+            (
+                len(self._budget_observations) >= self._budget.max_observations,
+                "budget_exhausted:max_observations",
+            ),
+            (
+                product_tokens >= self._budget.max_product_tokens,
+                "budget_exhausted:max_product_tokens",
+            ),
+            (
+                judge_tokens >= self._budget.max_judge_tokens,
+                "budget_exhausted:max_judge_tokens",
+            ),
+        )
+        reasons = [reason for exhausted, reason in checks if exhausted]
+        if reasons:
+            self._halt_reason_codes.extend(reasons)
+            self._halt_reason_codes = list(dict.fromkeys(self._halt_reason_codes))
+            return False
+        return True
+
+    def _record_budget_observation(self, observation: SurveyCaseObservation) -> None:
+        """Count one completed or failed observation exactly once per stage."""
+        if all(item.run_id != observation.run_id for item in self._budget_observations):
+            self._budget_observations.append(observation)
 
     def _validate_live_credentials(self) -> None:
         """Fail before paid matrix execution when either model credential is absent."""
@@ -358,7 +515,43 @@ class SurveyBenchmarkRunner:
             [Path(path) for path in dataset.manifest_paths]
         )
         for case in cases:
-            for profile in profiles:
+            snapshot: ExternalInputSnapshot | None = None
+            snapshot_key = _observation_checkpoint_key(
+                {
+                    "case_id": case.case_id,
+                    "repetition": repetition,
+                    "generation_model": self._base_config.llm.model,
+                    "planner": self._base_config.planner.model_dump(mode="json"),
+                    "semantic_scholar_enabled": bool(
+                        os.environ.get("SEMANTIC_SCHOLAR_API_KEY")
+                    ),
+                    "git_sha": git_sha,
+                    "git_dirty": git_dirty,
+                    "prompt_source_fingerprint": prompt_fingerprint,
+                    "dataset_fingerprint": dataset_fingerprint,
+                    "manifest_fingerprint": manifest_fingerprint,
+                }
+            )
+            if self._uses_live_executor:
+                raw_snapshot = self._artifacts.read_checkpoint(
+                    "survey-external-inputs", snapshot_key
+                )
+                if raw_snapshot is not None:
+                    try:
+                        candidate_snapshot = ExternalInputSnapshot.model_validate(
+                            raw_snapshot
+                        )
+                    except ValueError:
+                        candidate_snapshot = None
+                    if (
+                        candidate_snapshot is not None
+                        and candidate_snapshot.case_id == case.case_id
+                        and candidate_snapshot.repetition == repetition
+                        and candidate_snapshot.query == case.query
+                    ):
+                        snapshot = candidate_snapshot
+
+            for profile_index, profile in enumerate(profiles):
                 config = self._config_for(profile, dataset.dataset_version)
                 config_fingerprint = build_config_summary(config)["fingerprint"]
                 checkpoint_key = _observation_checkpoint_key(
@@ -387,17 +580,56 @@ class SurveyBenchmarkRunner:
                         candidate = SurveyCaseObservation.model_validate(checkpoint)
                     except ValueError:
                         candidate = None
-                    if candidate is not None and _observation_checkpoint_is_reusable(
-                        candidate,
-                        require_trace=config.observability.enabled,
+                    if (
+                        candidate is not None
+                        and _observation_checkpoint_is_reusable(
+                            candidate,
+                            require_trace=config.observability.enabled,
+                        )
+                        and (
+                            snapshot is None
+                            or candidate.external_input_fingerprint
+                            == snapshot.external_input_fingerprint
+                        )
                     ):
                         observation = candidate
 
                 if observation is None:
-                    try:
-                        observation = await self._case_executor(
-                            case, profile, config, repetition
+                    if not self._budget_allows_new_observation():
+                        return observations
+                    if (
+                        self._uses_live_executor
+                        and profile_index > 0
+                        and snapshot is None
+                    ):
+                        self._halt_reason_codes.append(
+                            f"external_input_snapshot_unavailable:{case.case_id}:"
+                            f"r{repetition}"
                         )
+                        break
+                    try:
+                        if self._uses_live_executor:
+                            replay = (
+                                ExternalInputReplay(
+                                    query=snapshot.query,
+                                    decomposition=tuple(snapshot.decomposition),
+                                    search_outputs=snapshot.search_outputs,
+                                    fingerprint=snapshot.fingerprint,
+                                )
+                                if snapshot is not None
+                                else None
+                            )
+                            observation = await self._run_live_case(
+                                case,
+                                profile,
+                                config,
+                                repetition,
+                                external_inputs=replay,
+                            )
+                        else:
+                            observation = await self._case_executor(
+                                case, profile, config, repetition
+                            )
                     except asyncio.CancelledError:
                         raise
                     except Exception as exc:
@@ -430,6 +662,32 @@ class SurveyBenchmarkRunner:
                     "survey-observations", checkpoint_key, observation
                 )
                 observations.append(observation)
+                self._record_budget_observation(observation)
+
+                if self._uses_live_executor and snapshot is None:
+                    artifact = self._run_archive.get(observation.run_id)
+                    if artifact is not None:
+                        try:
+                            snapshot = _capture_external_inputs_from_artifact(
+                                case=case,
+                                repetition=repetition,
+                                artifact=artifact,
+                            )
+                        except ValueError:
+                            self._halt_reason_codes.append(
+                                f"external_input_snapshot_unavailable:{case.case_id}:"
+                                f"r{repetition}"
+                            )
+                        else:
+                            self._artifacts.write_checkpoint(
+                                "survey-external-inputs", snapshot_key, snapshot
+                            )
+                if not _observation_semantically_complete(observation):
+                    self._halt_reason_codes.append(
+                        f"observation_terminal_gate:{case.case_id}:"
+                        f"{profile.profile_id}:r{repetition}"
+                    )
+                    return observations
         return observations
 
     @staticmethod
@@ -458,6 +716,62 @@ class SurveyBenchmarkRunner:
                 )
         return comparable, reasons
 
+    async def run_pilot(
+        self,
+        *,
+        dataset: SurveyBenchmarkDataset,
+        cases: Sequence[SurveyBenchmarkCase],
+        profiles: Sequence[SurveyBenchmarkProfile],
+        git_sha: str,
+        git_dirty: bool = False,
+    ) -> SurveyBenchmarkResult:
+        """Run one explicit cost-controlled matrix without selecting a winner."""
+        if not cases:
+            raise ValueError("survey pilot requires at least one case")
+        if not profiles:
+            raise ValueError("survey pilot requires at least one profile")
+        if len({case.case_id for case in cases}) != len(cases):
+            raise ValueError("survey pilot case ids must be unique")
+        if len({profile.profile_id for profile in profiles}) != len(profiles):
+            raise ValueError("survey pilot profile ids must be unique")
+
+        self._reset_budget_state()
+        self._validate_live_credentials()
+        if self._uses_live_executor:
+            await self._prepare_corpora(dataset, profiles)
+        self._judged_paper_ids = set(dataset.corpus_paper_ids)
+
+        observations = await self._run_matrix(
+            dataset=dataset,
+            cases=cases,
+            profiles=profiles,
+            repetition=1,
+            git_sha=git_sha,
+            git_dirty=git_dirty,
+        )
+        comparable, reasons = self._comparable_observations(
+            observations, {profile.profile_id for profile in profiles}
+        )
+        reasons.extend(self._halt_reason_codes)
+        if len(comparable) != len(cases) * len(profiles):
+            reasons.append("pilot_matrix_incomplete")
+
+        case_aggregates, summaries = aggregate_profiles(observations)
+        result = self._build_result(
+            stage="pilot",
+            dataset=dataset,
+            profiles=profiles,
+            observations=observations,
+            case_aggregates=case_aggregates,
+            summaries=summaries,
+            recommended_profile_id=None,
+            git_sha=git_sha,
+            git_dirty=git_dirty,
+            reason_codes=reasons,
+        )
+        self._artifacts.write(result)
+        return result
+
     async def run_ablation(
         self,
         *,
@@ -471,6 +785,7 @@ class SurveyBenchmarkRunner:
             raise ValueError("survey ablation requires exactly three profiles")
         if len({profile.profile_id for profile in profiles}) != 3:
             raise ValueError("survey profile ids must be unique")
+        self._reset_budget_state()
         self._validate_live_credentials()
         if self._uses_live_executor:
             await self._prepare_corpora(dataset, profiles)
@@ -487,10 +802,30 @@ class SurveyBenchmarkRunner:
         comparable_first, reasons = self._comparable_observations(
             first_pass, {profile.profile_id for profile in profiles}
         )
-        if comparable_first:
-            _, first_summaries = aggregate_profiles(comparable_first)
-        else:
-            _, first_summaries = aggregate_profiles(first_pass)
+        reasons.extend(self._halt_reason_codes)
+        first_pass_incomplete = any(
+            not _observation_semantically_complete(item) for item in first_pass
+        )
+        if first_pass_incomplete:
+            reasons.append("first_pass_incomplete")
+        if not comparable_first or self._halt_reason_codes or first_pass_incomplete:
+            case_aggregates, summaries = aggregate_profiles(first_pass)
+            result = self._build_result(
+                stage="ablation",
+                dataset=dataset,
+                profiles=profiles,
+                observations=first_pass,
+                case_aggregates=case_aggregates,
+                summaries=summaries,
+                recommended_profile_id=None,
+                git_sha=git_sha,
+                git_dirty=git_dirty,
+                reason_codes=reasons,
+            )
+            self._artifacts.write(result)
+            return result
+
+        _, first_summaries = aggregate_profiles(comparable_first)
         top_ids = [
             summary.profile_id
             for summary in sorted(first_summaries, key=_rank_key, reverse=True)[:2]
@@ -511,13 +846,14 @@ class SurveyBenchmarkRunner:
             second_pass, set(top_ids)
         )
         reasons.extend(second_reasons)
+        reasons.extend(self._halt_reason_codes)
         case_aggregates, summaries = aggregate_profiles(observations)
         eligible_summaries = [
             summary for summary in summaries if summary.profile_id in set(top_ids)
         ]
         recommended = (
             max(eligible_summaries, key=_rank_key).profile_id
-            if eligible_summaries
+            if eligible_summaries and comparable_second and not self._halt_reason_codes
             else None
         )
         result = self._build_result(
@@ -550,6 +886,7 @@ class SurveyBenchmarkRunner:
                 "formal baseline requires a human-reviewed or "
                 "owner-approved AI-assisted dataset"
             )
+        self._reset_budget_state()
         if ablation.stage != "ablation" or not ablation.recommended_profile_id:
             raise ValueError("baseline requires a completed ablation recommendation")
         config_fingerprint = build_config_summary(self._base_config)["fingerprint"]
@@ -617,10 +954,12 @@ class SurveyBenchmarkRunner:
             observations=observations,
             case_aggregates=case_aggregates,
             summaries=summaries,
-            recommended_profile_id=profile.profile_id,
+            recommended_profile_id=(
+                profile.profile_id if not self._halt_reason_codes else None
+            ),
             git_sha=git_sha,
             git_dirty=git_dirty,
-            reason_codes=[],
+            reason_codes=list(self._halt_reason_codes),
             reused_ablation_run_id=ablation.run_id,
         )
         self._artifacts.write(result)
@@ -643,31 +982,61 @@ class SurveyBenchmarkRunner:
     ) -> SurveyBenchmarkResult:
         """Assemble one reproducible terminal benchmark artifact."""
         self_judged = self._judge_config.model == self._base_config.llm.model
-        incomplete = any(
-            item.status != "completed"
-            or item.metrics is None
-            or item.judge is None
-            or item.judge.status != "completed"
-            for item in observations
-        )
-        status = "partial" if incomplete or reason_codes else "succeeded"
+        final_reasons = list(reason_codes)
+        incomplete = False
+        for item in observations:
+            identity = f"{item.case_id}:{item.profile_id}:r{item.repetition}"
+            if item.status != "completed":
+                incomplete = True
+                final_reasons.append(f"failed_observation:{identity}")
+            if item.metrics is None:
+                incomplete = True
+                final_reasons.append(f"missing_metrics:{identity}")
+            elif item.metrics.partial:
+                incomplete = True
+                final_reasons.append(f"partial_observation:{identity}")
+            if item.judge is None or item.judge.status != "completed":
+                incomplete = True
+                final_reasons.append(f"incomplete_judge:{identity}")
+            if bool(item.artifact_path) != bool(item.artifact_sha256):
+                incomplete = True
+                final_reasons.append(f"artifact_validation_failed:{identity}")
+            elif item.artifact_path and item.artifact_sha256:
+                path = Path(item.artifact_path)
+                try:
+                    actual = f"sha256:{hashlib.sha256(path.read_bytes()).hexdigest()}"
+                except OSError:
+                    actual = ""
+                if actual != item.artifact_sha256:
+                    incomplete = True
+                    final_reasons.append(f"artifact_validation_failed:{identity}")
+
+        profile_comparisons = _profile_comparisons(observations, summaries)
+        comparable_pairs = [
+            comparison for comparison in profile_comparisons if comparison.comparable
+        ]
+        if stage == "ablation" and len(profiles) > 1 and not comparable_pairs:
+            final_reasons.append("no_comparable_profile_cohort")
+            recommended_profile_id = None
+        if incomplete:
+            recommended_profile_id = None
+            final_reasons.append("incomplete_observations")
+
+        status = "partial" if incomplete or final_reasons else "succeeded"
         formal_eligible = (
             status == "succeeded"
+            and stage != "pilot"
             and dataset.judgment_status in BASELINE_ELIGIBLE_JUDGMENT_STATUSES
             and not self_judged
         )
-        final_reasons = list(reason_codes)
         if self_judged:
             final_reasons.append("self_judged")
         if dataset.judgment_status not in BASELINE_ELIGIBLE_JUDGMENT_STATUSES:
             final_reasons.append("dataset_judgment_not_approved")
         elif dataset.judgment_status == "owner_approved_ai_assisted":
             final_reasons.append("owner_approved_ai_assisted_ground_truth")
-        if incomplete:
-            final_reasons.append("incomplete_observations")
         manifest_paths = [Path(path) for path in dataset.manifest_paths]
         config_summary = build_config_summary(self._base_config)
-        profile_comparisons = _profile_comparisons(observations, summaries)
         return SurveyBenchmarkResult(
             run_id=f"survey-{stage}-{uuid.uuid4().hex}",
             status=status,
@@ -699,8 +1068,7 @@ class SurveyBenchmarkRunner:
             reused_ablation_run_id=reused_ablation_run_id,
             comparable_profile_pairs=[
                 [comparison.left_profile_id, comparison.right_profile_id]
-                for comparison in profile_comparisons
-                if comparison.comparable
+                for comparison in comparable_pairs
             ],
             profile_comparisons=profile_comparisons,
             reason_codes=list(dict.fromkeys(final_reasons)),
@@ -716,6 +1084,8 @@ class SurveyBenchmarkRunner:
         profile: SurveyBenchmarkProfile,
         config: AppConfig,
         repetition: int,
+        *,
+        external_inputs: ExternalInputReplay | None = None,
     ) -> SurveyCaseObservation:
         """Run one real Survey, persist it, then invoke the independent Judge."""
         run_id = (
@@ -744,6 +1114,7 @@ class SurveyBenchmarkRunner:
                 config,
                 trace_hook=trace_hook,
                 run_policy=RunPolicy.isolated_benchmark(),
+                external_inputs=external_inputs,
             ) as agent:
                 report = await agent.run(case.query)
             artifact = self._finalize_survey_artifact(

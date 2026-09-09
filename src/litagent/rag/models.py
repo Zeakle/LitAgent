@@ -73,6 +73,19 @@ def canonical_paper_id(
     raise ValueError("paper identity requires DOI, arXIV id, or source/source_id")
 
 
+def normalize_paper_identity(paper_id: str) -> str:
+    """Resolve only verified arXiv-shaped legacy aliases, not arbitrary suffixes."""
+    namespace, sep, value = paper_id.strip().partition(":")
+    if sep and namespace.lower() in {"arxiv", "huggingface"}:
+        if re.fullmatch(
+            r"(?:\d{4}\.\d{4,5}|[a-z-]+(?:\.[A-Z]{2})?/\d{7})(?:v\d+)?",
+            value,
+            re.IGNORECASE,
+        ):
+            return "arxiv:" + re.sub(r"v\d+$", "", value, flags=re.IGNORECASE)
+    return paper_id
+
+
 class SourceRef(BaseModel):
     """Record reviewable provenance without embedding local file paths."""
 
@@ -396,6 +409,7 @@ class PaperCandidate(BaseModel):
             source=source,
             source_id=provider_id,
         )
+        paper_id = normalize_paper_identity(paper_id)
         abstract = str(raw.get("abstract") or "").strip()
         chunks = (
             [

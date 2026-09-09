@@ -6,7 +6,7 @@ import json
 import os
 import re
 from enum import Enum
-from typing import Callable
+from typing import Callable, Sequence
 
 from litagent.config import PlannerConfig, RAGConfig
 from litagent.context.templates import wrap_xml
@@ -70,6 +70,8 @@ class SurveyPlanner:
         memory_manager: "MemoryManager | None" = None,
         rag_config: RAGConfig | None = None,
         adversarial_timeout_ms: int = 720000,
+        decomposition_override: Sequence[str] | None = None,
+        replay_fingerprint: str | None = None,
     ) -> None:
         """Initialize the survey planner."""
         if adversarial_timeout_ms <= 0:
@@ -80,6 +82,20 @@ class SurveyPlanner:
         self._trace_hook = trace_hook
         self._memory = memory_manager
         self._adversarial_timeout_ms = adversarial_timeout_ms
+        self._decomposition_override = (
+            tuple(decomposition_override)
+            if decomposition_override is not None
+            else None
+        )
+        self._replay_fingerprint = replay_fingerprint
+        if self._decomposition_override is not None and (
+            not self._decomposition_override
+            or not all(
+                isinstance(item, str) and item.strip()
+                for item in self._decomposition_override
+            )
+        ):
+            raise ValueError("decomposition_override must contain non-empty strings")
 
     def _emit(self, event: str, data: dict) -> None:
         """Emit a trace event."""
@@ -99,7 +115,11 @@ class SurveyPlanner:
         graph = TaskGraph()
 
         intent = classify_query_intent(query)
-        if intent == QueryIntent.TOPIC and self._config.decompose_enabled and self._llm:
+        if intent == QueryIntent.TOPIC and self._decomposition_override is not None:
+            sub_queries = await self._decompose_traced(query)
+        elif (
+            intent == QueryIntent.TOPIC and self._config.decompose_enabled and self._llm
+        ):
             sub_queries = await self._decompose_traced(query)
         else:
             sub_queries = [query]
@@ -283,7 +303,17 @@ class SurveyPlanner:
         token = set_task_id("query_decomposition")
         sub_queries = [query]
         try:
-            sub_queries = await self._decompose(query)
+            if self._decomposition_override is not None:
+                sub_queries = list(self._decomposition_override)
+                self._emit(
+                    "benchmark.external_inputs.replayed",
+                    {
+                        "component": "planner",
+                        "snapshot_fingerprint": self._replay_fingerprint,
+                    },
+                )
+            else:
+                sub_queries = await self._decompose(query)
             return sub_queries
         finally:
             reset_task_id(token)

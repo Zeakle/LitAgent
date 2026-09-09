@@ -59,6 +59,7 @@ class RelevanceSelection:
     score_min: float | None
     score_max: float | None
     mode: Literal["threshold", "rank_cap_only", "lexical_fallback"]
+    ranked: tuple[ScoredDoc, ...] = ()
 
 
 def _select_ranked(
@@ -108,6 +109,7 @@ def _select_ranked(
         score_min=min(scores) if scores else None,
         score_max=max(scores) if scores else None,
         mode=mode,
+        ranked=tuple(ranked),
     )
 
 
@@ -188,6 +190,22 @@ class RelevanceGateWorker(Worker):
                 "score_min": selection.score_min,
                 "score_max": selection.score_max,
                 "mode": selection.mode,
+                "method": method,
+                "ranking_decisions": [
+                    {
+                        "paper_id": papers[item.doc.metadata[_SOURCE_INDEX]].get(
+                            "paper_id"
+                        ),
+                        "rank": rank,
+                        "score": float(item.score),
+                        "reason_code": (
+                            "selected"
+                            if item.doc.metadata[_SOURCE_INDEX] in seen_indices
+                            else "rank_or_threshold_filtered"
+                        ),
+                    }
+                    for rank, item in enumerate(selection.ranked, 1)
+                ],
             },
         )
         return output

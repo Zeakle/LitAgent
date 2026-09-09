@@ -12,6 +12,7 @@ from litagent.config import AdversarialConfig, ContextConfig
 from litagent.context.budget import BudgetManager
 from litagent.context.evidence_selector import (
     EvidenceSelection,
+    compact_evidence_selection,
     format_evidence_selection,
 )
 from litagent.context.pipeline import ContextLayer, ContextPipeline
@@ -191,8 +192,6 @@ class ReviewerWorker(Worker):
                 logger.warning(f"Malformed evidence_selection: {e}")
                 evidence_missing = True
 
-        user_msg, used = await self._build_review_context(draft, selection, query=query)
-
         skills_text = (
             self._skill_manager.to_metadata_text_for(
                 "reviewing a literature survey draft",
@@ -208,19 +207,12 @@ class ReviewerWorker(Worker):
             skills=skills_text,
         )
 
-        resp = await self._llm.chat(
-            [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user_msg},
-            ],
-            response_format={"type": "json_object"},
-            max_tokens=self._config.review_max_tokens,
-        )
-
-        review = self._parse_review(resp.content)
-
-        review = self._enforce_evidence_contract(
-            draft, selection, review, evidence_context_missing=evidence_missing
+        review = await self._request_review_with_compact_retry(
+            system=system,
+            draft=draft,
+            selection=selection,
+            query=query,
+            evidence_context_missing=evidence_missing,
         )
 
         if evidence_missing:
@@ -250,13 +242,6 @@ class ReviewerWorker(Worker):
         else:
             selection = evidence_selection
 
-        user_msg, used = await self._build_review_context(
-            revised_draft,
-            selection,
-            previous_review=previous_review,
-            query=query,
-        )
-
         system = build_system_prompt(
             role=REVIEWER_ROLE,
             instructions=(
@@ -267,17 +252,78 @@ class ReviewerWorker(Worker):
             ),
         )
 
-        resp = await self._llm.chat(
-            [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user_msg},
-            ],
-            response_format={"type": "json_object"},
-            max_tokens=self._config.review_max_tokens,
+        return await self._request_review_with_compact_retry(
+            system=system,
+            draft=revised_draft,
+            selection=selection,
+            previous_review=previous_review,
+            query=query,
         )
 
-        review = self._parse_review(resp.content)
-        review = self._enforce_evidence_contract(revised_draft, selection, review)
+    async def _request_review_with_compact_retry(
+        self,
+        *,
+        system: str,
+        draft: str,
+        selection: EvidenceSelection | None,
+        previous_review: dict[str, Any] | None = None,
+        query: str = "",
+        evidence_context_missing: bool = False,
+    ) -> dict[str, Any]:
+        """Retry one schema-invalid review with unchanged IDs and compact evidence."""
+        review: dict[str, Any] | None = None
+        for attempt in range(2):
+            active_selection = (
+                compact_evidence_selection(selection)
+                if attempt == 1 and selection is not None
+                else selection
+            )
+            user_msg, _ = await self._build_review_context(
+                draft,
+                active_selection,
+                previous_review=previous_review,
+                query=query,
+            )
+            kwargs: dict[str, Any] = {
+                "response_format": {"type": "json_object"},
+                "max_tokens": self._config.review_max_tokens,
+            }
+            if self._config.thinking_mode != "provider_default":
+                kwargs["extra_body"] = {
+                    "thinking": {"type": self._config.thinking_mode}
+                }
+            resp = await self._llm.chat(
+                [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user_msg},
+                ],
+                **kwargs,
+            )
+            review = self._parse_review(resp.content)
+            review = self._enforce_evidence_contract(
+                draft,
+                active_selection,
+                review,
+                evidence_context_missing=evidence_context_missing,
+            )
+            compliance = review.get("evidence_compliance")
+            schema_invalid = bool(review.get("parse_error")) or (
+                isinstance(compliance, Mapping)
+                and compliance.get("_schema_invalid") is True
+            )
+            if not schema_invalid:
+                if attempt:
+                    review["review_retry_used"] = True
+                    review["degradation_reasons"] = ["review_context_compacted"]
+                return review
+            if selection is None:
+                review["review_unverified"] = True
+                review["degradation_reasons"] = ["review_unverified"]
+                return review
+
+        assert review is not None
+        review["review_unverified"] = True
+        review["degradation_reasons"] = ["review_unverified"]
         return review
 
     async def _build_review_context(

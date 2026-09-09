@@ -2,12 +2,15 @@
 
 import asyncio
 import json
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
 from litagent.agents.adversarial import AdversarialReviewWorker
 from litagent.agents.reviewer import ReviewerWorker
 from litagent.agents.synthesis import SynthesisWorker
+from litagent.config import AdversarialConfig
 from litagent.llm.client import LLMResponse, MockLLMClient
 from litagent.orchestrator.task_graph import SubTask
 
@@ -90,6 +93,37 @@ class TestSynthesisWorker:
         assert len(result["draft"]) > 0
 
     @pytest.mark.asyncio
+    async def test_empty_primary_synthesis_retries_once_with_compact_evidence(self):
+        llm = MockLLMClient(responses=["", "Recovered compact draft."])
+        worker = SynthesisWorker(llm, evidence_selector=FakeEvidenceSelector())
+
+        result = await worker.execute(_make_task_with_data())
+
+        assert result["draft"] == "Recovered compact draft."
+        assert "synthesis_context_compacted" in result["degradation_reasons"]
+
+    @pytest.mark.asyncio
+    async def test_failed_primary_synthesis_retries_once_with_compact_evidence(self):
+        class _FailThenRecover:
+            def __init__(self):
+                self.calls = 0
+
+            async def chat(self, messages, **kwargs):
+                self.calls += 1
+                if self.calls == 1:
+                    raise RuntimeError("provider incomplete")
+                return LLMResponse(content="Recovered after provider failure.")
+
+        llm = _FailThenRecover()
+        worker = SynthesisWorker(llm, evidence_selector=FakeEvidenceSelector())
+
+        result = await worker.execute(_make_task_with_data())
+
+        assert result["draft"] == "Recovered after provider failure."
+        assert "synthesis_primary_failed" in result["degradation_reasons"]
+        assert "synthesis_context_compacted" in result["degradation_reasons"]
+
+    @pytest.mark.asyncio
     async def test_revise_builds_messages(self):
         from litagent.context.evidence_selector import EvidenceSelection
 
@@ -158,6 +192,48 @@ class TestReviewerWorker:
         assert result["verdict"] == "accept"
 
     @pytest.mark.asyncio
+    async def test_disables_thinking_for_structured_review(self):
+        review_json = json.dumps(
+            {
+                "score": 0.9,
+                "strengths": [],
+                "weaknesses": [],
+                "issues": [],
+                "missing_coverage": [],
+                "verdict": "accept",
+                "evidence_compliance": {
+                    "passed": True,
+                    "unsupported_claims": [],
+                    "unknown_evidence_ids": [],
+                },
+            }
+        )
+        llm = SimpleNamespace(
+            chat=AsyncMock(return_value=LLMResponse(content=review_json, model="test"))
+        )
+        worker = ReviewerWorker(llm, config=AdversarialConfig())
+        task = SubTask(
+            task_id="review",
+            description="test",
+            agent_type="reviewer",
+            input_data={
+                "upstream_results": {
+                    "synthesis": {
+                        "draft": "test draft",
+                        "evidence_selection": _EVIDENCE_SELECTION.to_dict(),
+                    }
+                }
+            },
+        )
+
+        await worker.execute(task)
+
+        assert llm.chat.await_args.kwargs["max_tokens"] == 4096
+        assert llm.chat.await_args.kwargs["extra_body"] == {
+            "thinking": {"type": "disabled"}
+        }
+
+    @pytest.mark.asyncio
     async def test_handles_invalid_json(self):
         """Invalid reviewer JSON produces a safe fallback result."""
         llm = MockLLMClient(responses=["This is not JSON"])
@@ -180,6 +256,46 @@ class TestReviewerWorker:
         assert result["score"] == 0.0
         assert result["verdict"] == "revise"
         assert "parse_error" in result
+        assert result["review_unverified"] is True
+
+    @pytest.mark.asyncio
+    async def test_schema_invalid_review_retries_once_with_compact_context(self):
+        valid = json.dumps(
+            {
+                "score": 0.9,
+                "strengths": [],
+                "weaknesses": [],
+                "issues": [],
+                "missing_coverage": [],
+                "verdict": "accept",
+                "evidence_compliance": {
+                    "passed": True,
+                    "unsupported_claims": [],
+                    "unknown_evidence_ids": [],
+                },
+            }
+        )
+        llm = MockLLMClient(responses=["not json", valid])
+        worker = ReviewerWorker(llm)
+        task = SubTask(
+            task_id="review",
+            description="test",
+            agent_type="reviewer",
+            input_data={
+                "upstream_results": {
+                    "synthesis": {
+                        "draft": "test draft",
+                        "evidence_selection": _EVIDENCE_SELECTION.to_dict(),
+                    }
+                }
+            },
+        )
+
+        result = await worker.execute(task)
+
+        assert result["score"] == 0.9
+        assert result["review_retry_used"] is True
+        assert result["degradation_reasons"] == ["review_context_compacted"]
 
 
 class TestAdversarialReviewWorker:
@@ -268,7 +384,17 @@ class TestAdversarialReviewWorker:
                 },
             }
         )
-        llm = MockLLMClient(
+
+        class _RecordingLLM(MockLLMClient):
+            def __init__(self, responses):
+                super().__init__(responses)
+                self.kwargs_by_call = []
+
+            async def chat(self, messages, **kwargs):
+                self.kwargs_by_call.append(kwargs)
+                return await super().chat(messages, **kwargs)
+
+        llm = _RecordingLLM(
             responses=[
                 "Initial draft [E:p1:claim:0].",
                 low_review,
@@ -287,6 +413,7 @@ class TestAdversarialReviewWorker:
         result = await w.execute(task)
         assert result["accepted"] is True
         assert result["total_rounds"] == 2
+        assert llm.kwargs_by_call[2]["extra_body"] == {"thinking": {"type": "disabled"}}
 
     @pytest.mark.asyncio
     async def test_max_rounds_reached(self):
@@ -845,3 +972,29 @@ class TestAdversarialEvidenceGate:
         result = await w.execute(task)
 
         assert "Original draft that must be preserved." in result["final_draft"]
+        assert "revision_empty" in result["degradation_reasons"]
+
+    @pytest.mark.asyncio
+    async def test_unverified_review_preserves_best_draft_without_revision(self):
+        llm = MockLLMClient(
+            responses=[
+                "Best available draft.",
+                "invalid review",
+                "still invalid",
+                "must not become a revision",
+            ]
+        )
+        worker = AdversarialReviewWorker(
+            llm=llm,
+            synthesis=SynthesisWorker(llm, evidence_selector=FakeEvidenceSelector()),
+            reviewer=ReviewerWorker(llm),
+            max_rounds=3,
+            pass_threshold=0.8,
+        )
+
+        result = await worker.execute(_make_task_with_data())
+
+        assert result["final_draft"] == "Best available draft."
+        assert result["total_rounds"] == 1
+        assert result["rounds"][0]["review"]["review_unverified"] is True
+        assert "review_unverified" in result["degradation_reasons"]

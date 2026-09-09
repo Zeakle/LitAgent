@@ -1,9 +1,13 @@
 """Tests for RAGAS faithfulness evaluation."""
 
+import asyncio
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
 import pytest
 
-from litagent.eval.ragas_eval import RagasFaithfulnessEvaluator
 from litagent.config import load_config
+from litagent.eval.ragas_eval import RagasFaithfulnessEvaluator
 
 
 def _ev(threshold=0.8):
@@ -109,3 +113,59 @@ async def test_no_report_refs_falls_back_to_selected_evidence():
     assert resolved.evidence_ids == ("p1:claim:0",)
     assert resolved.fallback_used is True
     assert resolved.fallback_reason == "report_has_no_evidence_refs"
+
+
+@pytest.mark.asyncio
+async def test_score_ragas_uses_configured_provider_adapter():
+    class Adapter:
+        def __init__(self):
+            self.kwargs = None
+
+        async def score_ragas_faithfulness(self, **kwargs):
+            self.kwargs = kwargs
+            return 0.91, {"attempts": 1}
+
+    adapter = Adapter()
+    evaluator = RagasFaithfulnessEvaluator(load_config(), llm=adapter)
+
+    result = await evaluator.evaluate("survey", _evidence_context())
+
+    assert result.score == 0.91
+    assert result.details["provider"] == {"attempts": 1}
+    assert adapter.kwargs["thinking_mode"] == "disabled"
+    assert adapter.kwargs["max_tokens"] == load_config().eval.max_tokens
+
+
+@pytest.mark.asyncio
+async def test_diagnostic_uses_configured_provider_controls():
+    llm = AsyncMock()
+    llm.chat.return_value = SimpleNamespace(content='{"unsupported_claims": []}')
+    config = load_config()
+    evaluator = RagasFaithfulnessEvaluator(config, llm=llm)
+
+    result = await evaluator._diagnose("survey", _evidence_context())
+
+    assert result == {"unsupported_claims": []}
+    assert llm.chat.await_args.kwargs["max_tokens"] == config.eval.max_tokens
+    assert llm.chat.await_args.kwargs["extra_body"] == {
+        "thinking": {"type": "disabled"}
+    }
+
+
+@pytest.mark.asyncio
+async def test_diagnostic_timeout_returns_stable_skip_reason():
+    config = load_config()
+    config = config.model_copy(
+        update={"eval": config.eval.model_copy(update={"timeout_seconds": 0.01})}
+    )
+    llm = AsyncMock()
+
+    async def never_returns(*args, **kwargs):
+        await asyncio.sleep(1)
+
+    llm.chat.side_effect = never_returns
+    evaluator = RagasFaithfulnessEvaluator(config, llm=llm)
+
+    result = await evaluator._diagnose("survey", _evidence_context())
+
+    assert result == {"diagnostic_skipped": "diagnostic_timeout"}

@@ -451,7 +451,14 @@ async def test_production_extraction_creates_promotable_v2_claims():
         )
     )
     skills = SimpleNamespace(to_metadata_text_for=lambda *_args, **_kwargs: "")
-    worker = ExtractorWorker(strategy=LLMStrategy(llm, skills))
+    worker = ExtractorWorker(
+        strategy=LLMStrategy(
+            llm,
+            skills,
+            max_tokens=1536,
+            thinking_mode="disabled",
+        )
+    )
     paper = {
         "paper_id": "arxiv:2401.00001",
         "title": "Few-shot Vision",
@@ -481,6 +488,10 @@ async def test_production_extraction_creates_promotable_v2_claims():
             input_data={"upstream_results": {"relevance_gate": [paper]}},
         )
     )
+    assert llm.chat.await_args.kwargs["max_tokens"] == 1536
+    assert llm.chat.await_args.kwargs["extra_body"] == {
+        "thinking": {"type": "disabled"}
+    }
     index = SimpleNamespace(upsert_trusted=AsyncMock(return_value=1))
     summary = await ClaimsPromoter(index).promote(
         run_id="run-1",

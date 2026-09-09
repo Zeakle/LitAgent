@@ -29,14 +29,18 @@ class AdversarialReviewWorker(Worker):
         reviewer: ReviewerWorker,
         max_rounds: int = 3,
         pass_threshold: float = 0.8,
+        thinking_mode: str = "disabled",
         trace_hook=None,
     ):
         """Initialize the adversarial review worker."""
+        if thinking_mode not in {"provider_default", "enabled", "disabled"}:
+            raise ValueError("unsupported thinking_mode")
         self._synthesis = synthesis
         self._reviewer = reviewer
         self._llm = llm
         self._max_rounds = max_rounds
         self._pass_threshold = pass_threshold
+        self._thinking_mode = thinking_mode
         self._trace_hook = trace_hook
 
     @property
@@ -90,10 +94,15 @@ class AdversarialReviewWorker(Worker):
         # Initial synthesis is required; only later failures may return a draft.
         async with self._sub_span(task.task_id, "synthesis", 1):
             synthesis_result = await self._synthesis.execute(task)
-        draft = synthesis_result["draft"]
+        draft = synthesis_result.get("draft")
         if not isinstance(draft, str) or not draft.strip():
             raise ValueError("synthesis returned an empty draft")
         draft = draft.strip()
+        degradation_reasons = [
+            str(item)
+            for item in synthesis_result.get("degradation_reasons", [])
+            if isinstance(item, str) and item
+        ]
 
         selection_raw = synthesis_result.get("evidence_selection")
         evidence_selection: EvidenceSelection | None = None
@@ -160,6 +169,11 @@ class AdversarialReviewWorker(Worker):
                 rounds.append(
                     {"round": round_num, "review": review, "draft_length": len(draft)}
                 )
+                degradation_reasons.extend(
+                    str(item)
+                    for item in review.get("degradation_reasons", [])
+                    if isinstance(item, str) and item
+                )
 
                 score = review.get("score", 0)
                 verdict = review.get("verdict", "revise")
@@ -178,6 +192,13 @@ class AdversarialReviewWorker(Worker):
                     logger.info(f"Accepted at round {round_num}")
                     break
 
+                if review.get("review_unverified") is True:
+                    logger.warning(
+                        "Reviewer remained schema-invalid after compact retry; "
+                        "preserving the current draft"
+                    )
+                    break
+
                 if round_num < self._max_rounds:
                     review_text = self._format_review_for_revision(review)
                     try:
@@ -192,7 +213,12 @@ class AdversarialReviewWorker(Worker):
                         async with self._sub_span(
                             task.task_id, "synthesis", round_num + 1
                         ):
-                            resp = await self._llm.chat(messages)
+                            kwargs: dict[str, Any] = {}
+                            if self._thinking_mode != "provider_default":
+                                kwargs["extra_body"] = {
+                                    "thinking": {"type": self._thinking_mode}
+                                }
+                            resp = await self._llm.chat(messages, **kwargs)
 
                         new_draft = (resp.content or "").strip()
                         if not new_draft:
@@ -200,18 +226,21 @@ class AdversarialReviewWorker(Worker):
                                 "Revision LLM returned empty content, "
                                 "keeping current draft"
                             )
+                            degradation_reasons.append("revision_empty")
                             break
                         draft = new_draft
                     except Exception as e:
                         logger.warning(
                             f"Revision LLM call failed: {e}, keeping current draft"
                         )
+                        degradation_reasons.append("revision_failed")
                         break
                     logger.info(f"Revision {round_num}: {len(draft)} chars")
         except Exception as e:
             logger.warning(
                 f"Adversarial loop aborted ({e}), returning current draft as fallback"
             )
+            degradation_reasons.append("adversarial_loop_degraded")
 
         last_review = rounds[-1]["review"] if rounds else {}
 
@@ -232,6 +261,7 @@ class AdversarialReviewWorker(Worker):
             "final_score": last_review.get("score", 0),
             "accepted": (self._review_passes(last_review) if last_review else False),
             "evidence_selection": sel_summary,
+            "degradation_reasons": list(dict.fromkeys(degradation_reasons)),
         }
 
     def _review_passes(self, review: dict[str, Any]) -> bool:

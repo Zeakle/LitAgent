@@ -12,6 +12,8 @@ memory:
   pg_url: "postgresql://litagent:litagent@localhost:5433/litagent"   # host 5433 → 避开 LangFuse postgres(5432)
 
 context:
+  evidence_reranker_enabled: true
+  evidence_reranker_model: "cross-encoder/ms-marco-MiniLM-L-6-v2"
   # Input assembly budget; generated output is controlled separately below.
   max_tokens: 32768
   compact_threshold: 0.85
@@ -29,19 +31,26 @@ extractor:
   max_concurrent: 5
   enable_llm: true
   max_papers: 50
-  per_paper_timeout_ms: 20000
+  # Extraction is structured and bounded; do not inherit the 20K generation cap.
+  max_tokens: 2048
+  # Structured extraction does not benefit from long hidden reasoning.
+  thinking_mode: disabled
+  # The current provider needs more than 20s under five-way concurrency.
+  per_paper_timeout_ms: 60000
 
 orchestrator:
   timeout_ms: 900000       # 整体编排超时 15 分钟
   max_concurrent: 5        # 最大并行 Worker 数
 
 llm:
-  base_url: "https://api.deepseek.com"
-  model: "deepseek-v4-flash"
+  base_url: "https://ark.cn-beijing.volces.com/api/v3"
+  model: "doubao-seed-2-0-mini-260428"
   max_tokens: 20000
   temperature: 0.1
 
 relevance:
+  reranker_enabled: true
+  reranker_model: "cross-encoder/ms-marco-MiniLM-L-6-v2"
   max_papers: 50
   min_papers: 10
   cross_encoder_min_score: null
@@ -93,7 +102,8 @@ rag:
 adversarial:
   max_rounds: 3
   pass_threshold: 0.8  # Reviewer评分 >= 0.8是未通过
-  review_max_tokens: 12288  # output cap; includes reasoning tokens in thinking mode
+  review_max_tokens: 4096  # bounded structured review JSON
+  thinking_mode: disabled
   task_timeout_ms: 720000  # synthesis/review/revision loop upper bound
 
 mcp_servers: {} 
@@ -128,6 +138,8 @@ observability:
 
 eval:
   max_tokens: 16384       # output cap; citation/faithfulness reasoning needs more than 8K
+  thinking_mode: "disabled"  # keep evaluator JSON bounded on reasoning providers
+  timeout_seconds: 180.0
   faithfulness_max_evidence_items: 40
   faithfulness_max_context_chars: 24000
   rewrite:

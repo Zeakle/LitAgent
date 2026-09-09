@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timezone
 from enum import Enum
 from typing import Any, Literal
 
@@ -237,6 +237,75 @@ class SurveyJudgeConfig(BaseModel):
         return _fingerprint(self.model_dump(mode="json"))
 
 
+class ExternalInputSnapshot(BaseModel):
+    """Persist one immutable planner and external-search input cohort."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_version: Literal[1] = 1
+    case_id: str = Field(min_length=1)
+    repetition: int = Field(ge=1)
+    query: str = Field(min_length=1)
+    decomposition: list[str] = Field(min_length=1)
+    search_outputs: dict[str, dict[str, Any]]
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    external_input_fingerprint: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    fingerprint: str = Field(default="", pattern=r"^(|sha256:[0-9a-f]{64})$")
+
+    @model_validator(mode="after")
+    def _validate_and_fingerprint(self):
+        """Validate task identities and bind the snapshot to its full payload."""
+        if any(not item.strip() for item in self.decomposition):
+            raise ValueError("snapshot decomposition items must be non-empty")
+        for task_id, value in self.search_outputs.items():
+            if not task_id.startswith("search_"):
+                raise ValueError("snapshot search task ids must start with search_")
+            if not isinstance(value, dict) or value.get("task_id") != task_id:
+                raise ValueError("snapshot search task key must match task_id")
+            input_data = value.get("input")
+            if not isinstance(input_data, dict) or not {
+                "mode",
+                "source",
+                "query",
+            }.issubset(input_data):
+                raise ValueError(
+                    "snapshot search input must contain mode, source, and query"
+                )
+            if input_data.get("mode") != "external" or not all(
+                isinstance(input_data.get(key), str) and input_data[key].strip()
+                for key in ("source", "query")
+            ):
+                raise ValueError("snapshot search input fields are invalid")
+            if not isinstance(value.get("output"), list):
+                raise ValueError("snapshot search output must be a list")
+            outcome = value.get("outcome")
+            if not isinstance(outcome, dict) or outcome.get("status") not in {
+                "success",
+                "empty",
+                "rate_limited",
+                "timeout",
+                "failed",
+            }:
+                raise ValueError("snapshot search outcome status is invalid")
+
+        payload = self.model_dump(mode="json", exclude={"created_at", "fingerprint"})
+        expected = _fingerprint(payload)
+        if self.fingerprint and self.fingerprint != expected:
+            raise ValueError("external input snapshot fingerprint mismatch")
+        object.__setattr__(self, "fingerprint", expected)
+        return self
+
+
+class SurveyBenchmarkBudget(BaseModel):
+    """Bound paid Survey observations and their two token pools."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    max_observations: int = Field(ge=1)
+    max_product_tokens: int = Field(ge=1)
+    max_judge_tokens: int = Field(ge=1)
+
+
 class CoverageMetrics(BaseModel):
     """Store required-paper coverage at each product stage."""
 
@@ -246,6 +315,21 @@ class CoverageMetrics(BaseModel):
     relevance_gate: float = Field(ge=0, le=1)
     evidence: float = Field(ge=0, le=1)
     missing_by_stage: dict[str, list[str]] = Field(default_factory=dict)
+
+
+class PaperFlowCoverage(BaseModel):
+    """Track required papers from local recall through final citations."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    recall: float | None = Field(default=None, ge=0, le=1)
+    dedup: float | None = Field(default=None, ge=0, le=1)
+    relevance_gate: float | None = Field(default=None, ge=0, le=1)
+    evidence: float | None = Field(default=None, ge=0, le=1)
+    synthesis_context: float | None = Field(default=None, ge=0, le=1)
+    final_citation: float | None = Field(default=None, ge=0, le=1)
+    missing_by_stage: dict[str, list[str]] = Field(default_factory=dict)
+    unavailable_stages: list[str] = Field(default_factory=list)
 
 
 class CitationMetrics(BaseModel):
@@ -266,6 +350,8 @@ class RuntimeCostMetrics(BaseModel):
     """Store product-runtime cost without Judge usage."""
 
     model_config = ConfigDict(extra="forbid")
+    usage_complete: bool = False
+    missing_usage_calls: int = Field(default=0, ge=0)
 
     prompt_tokens: int = Field(ge=0)
     completion_tokens: int = Field(ge=0)
@@ -285,6 +371,7 @@ class SurveyRunMetrics(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     coverage: CoverageMetrics
+    paper_flow: PaperFlowCoverage | None = None
     citations: CitationMetrics
     delivery_status: str
     delivery_accurate: bool
@@ -355,6 +442,7 @@ class SurveyJudgeMetrics(BaseModel):
     unsupported_claim_rate: float | None = Field(default=None, ge=0, le=1)
     contradiction_rate: float | None = Field(default=None, ge=0, le=1)
     topic_assessments: list[TopicAssessment] = Field(default_factory=list)
+    claim_assessments: list[JudgeClaimAssessment] = Field(default_factory=list)
     unsupported_claims: list[UnsupportedClaim] = Field(default_factory=list)
     contradictions: list[ContradictionPair] = Field(default_factory=list)
     reason_codes: list[str] = Field(default_factory=list)
@@ -473,7 +561,7 @@ class SurveyProfileComparison(BaseModel):
 
 
 class SurveyBenchmarkResult(BaseModel):
-    """Store an ablation or final Survey benchmark batch."""
+    """Store a pilot, ablation, or final Survey benchmark batch."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -481,7 +569,7 @@ class SurveyBenchmarkResult(BaseModel):
     benchmark_type: Literal["survey"] = "survey"
     run_id: str
     status: Literal["succeeded", "partial", "failed"]
-    stage: Literal["ablation", "baseline"]
+    stage: Literal["pilot", "ablation", "baseline"]
     dataset_id: str
     dataset_version: str
     dataset_fingerprint: str

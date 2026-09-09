@@ -354,6 +354,41 @@ class TestTransactionalRewriteContract:
         assert report["evaluation"] == post_evaluation
         assert report["quality"]["status"] == "passed"
         assert outcome.candidate_quality == report["quality"]
+        assert agent._llm.chat.await_args.kwargs["extra_body"] == {
+            "thinking": {"type": "disabled"}
+        }
+
+    @pytest.mark.asyncio
+    async def test_rewrite_timeout_returns_uncommitted_outcome(self):
+        report = _rewrite_report()
+        initial_evaluation = report["evaluation"]
+        initial_quality = report["quality"]
+        agent = self._configure_agent(initial_evaluation)
+        agent._config = agent._config.model_copy(
+            update={
+                "eval": agent._config.eval.model_copy(update={"timeout_seconds": 0.01})
+            }
+        )
+
+        async def never_returns(*args, **kwargs):
+            await asyncio.sleep(1)
+
+        agent._llm.chat.side_effect = never_returns
+
+        outcome = await agent._attempt_evidence_rewrite(
+            query="few-shot learning",
+            report_data=report,
+            results={
+                "extract": [_extraction([_evidence_item("p1:claim:0", "support")])]
+            },
+            initial_evaluation=initial_evaluation,
+            initial_quality=initial_quality,
+        )
+
+        assert outcome.attempted is True
+        assert outcome.committed is False
+        assert outcome.reason_code == "llm_timeout"
+        agent._evaluate.assert_not_awaited()
 
 
 class _StaticEvaluator:

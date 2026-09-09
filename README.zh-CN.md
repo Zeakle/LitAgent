@@ -18,7 +18,7 @@ LangFuse trace 进行回放。
 | 动态 DAG 和对抗式 Survey 流程 | 已实现 | [`runner.py`](./src/litagent/runner.py)、[`test_phase14_4_e2e.py`](./tests/test_phase14_4_e2e.py) |
 | 持久化 Paper Corpus 和 PDF ingestion | 已实现 | [`rag/`](./src/litagent/rag)、[`test_phase14_1.py`](./tests/test_phase14_1.py) |
 | Retrieval benchmark | 已完成 | [`RESULTS.md`](./benchmarks/rag/RESULTS.md) |
-| 端到端 Survey benchmark | 代码完成，等待 39 次真实运行验收 | [`benchmarks/survey`](./benchmarks/survey)、[`test_phase14_5.py`](./tests/test_phase14_5.py) |
+| 端到端 Survey benchmark | 诊断性 pilot 已完成，尚未形成正式 baseline | [`2026-08-25 pilot`](./benchmarks/survey/results/pilot-2026-08-25.md)、[`2026-09-08 修复后 pilot`](./benchmarks/survey/results/post-repair-pilot-2026-09-08.md)、[`test_phase14_5.py`](./tests/test_phase14_5.py) |
 | 可复现流程回放 | 已实现 | [`demo.py`](./src/litagent/demo.py)、[`test_phase14_6.py`](./tests/test_phase14_6.py) |
 
 公开能力声明与证据的完整对应关系位于
@@ -137,8 +137,20 @@ case，以及 54 篇经过 judgment 的论文 Corpus。比较对象为：
 - external search + abstract RAG
 - external search + selected-fulltext RAG
 
-实现和确定性测试已经完成，但正式 39 次真实运行以及 LangFuse/RunArtifact 验收尚未完成。
-因此当前 README 不声明胜出 profile，也不声称全文 RAG 已经改善最终 Survey。
+实现和确定性测试已经完成。一次成本受控的 9 次真实 pilot 已落盘全部 observation 和
+Judge，校验了 9 份 RunArtifact 哈希，并确认 18 条 Survey/Judge LangFuse trace 都有
+input/output。结果仍为 `partial`：没有任何 profile pair 具备相同的外部输入，核心论文
+citation recall 全部为 0，运行时 faithfulness evaluation 全部跳过，且一条 selected-fulltext
+Survey 在 synthesis 阶段失败。详见
+[`脱敏 pilot 结果`](./benchmarks/survey/results/pilot-2026-08-25.md)。因此当前项目不声明胜出
+profile，也不声称全文 RAG 已经改善最终 Survey。
+该 pilot 暴露的问题已完成可验证修复：benchmark profile 复用同一份冻结的
+Planner/Search 快照，paper flow 按阶段度量，运行时 evaluator 复用已配置 provider，
+长上下文生成使用有界紧凑重试，且 observation/token 预算会在下一次付费调用前
+停止。随后的一条
+[`修复后真实 pilot`](./benchmarks/survey/results/post-repair-pilot-2026-09-08.md)
+最终 runtime faithfulness 为 0.8958、delivery 为 `ready`；但它使用同模型 Judge 和 dirty
+worktree，只验证修复链路，不构成跨 profile 收益或正式 baseline。
 
 ## 质量、安全与失败语义
 

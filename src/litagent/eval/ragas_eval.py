@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -21,6 +21,7 @@ from litagent.eval.base import (
     EvalResult,
     Evaluator,
 )
+from litagent.evidence import extract_evidence_refs_ordered
 from litagent.llm.client import BaseLLMClient
 from litagent.logging import get_logger
 
@@ -155,17 +156,27 @@ class RagasFaithfulnessEvaluator(Evaluator):
         )
 
         try:
-            response = await self._llm.chat(
-                [
-                    {"role": "system", "content": _DIAGNOSTIC_PROMPT},
-                    {"role": "user", "content": user_msg},
-                ],
-                response_format={"type": "json_object"},
-                max_tokens=self._cfg.eval.max_tokens,
-            )
+            chat_kwargs: dict[str, Any] = {
+                "response_format": {"type": "json_object"},
+                "max_tokens": self._cfg.eval.max_tokens,
+            }
+            if self._cfg.eval.thinking_mode != "provider_default":
+                chat_kwargs["extra_body"] = {
+                    "thinking": {"type": self._cfg.eval.thinking_mode}
+                }
+            async with asyncio.timeout(self._cfg.eval.timeout_seconds):
+                response = await self._llm.chat(
+                    [
+                        {"role": "system", "content": _DIAGNOSTIC_PROMPT},
+                        {"role": "user", "content": user_msg},
+                    ],
+                    **chat_kwargs,
+                )
             parsed = json.loads(response.content or "{}")
         except asyncio.CancelledError:
             raise
+        except TimeoutError:
+            return {"diagnostic_skipped": "diagnostic_timeout"}
         except Exception as exc:
             logger.warning(
                 "Faithfulness diagnostic failed error_type=%s",
@@ -224,28 +235,21 @@ class RagasFaithfulnessEvaluator(Evaluator):
 
         return {"unsupported_claims": normalized}
 
-    async def _score_ragas(self, survey: str, contexts: list[str], query: str) -> float:
-        """Score faithfulness with the optional RAGAS dependency."""
-
-        from openai import AsyncOpenAI
-        from ragas.llms import llm_factory
-        from ragas.metrics.collections import Faithfulness
-
-        api_key = os.environ.get("LLM_API_KEY") or os.environ.get("OPENAI_API_KEY", "")
-        client = AsyncOpenAI(base_url=self._cfg.llm.base_url, api_key=api_key)
-
-        llm = llm_factory(
-            self._cfg.llm.model, client=client, max_tokens=self._cfg.eval.max_tokens
-        )
-        scorer = Faithfulness(llm=llm)
-
-        result = await scorer.ascore(
-            user_input=query or "literature survey",
-            response=survey,
-            retrieved_contexts=contexts,
-        )
-
-        return float(getattr(result, "value", result))
+    async def _score_ragas(
+        self, survey: str, contexts: list[str], query: str
+    ) -> tuple[float, dict[str, Any]]:
+        """Score via the same configured provider adapter used by LitAgent."""
+        adapter = getattr(self._llm, "score_ragas_faithfulness", None)
+        if not callable(adapter):
+            raise RuntimeError("ragas_provider_adapter_unavailable")
+        async with asyncio.timeout(self._cfg.eval.timeout_seconds):
+            return await adapter(
+                user_input=query or "literature survey",
+                response=survey,
+                retrieved_contexts=contexts,
+                max_tokens=self._cfg.eval.max_tokens,
+                thinking_mode=self._cfg.eval.thinking_mode,
+            )
 
     async def evaluate(self, survey: str, context: dict[str, Any]) -> EvalResult:
         """Score a survey against report-referenced or selected evidence."""
@@ -261,16 +265,30 @@ class RagasFaithfulnessEvaluator(Evaluator):
 
         query = str(context.get(CTX_QUERY) or "")
         try:
-            score = await self._score_ragas(survey, list(resolved.texts), query)
+            scored = await self._score_ragas(survey, list(resolved.texts), query)
+            if isinstance(scored, tuple):
+                score, score_metadata = scored
+            else:
+                # Preserve compatibility for injected test evaluators.
+                score, score_metadata = float(scored), {}
         except ImportError:
             return EvalResult.skip(self.metric_name, "ragas not installed")
         except asyncio.CancelledError:
             raise
+        except TimeoutError:
+            return EvalResult.skip(self.metric_name, "ragas_timeout")
         except Exception as exc:
-            logger.warning("ragas eval failed error_type=%s", type(exc).__name__)
-            return EvalResult.skip(
-                self.metric_name, f"ragas_error:{type(exc).__name__}"
-            )
+            error_type = type(exc).__name__
+            if error_type == "IncompleteOutputException":
+                reason = "ragas_incomplete_output"
+            elif isinstance(exc, (json.JSONDecodeError, TypeError, ValueError)):
+                reason = "ragas_malformed_output"
+            elif str(exc) == "ragas_provider_adapter_unavailable":
+                reason = "ragas_provider_adapter_unavailable"
+            else:
+                reason = f"ragas_provider_error:{error_type}"
+            logger.warning("ragas eval failed error_type=%s", error_type)
+            return EvalResult.skip(self.metric_name, reason)
 
         if score != score:
             return EvalResult.skip(self.metric_name, "ragas returned nan")
@@ -280,11 +298,55 @@ class RagasFaithfulnessEvaluator(Evaluator):
             "evidence_ids": list(resolved.evidence_ids),
             "fallback_used": resolved.fallback_used,
             "fallback_reason": resolved.fallback_reason,
+            "provider": score_metadata,
             "unresolved_evidence_ids": list(
                 context.get(CTX_UNRESOLVED_EVIDENCE_IDS) or []
             ),
         }
         result = self._make_result(score, details)
-        if not result.passed:
-            result.details.update(await self._diagnose(survey, context))
+        verdicts = score_metadata.get("verdicts")
+        if isinstance(verdicts, list):
+            result.details["factual_claim_count"] = len(verdicts)
+            result.details["unsupported_claims"] = self._diagnostics_from_verdicts(
+                survey, verdicts, set(resolved.evidence_ids)
+            )
+        elif not result.passed:
+            result.details["diagnostic_skipped"] = "legacy_score_without_verdicts"
         return result
+
+    @staticmethod
+    def _diagnostics_from_verdicts(
+        survey: str, verdicts: list[dict[str, Any]], known_ids: set[str]
+    ) -> list[dict[str, Any]]:
+        """Preserve every negative verdict without guessing original citations."""
+        paragraphs = survey.split("\n\n")
+        diagnostics = []
+        for item in verdicts:
+            if item.get("verdict") != 0:
+                continue
+            claim = str(item.get("statement") or "").strip()
+            # Only whole-paragraph equivalence may associate citations with a claim.
+            # Substring matches can accidentally capture another sentence's evidence.
+            normalized_claim = " ".join(claim.split()).strip(" .!?")
+            matches = [
+                p
+                for p in paragraphs
+                if normalized_claim
+                and " ".join(re.sub(r"\[E:[^\]]+\]", "", p).split()).strip(" .!?")
+                == normalized_claim
+            ]
+            mapped = len(matches) == 1
+            refs = extract_evidence_refs_ordered(matches[0]) if mapped else []
+            diagnostics.append(
+                {
+                    "claim_text": claim,
+                    "statement_id": item.get("statement_id"),
+                    "evidence_ids": [r for r in refs if r in known_ids],
+                    "reason_code": "insufficient_support",
+                    "explanation": str(item.get("reason") or ""),
+                    "source_quote": matches[0] if mapped else None,
+                    "alignment_status": "exact" if mapped else "unmapped",
+                    "diagnostic_source": "ragas_verdict",
+                }
+            )
+        return diagnostics

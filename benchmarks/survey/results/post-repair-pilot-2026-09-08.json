@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "recorded_at": "2026-09-08",
+  "stage": "pilot",
+  "case_id": "nerf-foundations",
+  "profile_id": "external-fulltext",
+  "generation_model": "doubao-seed-2-0-mini-260428",
+  "judge_model": "doubao-seed-2-0-mini-260428",
+  "self_judged": true,
+  "formal_eligible": false,
+  "git_dirty": true,
+  "observations": 1,
+  "dag": {
+    "completed_tasks": 14,
+    "partial": false
+  },
+  "paper_flow": {
+    "recall": 1.0,
+    "dedup": 1.0,
+    "relevance_gate": 1.0,
+    "evidence": 1.0,
+    "synthesis_context": 1.0,
+    "final_citation": 1.0
+  },
+  "runtime_evaluation": {
+    "initial_faithfulness": 0.7636363636,
+    "rewrite_committed": true,
+    "final_faithfulness": 0.8958333333,
+    "final_claim_count": 48,
+    "unsupported_claim_count": 5,
+    "citation_accuracy": 1.0,
+    "internal_consistency": 1.0
+  },
+  "delivery": {
+    "quality_status": "passed",
+    "status": "ready",
+    "publishable": true
+  },
+  "judge": {
+    "faithfulness": 0.875,
+    "claim_count": 24,
+    "unsupported_claim_count": 3,
+    "topic_coverage": 1.0
+  },
+  "usage": {
+    "product_tokens": 127511,
+    "judge_tokens": 14816,
+    "total_tokens": 142327,
+    "complete": true
+  },
+  "retries": {
+    "tool": 5,
+    "tool_failures": 0,
+    "worker_failures": 0
+  },
+  "trace_verification": {
+    "survey_generations": 62,
+    "judge_generations": 2,
+    "generations_with_input_output_usage": 64,
+    "trace_ids_disclosed": false
+  },
+  "interpretation_boundary": "One self-judged dirty-worktree pilot validates the repaired execution path only; it does not establish a formal benchmark, profile gain, or model generalization result."
+}

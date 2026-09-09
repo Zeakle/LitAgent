@@ -13,6 +13,7 @@ from typing import Any
 from litagent.benchmark.survey_models import (
     CitationMetrics,
     CoverageMetrics,
+    PaperFlowCoverage,
     RuntimeCostMetrics,
     SurveyBenchmarkCase,
     SurveyCaseAggregate,
@@ -21,6 +22,9 @@ from litagent.benchmark.survey_models import (
     SurveyRunMetrics,
 )
 from litagent.evidence import extract_evidence_refs_ordered
+from litagent.rag.models import normalize_paper_identity
+
+METRICS_VERSION = "survey-metrics-v2-canonical-usage"
 
 
 def _mean_optional(values: Sequence[float | int | None]) -> float | None:
@@ -64,6 +68,25 @@ def _worker_output(artifact: Mapping[str, Any], task_id: str) -> Any:
     return None
 
 
+def _worker_outputs_with_prefix(
+    artifact: Mapping[str, Any], prefix: str
+) -> tuple[bool, list[Any]]:
+    """Return whether a worker stage was observed and all matching outputs."""
+    nodes = artifact.get("nodes")
+    if not isinstance(nodes, Mapping):
+        return False, []
+    outputs: list[Any] = []
+    observed = False
+    for node in nodes.values():
+        if not isinstance(node, Mapping):
+            continue
+        task_id = str(node.get("task_id") or "")
+        if task_id.startswith(prefix):
+            observed = True
+            outputs.append(node.get("output"))
+    return observed, outputs
+
+
 def _paper_ids(value: Any) -> list[str]:
     """Collect stable paper IDs from nested worker output."""
     found: list[str] = []
@@ -72,7 +95,7 @@ def _paper_ids(value: Any) -> list[str]:
         if isinstance(item, Mapping):
             paper_id = item.get("paper_id")
             if isinstance(paper_id, str) and paper_id:
-                found.append(paper_id)
+                found.append(normalize_paper_identity(paper_id))
             for nested in item.values():
                 if isinstance(nested, (Mapping, list, tuple)):
                     visit(nested)
@@ -100,7 +123,7 @@ def _evidence_ledger(artifact: Mapping[str, Any]) -> dict[str, str]:
             evidence_id = str(item.get("evidence_id") or "")
             paper_id = str(item.get("paper_id") or fallback_paper_id)
             if evidence_id and paper_id and evidence_id not in ledger:
-                ledger[evidence_id] = paper_id
+                ledger[evidence_id] = normalize_paper_identity(paper_id)
     return ledger
 
 
@@ -129,9 +152,88 @@ def artifact_evidence_ledger(
 
 def _coverage(required: set[str], observed: Sequence[str]) -> tuple[float, list[str]]:
     """Return required-paper recall and stable missing IDs."""
-    observed_set = set(observed)
+    required = {normalize_paper_identity(value) for value in required}
+    observed_set = {normalize_paper_identity(value) for value in observed}
     missing = sorted(required - observed_set)
     return (len(required & observed_set) / len(required), missing)
+
+
+def paper_flow_coverage(
+    artifact: Mapping[str, Any], required_paper_ids: set[str]
+) -> PaperFlowCoverage:
+    """Track required-paper survival across observable production stages."""
+    if not required_paper_ids:
+        raise ValueError("required_paper_ids must not be empty")
+
+    ledger = _evidence_ledger(artifact)
+    report_observed = isinstance(artifact.get("report"), Mapping)
+    report = artifact.get("report") if report_observed else {}
+    survey = str(report.get("survey") or "")
+    refs = extract_evidence_refs_ordered(survey)
+
+    stage_values: dict[str, list[str] | None] = {}
+    recall_observed, recall_outputs = _worker_outputs_with_prefix(artifact, "recall_")
+    stage_values["recall"] = _paper_ids(recall_outputs) if recall_observed else None
+
+    for stage, task_id in (
+        ("dedup", "dedup"),
+        ("relevance_gate", "relevance_gate"),
+    ):
+        output = _worker_output(artifact, task_id)
+        stage_values[stage] = _paper_ids(output) if output is not None else None
+
+    extraction_output = _worker_output(artifact, "extract")
+    if extraction_output is None:
+        extraction_output = _worker_output(artifact, "extractor")
+    stage_values["evidence"] = (
+        _unique(list(ledger.values())) if extraction_output is not None else None
+    )
+
+    adversarial_output = _worker_output(artifact, "adversarial_review")
+    selected_ids: list[str] | None = None
+    if isinstance(adversarial_output, Mapping):
+        selection = adversarial_output.get("evidence_selection")
+        if isinstance(selection, Mapping):
+            sections = selection.get("section_evidence_ids")
+            if isinstance(sections, Mapping):
+                selected_ids = _unique(
+                    [
+                        evidence_id
+                        for values in sections.values()
+                        if isinstance(values, list)
+                        for evidence_id in values
+                        if isinstance(evidence_id, str)
+                    ]
+                )
+    stage_values["synthesis_context"] = (
+        _unique([ledger[item] for item in selected_ids if item in ledger])
+        if selected_ids is not None
+        else None
+    )
+    stage_values["final_citation"] = (
+        _unique([ledger[item] for item in refs if item in ledger])
+        if report_observed and "survey" in report
+        else None
+    )
+
+    scores: dict[str, float | None] = {}
+    missing_by_stage: dict[str, list[str]] = {}
+    unavailable: list[str] = []
+    for stage, observed_ids in stage_values.items():
+        if observed_ids is None:
+            scores[stage] = None
+            missing_by_stage[stage] = sorted(required_paper_ids)
+            unavailable.append(stage)
+            continue
+        score, missing = _coverage(required_paper_ids, observed_ids)
+        scores[stage] = score
+        missing_by_stage[stage] = missing
+
+    return PaperFlowCoverage(
+        **scores,
+        missing_by_stage=missing_by_stage,
+        unavailable_stages=unavailable,
+    )
 
 
 def _event_count(artifact: Mapping[str, Any], *events: str) -> int:
@@ -204,9 +306,13 @@ def evaluate_survey_artifact(
     judged_paper_ids: set[str] | None = None,
 ) -> SurveyRunMetrics:
     """Project one complete RunArtifact into hand-checkable metrics."""
-    required = set(case.required_paper_ids)
-    relevant = set(case.relevant_paper_ids)
-    judged = set(judged_paper_ids) if judged_paper_ids is not None else relevant
+    required = {normalize_paper_identity(p) for p in case.required_paper_ids}
+    relevant = {normalize_paper_identity(p) for p in case.relevant_paper_ids}
+    judged = (
+        {normalize_paper_identity(p) for p in judged_paper_ids}
+        if judged_paper_ids is not None
+        else relevant
+    )
     if not relevant.issubset(judged):
         raise ValueError("judged_paper_ids must include every relevant paper")
     dedup_ids = _paper_ids(_worker_output(artifact, "dedup"))
@@ -242,6 +348,22 @@ def evaluate_survey_artifact(
         report.get("delivery") if isinstance(report.get("delivery"), Mapping) else {}
     )
     delivery_status = str(delivery.get("status") or "unknown")
+    missing_usage = sum(
+        1
+        for event in artifact.get("events", [])
+        if event.get("event") in {"llm.complete", "llm.failed"}
+        and (
+            event.get("data", {}).get("usage_available") is False
+            or event.get("event") == "llm.failed"
+            or (
+                isinstance(event.get("data", {}).get("content"), dict)
+                and "faithfulness" in event["data"]["content"]
+            )
+            or not {"prompt_tokens", "completion_tokens"}.issubset(
+                event.get("data", {})
+            )
+        )
+    )
     return SurveyRunMetrics(
         coverage=CoverageMetrics(
             dedup=dedup_coverage,
@@ -253,6 +375,7 @@ def evaluate_survey_artifact(
                 "evidence": evidence_missing,
             },
         ),
+        paper_flow=paper_flow_coverage(artifact, required),
         citations=CitationMetrics(
             recall=citation_recall,
             precision=citation_precision,
@@ -268,6 +391,8 @@ def evaluate_survey_artifact(
         elapsed_ms=max(0, int(artifact.get("elapsed_ms") or 0)),
         stage_latency_ms=_stage_latencies(artifact),
         cost=RuntimeCostMetrics(
+            usage_complete=missing_usage == 0,
+            missing_usage_calls=missing_usage,
             prompt_tokens=max(0, int(usage.get("prompt_tokens") or 0)),
             completion_tokens=max(0, int(usage.get("completion_tokens") or 0)),
             total_tokens=max(0, int(usage.get("total_tokens") or 0)),
@@ -290,25 +415,36 @@ def evaluate_survey_artifact(
 
 def external_input_fingerprint(artifact: Mapping[str, Any]) -> str:
     """Fingerprint decomposition and external search outputs for comparability."""
-    projection: list[dict[str, Any]] = []
+    decomposition: dict[str, Any] | None = None
+    search_outputs: dict[str, dict[str, Any]] = {}
     nodes = artifact.get("nodes")
     if isinstance(nodes, Mapping):
-        for node_id, node in sorted(nodes.items()):
+        for node_id, node in nodes.items():
             if not isinstance(node, Mapping):
                 continue
             task_id = str(node.get("task_id") or "")
-            if (
-                task_id.startswith("search_")
-                or task_id == "planner.query_decomposition"
-            ):
-                projection.append(
-                    {
-                        "node_id": node_id,
-                        "task_id": task_id,
-                        "input": node.get("input"),
-                        "output": node.get("output"),
-                    }
-                )
+            kind = str(node.get("kind") or "")
+            is_subspan = kind == "subspan" or str(node_id).startswith("subspan:")
+            is_worker = kind == "worker" or str(node_id).startswith("worker:")
+            if is_subspan and task_id in {
+                "query_decomposition",
+                "planner.query_decomposition",
+            }:
+                decomposition = {
+                    "task_id": "query_decomposition",
+                    "input": node.get("input"),
+                    "output": node.get("output"),
+                }
+            elif is_worker and task_id.startswith("search_"):
+                search_outputs[task_id] = {
+                    "task_id": task_id,
+                    "input": node.get("input"),
+                    "output": node.get("output"),
+                }
+    projection = {
+        "decomposition": decomposition,
+        "search_outputs": [search_outputs[key] for key in sorted(search_outputs)],
+    }
     encoded = json.dumps(
         projection, ensure_ascii=False, sort_keys=True, separators=(",", ":")
     ).encode("utf-8")
@@ -351,6 +487,8 @@ def _aggregate_case(group: Sequence[SurveyCaseObservation]) -> SurveyCaseAggrega
         ),
         total_tokens=_mean_optional(
             [item.metrics.cost.total_tokens for item in valid if item.metrics]
+            if all(item.metrics.cost.usage_complete for item in valid if item.metrics)
+            else []
         ),
         elapsed_ms=_mean_optional(
             [item.metrics.elapsed_ms for item in valid if item.metrics]
@@ -407,7 +545,11 @@ def _aggregate_profile(
             [item.unsupported_claim_rate for item in cases]
         ),
         contradiction_rate=_mean_optional([item.contradiction_rate for item in cases]),
-        total_tokens=_mean_optional([item.total_tokens for item in cases]),
+        total_tokens=(
+            _mean_optional([item.total_tokens for item in cases])
+            if all(item.total_tokens is not None for item in cases)
+            else None
+        ),
         latency_p50_ms=_percentile_optional([item.elapsed_ms for item in cases], 0.50),
         latency_p95_ms=_percentile_optional([item.elapsed_ms for item in cases], 0.95),
         delivery_distribution=delivery_distribution,

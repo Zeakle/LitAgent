@@ -105,6 +105,7 @@ class RewriteValidation:
     reason_codes: tuple[str, ...]
     referenced_evidence_ids: tuple[str, ...]
     unknown_evidence_ids: tuple[str, ...]
+    unexpected_removed_evidence_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -138,6 +139,16 @@ class RunPolicy:
             claims_reads=False,
             claims_writes=False,
         )
+
+
+@dataclass(frozen=True)
+class ExternalInputReplay:
+    """Supply immutable planner and external-search outputs to one run."""
+
+    query: str
+    decomposition: tuple[str, ...]
+    search_outputs: Mapping[str, Mapping[str, Any]]
+    fingerprint: str
 
 
 def derive_delivery(
@@ -205,6 +216,8 @@ class Infra:
     claims_index: ClaimsIndex | None = None
     retriever: HybridRetriever | None = None
     reranker: Reranker | None = None
+    relevance_reranker: Reranker | None = None
+    evidence_reranker: Reranker | None = None
 
     _working_memory: WorkingMemory | None = None
     _qdrant_client: Any = None
@@ -279,6 +292,7 @@ class LitAgent:
         trace_hook: TraceHook | None = None,
         *,
         run_policy: RunPolicy | None = None,
+        external_inputs: ExternalInputReplay | None = None,
     ) -> None:
         """Initialize the LitAgent runtime and optional integrations."""
         self._config = config
@@ -286,6 +300,7 @@ class LitAgent:
         self._session_id = str(uuid.uuid4())[:8]
         self._trace_hook = trace_hook
         self._run_policy = run_policy or RunPolicy()
+        self._external_inputs = external_inputs
 
         self._cost_budget: CostBudget | None = None
         self._llm: BaseLLMClient | None = None
@@ -331,6 +346,8 @@ class LitAgent:
         cancellation: CancellationToken | None = None,
     ) -> dict[str, Any]:
         """Run planning, scheduling, evaluation, and delivery for one query."""
+        if self._external_inputs is not None and query != self._external_inputs.query:
+            raise ValueError("external input replay query does not match run query")
         if cancellation and cancellation.is_cancelled:
             return self._build_cancelled_report(query)
         if not self._wired:
@@ -369,6 +386,14 @@ class LitAgent:
                 raise _RunCancelled
 
             report_data = self._extract_report(results, query)
+            adversarial_result = results.get("adversarial_review")
+            if isinstance(adversarial_result, Mapping):
+                degradation_codes.extend(
+                    str(item)
+                    for item in adversarial_result.get("degradation_reasons", [])
+                    if isinstance(item, str) and item
+                )
+                degradation_codes = list(dict.fromkeys(degradation_codes))
             execution = self._derive_execution(
                 graph,
                 budget_exceeded=(
@@ -385,6 +410,9 @@ class LitAgent:
             report_data.setdefault("metadata", {})[
                 "search_source_outcomes"
             ] = search_outcomes
+            report_data["metadata"]["degradation_reason_codes"] = list(
+                degradation_codes
+            )
 
             # Phase 1: initial evaluation.
             initial_evaluation = await _await_with_cancellation(
@@ -794,7 +822,12 @@ class LitAgent:
 
         regex_strategy = RegexStrategy(self._executor)
         if cfg.extractor.enable_llm:
-            llm_strategy = LLMStrategy(self._llm, self._skill_manager)
+            llm_strategy = LLMStrategy(
+                self._llm,
+                self._skill_manager,
+                max_tokens=cfg.extractor.max_tokens,
+                thinking_mode=cfg.extractor.thinking_mode,
+            )
             self._extraction_strategy = ResilientExtractionStrategy(
                 llm_strategy,
                 regex_strategy,
@@ -811,6 +844,16 @@ class LitAgent:
                 self._infra.memory if self._run_policy.memory_writes else None
             ),
             trace_hook=self._trace_hook,
+            replay_outputs=(
+                self._external_inputs.search_outputs
+                if self._external_inputs is not None
+                else None
+            ),
+            replay_fingerprint=(
+                self._external_inputs.fingerprint
+                if self._external_inputs is not None
+                else None
+            ),
         )
         workers.append(self._search)
 
@@ -824,7 +867,7 @@ class LitAgent:
         workers.append(self._dedup)
 
         self._relevance_gate = RelevanceGateWorker(
-            reranker=self._infra.reranker,
+            reranker=self._infra.relevance_reranker,
             max_papers=cfg.relevance.max_papers,
             min_papers=cfg.relevance.min_papers,
             cross_encoder_min_score=cfg.relevance.cross_encoder_min_score,
@@ -844,7 +887,7 @@ class LitAgent:
         self._graph = GraphWorker(max_papers=cfg.extractor.max_papers)
         workers.append(self._graph)
         self._evidence_selector = EvidenceSelector(
-            reranker=self._infra.reranker,
+            reranker=self._infra.evidence_reranker,
             budget=self._budget_manager,
             top_k_per_section=cfg.context.evidence_top_k_per_section,
             max_items=cfg.context.evidence_max_items,
@@ -883,6 +926,7 @@ class LitAgent:
             reviewer=self._reviewer,
             max_rounds=cfg.adversarial.max_rounds,
             pass_threshold=cfg.adversarial.pass_threshold,
+            thinking_mode=cfg.adversarial.thinking_mode,
             trace_hook=self._trace_hook,
         )
         workers.append(self._adversarial)
@@ -906,12 +950,32 @@ class LitAgent:
             ),
             rag_config=cfg.rag,
             adversarial_timeout_ms=cfg.adversarial.task_timeout_ms,
+            decomposition_override=(
+                self._external_inputs.decomposition
+                if self._external_inputs is not None
+                else None
+            ),
+            replay_fingerprint=(
+                self._external_inputs.fingerprint
+                if self._external_inputs is not None
+                else None
+            ),
         )
 
         eval_mt = cfg.eval.max_tokens
         self._evaluators = [
-            CitationEvaluator(self._llm, max_tokens=eval_mt),
-            ConsistencyEvaluator(self._llm, max_tokens=eval_mt),
+            CitationEvaluator(
+                self._llm,
+                max_tokens=eval_mt,
+                thinking_mode=cfg.eval.thinking_mode,
+                timeout_seconds=cfg.eval.timeout_seconds,
+            ),
+            ConsistencyEvaluator(
+                self._llm,
+                max_tokens=eval_mt,
+                thinking_mode=cfg.eval.thinking_mode,
+                timeout_seconds=cfg.eval.timeout_seconds,
+            ),
             RagasFaithfulnessEvaluator(self._config, llm=self._llm),
         ]
 
@@ -1016,16 +1080,64 @@ class LitAgent:
             return await asyncio.to_thread(self._create_reranker)
         return await asyncio.to_thread(self._create_reranker, model_name)
 
+    async def _connect_rankers(self, cfg: AppConfig, infra: Infra) -> None:
+        """Load shared models with independent product/retrieval ownership."""
+        # Product rankers are independent of optional database availability.
+        rankers: dict[str, Reranker | None] = {}
+        for component, enabled, model in (
+            (
+                "relevance_reranker",
+                cfg.relevance.reranker_enabled,
+                cfg.relevance.reranker_model,
+            ),
+            (
+                "evidence_reranker",
+                cfg.context.evidence_reranker_enabled,
+                cfg.context.evidence_reranker_model,
+            ),
+            (
+                "reranker",
+                cfg.rag.enabled and cfg.rag.reranker_enabled,
+                cfg.rag.reranker_model,
+            ),
+        ):
+            ranker = None
+            if enabled:
+                if model not in rankers:
+                    try:
+                        rankers[model] = await self._create_reranker_async(model)
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as exc:
+                        rankers[model] = None
+                        logger.warning(
+                            "Ranker load failed model=%s error=%s",
+                            model,
+                            type(exc).__name__,
+                        )
+                ranker = rankers[model]
+            setattr(infra, component, ranker)
+            if ranker is None:
+                self._emit(
+                    "ranking.degraded",
+                    {
+                        "component": component,
+                        "model": model,
+                        "reason_code": (
+                            "ranker_unavailable" if enabled else "ranker_disabled"
+                        ),
+                        "method": "lexical_fallback",
+                    },
+                )
+
     async def _connect_infra(
-        self,
-        cfg: AppConfig,
-        *,
-        infra: Infra | None = None,
+        self, cfg: AppConfig, *, infra: Infra | None = None
     ) -> Infra:
         """Connect optional backends independently and return those available."""
         mem_cfg = cfg.memory
         if infra is None:
             infra = Infra()
+        await self._connect_rankers(cfg, infra)
 
         try:
             working = await WorkingMemory.connect(mem_cfg)
@@ -1082,11 +1194,6 @@ class LitAgent:
                     paper_dim,
                     identity=paper_identity,
                     embedder=paper_embedder,
-                )
-                infra.reranker = (
-                    await self._create_reranker_async(cfg.rag.reranker_model)
-                    if cfg.rag.reranker_enabled
-                    else None
                 )
                 infra.retriever = HybridRetriever(
                     vector_store,
@@ -1450,6 +1557,26 @@ class LitAgent:
             max_items=rewrite_cfg.max_items,
             max_chars=rewrite_cfg.max_chars,
         )
+        original_refs = extract_evidence_refs(original_survey)
+        # Only remove references confined to exactly located failing paragraphs.
+        target_paragraphs = {
+            d.get("source_quote")
+            for d in diagnostics
+            if isinstance(d, Mapping)
+            and d.get("alignment_status") == "exact"
+            and isinstance(d.get("source_quote"), str)
+        }
+        unaffected_refs = extract_evidence_refs(
+            "\n\n".join(
+                p for p in original_survey.split("\n\n") if p not in target_paragraphs
+            )
+        )
+        removable_refs = original_refs - unaffected_refs
+        reference_policy = {
+            "must_preserve_evidence_ids": sorted(original_refs - removable_refs),
+            "allowed_removed_evidence_ids": sorted(removable_refs),
+            "instruction": "Repair only diagnosed claims. Preserve every must_preserve reference. Never invent IDs.",
+        }
 
         # Ask the model to repair the unsupported evidence claims.
         self._emit(
@@ -1467,19 +1594,31 @@ class LitAgent:
         reason_code = "llm_call_failed"
 
         try:
-            response = await self._llm.chat(
-                self._synthesis.rewrite_with_evidence(
-                    original_survey,
-                    json.dumps(rewrite_items, ensure_ascii=False),
-                    json.dumps(diagnostics, ensure_ascii=False, indent=2),
-                ),
-                max_tokens=self._config.eval.max_tokens,
-            )
+            chat_kwargs: dict[str, Any] = {
+                "max_tokens": self._config.eval.max_tokens,
+            }
+            if self._config.eval.thinking_mode != "provider_default":
+                chat_kwargs["extra_body"] = {
+                    "thinking": {"type": self._config.eval.thinking_mode}
+                }
+            async with asyncio.timeout(self._config.eval.timeout_seconds):
+                response = await self._llm.chat(
+                    self._synthesis.rewrite_with_evidence(
+                        original_survey,
+                        json.dumps(rewrite_items, ensure_ascii=False),
+                        json.dumps(diagnostics, ensure_ascii=False, indent=2),
+                    )
+                    + [{"role": "user", "content": json.dumps(reference_policy)}],
+                    **chat_kwargs,
+                )
             candidate = (response.content or "").strip()
         except asyncio.CancelledError:
             reason_code = "cancelled"
             llm_error_type = "CancelledError"
             raise
+        except TimeoutError:
+            reason_code = "llm_timeout"
+            llm_error_type = "TimeoutError"
         except Exception as exc:
             reason_code = "llm_call_failed"
             llm_error_type = type(exc).__name__
@@ -1509,6 +1648,7 @@ class LitAgent:
             original=original_survey,
             candidate=candidate,
             evidence_ledger=ledger,
+            allowed_removed_refs=sorted(removable_refs),
         )
         if not validation.accepted:
             self._emit(
@@ -1519,6 +1659,9 @@ class LitAgent:
                         "accepted": False,
                         "reason": "validation_failed",
                         "reason_codes": list(validation.reason_codes),
+                        "unexpected_removed_evidence_ids": list(
+                            validation.unexpected_removed_evidence_ids
+                        ),
                     },
                 },
             )
@@ -1791,6 +1934,7 @@ class LitAgent:
             reason_codes=tuple(dict.fromkeys(reasons)),
             referenced_evidence_ids=tuple(refs),
             unknown_evidence_ids=unknown,
+            unexpected_removed_evidence_ids=tuple(sorted(removed)),
         )
 
     def _emit(self, event: str, data: dict[str, Any] | None = None) -> None:

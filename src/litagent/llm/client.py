@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import time
@@ -61,7 +62,10 @@ class OpenAICompatibleClient(BaseLLMClient):
         )
         if not resolved_api_key:
             logger.warning("NO LLM API key found (LLM_API_KEY / OPENAI_API_KEY)")
-        self._client = AsyncOpenAI(base_url=base_url, api_key=resolved_api_key)
+        # Retries are explicit so every HTTP attempt has its own trace and usage.
+        self._client = AsyncOpenAI(
+            base_url=base_url, api_key=resolved_api_key, max_retries=0
+        )
         self._model = model
         self._max_tokens = max_tokens
         self._temperature = temperature
@@ -77,6 +81,37 @@ class OpenAICompatibleClient(BaseLLMClient):
                 logger.debug(f"Trace hook failed for '{event}': {e}")
 
     async def chat(self, messages: list[dict], **kwargs) -> LLMResponse:
+        """Retry transient provider failures with one lifecycle per attempt."""
+        from openai import APIConnectionError, APIStatusError
+
+        for attempt in range(3):
+            try:
+                return await self._chat_attempt(messages, **kwargs)
+            except (APIConnectionError, APIStatusError) as exc:
+                status = getattr(exc, "status_code", None)
+                if attempt == 2 or (
+                    status is not None
+                    and status not in {408, 409, 429}
+                    and status < 500
+                ):
+                    raise
+                self._emit(
+                    "llm.retry",
+                    {
+                        "task_id": get_task_id(),
+                        # Retry events describe the next provider attempt, matching
+                        # the worker/tool lifecycle contract.
+                        "attempt": attempt + 2,
+                        "max_attempts": 3,
+                        "error_type": type(exc).__name__,
+                        "reason_code": "transient_provider_error",
+                        "backoff_ms": 1000 * 2**attempt,
+                    },
+                )
+                await asyncio.sleep(2**attempt)
+        raise AssertionError("unreachable retry state")
+
+    async def _chat_attempt(self, messages: list[dict], **kwargs) -> LLMResponse:
         """Generate a response and emit its complete I/O lifecycle."""
         model = kwargs.get("model", self._model)
         max_tokens = kwargs.get("max_tokens", self._max_tokens)
@@ -118,6 +153,7 @@ class OpenAICompatibleClient(BaseLLMClient):
             usage = {
                 "prompt_tokens": resp.usage.prompt_tokens if resp.usage else 0,
                 "completion_tokens": resp.usage.completion_tokens if resp.usage else 0,
+                "usage_available": resp.usage is not None,
             }
 
             tool_calls = []
@@ -159,6 +195,7 @@ class OpenAICompatibleClient(BaseLLMClient):
                     "total_tokens": usage.get("prompt_tokens", 0)
                     + usage.get("completion_tokens", 0),
                     "elapsed_ms": int((time.perf_counter() - t0) * 1000),
+                    "usage_available": resp.usage is not None,
                     "tool_calls": _tool_calls_for_trace(tool_calls),
                 },
             )
@@ -177,9 +214,82 @@ class OpenAICompatibleClient(BaseLLMClient):
                     "elapsed_ms": elapsed_ms,
                     "error_type": type(e).__name__,
                     "error": str(e)[:512],
+                    "usage_available": False,
                 },
             )
             raise
+
+    async def score_ragas_faithfulness(
+        self,
+        *,
+        user_input: str,
+        response: str,
+        retrieved_contexts: list[str],
+        max_tokens: int,
+        thinking_mode: str = "provider_default",
+    ) -> tuple[float, dict]:
+        """Run RAGAS through the configured provider client and trace lifecycle."""
+        from ragas.metrics.collections.faithfulness.util import (
+            StatementGeneratorInput,
+            StatementGeneratorOutput,
+            StatementGeneratorPrompt,
+        )
+
+        from litagent.eval.ragas_contract import build_nli_prompt, resolve_nli_verdicts
+
+        if not user_input or not response or not retrieved_contexts:
+            raise ValueError("faithfulness requires query, report and evidence")
+        started = time.perf_counter()
+        kwargs: dict = {
+            "max_tokens": max_tokens,
+            "temperature": 0,
+            "response_format": {"type": "json_object"},
+        }
+        if thinking_mode != "provider_default":
+            kwargs["extra_body"] = {"thinking": {"type": thinking_mode}}
+        generated = await self.chat(
+            [
+                {
+                    "role": "user",
+                    "content": StatementGeneratorPrompt().to_string(
+                        StatementGeneratorInput(question=user_input, answer=response)
+                    ),
+                }
+            ],
+            **kwargs,
+        )
+        statements = StatementGeneratorOutput.model_validate_json(
+            generated.content
+        ).statements
+        if not statements or any(not s.strip() for s in statements):
+            raise ValueError("ragas returned no usable statements")
+        judged = await self.chat(
+            [
+                {
+                    "role": "user",
+                    "content": build_nli_prompt(statements, retrieved_contexts),
+                }
+            ],
+            **kwargs,
+        )
+        verdicts = resolve_nli_verdicts(judged.content, statements)
+        score = sum(v["verdict"] for v in verdicts) / len(statements)
+        return score, {
+            "algorithm_version": "ragas-traced-v3-indexed",
+            "provider_adapter": "openai_compatible",
+            "model": self._model,
+            "elapsed_ms": int((time.perf_counter() - started) * 1000),
+            "statements": statements,
+            "verdicts": verdicts,
+            "usage": {
+                key: sum(int(r.usage.get(key) or 0) for r in (generated, judged))
+                for key in ("prompt_tokens", "completion_tokens")
+            },
+            "usage_complete": all(
+                r.usage.get("usage_available", bool(r.usage))
+                for r in (generated, judged)
+            ),
+        }
 
 
 def _tool_calls_for_trace(tool_calls: list[dict]) -> list[dict]:

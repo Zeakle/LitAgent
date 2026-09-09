@@ -49,9 +49,13 @@ def _add_benchmark_commands(subparsers) -> None:
     )
 
     survey = benchmark_sub.add_parser("survey")
-    survey.add_argument("--stage", choices=["ablation", "baseline"], required=True)
+    survey.add_argument(
+        "--stage", choices=["pilot", "ablation", "baseline"], required=True
+    )
     survey.add_argument("--dataset", required=True)
     survey.add_argument("--profiles", required=True)
+    survey.add_argument("--case-id", action="append", default=[])
+    survey.add_argument("--profile-id", action="append", default=[])
     survey.add_argument("--judge-config", required=True)
     survey.add_argument("--reuse-ablation", default=None)
     survey.add_argument(
@@ -60,10 +64,13 @@ def _add_benchmark_commands(subparsers) -> None:
     )
     survey.add_argument("--run-artifact-root", default="artifacts/runs")
     survey.add_argument("--config", default=None)
+    survey.add_argument("--max-observations", type=int, default=None)
+    survey.add_argument("--max-product-tokens", type=int, default=None)
+    survey.add_argument("--max-judge-tokens", type=int, default=None)
     survey.add_argument(
         "--live",
         action="store_true",
-        help="Allow 30-run ablation or 9-run baseline execution",
+        help="Allow pilot, 30-run ablation, or 9-run baseline execution",
     )
 
 
@@ -239,7 +246,10 @@ async def _cmd_benchmark(args: argparse.Namespace) -> None:
     )
     from litagent.benchmark.ingestion_runner import IngestionRobustnessRunner
     from litagent.benchmark.rag_runner import RAGBenchmarkRunner
-    from litagent.benchmark.survey_models import SurveyBenchmarkResult
+    from litagent.benchmark.survey_models import (
+        SurveyBenchmarkBudget,
+        SurveyBenchmarkResult,
+    )
     from litagent.benchmark.survey_runner import SurveyBenchmarkRunner
     from litagent.observability.recorder import ArchiveRepository
 
@@ -268,16 +278,69 @@ async def _cmd_benchmark(args: argparse.Namespace) -> None:
         dataset = load_survey_dataset(Path(args.dataset))
         profiles = load_survey_profiles(Path(args.profiles))
         judge_config = load_survey_judge_config(Path(args.judge_config))
+        budget_values = (
+            args.max_observations,
+            args.max_product_tokens,
+            args.max_judge_tokens,
+        )
+        if any(value is not None for value in budget_values) and not all(
+            value is not None for value in budget_values
+        ):
+            raise SystemExit(
+                "survey budget requires --max-observations, "
+                "--max-product-tokens, and --max-judge-tokens together"
+            )
+        budget = (
+            SurveyBenchmarkBudget(
+                max_observations=args.max_observations,
+                max_product_tokens=args.max_product_tokens,
+                max_judge_tokens=args.max_judge_tokens,
+            )
+            if all(value is not None for value in budget_values)
+            else None
+        )
         git_sha, git_dirty = _git_state(subprocess)
         runner = SurveyBenchmarkRunner(
             base_config=config,
             judge_config=judge_config,
             artifacts=artifacts,
             run_archive=ArchiveRepository(Path(args.run_artifact_root)),
+            budget=budget,
         )
-        if args.stage == "ablation":
+        if args.stage == "pilot":
             if args.reuse_ablation:
                 raise SystemExit("--reuse-ablation is valid only for baseline")
+            if not args.case_id or not args.profile_id:
+                raise SystemExit(
+                    "survey pilot requires --case-id and --profile-id selections"
+                )
+            unknown_cases = set(args.case_id) - {case.case_id for case in dataset.cases}
+            unknown_profiles = set(args.profile_id) - {
+                profile.profile_id for profile in profiles
+            }
+            if unknown_cases:
+                raise SystemExit(f"unknown survey cases: {sorted(unknown_cases)}")
+            if unknown_profiles:
+                raise SystemExit(f"unknown survey profiles: {sorted(unknown_profiles)}")
+            selected_cases = [dataset.case_by_id(case_id) for case_id in args.case_id]
+            profiles_by_id = {profile.profile_id: profile for profile in profiles}
+            selected_profiles = [
+                profiles_by_id[profile_id] for profile_id in args.profile_id
+            ]
+            result = await runner.run_pilot(
+                dataset=dataset,
+                cases=selected_cases,
+                profiles=selected_profiles,
+                git_sha=git_sha,
+                git_dirty=git_dirty,
+            )
+        elif args.stage == "ablation":
+            if args.reuse_ablation:
+                raise SystemExit("--reuse-ablation is valid only for baseline")
+            if args.case_id or args.profile_id:
+                raise SystemExit(
+                    "--case-id/--profile-id are valid only for survey pilot"
+                )
             result = await runner.run_ablation(
                 dataset=dataset,
                 profiles=profiles,
@@ -285,6 +348,10 @@ async def _cmd_benchmark(args: argparse.Namespace) -> None:
                 git_dirty=git_dirty,
             )
         else:
+            if args.case_id or args.profile_id:
+                raise SystemExit(
+                    "--case-id/--profile-id are valid only for survey pilot"
+                )
             if not args.reuse_ablation:
                 raise SystemExit("baseline requires --reuse-ablation")
             ablation_path = Path(args.reuse_ablation)

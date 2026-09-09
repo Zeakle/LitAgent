@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any
 
@@ -40,12 +41,20 @@ class ConsistencyEvaluator(Evaluator):
         threshold: float = 0.8,
         penalty: float = 0.2,
         max_tokens: int = 16384,
+        thinking_mode: str = "provider_default",
+        timeout_seconds: float = 180.0,
     ):
         """Initialize the consistency evaluator."""
+        if thinking_mode not in {"provider_default", "enabled", "disabled"}:
+            raise ValueError("unsupported thinking_mode")
+        if timeout_seconds <= 0:
+            raise ValueError("timeout_seconds must be positive")
         super().__init__(threshold)
         self._llm = llm
         self._penalty = penalty
         self._max_tokens = max_tokens
+        self._thinking_mode = thinking_mode
+        self._timeout_seconds = timeout_seconds
 
     @property
     def metric_name(self) -> str:
@@ -58,15 +67,23 @@ class ConsistencyEvaluator(Evaluator):
             return EvalResult.skip(self.metric_name, "empty_survey")
 
         try:
-            resp = await self._llm.chat(
-                [
-                    {"role": "system", "content": _CONSISTENCY_PROMPT},
-                    {"role": "user", "content": wrap_xml("survey", survey)},
-                ],
-                response_format={"type": "json_object"},
-                max_tokens=self._max_tokens,
-            )
+            kwargs: dict[str, Any] = {
+                "response_format": {"type": "json_object"},
+                "max_tokens": self._max_tokens,
+            }
+            if self._thinking_mode != "provider_default":
+                kwargs["extra_body"] = {"thinking": {"type": self._thinking_mode}}
+            async with asyncio.timeout(self._timeout_seconds):
+                resp = await self._llm.chat(
+                    [
+                        {"role": "system", "content": _CONSISTENCY_PROMPT},
+                        {"role": "user", "content": wrap_xml("survey", survey)},
+                    ],
+                    **kwargs,
+                )
             conflicts = json.loads(resp.content).get("conflicts")
+        except TimeoutError:
+            return EvalResult.skip(self.metric_name, "consistency_timeout")
         except Exception as e:
             logger.warning(f"Consistency eval LLM/parse failed: {e}")
             return EvalResult.skip(self.metric_name, f"llm_or_parse_error: {e}")

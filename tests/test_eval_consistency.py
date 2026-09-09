@@ -1,5 +1,6 @@
 """Tests for internal-consistency evaluation."""
 
+import asyncio
 import json
 
 import pytest
@@ -14,8 +15,10 @@ class _StubLLM:
     def __init__(self, payload=None, raise_exc=False):
         self._payload = payload
         self._raise = raise_exc
+        self.kwargs = None
 
     async def chat(self, messages, **kwargs):
+        self.kwargs = kwargs
         if self._raise:
             raise RuntimeError("simulated LLM failure")
         return LLMResponse(content=json.dumps(self._payload), model="stub")
@@ -80,3 +83,42 @@ async def test_malformed_conflicts_skips():
     ev = ConsistencyEvaluator(_StubLLM({"conflicts": None}), threshold=0.8)
     r = await ev.evaluate("survey", {})
     assert r.skipped is True and r.passed is True
+
+
+@pytest.mark.asyncio
+async def test_provider_controls_are_forwarded():
+    llm = _StubLLM({"conflicts": []})
+    ev = ConsistencyEvaluator(
+        llm,
+        max_tokens=2048,
+        thinking_mode="disabled",
+        timeout_seconds=1,
+    )
+
+    result = await ev.evaluate("survey", {})
+
+    assert result.skipped is False
+    assert llm.kwargs == {
+        "response_format": {"type": "json_object"},
+        "max_tokens": 2048,
+        "extra_body": {"thinking": {"type": "disabled"}},
+    }
+
+
+@pytest.mark.asyncio
+async def test_hanging_provider_is_bounded_by_timeout():
+    class HangingLLM:
+        async def chat(self, messages, **kwargs):
+            await asyncio.Event().wait()
+
+    ev = ConsistencyEvaluator(HangingLLM(), timeout_seconds=0.01)
+
+    result = await ev.evaluate("survey", {})
+
+    assert result.skipped is True
+    assert result.details["skipped_reason"] == "consistency_timeout"
+
+
+def test_invalid_thinking_mode_is_rejected():
+    with pytest.raises(ValueError, match="unsupported thinking_mode"):
+        ConsistencyEvaluator(_StubLLM({"conflicts": []}), thinking_mode="invalid")

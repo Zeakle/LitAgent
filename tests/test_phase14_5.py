@@ -18,8 +18,12 @@ from litagent.benchmark.datasets import (
 from litagent.benchmark.survey_metrics import (
     aggregate_survey_cases,
     evaluate_survey_artifact,
+    external_input_fingerprint,
+    paper_flow_coverage,
 )
 from litagent.benchmark.survey_models import (
+    ExternalInputSnapshot,
+    SurveyBenchmarkBudget,
     SurveyBenchmarkCase,
     SurveyCaseObservation,
     SurveyJudgeConfig,
@@ -232,6 +236,21 @@ def test_judge_metrics_keep_unavailable_values_null():
     assert metrics.contradiction_rate is None
 
 
+def _prime_judge_inventory(llm):
+    """Prepend the independent extraction response to a mocked audit response."""
+    audit = llm.chat.return_value
+    claims = [
+        item["claim_text"] for item in json.loads(audit.content)["claim_assessments"]
+    ]
+    llm.chat.side_effect = [
+        LLMResponse(
+            content=json.dumps({"claims": claims}),
+            usage={"prompt_tokens": 3, "completion_tokens": 2},
+        ),
+        audit,
+    ]
+
+
 @pytest.mark.asyncio
 async def test_independent_judge_derives_claim_and_topic_metrics():
     from litagent.benchmark.survey_judge import SurveyBenchmarkJudge
@@ -278,6 +297,7 @@ async def test_independent_judge_derives_claim_and_topic_metrics():
         ),
         usage={"prompt_tokens": 50, "completion_tokens": 10},
     )
+    _prime_judge_inventory(llm)
     judge = SurveyBenchmarkJudge(
         llm,
         SurveyJudgeConfig(
@@ -301,10 +321,64 @@ async def test_independent_judge_derives_claim_and_topic_metrics():
     assert [claim.claim_text for claim in metrics.unsupported_claims] == [
         "Unsupported."
     ]
-    assert usage.total_tokens == 60
+    assert usage.total_tokens == 65
     assert llm.chat.await_args.kwargs["extra_body"] == {
         "thinking": {"type": "disabled"}
     }
+
+
+@pytest.mark.asyncio
+async def test_independent_judge_conservatively_normalizes_support_without_evidence():
+    from litagent.benchmark.survey_judge import (
+        JUDGE_SYSTEM_PROMPT,
+        SurveyBenchmarkJudge,
+    )
+
+    llm = AsyncMock()
+    llm.chat.return_value = LLMResponse(
+        content=json.dumps(
+            {
+                "topic_assessments": [{"topic_id": "metric-space", "covered": True}],
+                "claim_assessments": [
+                    {
+                        "claim_text": (
+                            "Evidence on cross-dataset generalization is not "
+                            "provided in the available materials."
+                        ),
+                        "supported": True,
+                        "evidence_ids": [],
+                        "explanation": "This is a scope disclosure.",
+                    }
+                ],
+                "contradictions": [],
+            }
+        )
+    )
+    _prime_judge_inventory(llm)
+    judge = SurveyBenchmarkJudge(
+        llm,
+        SurveyJudgeConfig(base_url="https://judge.example", model="judge-v1"),
+    )
+
+    metrics, _ = await judge.evaluate(
+        case=_case(),
+        survey=(
+            "Evidence on cross-dataset generalization is not provided in the "
+            "available materials."
+        ),
+        ledger={},
+    )
+
+    assert metrics.status == "completed"
+    assert metrics.factual_claim_count == 1
+    assert metrics.faithfulness == 0.0
+    assert metrics.unsupported_claim_rate == 1.0
+    assert metrics.reason_codes == ["judge_support_without_evidence_normalized"]
+    assert metrics.unsupported_claims[0].evidence_ids == []
+    assert "scope or evidence-availability disclosures" in " ".join(
+        JUDGE_SYSTEM_PROMPT.split()
+    )
+    assert llm.chat.await_count == 2
 
 
 @pytest.mark.asyncio
@@ -327,6 +401,7 @@ async def test_independent_judge_preserves_untrusted_xml_boundaries():
             }
         )
     )
+    _prime_judge_inventory(llm)
     judge = SurveyBenchmarkJudge(
         llm,
         SurveyJudgeConfig(base_url="https://judge.example", model="judge-v1"),
@@ -396,6 +471,7 @@ async def test_independent_judge_supports_json_object_provider_mode():
             }
         )
     )
+    _prime_judge_inventory(llm)
     judge = SurveyBenchmarkJudge(
         llm,
         SurveyJudgeConfig(
@@ -577,6 +653,126 @@ def test_benchmark_checkpoint_round_trip_and_corruption_is_ignored(tmp_path):
         repository.write_checkpoint("../outside", "a" * 64, payload)
 
 
+def test_external_input_snapshot_rejects_payload_tampering():
+    snapshot = ExternalInputSnapshot(
+        case_id="case-1",
+        repetition=1,
+        query="few-shot learning",
+        decomposition=["few-shot learning", "metric learning"],
+        search_outputs={
+            "search_arxiv_q0": {
+                "task_id": "search_arxiv_q0",
+                "input": {
+                    "mode": "external",
+                    "source": "arxiv",
+                    "query": "few-shot learning",
+                },
+                "output": [{"paper_id": "arxiv:1"}],
+                "outcome": {"status": "success"},
+            }
+        },
+        external_input_fingerprint="sha256:" + "a" * 64,
+    )
+    payload = snapshot.model_dump(mode="json")
+    payload["decomposition"] = ["changed"]
+
+    with pytest.raises(ValidationError, match="fingerprint mismatch"):
+        ExternalInputSnapshot.model_validate(payload)
+
+
+def test_external_input_snapshot_rejects_tool_payload_as_search_contract():
+    with pytest.raises(ValidationError, match="search input must contain"):
+        ExternalInputSnapshot(
+            case_id="case-1",
+            repetition=1,
+            query="few-shot learning",
+            decomposition=["few-shot learning"],
+            search_outputs={
+                "search_arxiv_q0": {
+                    "task_id": "search_arxiv_q0",
+                    "input": {"query": "few-shot learning", "max_results": 20},
+                    "output": [{"external_id": "provider-shape"}],
+                    "outcome": {"status": "success"},
+                }
+            },
+            external_input_fingerprint="sha256:" + "a" * 64,
+        )
+
+
+@pytest.mark.asyncio
+async def test_search_worker_replays_snapshot_without_calling_provider():
+    from litagent.agents.search import SearchWorker
+    from litagent.orchestrator.task_graph import SubTask
+
+    executor = AsyncMock()
+    task = SubTask(
+        task_id="search_arxiv_q0",
+        description="replay",
+        agent_type="search",
+        input_data={
+            "mode": "external",
+            "source": "arxiv",
+            "query": "few-shot learning",
+        },
+    )
+    output = [{"paper_id": "arxiv:1", "title": "Paper"}]
+    worker = SearchWorker(
+        executor,
+        replay_outputs={
+            task.task_id: {
+                "task_id": task.task_id,
+                "input": task.input_data,
+                "output": output,
+                "outcome": {
+                    "status": "success",
+                    "elapsed_ms": 12,
+                    "reason_code": None,
+                    "error_type": None,
+                    "from_fallback": False,
+                },
+            }
+        },
+        replay_fingerprint="sha256:" + "b" * 64,
+    )
+
+    replayed = await worker.execute(task)
+
+    assert replayed == output
+    assert replayed is not output
+    executor.execute.assert_not_awaited()
+    assert worker.get_source_outcomes()[0].result_count == 1
+
+
+@pytest.mark.asyncio
+async def test_planner_replay_uses_frozen_decomposition_without_llm():
+    from litagent.agents.planner import SurveyPlanner
+
+    events = []
+    planner = SurveyPlanner(
+        decomposition_override=("few-shot learning", "metric learning"),
+        replay_fingerprint="sha256:" + "c" * 64,
+        trace_hook=lambda event, data: events.append((event, data)),
+    )
+
+    graph = await planner.plan("few-shot learning")
+
+    search_queries = {
+        task.input_data["query"]
+        for task in graph.tasks.values()
+        if task.task_id.startswith("search_")
+    }
+    assert search_queries == {"few-shot learning", "metric learning"}
+    decomposition_end = next(
+        data
+        for event, data in events
+        if event == "subspan.end" and data["task_id"] == "query_decomposition"
+    )
+    assert decomposition_end["output"]["sub_queries"] == [
+        "few-shot learning",
+        "metric learning",
+    ]
+
+
 @pytest.mark.asyncio
 async def test_survey_matrix_reuses_complete_verified_checkpoint(tmp_path):
     import hashlib
@@ -738,6 +934,272 @@ async def test_survey_runner_executes_39_case_runs_with_case_first_baseline(tmp_
     assert "owner_approved_ai_assisted_ground_truth" in baseline.reason_codes
 
 
+@pytest.mark.asyncio
+async def test_ablation_stops_before_retest_when_external_inputs_are_not_comparable(
+    tmp_path,
+):
+    from litagent.benchmark.artifacts import BenchmarkArtifactRepository
+    from litagent.benchmark.survey_runner import SurveyBenchmarkRunner
+    from litagent.config import load_config
+    from litagent.observability.recorder import ArchiveRepository
+
+    dataset = load_survey_dataset(Path("benchmarks/survey/dataset.yaml"))
+    profiles = load_survey_profiles(Path("benchmarks/survey/profiles.yaml"))
+    calls: list[tuple[str, str, int]] = []
+
+    async def execute(case, profile, config, repetition):
+        calls.append((case.case_id, profile.profile_id, repetition))
+        return SurveyCaseObservation(
+            run_id=f"{profile.profile_id}-{case.case_id}-r{repetition}",
+            case_id=case.case_id,
+            domain=case.domain,
+            profile_id=profile.profile_id,
+            repetition=repetition,
+            status="completed",
+            metrics=evaluate_survey_artifact(case=case, artifact=_artifact()),
+            judge=SurveyJudgeMetrics(
+                status="completed",
+                topic_coverage=1,
+                factual_claim_count=1,
+                faithfulness=1,
+                unsupported_claim_rate=0,
+                contradiction_rate=0,
+            ),
+            external_input_fingerprint=(
+                f"external:{case.case_id}:{profile.profile_id}:r{repetition}"
+            ),
+        )
+
+    runner = SurveyBenchmarkRunner(
+        base_config=load_config(),
+        judge_config=SurveyJudgeConfig(
+            base_url="https://judge.example", model="independent-judge"
+        ),
+        artifacts=BenchmarkArtifactRepository(tmp_path / "benchmark"),
+        run_archive=ArchiveRepository(tmp_path / "runs"),
+        case_executor=execute,
+    )
+
+    result = await runner.run_ablation(
+        dataset=dataset,
+        profiles=profiles,
+        git_sha="test-sha",
+    )
+
+    assert len(calls) == 18
+    assert result.recommended_profile_id is None
+    assert result.status == "partial"
+    assert any(
+        reason.startswith("non_comparable_external_inputs:")
+        for reason in result.reason_codes
+    )
+
+
+@pytest.mark.asyncio
+async def test_survey_pilot_runs_explicit_balanced_six_observation_matrix(tmp_path):
+    from litagent.benchmark.artifacts import BenchmarkArtifactRepository
+    from litagent.benchmark.survey_runner import SurveyBenchmarkRunner
+    from litagent.config import load_config
+    from litagent.observability.recorder import ArchiveRepository
+
+    dataset = load_survey_dataset(Path("benchmarks/survey/dataset.yaml"))
+    profile_by_id = {
+        profile.profile_id: profile
+        for profile in load_survey_profiles(Path("benchmarks/survey/profiles.yaml"))
+    }
+    cases = [
+        dataset.case_by_id(case_id)
+        for case_id in (
+            "few-shot-metric",
+            "vit-foundations",
+            "nerf-foundations",
+        )
+    ]
+    profiles = [
+        profile_by_id["external-only"],
+        profile_by_id["external-fulltext"],
+    ]
+    calls: list[tuple[str, str]] = []
+
+    async def execute(case, profile, config, repetition):
+        calls.append((case.case_id, profile.profile_id))
+        return SurveyCaseObservation(
+            run_id=f"pilot-{case.case_id}-{profile.profile_id}",
+            case_id=case.case_id,
+            domain=case.domain,
+            profile_id=profile.profile_id,
+            repetition=repetition,
+            status="completed",
+            metrics=evaluate_survey_artifact(case=case, artifact=_artifact()),
+            judge=SurveyJudgeMetrics(
+                status="completed",
+                topic_coverage=1,
+                factual_claim_count=1,
+                faithfulness=1,
+                unsupported_claim_rate=0,
+                contradiction_rate=0,
+            ),
+            external_input_fingerprint=f"external:{case.case_id}:r{repetition}",
+        )
+
+    runner = SurveyBenchmarkRunner(
+        base_config=load_config(),
+        judge_config=SurveyJudgeConfig(
+            base_url="https://judge.example", model="independent-judge"
+        ),
+        artifacts=BenchmarkArtifactRepository(tmp_path / "benchmark"),
+        run_archive=ArchiveRepository(tmp_path / "runs"),
+        case_executor=execute,
+    )
+
+    result = await runner.run_pilot(
+        dataset=dataset,
+        cases=cases,
+        profiles=profiles,
+        git_sha="test-sha",
+    )
+
+    assert result.stage == "pilot"
+    assert result.status == "succeeded"
+    assert result.formal_eligible is False
+    assert result.recommended_profile_id is None
+    assert len(result.observations) == 6
+    assert set(calls) == {
+        (case.case_id, profile.profile_id) for case in cases for profile in profiles
+    }
+    assert set(result.domain_summaries) == {
+        "few_shot",
+        "vision_transformer",
+        "nerf",
+    }
+
+
+@pytest.mark.asyncio
+async def test_survey_budget_stops_before_starting_next_observation(tmp_path):
+    from litagent.benchmark.artifacts import BenchmarkArtifactRepository
+    from litagent.benchmark.survey_runner import SurveyBenchmarkRunner
+    from litagent.config import load_config
+    from litagent.observability.recorder import ArchiveRepository
+
+    dataset = load_survey_dataset(Path("benchmarks/survey/dataset.yaml"))
+    profiles = load_survey_profiles(Path("benchmarks/survey/profiles.yaml"))
+    calls = 0
+
+    async def execute(case, profile, config, repetition):
+        nonlocal calls
+        calls += 1
+        return SurveyCaseObservation(
+            run_id=f"budget-{calls}",
+            case_id=case.case_id,
+            domain=case.domain,
+            profile_id=profile.profile_id,
+            repetition=repetition,
+            status="completed",
+            metrics=evaluate_survey_artifact(case=case, artifact=_artifact()),
+            judge=SurveyJudgeMetrics(
+                status="completed",
+                topic_coverage=1,
+                factual_claim_count=1,
+                faithfulness=1,
+                unsupported_claim_rate=0,
+                contradiction_rate=0,
+            ),
+            external_input_fingerprint=f"external:{case.case_id}:r{repetition}",
+        )
+
+    runner = SurveyBenchmarkRunner(
+        base_config=load_config(),
+        judge_config=SurveyJudgeConfig(
+            base_url="https://judge.example", model="independent-judge"
+        ),
+        artifacts=BenchmarkArtifactRepository(tmp_path / "benchmark"),
+        run_archive=ArchiveRepository(tmp_path / "runs"),
+        case_executor=execute,
+        budget=SurveyBenchmarkBudget(
+            max_observations=2,
+            max_product_tokens=10_000,
+            max_judge_tokens=10_000,
+        ),
+    )
+
+    result = await runner.run_ablation(
+        dataset=dataset,
+        profiles=profiles,
+        git_sha="test-sha",
+    )
+
+    assert calls == 2
+    assert len(result.observations) == 2
+    assert result.status == "partial"
+    assert result.recommended_profile_id is None
+    assert "budget_exhausted:max_observations" in result.reason_codes
+
+
+def test_partial_observation_makes_benchmark_partial_and_clears_recommendation(
+    tmp_path,
+):
+    from litagent.benchmark.artifacts import BenchmarkArtifactRepository
+    from litagent.benchmark.survey_metrics import aggregate_profiles
+    from litagent.benchmark.survey_runner import SurveyBenchmarkRunner
+    from litagent.config import load_config
+    from litagent.observability.recorder import ArchiveRepository
+
+    dataset = load_survey_dataset(Path("benchmarks/survey/dataset.yaml"))
+    case = dataset.cases[0]
+    profile = load_survey_profiles(Path("benchmarks/survey/profiles.yaml"))[0]
+    metrics = evaluate_survey_artifact(case=case, artifact=_artifact()).model_copy(
+        update={"partial": True}
+    )
+    observation = SurveyCaseObservation(
+        run_id="partial-run",
+        case_id=case.case_id,
+        domain=case.domain,
+        profile_id=profile.profile_id,
+        repetition=1,
+        status="completed",
+        metrics=metrics,
+        judge=SurveyJudgeMetrics(
+            status="completed",
+            topic_coverage=1,
+            factual_claim_count=1,
+            faithfulness=1,
+            unsupported_claim_rate=0,
+            contradiction_rate=0,
+        ),
+        external_input_fingerprint="sha256:same",
+    )
+    aggregates, summaries = aggregate_profiles([observation])
+    runner = SurveyBenchmarkRunner(
+        base_config=load_config(),
+        judge_config=SurveyJudgeConfig(
+            base_url="https://judge.example", model="independent-judge"
+        ),
+        artifacts=BenchmarkArtifactRepository(tmp_path / "benchmark"),
+        run_archive=ArchiveRepository(tmp_path / "runs"),
+        case_executor=AsyncMock(),
+    )
+
+    result = runner._build_result(
+        stage="ablation",
+        dataset=dataset,
+        profiles=[profile],
+        observations=[observation],
+        case_aggregates=aggregates,
+        summaries=summaries,
+        recommended_profile_id=profile.profile_id,
+        git_sha="test",
+        git_dirty=False,
+        reason_codes=[],
+    )
+
+    assert result.status == "partial"
+    assert result.recommended_profile_id is None
+    assert (
+        f"partial_observation:{case.case_id}:{profile.profile_id}:r1"
+        in result.reason_codes
+    )
+
+
 def test_self_judged_result_is_never_formal_eligible(tmp_path):
     from litagent.benchmark.artifacts import BenchmarkArtifactRepository
     from litagent.benchmark.survey_metrics import aggregate_profiles
@@ -814,6 +1276,164 @@ def test_parallel_worker_latencies_are_not_added_together():
     metrics = evaluate_survey_artifact(case=_case(), artifact=artifact)
 
     assert metrics.stage_latency_ms["search_recall"] == 120
+
+
+def test_external_input_fingerprint_includes_planner_decomposition():
+    artifact = _artifact()
+    artifact["nodes"]["subspan:query_decomposition"] = {
+        "kind": "subspan",
+        "task_id": "query_decomposition",
+        "input": {"name": "planner.query_decomposition"},
+        "output": {"sub_queries": ["query a", "query b"]},
+    }
+
+    first = external_input_fingerprint(artifact)
+    artifact["nodes"]["subspan:query_decomposition"]["output"] = {
+        "sub_queries": ["query a", "query c"]
+    }
+
+    assert external_input_fingerprint(artifact) != first
+
+
+def test_external_input_fingerprint_ignores_transient_llm_and_tool_nodes():
+    artifact = _artifact()
+    artifact["nodes"].update(
+        {
+            "subspan:query_decomposition": {
+                "kind": "subspan",
+                "task_id": "query_decomposition",
+                "input": {"query": "few-shot learning"},
+                "output": {"sub_queries": ["few-shot learning"]},
+            },
+            "worker:search_arxiv_q0": {
+                "kind": "worker",
+                "task_id": "search_arxiv_q0",
+                "input": {
+                    "mode": "external",
+                    "source": "arxiv",
+                    "query": "few-shot learning",
+                },
+                "output": [{"paper_id": "arxiv:1", "title": "Paper"}],
+            },
+        }
+    )
+    expected = external_input_fingerprint(artifact)
+
+    artifact["nodes"].update(
+        {
+            "llm:random-operation-id": {
+                "kind": "llm",
+                "task_id": "query_decomposition",
+                "input": [{"role": "user", "content": "prompt"}],
+                "output": "provider-specific response",
+            },
+            "tool:another-random-id": {
+                "kind": "tool",
+                "task_id": "search_arxiv_q0",
+                "input": {"query": "few-shot learning", "max_results": 20},
+                "output": [{"external_id": "1"}],
+            },
+        }
+    )
+
+    assert external_input_fingerprint(artifact) == expected
+
+
+@pytest.mark.asyncio
+async def test_captured_external_snapshot_replays_worker_contract():
+    from litagent.agents.search import SearchWorker
+    from litagent.benchmark.survey_runner import _capture_external_inputs_from_artifact
+    from litagent.orchestrator.task_graph import SubTask
+
+    case = _case(query="few-shot learning")
+    task_input = {
+        "mode": "external",
+        "source": "arxiv",
+        "query": "few-shot learning",
+    }
+    worker_output = [{"paper_id": "arxiv:1", "title": "Normalized Paper"}]
+    artifact = _artifact()
+    artifact["nodes"].update(
+        {
+            "subspan:query_decomposition": {
+                "kind": "subspan",
+                "task_id": "query_decomposition",
+                "input": {"query": case.query},
+                "output": {"sub_queries": [case.query]},
+            },
+            "worker:search_arxiv_q0": {
+                "kind": "worker",
+                "task_id": "search_arxiv_q0",
+                "input": task_input,
+                "output": worker_output,
+            },
+            "tool:search-operation": {
+                "kind": "tool",
+                "task_id": "search_arxiv_q0",
+                "input": {"query": case.query, "max_results": 20},
+                "output": [{"external_id": "provider-shape"}],
+            },
+        }
+    )
+    snapshot = _capture_external_inputs_from_artifact(
+        case=case,
+        repetition=1,
+        artifact=artifact,
+    )
+    executor = AsyncMock()
+    worker = SearchWorker(
+        executor,
+        replay_outputs=snapshot.search_outputs,
+        replay_fingerprint=snapshot.external_input_fingerprint,
+    )
+    task = SubTask(
+        task_id="search_arxiv_q0",
+        description="replay captured worker output",
+        agent_type="search",
+        input_data=task_input,
+    )
+
+    assert await worker.execute(task) == worker_output
+    executor.execute.assert_not_awaited()
+
+
+def test_paper_flow_coverage_tracks_recall_selection_and_final_citation():
+    artifact = _artifact(report="Grounded claim [E:e1].")
+    artifact["nodes"]["worker:recall_q0"] = {
+        "kind": "worker",
+        "task_id": "recall_q0",
+        "output": [{"paper_id": "arxiv:1606.04080"}],
+    }
+    artifact["nodes"]["worker:adversarial_review"] = {
+        "kind": "worker",
+        "task_id": "adversarial_review",
+        "output": {
+            "evidence_selection": {
+                "valid": True,
+                "section_evidence_ids": {"methods": ["e1"]},
+            }
+        },
+    }
+
+    coverage = paper_flow_coverage(artifact, {"arxiv:1606.04080"})
+
+    assert coverage.recall == 1.0
+    assert coverage.dedup == 1.0
+    assert coverage.relevance_gate == 1.0
+    assert coverage.evidence == 1.0
+    assert coverage.synthesis_context == 1.0
+    assert coverage.final_citation == 1.0
+
+
+def test_paper_flow_coverage_marks_unobservable_stage_as_unavailable():
+    artifact = _artifact()
+
+    coverage = paper_flow_coverage(artifact, {"arxiv:1606.04080"})
+
+    assert coverage.recall is None
+    assert coverage.synthesis_context is None
+    assert coverage.missing_by_stage["recall"] == ["arxiv:1606.04080"]
+    assert "recall" in coverage.unavailable_stages
 
 
 @pytest.mark.asyncio
@@ -920,6 +1540,56 @@ def test_survey_cli_requires_explicit_live_and_stage_contract():
     assert args.benchmark_command == "survey"
     assert args.stage == "ablation"
     assert args.live is False
+
+    budgeted = build_parser().parse_args(
+        [
+            "benchmark",
+            "survey",
+            "--stage",
+            "ablation",
+            "--dataset",
+            "dataset.yaml",
+            "--profiles",
+            "profiles.yaml",
+            "--judge-config",
+            "judge.yaml",
+            "--max-observations",
+            "9",
+            "--max-product-tokens",
+            "2000000",
+            "--max-judge-tokens",
+            "150000",
+        ]
+    )
+    assert budgeted.max_observations == 9
+    assert budgeted.max_product_tokens == 2_000_000
+    assert budgeted.max_judge_tokens == 150_000
+
+    pilot = build_parser().parse_args(
+        [
+            "benchmark",
+            "survey",
+            "--stage",
+            "pilot",
+            "--dataset",
+            "dataset.yaml",
+            "--profiles",
+            "profiles.yaml",
+            "--judge-config",
+            "judge.yaml",
+            "--case-id",
+            "few-shot-metric",
+            "--case-id",
+            "vit-foundations",
+            "--profile-id",
+            "external-only",
+            "--profile-id",
+            "external-fulltext",
+        ]
+    )
+    assert pilot.stage == "pilot"
+    assert pilot.case_id == ["few-shot-metric", "vit-foundations"]
+    assert pilot.profile_id == ["external-only", "external-fulltext"]
 
 
 @pytest.mark.asyncio

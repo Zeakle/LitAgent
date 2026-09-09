@@ -8,7 +8,7 @@ import re
 import time
 import uuid
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Any, Callable
 
 from langchain_core.documents import Document
@@ -74,6 +74,7 @@ class EvidenceSelection:
     method_by_section: dict[str, str]
     omitted_count: int
     estimated_tokens: int
+    ranking_decisions: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         """Return the complete selection result as a plain dictionary."""
@@ -200,7 +201,41 @@ class EvidenceSelection:
             method_by_section=method_by_section,
             omitted_count=oc,
             estimated_tokens=et,
+            ranking_decisions=[
+                dict(item)
+                for item in value.get("ranking_decisions", [])
+                if isinstance(item, Mapping)
+            ],
         )
+
+
+def compact_evidence_selection(
+    selection: EvidenceSelection, *, max_text_chars: int = 800
+) -> EvidenceSelection:
+    """Shorten evidence text while preserving the selected paper and ID set."""
+    if max_text_chars <= 0:
+        raise ValueError("max_text_chars must be positive")
+    compact_items: dict[str, dict[str, Any]] = {}
+    for evidence_id, raw in selection.selected_items.items():
+        item = dict(raw)
+        text = item.get("text")
+        if isinstance(text, str) and len(text) > max_text_chars:
+            item["text"] = text[:max_text_chars].rstrip()
+        compact_items[evidence_id] = item
+    estimated_tokens = sum(
+        max(1, len(str(item.get("text") or "")) // 4) for item in compact_items.values()
+    )
+    return EvidenceSelection(
+        candidate_count=selection.candidate_count,
+        selected_items=compact_items,
+        section_evidence_ids={
+            key: list(values) for key, values in selection.section_evidence_ids.items()
+        },
+        method_by_section=dict(selection.method_by_section),
+        omitted_count=selection.omitted_count,
+        estimated_tokens=estimated_tokens,
+        ranking_decisions=list(selection.ranking_decisions),
+    )
 
 
 class EvidenceSelector:
@@ -323,6 +358,7 @@ class EvidenceSelector:
                 "omitted_count": result.omitted_count,
                 "estimated_tokens": result.estimated_tokens,
                 "elapsed_ms": elapsed,
+                "ranking_decisions": result.ranking_decisions,
             },
         )
         return result
@@ -372,6 +408,7 @@ class EvidenceSelector:
         # Rank each section independently, falling back per section.
         section_ranked: dict[str, list[str]] = {}
         method_by_section: dict[str, str] = {}
+        ranking_scores: dict[str, dict[str, float]] = {}
 
         for section in sections:
             section_query = f"{query}\n{section.title}\n{section.retrieval_hint}"
@@ -427,10 +464,13 @@ class EvidenceSelector:
                         seen.add(eid)
                         eids.append(eid)
 
-                        if len(eids) >= self._top_k_per_section:
-                            break
-
+                    if set(eids) != set(item_by_id):
+                        raise ValueError("reranker omitted candidates")
                     section_ranked[section.key] = eids
+                    ranking_scores[section.key] = {
+                        doc.doc.metadata["evidence_id"]: float(doc.score)
+                        for doc in ranked
+                    }
                     method_by_section[section.key] = "cross_encoder"
 
                 except asyncio.CancelledError:
@@ -453,6 +493,12 @@ class EvidenceSelector:
                 )
                 method_by_section[section.key] = "lexical_fallback"
 
+            if method_by_section[section.key] == "lexical_fallback":
+                tokens = set(_WORD_RE.findall(section_query.lower()))
+                ranking_scores[section.key] = {
+                    eid: self._lexical_score(tokens, item) for eid, item in valid_items
+                }
+
         # Pack round-robin while enforcing item, paper, and token caps.
         selected: dict[str, dict[str, Any]] = {}
         section_eids: dict[str, list[str]] = {k: [] for k in section_keys}
@@ -461,10 +507,29 @@ class EvidenceSelector:
 
         section_iters = {s.key: iter(section_ranked.get(s.key, [])) for s in sections}
         exhausted: set[str] = set()
+        decisions: dict[tuple[str, str], dict[str, Any]] = {
+            (section, eid): {
+                "section": section,
+                "evidence_id": eid,
+                "paper_id": item_by_id[eid].get("paper_id"),
+                "rank": rank,
+                "score": ranking_scores[section][eid],
+                "reason_code": "global_item_limit",
+            }
+            for section, ids in section_ranked.items()
+            for rank, eid in enumerate(ids, 1)
+        }
 
         while len(selected) < self._max_items and len(exhausted) < len(sections):
             for section in sections:
                 if section.key in exhausted:
+                    continue
+                if len(section_eids[section.key]) >= self._top_k_per_section:
+                    exhausted.add(section.key)
+                    for remaining in section_iters[section.key]:
+                        decisions[(section.key, remaining)][
+                            "reason_code"
+                        ] = "section_limit"
                     continue
 
                 try:
@@ -475,7 +540,27 @@ class EvidenceSelector:
 
                 if eid in selected:
                     if eid not in section_eids[section.key]:
-                        section_eids[section.key].append(eid)
+                        trial_sections = {k: list(v) for k, v in section_eids.items()}
+                        trial_sections[section.key].append(eid)
+                        trial = EvidenceSelection(
+                            len(valid_items),
+                            selected,
+                            trial_sections,
+                            method_by_section,
+                            0,
+                            0,
+                        )
+                        trial_tokens = self._budget.count_tokens(
+                            format_evidence_selection(trial)
+                        )
+                        if trial_tokens > max_tokens:
+                            decisions[(section.key, eid)][
+                                "reason_code"
+                            ] = "token_budget"
+                            continue
+                        section_eids = trial_sections
+                        estimated_tokens = trial_tokens
+                    decisions[(section.key, eid)]["reason_code"] = "duplicate_selected"
                     continue
 
                 if len(selected) >= self._max_items:
@@ -485,6 +570,7 @@ class EvidenceSelector:
 
                 paper_id = item.get("paper_id") or eid.split(":")[0]
                 if paper_counts.get(paper_id, 0) >= self._per_paper_cap:
+                    decisions[(section.key, eid)]["reason_code"] = "paper_limit"
                     continue
 
                 # Include serialized XML overhead in the budget trial.
@@ -503,12 +589,14 @@ class EvidenceSelector:
                 formatted = format_evidence_selection(trial)
                 new_tokens = self._budget.count_tokens(formatted)
                 if new_tokens > max_tokens:
+                    decisions[(section.key, eid)]["reason_code"] = "token_budget"
                     continue
 
                 selected[eid] = item
                 section_eids[section.key].append(eid)
                 paper_counts[paper_id] = paper_counts.get(paper_id, 0) + 1
                 estimated_tokens = new_tokens
+                decisions[(section.key, eid)]["reason_code"] = "selected"
 
         omitted = len(valid_items) - len(selected)
 
@@ -519,6 +607,23 @@ class EvidenceSelector:
             method_by_section=method_by_section,
             omitted_count=max(0, omitted),
             estimated_tokens=estimated_tokens,
+            ranking_decisions=list(decisions.values())
+            + [
+                {"evidence_id": str(eid), "reason_code": "invalid_entry"}
+                for eid in ledger
+                if eid not in item_by_id
+            ],
+        )
+
+    @staticmethod
+    def _lexical_score(query_tokens: set[str], item: Mapping[str, Any]) -> float:
+        """Score title-weighted lexical coverage with a stable empty-query result."""
+        if not query_tokens:
+            return 0.0
+        title = set(_WORD_RE.findall(str(item.get("paper_title") or "").lower()))
+        text = set(_WORD_RE.findall(str(item.get("text") or "").lower()))
+        return (2 * len(query_tokens & title) + len(query_tokens & text)) / len(
+            query_tokens
         )
 
     def _lexical_rank_section(
@@ -544,7 +649,7 @@ class EvidenceSelector:
             scored.append((score, idx, eid))
 
         scored.sort(key=lambda x: (-x[0], x[1]))
-        return [eid for _, _, eid in scored[: self._top_k_per_section]]
+        return [eid for _, _, eid in scored]
 
 
 def format_evidence_selection(selection: EvidenceSelection) -> str:
