@@ -140,6 +140,21 @@ async def test_evidence_ids_are_checked_without_calling_llm():
 
 
 @pytest.mark.asyncio
+async def test_malformed_evidence_markers_lower_deterministic_citation_score():
+    llm = _SequenceLLM([])
+    evaluator = CitationEvaluator(llm)
+    context = {CTX_EVIDENCE: {"e1": {"evidence_id": "e1"}}}
+
+    result = await evaluator.evaluate("Claim [E:e1; E:e2].", context)
+
+    assert result.score == 0.0
+    assert result.passed is False
+    assert result.details["cited_count"] == 1
+    assert result.details["malformed_evidence_refs"] == ["[E:e1; E:e2]"]
+    assert llm.calls == []
+
+
+@pytest.mark.asyncio
 async def test_legacy_audit_retries_empty_response_once_with_thinking_disabled():
     llm = _SequenceLLM(["", '{"cited": []}'])
     evaluator = CitationEvaluator(llm, thinking_mode="disabled")

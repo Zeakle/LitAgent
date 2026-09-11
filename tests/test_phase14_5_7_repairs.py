@@ -261,7 +261,7 @@ async def test_judge_cannot_omit_inventory_claims():
             side_effect=[
                 LLMResponse('{"claims":["A","B"]}'),
                 LLMResponse(
-                    '{"topic_assessments":[{"topic_id":"metric-space","covered":true}],"claim_assessments":[{"claim_text":"A","supported":true,"evidence_ids":["e1"]}],"contradictions":[]}'
+                    '{"topic_assessments":[{"topic_id":"metric-space","covered":true}],"claim_assessments":[{"claim_id":"claim_0","supported":true,"evidence_ids":["e1"]}],"contradictions":[]}'
                 ),
             ]
         )

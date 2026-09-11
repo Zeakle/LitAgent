@@ -140,8 +140,8 @@ def _survey_markdown(payload: Mapping[str, Any]) -> str:
                 "",
                 "## Runtime / Judge Audit",
                 "",
-                "| Case / Profile | Runtime claims | Runtime faithfulness | Judge claims | Judge faithfulness | Usage complete |",
-                "|---|---:|---:|---:|---:|---|",
+                "| Case / Profile | Runtime claims | Runtime faithfulness | Citation diagnostics | Judge claims | Judge faithfulness | Judge status / reasons | Usage complete |",
+                "|---|---:|---:|---|---:|---:|---|---|",
             ]
         )
         for observation in payload["observations"]:
@@ -149,12 +149,27 @@ def _survey_markdown(payload: Mapping[str, Any]) -> str:
             runtime = (metrics.get("runtime_evaluation") or {}).get(
                 "faithfulness"
             ) or {}
+            citations = metrics.get("citations") or {}
             judge = observation.get("judge") or {}
             count = (runtime.get("details") or {}).get("factual_claim_count")
+            citation_diagnostics = [
+                *(
+                    f"unknown:{value}"
+                    for value in citations.get("unknown_evidence_ids") or []
+                ),
+                *(
+                    f"malformed:{value}"
+                    for value in citations.get("malformed_evidence_refs") or []
+                ),
+            ]
+            judge_reasons = judge.get("reason_codes") or []
             lines.append(
                 f"| {observation.get('case_id')} / {observation.get('profile_id')} "
-                f"| {count} | {runtime.get('score')} | {judge.get('factual_claim_count')} "
-                f"| {judge.get('faithfulness')} | {(metrics.get('cost') or {}).get('usage_complete', False)} |"
+                f"| {count} | {runtime.get('score')} "
+                f"| {', '.join(citation_diagnostics) or 'none'} "
+                f"| {judge.get('factual_claim_count')} | {judge.get('faithfulness')} "
+                f"| {judge.get('status', 'unavailable')}: {', '.join(judge_reasons) or 'none'} "
+                f"| {(metrics.get('cost') or {}).get('usage_complete', False)} |"
             )
     comparisons = payload.get("profile_comparisons") or []
     if comparisons:

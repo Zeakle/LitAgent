@@ -304,6 +304,16 @@ class TestTracerHandlers:
                 "accepted": True,
                 "quality_status": "passed",
                 "delivery_status": "ready",
+                "judge": {
+                    "status": "failed",
+                    "reason_codes": ["judge_topic_ids_mismatch"],
+                    "failure_details": [
+                        {
+                            "stage": "topic_alignment",
+                            "attempt": 2,
+                        }
+                    ],
+                },
             },
         )
         updates = [k for act, k in log if act == "update"]
@@ -312,6 +322,11 @@ class TestTracerHandlers:
         )
         assert any(
             k.get("output", {}).get("delivery_status") == "ready" for k in updates
+        )
+        assert any(
+            k.get("output", {}).get("judge", {}).get("reason_codes")
+            == ["judge_topic_ids_mismatch"]
+            for k in updates
         )
 
     def test_subspan_nests_under_parent_worker(self):

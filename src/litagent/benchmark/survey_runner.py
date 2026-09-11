@@ -224,6 +224,10 @@ def runtime_prompt_source_fingerprint() -> str:
     return _hash_files(
         [
             root / "agents" / "planner.py",
+            root / "evidence.py",
+            root / "runner.py",
+            root / "eval" / "citation.py",
+            root / "observability" / "citations.py",
             root / "agents" / "synthesis.py",
             root / "agents" / "reviewer.py",
             root / "agents" / "adversarial.py",
@@ -510,6 +514,7 @@ class SurveyBenchmarkRunner:
         """Run cases round-robin so external API drift affects profiles equally."""
         observations: list[SurveyCaseObservation] = []
         prompt_fingerprint = runtime_prompt_source_fingerprint()
+        judge_fingerprint = judge_prompt_fingerprint()
         dataset_fingerprint = dataset.fingerprint
         manifest_fingerprint = _hash_files(
             [Path(path) for path in dataset.manifest_paths]
@@ -567,6 +572,7 @@ class SurveyBenchmarkRunner:
                         "git_dirty": git_dirty,
                         "config_fingerprint": config_fingerprint,
                         "prompt_source_fingerprint": prompt_fingerprint,
+                        "judge_prompt_fingerprint": judge_fingerprint,
                         "dataset_fingerprint": dataset_fingerprint,
                         "manifest_fingerprint": manifest_fingerprint,
                     }
@@ -1189,6 +1195,7 @@ class SurveyBenchmarkRunner:
                 ),
                 "total_tokens": judge_usage.total_tokens,
                 "delivery_status": metrics.delivery_status,
+                "judge": judge.model_dump(mode="json"),
             },
         )
         judge_hook.flush()

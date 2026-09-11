@@ -343,6 +343,7 @@ class CitationMetrics(BaseModel):
     missing_required_paper_ids: list[str] = Field(default_factory=list)
     unjudged_paper_ids: list[str] = Field(default_factory=list)
     unknown_evidence_ids: list[str] = Field(default_factory=list)
+    malformed_evidence_refs: list[str] = Field(default_factory=list)
     unknown_reference_rate: float = Field(ge=0, le=1)
 
 
@@ -430,6 +431,39 @@ class ContradictionPair(BaseModel):
     explanation: str = ""
 
 
+class JudgeFailureDetail(BaseModel):
+    """Describe one failed Judge attempt without storing provider secrets."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason_code: str = Field(min_length=1)
+    stage: Literal[
+        "inventory_parse",
+        "inventory_validate",
+        "audit_parse",
+        "audit_validate",
+        "claim_alignment",
+        "topic_alignment",
+        "evidence_alignment",
+        "citation_syntax",
+        "provider_call",
+    ]
+    attempt: int = Field(ge=1)
+    max_attempts: int = Field(ge=1)
+    error_type: str = Field(default="", max_length=128)
+    validation_errors: list[str] = Field(default_factory=list)
+    missing_claim_ids: list[str] = Field(default_factory=list)
+    unexpected_claim_ids: list[str] = Field(default_factory=list)
+    duplicate_claim_ids: list[str] = Field(default_factory=list)
+    missing_topic_ids: list[str] = Field(default_factory=list)
+    unexpected_topic_ids: list[str] = Field(default_factory=list)
+    duplicate_topic_ids: list[str] = Field(default_factory=list)
+    unknown_evidence_ids: list[str] = Field(default_factory=list)
+    malformed_evidence_refs: list[str] = Field(default_factory=list)
+    json_line: int | None = Field(default=None, ge=1)
+    json_column: int | None = Field(default=None, ge=1)
+
+
 class SurveyJudgeMetrics(BaseModel):
     """Store independent semantic quality metrics with explicit availability."""
 
@@ -446,6 +480,7 @@ class SurveyJudgeMetrics(BaseModel):
     unsupported_claims: list[UnsupportedClaim] = Field(default_factory=list)
     contradictions: list[ContradictionPair] = Field(default_factory=list)
     reason_codes: list[str] = Field(default_factory=list)
+    failure_details: list[JudgeFailureDetail] = Field(default_factory=list)
 
 
 class JudgeUsage(BaseModel):

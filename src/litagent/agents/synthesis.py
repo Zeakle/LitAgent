@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import html
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import Any
 
 from litagent.agent.react import ReActRunner
@@ -23,6 +23,8 @@ from litagent.evidence import collect_ledger
 from litagent.llm.client import BaseLLMClient
 from litagent.logging import get_logger
 from litagent.memory.manager import MemoryManager
+from litagent.observability.citations import normalize_citations_traced
+from litagent.observability.context import get_task_id
 from litagent.orchestrator.scheduler import Worker
 from litagent.orchestrator.task_graph import SubTask
 from litagent.skills.manager import SkillManager
@@ -56,11 +58,15 @@ EVIDENCE BOUNDARIES (MANDATORY):
   corresponding section's plan. Only section titles, non-factual transitions,
   and explicit disclosures of missing evidence need no marker. Hedging a factual
   assertion with "may", "could", or "generally" does not exempt it from evidence.
+- Write multiple citations as separate markers, for example `[E:id1] [E:id2]`.
+  Never combine IDs inside one marker such as `[E:id1; E:id2]`.
 - Cross-section reuse of an evidence ID is allowed ONLY when the evidence is
   genuinely relevant to both sections.
 - Paper titles in <papers> without a selected evidence ID may ONLY be listed as
   "retrieved but evidence insufficient" — do NOT describe their methods, results,
   or impact.
+- <papers> intentionally omits canonical paper IDs. Only identifiers written as
+  [E:<id>] are citable evidence; never turn titles or other metadata into citations.
 - Do NOT supplement with pretrained knowledge about authors, years, classic
   methods, datasets, numerical values, or application domains.
 - The graph tier in <papers> may help organize structure but is NOT a fact source.
@@ -98,6 +104,8 @@ H1 document title; do not add a change summary, commentary, or code fence.
 
 CRITICAL: You have access to the SAME <evidence_plan> and <evidence_ledger> as the
 first draft. Every factual sentence must still cite an [E:<id>] from the plan.
+Write multiple citations as separate `[E:<id>]` markers; never combine IDs inside
+one marker.
 If the reviewer asks for content not supported by the ledger, rewrite it as a
 known gap ("evidence not provided") instead of fabricating. Never add new paper
 titles, authors, years, or evidence IDs.
@@ -136,6 +144,7 @@ class SynthesisWorker(Worker):
         *,
         evidence_selector: EvidenceSelector | None = None,
         context_config: ContextConfig | None = None,
+        trace_hook: Callable[[str, dict], None] | None = None,
     ):
         """Initialize the synthesis worker."""
         self._llm = llm
@@ -148,6 +157,7 @@ class SynthesisWorker(Worker):
         self._skill_manager = skill_manager
         self._agent_config = agent_config or AgentConfig()
         self._evidence_selector = evidence_selector
+        self._trace_hook = trace_hook
 
         self._tools: list = []
         if skill_manager:
@@ -281,6 +291,14 @@ class SynthesisWorker(Worker):
             # Non-JSON output is already the draft text.
             pass
 
+        draft = normalize_citations_traced(
+            draft,
+            selection.selected_items,
+            trace_hook=self._trace_hook,
+            parent_task_id=get_task_id() or task.task_id,
+            stage="initial_draft",
+            round_num=1,
+        ).text
         context_tokens = compact_used if generation_reasons else used
         logger.info(
             "Synthesis draft: %d chars, ctx %d tokens",
@@ -475,9 +493,11 @@ class SynthesisWorker(Worker):
         graph_data: dict,
         evidence_selection: EvidenceSelection | None,
     ) -> str:
-        """Build a catalog of paper identity, tier, and selected evidence IDs.
+        """Build a catalog of paper titles, tiers, and selected evidence IDs.
 
-        Evidence belongs to a paper by explicit ID or its extraction item set.
+        Evidence belongs to a paper by explicit ID or its extraction item set. The
+        canonical paper ID is used only for internal matching because exposing it
+        beside ``[E:<id>]`` encourages models to cite the paper ID as evidence.
         """
         tier_map: dict[str, int] = {}
         if graph_data and "papers" in graph_data:
@@ -487,7 +507,6 @@ class SynthesisWorker(Worker):
         lines: list[str] = []
         for ext in extractions:
             pid = str(ext.get("paper_id") or "")
-            escaped_pid = html.escape(pid, quote=True)
             title = html.escape(str(ext.get("title", "")), quote=True)
             tier = tier_map.get(pid, 3)
 
@@ -513,9 +532,6 @@ class SynthesisWorker(Worker):
                 if paper_eids
                 else "(no evidence selected)"
             )
-            lines.append(
-                f"paper_id={escaped_pid} | tier={tier} | "
-                f"title={title} | evidence={eid_str}"
-            )
+            lines.append(f"tier={tier} | title={title} | citable_evidence={eid_str}")
 
         return "\n".join(lines) if lines else ""

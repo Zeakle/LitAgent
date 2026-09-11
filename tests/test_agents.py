@@ -879,6 +879,7 @@ class TestEvidenceLedger:
         from litagent.evidence import (
             build_evidence_items,
             collect_ledger,
+            find_malformed_evidence_refs,
             find_unknown_refs,
         )
 
@@ -890,6 +891,11 @@ class TestEvidenceLedger:
         text = "Good [E:p1:claim:0]. Bad [E:fake:claim:9]."
         assert find_unknown_refs(text, ledger) == ["fake:claim:9"]
         assert find_unknown_refs("no refs here", ledger) == []
+        malformed = "Combined [E:p1:claim:0; E:fake:claim:9]."
+        assert find_malformed_evidence_refs(malformed) == [
+            "[E:p1:claim:0; E:fake:claim:9]"
+        ]
+        assert find_unknown_refs(malformed, ledger) == []
 
     def test_format_ledger_lines(self):
         from litagent.evidence import (
@@ -1827,15 +1833,15 @@ class TestSynthesisEvidencePipeline:
         ev = result["evidence_selection"]
         assert ev["candidate_count"] != 9999
 
-    def test_paper_catalog_excludes_claims_metrics_abstract(self):
-        """The paper catalog excludes untrusted evidence fields."""
+    def test_paper_catalog_exposes_only_citable_evidence_identifiers(self):
+        """The prompt catalog must not expose paper IDs as citation candidates."""
         from litagent.agents.synthesis import SynthesisWorker
         from litagent.llm.client import MockLLMClient
 
         w = SynthesisWorker(llm=MockLLMClient())
         extractions = [
             {
-                "paper_id": "p1",
+                "paper_id": "arxiv:2401.00001",
                 "title": "Test Paper",
                 "abstract": "should not appear",
                 "claims": ["should not appear"],
@@ -1843,7 +1849,7 @@ class TestSynthesisEvidencePipeline:
                 "evidence_items": [
                     {
                         "evidence_id": "p1:claim:0",
-                        "paper_id": "p1",
+                        "paper_id": "arxiv:2401.00001",
                         "paper_title": "Test Paper",
                         "text": "valid evidence",
                     },
@@ -1855,7 +1861,7 @@ class TestSynthesisEvidencePipeline:
             selected_items={
                 "p1:claim:0": {
                     "evidence_id": "p1:claim:0",
-                    "paper_id": "p1",
+                    "paper_id": "arxiv:2401.00001",
                     "paper_title": "Test Paper",
                     "text": "valid evidence",
                 },
@@ -1867,10 +1873,11 @@ class TestSynthesisEvidencePipeline:
         )
         ctx = w._build_papers_context(
             extractions,
-            {"papers": [{"paper_id": "p1", "tier": 2}]},
+            {"papers": [{"paper_id": "arxiv:2401.00001", "tier": 2}]},
             sel,
         )
-        assert "paper_id=p1" in ctx
+        assert "arxiv:2401.00001" not in ctx
+        assert "paper_id=" not in ctx
         assert "tier=2" in ctx
         assert "Test Paper" in ctx
         assert "[E:p1:claim:0]" in ctx
@@ -2149,6 +2156,53 @@ class TestReviewerEvidenceCompliance:
         assert "p99:claim:99" in result["evidence_compliance"]["unknown_evidence_ids"]
         assert result["score"] < 0.8
         assert result["verdict"] != "accept"
+
+    @pytest.mark.asyncio
+    async def test_compound_evidence_marker_forces_fail_closed(self):
+        """Combined citation syntax must not bypass deterministic review."""
+        import json as _json
+
+        from litagent.agents.reviewer import ReviewerWorker
+        from litagent.llm.client import MockLLMClient
+
+        review_json = _json.dumps(
+            {
+                "score": 0.95,
+                "strengths": ["good"],
+                "weaknesses": [],
+                "issues": [],
+                "missing_coverage": [],
+                "verdict": "accept",
+                "evidence_compliance": {
+                    "passed": True,
+                    "unsupported_claims": [],
+                    "unknown_evidence_ids": [],
+                },
+            }
+        )
+        worker = ReviewerWorker(llm=MockLLMClient(responses=[review_json]))
+        result = await worker.execute(
+            SubTask(
+                task_id="review",
+                description="test",
+                agent_type="reviewer",
+                input_data={
+                    "upstream_results": {
+                        "synthesis": {
+                            "draft": "Claim [E:p1:claim:0; E:p1:claim:0].",
+                            "evidence_selection": self._selection().to_dict(),
+                        }
+                    }
+                },
+            )
+        )
+
+        assert result["evidence_compliance"]["passed"] is False
+        assert result["evidence_compliance"]["malformed_evidence_refs"] == [
+            "[E:p1:claim:0; E:p1:claim:0]"
+        ]
+        assert result["score"] < 0.8
+        assert result["verdict"] == "revise"
 
     @pytest.mark.asyncio
     async def test_model_reports_unknown_ids_forces_fail(self):

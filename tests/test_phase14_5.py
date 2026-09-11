@@ -185,6 +185,15 @@ def test_survey_metrics_report_unknown_evidence_references():
     assert metrics.citations.unknown_reference_rate == 1.0
 
 
+def test_survey_metrics_report_malformed_evidence_references():
+    metrics = evaluate_survey_artifact(
+        case=_case(), artifact=_artifact("Malformed [E:e1; E:e2].")
+    )
+
+    assert metrics.citations.malformed_evidence_refs == ["[E:e1; E:e2]"]
+    assert metrics.citations.unknown_reference_rate == 1.0
+
+
 def test_runtime_evaluator_skipped_metric_remains_null():
     artifact = _artifact()
     artifact["report"]["evaluation"]["faithfulness"] = {
@@ -239,9 +248,12 @@ def test_judge_metrics_keep_unavailable_values_null():
 def _prime_judge_inventory(llm):
     """Prepend the independent extraction response to a mocked audit response."""
     audit = llm.chat.return_value
-    claims = [
-        item["claim_text"] for item in json.loads(audit.content)["claim_assessments"]
-    ]
+    audit_payload = json.loads(audit.content)
+    claims = []
+    for index, item in enumerate(audit_payload["claim_assessments"]):
+        claims.append(item.pop("claim_text"))
+        item["claim_id"] = f"claim_{index}"
+    audit.content = json.dumps(audit_payload)
     llm.chat.side_effect = [
         LLMResponse(
             content=json.dumps({"claims": claims}),
@@ -321,7 +333,22 @@ async def test_independent_judge_derives_claim_and_topic_metrics():
     assert [claim.claim_text for claim in metrics.unsupported_claims] == [
         "Unsupported."
     ]
+    assert [claim.claim_text for claim in metrics.claim_assessments] == [
+        "Supported one.",
+        "Supported two.",
+        "Supported three.",
+        "Unsupported.",
+    ]
     assert usage.total_tokens == 65
+    audit_prompt = llm.chat.await_args.args[0][1]["content"]
+    assert '"claim_id": "claim_0"' in audit_prompt
+    assert "copying its claim_text verbatim" not in audit_prompt
+    audit_schema = llm.chat.await_args.kwargs["response_format"]["json_schema"][
+        "schema"
+    ]
+    decision_schema = audit_schema["$defs"]["_JudgeClaimDecision"]["properties"]
+    assert "claim_id" in decision_schema
+    assert "claim_text" not in decision_schema
     assert llm.chat.await_args.kwargs["extra_body"] == {
         "thinking": {"type": "disabled"}
     }
@@ -444,11 +471,273 @@ async def test_independent_judge_retries_malformed_output_then_fails(monkeypatch
 
     assert llm.chat.await_count == 2
     assert metrics.status == "failed"
-    assert metrics.reason_codes == ["judge_contract_invalid"]
+    assert metrics.reason_codes == ["judge_inventory_json_invalid"]
+    assert [detail.stage for detail in metrics.failure_details] == [
+        "inventory_parse",
+        "inventory_parse",
+    ]
+    assert [detail.attempt for detail in metrics.failure_details] == [1, 2]
+    assert all(detail.max_attempts == 2 for detail in metrics.failure_details)
+    assert all(detail.json_line == 1 for detail in metrics.failure_details)
+    assert all(detail.json_column == 1 for detail in metrics.failure_details)
     assert usage.total_tokens == 14
     response_format = llm.chat.await_args.kwargs["response_format"]
     assert response_format["type"] == "json_schema"
     assert response_format["json_schema"]["strict"] is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("audit_payload", "expected_reason", "expected_stage", "expected_field"),
+    [
+        (
+            {
+                "topic_assessments": [{"topic_id": "metric-space", "covered": True}],
+                "claim_assessments": [],
+                "contradictions": [],
+            },
+            "judge_claim_inventory_mismatch",
+            "claim_alignment",
+            "missing_claim_ids",
+        ),
+        (
+            {
+                "topic_assessments": [{"topic_id": "metric-space", "covered": True}],
+                "claim_assessments": [
+                    {
+                        "claim_id": "claim_0",
+                        "supported": True,
+                        "evidence_ids": ["e1"],
+                    },
+                    {
+                        "claim_id": "claim_0",
+                        "supported": True,
+                        "evidence_ids": ["e1"],
+                    },
+                ],
+                "contradictions": [],
+            },
+            "judge_claim_inventory_mismatch",
+            "claim_alignment",
+            "duplicate_claim_ids",
+        ),
+        (
+            {
+                "topic_assessments": [
+                    {"topic_id": "unexpected-topic", "covered": True}
+                ],
+                "claim_assessments": [
+                    {
+                        "claim_id": "claim_0",
+                        "supported": True,
+                        "evidence_ids": ["e1"],
+                    }
+                ],
+                "contradictions": [],
+            },
+            "judge_topic_ids_mismatch",
+            "topic_alignment",
+            "missing_topic_ids",
+        ),
+        (
+            {
+                "topic_assessments": [
+                    {"topic_id": "metric-space", "covered": True},
+                    {"topic_id": "metric-space", "covered": True},
+                ],
+                "claim_assessments": [
+                    {
+                        "claim_id": "claim_0",
+                        "supported": True,
+                        "evidence_ids": ["e1"],
+                    }
+                ],
+                "contradictions": [],
+            },
+            "judge_topic_ids_mismatch",
+            "topic_alignment",
+            "duplicate_topic_ids",
+        ),
+        (
+            {
+                "topic_assessments": [{"topic_id": "metric-space", "covered": True}],
+                "claim_assessments": [
+                    {
+                        "claim_id": "claim_0",
+                        "supported": True,
+                        "evidence_ids": ["invented-evidence"],
+                    }
+                ],
+                "contradictions": [],
+            },
+            "judge_unknown_evidence_ids",
+            "evidence_alignment",
+            "unknown_evidence_ids",
+        ),
+    ],
+)
+async def test_independent_judge_reports_semantic_contract_failure_details(
+    audit_payload,
+    expected_reason,
+    expected_stage,
+    expected_field,
+):
+    from litagent.benchmark.survey_judge import SurveyBenchmarkJudge
+
+    llm = AsyncMock()
+    llm.chat.side_effect = [
+        LLMResponse(content=json.dumps({"claims": ["Claim."]})),
+        LLMResponse(content=json.dumps(audit_payload)),
+    ]
+    judge = SurveyBenchmarkJudge(
+        llm,
+        SurveyJudgeConfig(
+            base_url="https://judge.example",
+            model="judge-v1",
+            max_retries=0,
+        ),
+    )
+
+    metrics, _ = await judge.evaluate(
+        case=_case(),
+        survey="Claim [E:e1].",
+        ledger={"e1": {"text": "Claim."}},
+    )
+
+    assert metrics.status == "failed"
+    assert metrics.reason_codes == [expected_reason]
+    assert len(metrics.failure_details) == 1
+    detail = metrics.failure_details[0]
+    assert detail.reason_code == expected_reason
+    assert detail.stage == expected_stage
+    assert detail.attempt == 1
+    assert getattr(detail, expected_field)
+
+
+@pytest.mark.asyncio
+async def test_independent_judge_rejects_malformed_citations_before_llm_call():
+    from litagent.benchmark.survey_judge import SurveyBenchmarkJudge
+
+    llm = AsyncMock()
+    judge = SurveyBenchmarkJudge(
+        llm,
+        SurveyJudgeConfig(
+            base_url="https://judge.example",
+            model="judge-v1",
+            max_retries=1,
+        ),
+    )
+
+    metrics, usage = await judge.evaluate(
+        case=_case(),
+        survey="Claim [E:e1; E:e2].",
+        ledger={
+            "e1": {"paper_id": "arxiv:1606.04080", "text": "Support one."},
+            "e2": {"paper_id": "arxiv:1606.04080", "text": "Support two."},
+        },
+    )
+
+    llm.chat.assert_not_awaited()
+    assert metrics.status == "failed"
+    assert metrics.reason_codes == ["judge_malformed_evidence_refs"]
+    assert metrics.failure_details[0].stage == "citation_syntax"
+    assert metrics.failure_details[0].malformed_evidence_refs == ["[E:e1; E:e2]"]
+    assert usage.total_tokens == 0
+
+
+@pytest.mark.asyncio
+async def test_independent_judge_distinguishes_inventory_and_audit_schema_failures():
+    from litagent.benchmark.survey_judge import SurveyBenchmarkJudge
+
+    inventory_llm = AsyncMock()
+    inventory_llm.chat.return_value = LLMResponse(content=json.dumps({"claims": [""]}))
+    inventory_judge = SurveyBenchmarkJudge(
+        inventory_llm,
+        SurveyJudgeConfig(
+            base_url="https://judge.example",
+            model="judge-v1",
+            max_retries=0,
+        ),
+    )
+    inventory_metrics, _ = await inventory_judge.evaluate(
+        case=_case(), survey="Claim.", ledger={}
+    )
+
+    audit_llm = AsyncMock()
+    audit_llm.chat.side_effect = [
+        LLMResponse(content=json.dumps({"claims": ["Claim."]})),
+        LLMResponse(content=json.dumps({"topic_assessments": []})),
+    ]
+    audit_judge = SurveyBenchmarkJudge(
+        audit_llm,
+        SurveyJudgeConfig(
+            base_url="https://judge.example",
+            model="judge-v1",
+            max_retries=0,
+        ),
+    )
+    audit_metrics, _ = await audit_judge.evaluate(
+        case=_case(), survey="Claim.", ledger={}
+    )
+
+    assert inventory_metrics.reason_codes == ["judge_inventory_schema_invalid"]
+    assert inventory_metrics.failure_details[0].validation_errors
+    assert inventory_metrics.failure_details[0].stage == "inventory_validate"
+    assert audit_metrics.reason_codes == ["judge_audit_schema_invalid"]
+    assert audit_metrics.failure_details[0].validation_errors
+    assert audit_metrics.failure_details[0].stage == "audit_validate"
+
+
+@pytest.mark.asyncio
+async def test_independent_judge_reports_audit_json_failure_and_recovery(monkeypatch):
+    from litagent.benchmark.survey_judge import SurveyBenchmarkJudge
+
+    monkeypatch.setattr("litagent.benchmark.survey_judge.asyncio.sleep", AsyncMock())
+    valid_inventory = LLMResponse(content=json.dumps({"claims": ["Claim."]}))
+    valid_audit = LLMResponse(
+        content=json.dumps(
+            {
+                "topic_assessments": [{"topic_id": "metric-space", "covered": True}],
+                "claim_assessments": [
+                    {
+                        "claim_id": "claim_0",
+                        "supported": True,
+                        "evidence_ids": ["e1"],
+                    }
+                ],
+                "contradictions": [],
+            }
+        )
+    )
+    llm = AsyncMock()
+    llm.chat.side_effect = [
+        valid_inventory,
+        LLMResponse(content="not-json"),
+        valid_inventory,
+        valid_audit,
+    ]
+    judge = SurveyBenchmarkJudge(
+        llm,
+        SurveyJudgeConfig(
+            base_url="https://judge.example",
+            model="judge-v1",
+            max_retries=1,
+        ),
+    )
+
+    metrics, _ = await judge.evaluate(
+        case=_case(),
+        survey="Claim [E:e1].",
+        ledger={"e1": {"text": "Claim."}},
+    )
+
+    assert metrics.status == "completed"
+    assert metrics.reason_codes == []
+    assert len(metrics.failure_details) == 1
+    assert metrics.failure_details[0].reason_code == "judge_audit_json_invalid"
+    assert metrics.failure_details[0].stage == "audit_parse"
+    assert metrics.failure_details[0].attempt == 1
+    assert metrics.failure_details[0].max_attempts == 2
 
 
 @pytest.mark.asyncio
@@ -629,6 +918,23 @@ def test_survey_benchmark_markdown_renderer_is_family_specific(tmp_path):
             "citation_recall": 0.5,
             "citation_precision": 1.0,
         },
+        "observations": [
+            {
+                "case_id": "nerf-foundations",
+                "profile_id": "external-abstract",
+                "metrics": {
+                    "citations": {
+                        "unknown_evidence_ids": ["unknown-id"],
+                        "malformed_evidence_refs": ["[E:id1; E:id2]"],
+                    },
+                    "cost": {"usage_complete": True},
+                },
+                "judge": {
+                    "status": "failed",
+                    "reason_codes": ["judge_malformed_evidence_refs"],
+                },
+            }
+        ],
     }
 
     paths = BenchmarkArtifactRepository(tmp_path).write(payload)
@@ -636,6 +942,9 @@ def test_survey_benchmark_markdown_renderer_is_family_specific(tmp_path):
     markdown = paths.markdown_path.read_text("utf-8")
     assert "Survey Benchmark" in markdown
     assert "Evidence coverage" in markdown
+    assert "unknown:unknown-id" in markdown
+    assert "malformed:[E:id1; E:id2]" in markdown
+    assert "failed: judge_malformed_evidence_refs" in markdown
 
 
 def test_benchmark_checkpoint_round_trip_and_corruption_is_ignored(tmp_path):
@@ -774,7 +1083,7 @@ async def test_planner_replay_uses_frozen_decomposition_without_llm():
 
 
 @pytest.mark.asyncio
-async def test_survey_matrix_reuses_complete_verified_checkpoint(tmp_path):
+async def test_survey_matrix_reuses_complete_verified_checkpoint(tmp_path, monkeypatch):
     import hashlib
 
     from litagent.benchmark.artifacts import BenchmarkArtifactRepository
@@ -842,9 +1151,16 @@ async def test_survey_matrix_reuses_complete_verified_checkpoint(tmp_path):
     assert calls == 1
     assert second == first
 
-    artifact_path.write_text('{"changed": true}', encoding="utf-8")
+    monkeypatch.setattr(
+        "litagent.benchmark.survey_runner.judge_prompt_fingerprint",
+        lambda: "sha256:changed-judge-prompt",
+    )
     await runner._run_matrix(**kwargs)
     assert calls == 2
+
+    artifact_path.write_text('{"changed": true}', encoding="utf-8")
+    await runner._run_matrix(**kwargs)
+    assert calls == 3
 
 
 @pytest.mark.asyncio

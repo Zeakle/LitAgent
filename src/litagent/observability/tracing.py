@@ -241,15 +241,16 @@ class LangFuseTracer:
             self._close_orphans()
             if self._root is not None:
                 quality_status = data.get("quality_status", "unverified")
-                self._root.update(
-                    output={
-                        "rounds": data.get("rounds", 0),
-                        "accepted": data.get("accepted", False),
-                        "quality_status": quality_status,
-                        "total_tokens": data.get("total_tokens", 0),
-                        "delivery_status": data.get("delivery_status", ""),
-                    }
-                )
+                output = {
+                    "rounds": data.get("rounds", 0),
+                    "accepted": data.get("accepted", False),
+                    "quality_status": quality_status,
+                    "total_tokens": data.get("total_tokens", 0),
+                    "delivery_status": data.get("delivery_status", ""),
+                }
+                if "judge" in data:
+                    output["judge"] = data["judge"]
+                self._root.update(output=output)
                 self._root.end()
                 self._root = None
 

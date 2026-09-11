@@ -8,7 +8,10 @@ from typing import Any
 
 from litagent.context.templates import wrap_xml
 from litagent.eval.base import CTX_EVIDENCE, CTX_PAPERS, EvalResult, Evaluator
-from litagent.evidence import extract_evidence_refs_ordered
+from litagent.evidence import (
+    extract_evidence_refs_ordered,
+    find_malformed_evidence_refs,
+)
 from litagent.llm.client import BaseLLMClient
 from litagent.logging import get_logger
 
@@ -61,18 +64,26 @@ class CitationEvaluator(Evaluator):
         ledger = context.get(CTX_EVIDENCE)
         if isinstance(ledger, dict) and ledger:
             refs = extract_evidence_refs_ordered(survey)
+            malformed = find_malformed_evidence_refs(survey)
             unknown = [evidence_id for evidence_id in refs if evidence_id not in ledger]
-            score = (len(refs) - len(unknown)) / len(refs) if refs else 1.0
-            return self._make_result(
+            total = len(refs) + len(malformed)
+            real = len(refs) - len(unknown)
+            score = real / total if total else 1.0
+            result = self._make_result(
                 score,
                 {
                     "mode": "evidence_ledger",
-                    "cited_count": len(refs),
-                    "real_count": len(refs) - len(unknown),
+                    "cited_count": total,
+                    "real_count": real,
                     "unknown_evidence_ids": unknown,
-                    "note": "no evidence references found" if not refs else "",
+                    "malformed_evidence_refs": malformed,
+                    "note": "no evidence references found" if not total else "",
                 },
             )
+            if malformed:
+                result.passed = False
+                result.details["reason_codes"] = ["malformed_evidence_refs"]
+            return result
 
         papers = context.get(CTX_PAPERS, []) or []
         source_titles = [p.get("title", "") for p in papers if p.get("title")]
@@ -136,18 +147,6 @@ class CitationEvaluator(Evaluator):
             return result
 
         total = len(cited)
-        if total == 0:
-            return self._make_result(
-                1.0,
-                {
-                    "mode": "legacy_llm",
-                    "cited_count": 0,
-                    "note": "no citations found",
-                    "attempts": attempts,
-                    "usage": usage,
-                },
-            )
-
         real = sum(
             1 for c in cited if isinstance(c, dict) and c.get("in_source") is True
         )
@@ -157,8 +156,9 @@ class CitationEvaluator(Evaluator):
             if not (isinstance(c, dict) and c.get("in_source") is True)
         ]
 
-        score = real / total
-        return self._make_result(
+        score = real / total if total else 1.0
+        malformed = find_malformed_evidence_refs(survey)
+        result = self._make_result(
             score,
             {
                 "mode": "legacy_llm",
@@ -167,5 +167,11 @@ class CitationEvaluator(Evaluator):
                 "fabricated": fabricated,
                 "attempts": attempts,
                 "usage": usage,
+                "malformed_evidence_refs": malformed,
+                "note": "no citations found" if not total else "",
             },
         )
+        if malformed:
+            result.passed = False
+            result.details["reason_codes"] = ["malformed_evidence_refs"]
+        return result

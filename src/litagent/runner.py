@@ -52,6 +52,7 @@ from litagent.evidence import (
     collect_ledger,
     extract_evidence_refs,
     extract_evidence_refs_ordered,
+    find_malformed_evidence_refs,
 )
 from litagent.exceptions import ConfigError
 from litagent.llm.client import BaseLLMClient, OpenAICompatibleClient
@@ -62,6 +63,7 @@ from litagent.memory.manager import MemoryManager
 from litagent.memory.procedural import ProceduralMemory
 from litagent.memory.semantic import SemanticMemory
 from litagent.memory.working import WorkingMemory
+from litagent.observability.citations import normalize_citations_traced
 from litagent.observability.context import reset_task_id, set_task_id
 from litagent.observability.recorder import RedactingTraceHook
 from litagent.observability.tracing import LangFuseTracer
@@ -903,6 +905,7 @@ class LitAgent:
             agent_config=cfg.agent,
             evidence_selector=self._evidence_selector,
             context_config=cfg.context,
+            trace_hook=self._trace_hook,
         )
         workers.append(self._synthesis)
 
@@ -1644,6 +1647,13 @@ class LitAgent:
             )
 
         # Validate the candidate before running evaluators again.
+        candidate = normalize_citations_traced(
+            candidate,
+            {item["evidence_id"] for item in rewrite_items if item.get("evidence_id")},
+            trace_hook=self._trace_hook,
+            parent_task_id="evidence_rewrite",
+            stage="evidence_rewrite",
+        ).text
         validation = self._validate_rewrite_candidate(
             original=original_survey,
             candidate=candidate,
@@ -1917,6 +1927,8 @@ class LitAgent:
             ):
                 reasons.append("paragraph_collapse")
 
+        if find_malformed_evidence_refs(candidate):
+            reasons.append("malformed_evidence_refs")
         refs = extract_evidence_refs_ordered(candidate)
         unknown = tuple(
             evidence_id for evidence_id in refs if evidence_id not in evidence_ledger

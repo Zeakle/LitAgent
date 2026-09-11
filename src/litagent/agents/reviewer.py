@@ -17,7 +17,7 @@ from litagent.context.evidence_selector import (
 )
 from litagent.context.pipeline import ContextLayer, ContextPipeline
 from litagent.context.templates import build_system_prompt, wrap_xml
-from litagent.evidence import extract_evidence_refs
+from litagent.evidence import extract_evidence_refs, find_malformed_evidence_refs
 from litagent.llm.client import BaseLLMClient
 from litagent.logging import get_logger
 from litagent.orchestrator.scheduler import Worker
@@ -415,6 +415,7 @@ class ReviewerWorker(Worker):
 
         draft_refs = extract_evidence_refs(draft or "")
         unknown_from_draft = draft_refs - valid_ids
+        malformed_from_draft = find_malformed_evidence_refs(draft or "")
 
         raw_compliance = review.get("evidence_compliance")
         schema_invalid = not isinstance(raw_compliance, dict)
@@ -453,7 +454,12 @@ class ReviewerWorker(Worker):
             schema_invalid = True
             model_passed = False
 
-        passed = model_passed and not all_unknown and not unsupported
+        passed = (
+            model_passed
+            and not all_unknown
+            and not unsupported
+            and not malformed_from_draft
+        )
         if evidence_context_missing:
             passed = False
         if schema_invalid:
@@ -463,6 +469,7 @@ class ReviewerWorker(Worker):
             "passed": passed,
             "unsupported_claims": unsupported,
             "unknown_evidence_ids": all_unknown,
+            "malformed_evidence_refs": malformed_from_draft,
         }
         if schema_invalid:
             review["evidence_compliance"]["_schema_invalid"] = True
@@ -476,12 +483,13 @@ class ReviewerWorker(Worker):
 
         logger.info(
             "Evidence contract: passed=%s valid_ids=%d draft_refs=%d unknown_draft=%d "
-            "model_unknown=%d unsupported=%d schema_invalid=%s missing=%s",
+            "model_unknown=%d malformed=%d unsupported=%d schema_invalid=%s missing=%s",
             passed,
             len(valid_ids),
             len(draft_refs),
             len(unknown_from_draft),
             len(model_unknown),
+            len(malformed_from_draft),
             len(unsupported),
             schema_invalid,
             evidence_context_missing,

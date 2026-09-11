@@ -253,6 +253,44 @@ def _rewrite_report() -> dict:
 class TestTransactionalRewriteContract:
     """Tests transactional evidence rewrites."""
 
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("extra_id", ["p1:claim:0", "p1:claim:1"])
+    async def test_rewrite_normalizes_only_evidence_supplied_to_rewrite(self, extra_id):
+        report = _rewrite_report()
+        agent = self._configure_agent(report["evaluation"])
+        agent._validate_rewrite_candidate = (
+            LitAgent._validate_rewrite_candidate.__get__(agent)
+        )
+        raw = (
+            f"## Introduction\nNew [E:p1:claim:0, E:{extra_id}].\n\n"
+            "## Methods\nNew methods [E:p1:claim:0]."
+        )
+        agent._llm.chat.return_value = LLMResponse(content=raw)
+        outcome = await agent._attempt_evidence_rewrite(
+            query="few-shot",
+            report_data=report,
+            results={
+                "extract": [
+                    _extraction(
+                        [
+                            _evidence_item("p1:claim:0", "support"),
+                            _evidence_item("p1:claim:1", "not supplied to rewrite"),
+                        ]
+                    )
+                ]
+            },
+            initial_evaluation=report["evaluation"],
+            initial_quality=report["quality"],
+        )
+        if extra_id == "p1:claim:0":
+            assert "[E:p1:claim:0] [E:p1:claim:0]" in outcome.candidate
+            agent._evaluate.assert_awaited_once()
+        else:
+            assert outcome.candidate == raw
+            assert "malformed_evidence_refs" in outcome.validation.reason_codes
+            agent._evaluate.assert_not_awaited()
+        assert outcome.committed is False
+
     @staticmethod
     def _configure_agent(post_evaluation: dict) -> LitAgent:
         from litagent.runner import RewriteValidation

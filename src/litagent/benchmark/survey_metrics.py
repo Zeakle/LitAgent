@@ -21,10 +21,13 @@ from litagent.benchmark.survey_models import (
     SurveyProfileSummary,
     SurveyRunMetrics,
 )
-from litagent.evidence import extract_evidence_refs_ordered
+from litagent.evidence import (
+    extract_evidence_refs_ordered,
+    find_malformed_evidence_refs,
+)
 from litagent.rag.models import normalize_paper_identity
 
-METRICS_VERSION = "survey-metrics-v2-canonical-usage"
+METRICS_VERSION = "survey-metrics-v3-citation-contract"
 
 
 def _mean_optional(values: Sequence[float | int | None]) -> float | None:
@@ -329,6 +332,7 @@ def evaluate_survey_artifact(
     )
     survey = str(report.get("survey") or "")
     refs = extract_evidence_refs_ordered(survey)
+    malformed_refs = find_malformed_evidence_refs(survey)
     unknown_refs = [ref for ref in refs if ref not in ledger]
     cited_papers = _unique([ledger[ref] for ref in refs if ref in ledger])
     reviewed_citations = [paper_id for paper_id in cited_papers if paper_id in judged]
@@ -383,7 +387,13 @@ def evaluate_survey_artifact(
             missing_required_paper_ids=sorted(required - set(cited_papers)),
             unjudged_paper_ids=unjudged,
             unknown_evidence_ids=unknown_refs,
-            unknown_reference_rate=len(unknown_refs) / len(refs) if refs else 0.0,
+            malformed_evidence_refs=malformed_refs,
+            unknown_reference_rate=(
+                (len(unknown_refs) + len(malformed_refs))
+                / (len(refs) + len(malformed_refs))
+                if refs or malformed_refs
+                else 0.0
+            ),
         ),
         delivery_status=delivery_status,
         delivery_accurate=delivery_status in case.allowed_delivery_statuses,

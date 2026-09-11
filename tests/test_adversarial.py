@@ -60,6 +60,29 @@ async def test_subspan_marks_cooperative_cancellation():
     assert terminal["error_type"] == "CancelledError"
 
 
+def test_revision_feedback_explains_malformed_citation_markers():
+    worker = AdversarialReviewWorker(
+        llm=MockLLMClient(),
+        synthesis=SynthesisWorker(MockLLMClient()),
+        reviewer=ReviewerWorker(MockLLMClient()),
+    )
+
+    feedback = worker._format_review_for_revision(
+        {
+            "evidence_compliance": {
+                "passed": False,
+                "unsupported_claims": [],
+                "unknown_evidence_ids": [],
+                "malformed_evidence_refs": ["[E:e1; E:e2]"],
+            }
+        }
+    )
+
+    assert "Malformed evidence markers" in feedback
+    assert "every ID as its own [E:<id>]" in feedback
+    assert "[E:e1; E:e2]" in feedback
+
+
 class TestMockLLMClient:
     """Tests deterministic mock LLM responses."""
 

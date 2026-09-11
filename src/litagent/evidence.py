@@ -4,10 +4,97 @@ from __future__ import annotations
 
 import hashlib
 import re
+from collections.abc import Collection
 from dataclasses import asdict, dataclass
 from typing import Any
 
-_EVIDENCE_REF_RE = re.compile(r"\[E:([^\[\]\s]+)\]")
+_EVIDENCE_REF_RE = re.compile(r"\[E:([^\[\]\s;,]+)\]")
+_EVIDENCE_REF_START_RE = re.compile(r"\[E:")
+_CITATION_MEMBER_RE = re.compile(r"E:([^\[\]\s;,]+)")
+
+
+@dataclass(frozen=True)
+class CitationChange:
+    """Record one exact replacement using offsets in the original text."""
+
+    start: int
+    end: int
+    original: str
+    replacement: str
+
+
+@dataclass(frozen=True)
+class CitationRejection:
+    """Preserve an ambiguous marker and its deterministic rejection reason."""
+
+    start: int
+    end: int
+    original: str
+    reason_code: str
+
+
+@dataclass(frozen=True)
+class CitationNormalizationResult:
+    """Return repaired text and a complete audit of attempted format changes."""
+
+    text: str
+    changes: tuple[CitationChange, ...]
+    rejected: tuple[CitationRejection, ...]
+
+
+def normalize_evidence_citations(
+    text: str, valid_evidence_ids: Collection[str]
+) -> CitationNormalizationResult:
+    """Split unambiguous compound markers whose members are all authorized."""
+    allowed = set(valid_evidence_ids)
+    changes: list[CitationChange] = []
+    rejected: list[CitationRejection] = []
+    pieces: list[str] = []
+    cursor = 0
+    while (start := text.find("[", cursor)) >= 0:
+        pieces.append(text[cursor:start])
+        end = start + 1
+        depth = 1
+        nested = False
+        # Consume the whole bracket group so an inner marker cannot be repaired
+        # inside an outer marker that has already been rejected.
+        while end < len(text) and depth:
+            if text[end] == "[":
+                nested = True
+                depth += 1
+            elif text[end] == "]":
+                depth -= 1
+            end += 1
+        original = text[start:end]
+        replacement = original
+        reason = ""
+        if "[E:" not in original:
+            pass
+        elif depth:
+            reason = "unclosed_citation"
+        elif nested:
+            reason = "nested_citation"
+        elif _EVIDENCE_REF_RE.fullmatch(original):
+            # Unknown but syntactically valid IDs remain the reviewer's concern.
+            pass
+        else:
+            members = re.split(r"[,;]", original[1:-1])
+            matches = [_CITATION_MEMBER_RE.fullmatch(part.strip()) for part in members]
+            if len(members) < 2 or not all(matches):
+                reason = "unsupported_citation_syntax"
+            else:
+                ids = [match.group(1) for match in matches if match is not None]
+                if any(eid not in allowed for eid in ids):
+                    reason = "unknown_evidence_ids"
+                else:
+                    replacement = " ".join(f"[E:{eid}]" for eid in ids)
+                    changes.append(CitationChange(start, end, original, replacement))
+        if reason:
+            rejected.append(CitationRejection(start, end, original, reason))
+        pieces.append(replacement)
+        cursor = end
+    pieces.append(text[cursor:])
+    return CitationNormalizationResult("".join(pieces), tuple(changes), tuple(rejected))
 
 
 @dataclass
@@ -196,6 +283,23 @@ def extract_evidence_refs_ordered(text: str) -> list[str]:
 def extract_evidence_refs(text: str) -> set[str]:
     """Return referenced evidence IDs as a compatibility set."""
     return set(extract_evidence_refs_ordered(text))
+
+
+def find_malformed_evidence_refs(text: str) -> list[str]:
+    """Return citation-like markers that violate the one-ID marker contract."""
+    malformed: list[str] = []
+    seen: set[str] = set()
+    for start in _EVIDENCE_REF_START_RE.finditer(text or ""):
+        end = text.find("]", start.end())
+        raw = text[start.start() : end + 1] if end >= 0 else text[start.start() :]
+        if _EVIDENCE_REF_RE.fullmatch(raw) is not None:
+            continue
+        # Bound malformed output copied into review and benchmark diagnostics.
+        snapshot = raw[:200]
+        if snapshot not in seen:
+            seen.add(snapshot)
+            malformed.append(snapshot)
+    return malformed
 
 
 def find_unknown_refs(text: str, ledger: dict[str, Any]) -> list[str]:

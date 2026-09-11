@@ -12,6 +12,7 @@ from litagent.agents.synthesis import SynthesisWorker
 from litagent.context.evidence_selector import EvidenceSelection
 from litagent.llm.client import BaseLLMClient
 from litagent.logging import get_logger
+from litagent.observability.citations import normalize_citations_traced
 from litagent.observability.context import reset_task_id, set_task_id
 from litagent.orchestrator.scheduler import Worker
 from litagent.orchestrator.task_graph import SubTask
@@ -228,7 +229,14 @@ class AdversarialReviewWorker(Worker):
                             )
                             degradation_reasons.append("revision_empty")
                             break
-                        draft = new_draft
+                        draft = normalize_citations_traced(
+                            new_draft,
+                            evidence_selection.selected_items,
+                            trace_hook=self._trace_hook,
+                            parent_task_id=task.task_id,
+                            stage="revision",
+                            round_num=round_num + 1,
+                        ).text
                     except Exception as e:
                         logger.warning(
                             f"Revision LLM call failed: {e}, keeping current draft"
@@ -302,6 +310,13 @@ class AdversarialReviewWorker(Worker):
                 parts.append(
                     "Unknown evidence IDs (remove or rebind these):\n"
                     + "\n".join(f"- [E:{eid}]" for eid in unknown)
+                )
+            malformed = compliance.get("malformed_evidence_refs", [])
+            if isinstance(malformed, list) and malformed:
+                parts.append(
+                    "Malformed evidence markers (rewrite every ID as its own "
+                    "[E:<id>] marker):\n"
+                    + "\n".join(f"- {marker}" for marker in malformed)
                 )
             unsupported = compliance.get("unsupported_claims", [])
             if isinstance(unsupported, list) and unsupported:
