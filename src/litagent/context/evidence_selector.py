@@ -522,6 +522,8 @@ class EvidenceSelector:
 
         while len(selected) < self._max_items and len(exhausted) < len(sections):
             for section in sections:
+                if len(selected) >= self._max_items:
+                    break
                 if section.key in exhausted:
                     continue
                 if len(section_eids[section.key]) >= self._top_k_per_section:
@@ -532,71 +534,52 @@ class EvidenceSelector:
                         ] = "section_limit"
                     continue
 
-                try:
-                    eid = next(section_iters[section.key])
-                except StopIteration:
-                    exhausted.add(section.key)
-                    continue
+                # Each section gets one acceptance per pass; skipped candidates
+                # do not consume its slot or let an earlier section run ahead.
+                while True:
+                    try:
+                        eid = next(section_iters[section.key])
+                    except StopIteration:
+                        exhausted.add(section.key)
+                        break
 
-                if eid in selected:
-                    if eid not in section_eids[section.key]:
-                        trial_sections = {k: list(v) for k, v in section_eids.items()}
-                        trial_sections[section.key].append(eid)
-                        trial = EvidenceSelection(
-                            len(valid_items),
-                            selected,
-                            trial_sections,
-                            method_by_section,
-                            0,
-                            0,
-                        )
-                        trial_tokens = self._budget.count_tokens(
-                            format_evidence_selection(trial)
-                        )
-                        if trial_tokens > max_tokens:
-                            decisions[(section.key, eid)][
-                                "reason_code"
-                            ] = "token_budget"
-                            continue
-                        section_eids = trial_sections
-                        estimated_tokens = trial_tokens
-                    decisions[(section.key, eid)]["reason_code"] = "duplicate_selected"
-                    continue
+                    if eid in selected:
+                        decisions[(section.key, eid)][
+                            "reason_code"
+                        ] = "duplicate_selected"
+                        continue
 
-                if len(selected) >= self._max_items:
+                    item = item_by_id[eid]
+                    paper_id = item.get("paper_id") or eid.split(":")[0]
+                    if paper_counts.get(paper_id, 0) >= self._per_paper_cap:
+                        decisions[(section.key, eid)]["reason_code"] = "paper_limit"
+                        continue
+
+                    # Include serialized XML overhead in the budget trial.
+                    trial = EvidenceSelection(
+                        candidate_count=len(valid_items),
+                        selected_items={**selected, eid: item},
+                        section_evidence_ids={
+                            **{k: list(v) for k, v in section_eids.items()},
+                            section.key: section_eids[section.key] + [eid],
+                        },
+                        method_by_section=method_by_section,
+                        omitted_count=0,
+                        estimated_tokens=0,
+                    )
+
+                    formatted = format_evidence_selection(trial)
+                    new_tokens = self._budget.count_tokens(formatted)
+                    if new_tokens > max_tokens:
+                        decisions[(section.key, eid)]["reason_code"] = "token_budget"
+                        continue
+
+                    selected[eid] = item
+                    section_eids[section.key].append(eid)
+                    paper_counts[paper_id] = paper_counts.get(paper_id, 0) + 1
+                    estimated_tokens = new_tokens
+                    decisions[(section.key, eid)]["reason_code"] = "selected"
                     break
-
-                item = item_by_id[eid]
-
-                paper_id = item.get("paper_id") or eid.split(":")[0]
-                if paper_counts.get(paper_id, 0) >= self._per_paper_cap:
-                    decisions[(section.key, eid)]["reason_code"] = "paper_limit"
-                    continue
-
-                # Include serialized XML overhead in the budget trial.
-                trial = EvidenceSelection(
-                    candidate_count=len(valid_items),
-                    selected_items={**selected, eid: item},
-                    section_evidence_ids={
-                        **{k: list(v) for k, v in section_eids.items()},
-                        section.key: section_eids[section.key] + [eid],
-                    },
-                    method_by_section=method_by_section,
-                    omitted_count=0,
-                    estimated_tokens=0,
-                )
-
-                formatted = format_evidence_selection(trial)
-                new_tokens = self._budget.count_tokens(formatted)
-                if new_tokens > max_tokens:
-                    decisions[(section.key, eid)]["reason_code"] = "token_budget"
-                    continue
-
-                selected[eid] = item
-                section_eids[section.key].append(eid)
-                paper_counts[paper_id] = paper_counts.get(paper_id, 0) + 1
-                estimated_tokens = new_tokens
-                decisions[(section.key, eid)]["reason_code"] = "selected"
 
         omitted = len(valid_items) - len(selected)
 

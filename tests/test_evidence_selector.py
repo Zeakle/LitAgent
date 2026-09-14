@@ -8,10 +8,10 @@ from langchain_core.documents import Document
 
 from litagent.context.budget import BudgetManager
 from litagent.context.evidence_selector import (
-    EvidenceSelector,
-    EvidenceSelection,
-    SectionSpec,
     DEFAULT_SECTIONS,
+    EvidenceSelection,
+    EvidenceSelector,
+    SectionSpec,
     format_evidence_selection,
 )
 from litagent.rag.interfaces import Reranker, ScoredDoc
@@ -376,6 +376,42 @@ class TestEvidenceSelectorSelect:
         sel = await selector.select("test", ledger, max_tokens=50000)
         assert len(sel.selected_items) == 1
         assert "p0:claim:0" in sel.selected_items
+
+    @pytest.mark.asyncio
+    async def test_duplicate_across_sections_does_not_consume_acceptance_slots(self):
+        """Repeated IDs leave section capacity for distinct ranked evidence."""
+        ledger = {
+            f"p{i}:claim:0": {
+                "evidence_id": f"p{i}:claim:0",
+                "paper_id": f"p{i}",
+                "paper_title": "vision",
+                "text": "vision evidence",
+            }
+            for i in range(4)
+        }
+        sections = (
+            SectionSpec("introduction", "Vision", "vision"),
+            SectionSpec("methods", "Vision", "vision"),
+        )
+        selector = EvidenceSelector(
+            reranker=None,
+            budget=BudgetManager(),
+            top_k_per_section=2,
+            max_items=4,
+        )
+
+        selection = await selector.select("vision", ledger, sections, max_tokens=16000)
+
+        assert len(selection.selected_items) == 4
+        assert all(len(ids) == 2 for ids in selection.section_evidence_ids.values())
+        assert not (
+            set(selection.section_evidence_ids["introduction"])
+            & set(selection.section_evidence_ids["methods"])
+        )
+        assert any(
+            decision["reason_code"] == "duplicate_selected"
+            for decision in selection.ranking_decisions
+        )
 
     @pytest.mark.asyncio
     async def test_max_items_cap_enforced(self):
