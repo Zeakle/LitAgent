@@ -20,16 +20,18 @@ LangFuse trace 进行回放。
 | Retrieval benchmark | 已完成 | [`RESULTS.md`](./benchmarks/rag/RESULTS.md) |
 | 端到端 Survey benchmark | 诊断性 pilot 已完成，尚未形成正式 baseline | [`2026-08-25 pilot`](./benchmarks/survey/results/pilot-2026-08-25.md)、[`2026-09-08 修复后 pilot`](./benchmarks/survey/results/post-repair-pilot-2026-09-08.md)、[`test_phase14_5.py`](./tests/test_phase14_5.py) |
 | 可复现流程回放 | 已实现 | [`demo.py`](./src/litagent/demo.py)、[`test_phase14_6.py`](./tests/test_phase14_6.py) |
+| 交互式研究工作台 | 离线实现完成；真实双语验收待完成 | [`interactive_service.py`](./src/litagent/interactive_service.py)、[`test_interactive_runner.py`](./tests/test_interactive_runner.py) |
 
 公开能力声明与证据的完整对应关系位于
 [`docs/design-truth.md`](./docs/design-truth.md)。
 
 ## 快速开始
 
-### 离线回放
+### 离线回放与研究工作台
 
-离线模式不需要 API key、Docker、模型下载或网络访问。页面内置 `ready`、`blocked` 和
-`partial` 三种交付状态样例。
+离线模式不需要 API key、Docker、模型下载或网络访问。报告优先的研究工作台内置
+`ready`、`blocked` 和 `partial` 三种交付状态样例；同一页面还能查看真实运行的 DAG、
+事件、节点输入输出、证据、质量与交付判定、报告版本及导出结果。
 
 ```powershell
 pip install -e ".[api]"
@@ -43,6 +45,11 @@ litagent demo --no-browser
 ```
 
 内置样例只是确定性的契约 fixture，不能作为模型质量或 benchmark 证据。
+
+真实运行可以输入自定义研究问题，将报告语言指定为 `English` 或 `简体中文`，并在
+论文选择和终稿审核两个边界暂停。人工批准不能绕过自动质量门和交付门。交互控制状态
+保存在本地 SQLite，大型 checkpoint 与完整回放 artifact 继续以 JSON 写入
+`artifacts/`。
 
 ![LitAgent 流程回放桌面视图](./docs/images/flow-demo-desktop.png)
 
@@ -58,6 +65,9 @@ litagent demo --live
 
 LangFuse 是可选组件。配置完成后，回放页面会显示当前运行的 trace 链接。本地 artifact
 保存在 `artifacts/runs/`，其中可能包含 prompt、论文片段和模型输出，因此不会进入 Git。
+
+工作台目前是本地、单进程控制面，不包含身份认证、租户隔离或分布式任务队列；补齐这些
+能力前不应绑定到公网。
 
 ## 系统概览
 

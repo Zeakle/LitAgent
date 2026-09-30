@@ -22,17 +22,19 @@ LangFuse trace.
 | Retrieval benchmark | Completed | [`RESULTS.md`](./benchmarks/rag/RESULTS.md) |
 | End-to-end Survey benchmark | Diagnostic pilots complete; formal baseline not established | [`2026-08-25 pilot`](./benchmarks/survey/results/pilot-2026-08-25.md), [`2026-09-08 post-repair pilot`](./benchmarks/survey/results/post-repair-pilot-2026-09-08.md), [`test_phase14_5.py`](./tests/test_phase14_5.py) |
 | Reproducible flow replay | Implemented | [`demo.py`](./src/litagent/demo.py), [`test_phase14_6.py`](./tests/test_phase14_6.py) |
+| Interactive research workbench | Implemented offline; live bilingual acceptance pending | [`interactive_service.py`](./src/litagent/interactive_service.py), [`test_interactive_runner.py`](./tests/test_interactive_runner.py) |
 
 The complete evidence ledger for public capability claims is maintained in
 [`docs/design-truth.md`](./docs/design-truth.md).
 
 ## Quick Start
 
-### Offline replay
+### Offline replay and research workbench
 
 The offline mode requires no API key, Docker service, model download, or network
-access. It opens three bundled artifacts that demonstrate ready, blocked, and
-partial delivery states.
+access. It opens a report-first research workbench with bundled ready, blocked,
+and partial artifacts. The same page can inspect a real run's DAG, events, node
+input/output, evidence, quality and delivery decisions, report versions, and exports.
 
 ```powershell
 pip install -e ".[api]"
@@ -48,6 +50,13 @@ litagent demo --no-browser
 
 Bundled samples are deterministic contract fixtures. They are not model-quality
 or benchmark evidence.
+
+For live runs, the workbench accepts a custom query, selects `English` or
+`Simplified Chinese` as the report language, and can pause at paper selection
+and final-report review. Human approval never overrides automatic quality or
+delivery gates. Interactive control state is stored locally in SQLite, while
+large checkpoints and complete replay artifacts remain JSON files under
+`artifacts/`.
 
 ![LitAgent flow replay desktop view](./docs/images/flow-demo-desktop.png)
 
@@ -65,6 +74,10 @@ litagent demo --live
 LangFuse is optional. When configured, the replay exposes a direct link to the
 run trace. Local artifacts remain under `artifacts/runs/` and are excluded from
 Git because they may contain prompts, paper excerpts, and model output.
+
+The workbench is a local, single-process control surface. It does not provide
+authentication, tenant isolation, or a distributed job queue and must not be
+bound to a public network without those controls.
 
 ## System Overview
 
