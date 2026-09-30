@@ -5,7 +5,12 @@ from dataclasses import asdict
 from time import perf_counter
 from uuid import uuid4
 
-from litagent.evidence import CitationNormalizationResult, normalize_evidence_citations
+from litagent.evidence import (
+    CitationAliasMap,
+    CitationNormalizationResult,
+    decode_citation_aliases,
+    normalize_evidence_citations,
+)
 from litagent.logging import get_logger
 
 logger = get_logger("observability.citations")
@@ -53,6 +58,56 @@ def normalize_citations_traced(
         {
             "task_id": node_id,
             "output": asdict(result),
+            "elapsed_ms": int((perf_counter() - started) * 1000),
+        },
+    )
+    return result
+
+
+def decode_citations_traced(
+    text: str,
+    aliases: CitationAliasMap,
+    *,
+    trace_hook: Callable[[str, dict], None] | None,
+    parent_task_id: str,
+    stage: str,
+    round_num: int | None = None,
+) -> CitationNormalizationResult:
+    """Record the exact model alias response and canonical citation projection."""
+    node_id = f"{parent_task_id}:citation_alias_decode:{uuid4().hex}"
+
+    def emit(event: str, data: dict) -> None:
+        if trace_hook is not None:
+            try:
+                trace_hook(event, data)
+            except Exception:
+                logger.debug("Citation alias trace hook failed", exc_info=True)
+
+    emit(
+        "subspan.start",
+        {
+            "task_id": node_id,
+            "parent_task_id": parent_task_id,
+            "name": "citation_alias_decode",
+            "stage": stage,
+            "round": round_num,
+            "input": {"text": text, "aliases": aliases.alias_to_evidence_id},
+        },
+    )
+    started = perf_counter()
+    try:
+        normalized = normalize_evidence_citations(
+            text, [*aliases.alias_to_evidence_id, *aliases.evidence_id_to_alias]
+        )
+        result = decode_citation_aliases(normalized.text, aliases)
+    except Exception as exc:
+        emit("subspan.end", {"task_id": node_id, "error": type(exc).__name__})
+        raise
+    emit(
+        "subspan.end",
+        {
+            "task_id": node_id,
+            "output": {"normalization": asdict(normalized), "decoded": asdict(result)},
             "elapsed_ms": int((perf_counter() - started) * 1000),
         },
     )

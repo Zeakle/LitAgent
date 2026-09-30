@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import secrets
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -12,14 +13,17 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, Header, HTTPException, Request, Response
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from litagent.benchmark.survey_archive import SurveyBenchmarkArchive
 from litagent.config import AppConfig, load_config
 from litagent.contracts import SurveyResult, build_config_summary
 from litagent.demo import load_bundled_samples, project_flow_demo_view
+from litagent.interaction_store import SqliteReviewRepository
+from litagent.interactive_service import InteractiveRunService
 from litagent.logging import get_logger
 from litagent.observability.recorder import (
     ArchiveRepository,
@@ -30,8 +34,15 @@ from litagent.observability.recorder import (
 from litagent.observability.tracing import LangFuseTracer
 from litagent.orchestrator.scheduler import CancellationToken
 from litagent.runner import LitAgent, derive_delivery
+from litagent.workbench import HumanDecision, RunOptions
 
 logger = get_logger("api")
+
+
+def _benchmark_archive() -> SurveyBenchmarkArchive:
+    """Allow tests to inject a read-only archive without exposing a path parameter."""
+    return getattr(app.state, "benchmark_archive", None) or SurveyBenchmarkArchive()
+
 
 FLOW_DEMO_STATIC_ROOT = Path(__file__).resolve().parent / "static"
 FLOW_DEMO_STATIC = FLOW_DEMO_STATIC_ROOT / "flow-demo" / "index.html"
@@ -47,6 +58,8 @@ class SurveyRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     query: str = Field(..., min_length=1, max_length=2000)
+    report_language: Literal["en", "zh-CN"] = "en"
+    human_review: bool = False
 
     @field_validator("query")
     @classmethod
@@ -93,6 +106,7 @@ class SurveyTaskEntry:
     created_at: float = field(default_factory=time.time)
     flow_demo: bool = False
     tracer: LangFuseTracer | None = None
+    options: RunOptions = field(default_factory=RunOptions)
 
 
 def _entry_value(entry: SurveyTaskEntry | dict[str, Any], name: str, default=None):
@@ -153,6 +167,13 @@ async def lifespan(application: FastAPI):
     application.state.survey_semaphore = asyncio.Semaphore(
         application.state.config.api.max_concurrent_surveys
     )
+    application.state.interactive_service = InteractiveRunService(
+        application.state.config,
+        application.state.interactive_repository,
+        semaphore=application.state.survey_semaphore,
+        archive_repository=application.state.flow_repository,
+    )
+    await application.state.interactive_service.initialize()
     application.state.flow_archive_index = {
         artifact["run_id"]: artifact
         for artifact in application.state.flow_repository.list()
@@ -162,6 +183,7 @@ async def lifespan(application: FastAPI):
     try:
         yield
     finally:
+        await application.state.interactive_service.shutdown()
         await _shutdown_owned_tasks(application)
         cleanup_task.cancel()
         await asyncio.gather(cleanup_task, return_exceptions=True)
@@ -183,6 +205,9 @@ app.state.flow_archive_index = {
 }
 app.state.config = None
 app.state.survey_semaphore = None
+app.state.interactive_repository = SqliteReviewRepository()
+app.state.interactive_service = None
+app.state.operation_token = secrets.token_urlsafe(24)
 
 app.mount(
     "/static",
@@ -205,6 +230,29 @@ def _runtime_semaphore() -> asyncio.Semaphore:
             _runtime_config().api.max_concurrent_surveys
         )
     return app.state.survey_semaphore
+
+
+async def _interactive_service() -> InteractiveRunService:
+    """Return the durable service, initializing it for direct ASGI tests."""
+    if app.state.interactive_service is None:
+        app.state.interactive_service = InteractiveRunService(
+            _runtime_config(),
+            app.state.interactive_repository,
+            semaphore=_runtime_semaphore(),
+            archive_repository=app.state.flow_repository,
+        )
+        await app.state.interactive_service.initialize()
+    return app.state.interactive_service
+
+
+def _require_operation_token(request: Request, token: str | None) -> None:
+    """Protect local interactive mutations from drive-by browser requests."""
+    expected = str(app.state.operation_token)
+    if token is None or not secrets.compare_digest(token, expected):
+        raise HTTPException(status_code=403, detail="invalid_operation_token")
+    origin = request.headers.get("origin")
+    if origin and origin.rstrip("/") != str(request.base_url).rstrip("/"):
+        raise HTTPException(status_code=403, detail="origin_not_allowed")
 
 
 def _survey_progress_hook(entry: SurveyTaskEntry):
@@ -260,7 +308,13 @@ def _capture_trace_reference(entry: SurveyTaskEntry) -> None:
     entry.recorder.set_trace_reference(entry.tracer.trace_id, entry.tracer.trace_url)
 
 
-def _new_entry(query: str, *, task_id: str | None = None, flow_demo: bool = False):
+def _new_entry(
+    query: str,
+    *,
+    task_id: str | None = None,
+    flow_demo: bool = False,
+    options: RunOptions | None = None,
+):
     """Create and register one task entry before scheduling its coroutine."""
     task_id = task_id or uuid.uuid4().hex[:12]
     recorder = RunRecorder(task_id, query, app.state.flow_repository)
@@ -273,6 +327,7 @@ def _new_entry(query: str, *, task_id: str | None = None, flow_demo: bool = Fals
         cancellation=CancellationToken(),
         recorder=recorder,
         flow_demo=flow_demo,
+        options=options or RunOptions(),
     )
     app.state.tasks[task_id] = entry
     if flow_demo:
@@ -294,7 +349,9 @@ async def _run_survey(entry: SurveyTaskEntry) -> None:
                 trace_hook = _build_survey_trace_hook(config, entry)
                 async with LitAgent(config, trace_hook=trace_hook) as agent:
                     result = await agent.run(
-                        entry.query, cancellation=entry.cancellation
+                        entry.query,
+                        cancellation=entry.cancellation,
+                        options=entry.options,
                     )
 
             _capture_trace_reference(entry)
@@ -369,17 +426,42 @@ async def health():
 
 
 @app.post("/survey", status_code=202, response_model=SurveyStatus)
-async def create_survey(req: SurveyRequest):
+async def create_survey(
+    req: SurveyRequest,
+    request: Request,
+    x_litagent_operation_token: str | None = Header(default=None),
+):
     """Submit a survey and return its API-owned queued task."""
-    return _status(_new_entry(req.query))
+    options = RunOptions(
+        report_language=req.report_language, human_review=req.human_review
+    )
+    if req.human_review:
+        _require_operation_token(request, x_litagent_operation_token)
+        run_id = await (await _interactive_service()).start(req.query, options)
+        return SurveyStatus(task_id=run_id, status="queued", progress="queued")
+    return _status(_new_entry(req.query, options=options))
 
 
 @app.delete("/survey/{task_id}", status_code=202, response_model=SurveyStatus)
-async def cancel_survey(task_id: str, response: Response):
+async def cancel_survey(
+    task_id: str,
+    response: Response,
+    request: Request = None,
+    x_litagent_operation_token: str | None = Header(default=None),
+):
     """Request cooperative cancellation for a queued or running survey."""
     entry = app.state.tasks.get(task_id)
     if entry is None:
-        raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
+        if request is None:
+            raise HTTPException(status_code=401, detail="Operation token required")
+        _require_operation_token(request, x_litagent_operation_token)
+        try:
+            await (await _interactive_service()).cancel(task_id)
+        except KeyError as exc:
+            raise HTTPException(
+                status_code=404, detail=f"Task '{task_id}' not found"
+            ) from exc
+        return SurveyStatus(task_id=task_id, status="cancelled", progress="cancelled")
     if not isinstance(entry, SurveyTaskEntry):
         raise HTTPException(status_code=409, detail="Legacy task cannot be cancelled")
     if entry.status in {"completed", "failed"}:
@@ -400,7 +482,24 @@ async def get_survey_status(task_id: str):
     """Return the current status of a survey task."""
     entry = app.state.tasks.get(task_id)
     if entry is None:
-        raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
+        try:
+            state = await (await _interactive_service()).get(task_id)
+        except KeyError as exc:
+            raise HTTPException(
+                status_code=404, detail=f"Task '{task_id}' not found"
+            ) from exc
+        delivery = (state.get("result") or {}).get("delivery") or {}
+        return SurveyStatus(
+            task_id=task_id,
+            status=state["status"],
+            progress=(
+                state.get("review", {}).get("stage", state["status"])
+                if state.get("review")
+                else state["status"]
+            ),
+            error=state.get("error"),
+            delivery_status=delivery.get("status"),
+        )
     status = _status(entry)
     if not status.task_id:
         status.task_id = task_id
@@ -412,7 +511,24 @@ async def get_survey_report(task_id: str):
     """Return a completed or cooperatively cancelled survey report."""
     entry = app.state.tasks.get(task_id)
     if entry is None:
-        raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
+        try:
+            state = await (await _interactive_service()).get(task_id)
+        except KeyError as exc:
+            raise HTTPException(
+                status_code=404, detail=f"Task '{task_id}' not found"
+            ) from exc
+        if state["status"] in {"queued", "running", "awaiting_human"}:
+            raise HTTPException(status_code=409, detail="Survey is not terminal")
+        if state["status"] in {"failed", "interrupted"}:
+            raise HTTPException(
+                status_code=500, detail=state.get("error") or state["status"]
+            )
+        result = dict(state.get("result") or {})
+        if not result:
+            raise HTTPException(
+                status_code=500, detail="Terminal report is unavailable"
+            )
+        return SurveyReport(task_id=task_id, **result)
     status = _entry_value(entry, "status")
     if status in {"queued", "running", "cancelling"}:
         raise HTTPException(status_code=409, detail="Survey is not terminal")
@@ -431,11 +547,47 @@ async def get_survey_report(task_id: str):
 
 
 @app.get("/survey/{task_id}/events")
-async def stream_survey_events(task_id: str):
+async def stream_survey_events(
+    task_id: str,
+    last_event_id: str | None = Header(default=None, alias="Last-Event-ID"),
+):
     """Stream the recorder timeline and close after the task reaches terminal state."""
     entry = app.state.tasks.get(task_id)
     if not isinstance(entry, SurveyTaskEntry):
-        raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
+        service = await _interactive_service()
+        try:
+            await service.get(task_id)
+        except KeyError as exc:
+            raise HTTPException(
+                status_code=404, detail=f"Task '{task_id}' not found"
+            ) from exc
+
+        async def interactive_stream():
+            try:
+                offset = max(0, int(last_event_id or 0))
+            except ValueError:
+                offset = 0
+            while True:
+                for event in await service.events(task_id, after=offset):
+                    offset = event["seq"]
+                    yield (
+                        f"id: {offset}\nevent: trace\ndata: "
+                        f"{json.dumps(event, ensure_ascii=False, default=str)}\n\n"
+                    )
+                state = await service.get(task_id)
+                if state["status"] in {
+                    "awaiting_human",
+                    "completed",
+                    "cancelled",
+                    "rejected",
+                    "failed",
+                    "interrupted",
+                }:
+                    yield f"event: state\ndata: {json.dumps(state, ensure_ascii=False, default=str)}\n\n"
+                    return
+                await asyncio.sleep(0.3)
+
+        return StreamingResponse(interactive_stream(), media_type="text/event-stream")
 
     async def event_stream():
         offset = 0
@@ -450,6 +602,189 @@ async def stream_survey_events(task_id: str):
             await asyncio.sleep(0.3)
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@app.get("/workbench/context")
+async def get_workbench_context():
+    """Return local UI capabilities and the same-origin mutation token."""
+    mode = os.getenv("LITAGENT_DEMO_MODE", "live").lower()
+    live_enabled = mode == "live"
+    return {
+        "schema_version": 1,
+        "operation_token": app.state.operation_token,
+        "mode": "live" if live_enabled else "offline",
+        "live_enabled": live_enabled,
+        "report_languages": ["zh-CN", "en"],
+        "export_formats": ["md", "pdf", "docx"],
+        "human_review_stages": ["paper_selection", "final_report"],
+    }
+
+
+@app.get("/workbench/runs")
+async def list_workbench_runs():
+    """List durable interactive runs for the local workbench."""
+    return await (await _interactive_service()).list()
+
+
+@app.get("/workbench/benchmarks")
+async def list_survey_benchmarks():
+    """List valid, unambiguous local Survey benchmark archives."""
+    return _benchmark_archive().list()
+
+
+@app.get("/workbench/benchmarks/{benchmark_id}")
+async def get_survey_benchmark(benchmark_id: str):
+    """Return one validated Survey benchmark without changing its contents."""
+    try:
+        archive = _benchmark_archive()
+        result = archive.get(benchmark_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="benchmark_not_found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    payload = result.model_dump(mode="json")
+    payload["corrected_diagnostic"] = archive.corrected_diagnostic(benchmark_id)
+    return payload
+
+
+@app.get("/workbench/benchmarks/{benchmark_id}/observations/{observation_id}")
+async def get_survey_benchmark_observation(benchmark_id: str, observation_id: str):
+    """Return an observation only when its linked artifact is intact."""
+    try:
+        archive = _benchmark_archive()
+        payload = archive.observation(benchmark_id, observation_id)
+        corrected = archive.corrected_diagnostic(benchmark_id)
+        payload["corrected_observation"] = next(
+            (
+                item
+                for item in (corrected or {}).get("observations", [])
+                if item.get("run_id") == observation_id
+            ),
+            None,
+        )
+        return payload
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="observation_not_found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.get("/survey/{task_id}/review")
+async def get_survey_review(task_id: str):
+    """Return the current server-owned review payload, if any."""
+    try:
+        state = await (await _interactive_service()).get(task_id)
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=404, detail=f"Task '{task_id}' not found"
+        ) from exc
+    return {"task_id": task_id, "status": state["status"], "pending": state["review"]}
+
+
+@app.post("/survey/{task_id}/review/decision", status_code=202)
+async def submit_survey_review(
+    task_id: str,
+    decision: HumanDecision,
+    request: Request,
+    x_litagent_operation_token: str | None = Header(default=None),
+):
+    """Persist a version-bound decision and queue one continuation."""
+    _require_operation_token(request, x_litagent_operation_token)
+    try:
+        return await (await _interactive_service()).submit_decision(task_id, decision)
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=404, detail=f"Task '{task_id}' not found"
+        ) from exc
+    except ValueError as exc:
+        code = str(exc)
+        status = (
+            409
+            if code
+            in {
+                "decision_conflict",
+                "review_not_pending",
+                "stale_review",
+            }
+            else 422
+        )
+        raise HTTPException(status_code=status, detail=code) from exc
+
+
+@app.get("/survey/{task_id}/versions")
+async def list_survey_versions(task_id: str):
+    """Return immutable server-owned report revisions newest-first."""
+    try:
+        versions = await (await _interactive_service()).versions(task_id)
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=404, detail=f"Task '{task_id}' not found"
+        ) from exc
+    return {"task_id": task_id, "versions": versions}
+
+
+@app.get("/survey/{task_id}/view")
+async def get_survey_view(task_id: str):
+    """Return the complete durable projection used by the research workbench."""
+    try:
+        return await (await _interactive_service()).get_view(task_id)
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=404, detail=f"Task '{task_id}' not found"
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.get("/survey/{task_id}/versions/{revision}")
+async def get_survey_version(task_id: str, revision: int):
+    """Return one immutable report revision without rendering or mutation."""
+    try:
+        return await (await _interactive_service()).get_version(task_id, revision)
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=404, detail=f"Report revision '{revision}' not found"
+        ) from exc
+    except ValueError as exc:
+        code = str(exc)
+        status = 422 if code == "invalid_report_revision" else 409
+        raise HTTPException(status_code=status, detail=code) from exc
+
+
+@app.get("/survey/{task_id}/export")
+async def export_survey(
+    task_id: str,
+    revision: int,
+    format: str,
+    citation_style: Literal["evidence", "numbered"] = "evidence",
+):
+    """Download one immutable current revision in a supported format."""
+    try:
+        service = await _interactive_service()
+        if citation_style == "evidence":
+            exported = await service.export(task_id, revision, format)
+        else:
+            exported = await service.export(
+                task_id, revision, format, citation_style=citation_style
+            )
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=404, detail=f"Task '{task_id}' not found"
+        ) from exc
+    except ValueError as exc:
+        code = str(exc)
+        status = 404 if code == "report_revision_not_found" else 422
+        raise HTTPException(status_code=status, detail=code) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return Response(
+        content=exported.content,
+        media_type=exported.media_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{exported.filename}"',
+            "X-Report-SHA256": exported.report_sha256,
+        },
+    )
 
 
 @app.get("/flow-demo", include_in_schema=False)

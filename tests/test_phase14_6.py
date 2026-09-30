@@ -109,6 +109,7 @@ def test_demo_context_and_sample_view_work_without_external_services(
     monkeypatch.setenv("LITAGENT_DEMO_MODE", "offline")
     client = TestClient(app)
     context = client.get("/flow-demo/context")
+    workbench_context = client.get("/workbench/context")
     view = client.get("/flow-demo/runs/sample-ready/view")
     denied = client.post("/flow-demo/runs")
 
@@ -116,6 +117,9 @@ def test_demo_context_and_sample_view_work_without_external_services(
     assert context.json()["mode"] == "offline"
     assert context.json()["live_enabled"] is False
     assert context.json()["default_run_id"] == "sample-ready"
+    assert workbench_context.status_code == 200
+    assert workbench_context.json()["mode"] == "offline"
+    assert workbench_context.json()["live_enabled"] is False
     assert view.status_code == 200
     assert view.json()["source"] == "sample"
     assert denied.status_code == 403
@@ -256,3 +260,11 @@ def test_sample_json_is_valid_utf8_json() -> None:
 
     assert payload["schema_version"] == 1
     assert len(payload["samples"]) == 3
+
+
+def test_human_review_submission_refreshes_the_defined_interactive_loader() -> None:
+    source = Path("src/litagent/static/flow-demo/app.js").read_text(encoding="utf-8")
+
+    assert "await loadInteractive(state.selected.id)" not in source
+    assert "async function refreshInteractive(" in source
+    assert "await refreshInteractive(view.identity.runId)" in source

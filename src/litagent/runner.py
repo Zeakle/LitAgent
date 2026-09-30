@@ -49,12 +49,21 @@ from litagent.eval.citation import CitationEvaluator
 from litagent.eval.consistency import ConsistencyEvaluator
 from litagent.eval.ragas_eval import RagasFaithfulnessEvaluator
 from litagent.evidence import (
+    build_citation_aliases,
     collect_ledger,
     extract_evidence_refs,
     extract_evidence_refs_ordered,
     find_malformed_evidence_refs,
 )
 from litagent.exceptions import ConfigError
+from litagent.interaction import (
+    ExecutionCheckpoint,
+    RunAdvanceResult,
+    apply_paper_decision,
+    interaction_source_fingerprint,
+    paper_id,
+    report_version_from_checkpoint,
+)
 from litagent.llm.client import BaseLLMClient, OpenAICompatibleClient
 from litagent.logging import get_logger, setup_logging
 from litagent.mcp.bridge import MCPBridge
@@ -63,7 +72,10 @@ from litagent.memory.manager import MemoryManager
 from litagent.memory.procedural import ProceduralMemory
 from litagent.memory.semantic import SemanticMemory
 from litagent.memory.working import WorkingMemory
-from litagent.observability.citations import normalize_citations_traced
+from litagent.observability.citations import (
+    decode_citations_traced,
+    normalize_citations_traced,
+)
 from litagent.observability.context import reset_task_id, set_task_id
 from litagent.observability.recorder import RedactingTraceHook
 from litagent.observability.tracing import LangFuseTracer
@@ -88,6 +100,15 @@ from litagent.tools.builtin.extract import register_extract_tools
 from litagent.tools.builtin.search import register_search_tools
 from litagent.tools.executor import ToolExecutor
 from litagent.tools.registry import ToolRegistry
+from litagent.workbench import (
+    HumanDecision,
+    ReportVersion,
+    ResumeIdentity,
+    ReviewRequest,
+    RunOptions,
+    can_publish,
+    validate_decision,
+)
 
 logger = get_logger("runner")
 
@@ -342,12 +363,326 @@ class LitAgent:
         """Exit the LitAgent context and close owned resources."""
         await self.cleanup()
 
+    @staticmethod
+    def _apply_run_options_to_graph(graph: TaskGraph, options: RunOptions) -> None:
+        """Attach immutable generation choices to every scheduler task."""
+        for task in graph.tasks.values():
+            task.input_data["report_language"] = options.report_language
+
+    def _resume_identity(self, run_id: str, options: RunOptions) -> ResumeIdentity:
+        """Bind interactive checkpoints to behavior and configuration."""
+        return ResumeIdentity(
+            run_id=run_id,
+            source_fingerprint=interaction_source_fingerprint(),
+            config_fingerprint=self._config_summary["fingerprint"],
+            options=options,
+        )
+
+    async def advance(
+        self,
+        query: str,
+        *,
+        options: RunOptions,
+        checkpoint: ExecutionCheckpoint | None = None,
+        decision: HumanDecision | None = None,
+        cancellation: CancellationToken | None = None,
+        run_id: str | None = None,
+    ) -> RunAdvanceResult:
+        """Advance one interactive run between its two safe human boundaries."""
+        if not options.human_review:
+            raise ValueError("interactive_run_requires_human_review")
+        if not self._wired:
+            await self._wire()
+
+        if checkpoint is None:
+            if decision is not None:
+                raise ValueError("decision_without_checkpoint")
+            active_run_id = run_id or self._session_id
+            self._session_id = active_run_id
+            graph = await _await_with_cancellation(
+                self._planner.plan(query), cancellation
+            )
+            self._apply_run_options_to_graph(graph, options)
+            if hasattr(self._trace_hook, "capture_graph"):
+                self._trace_hook.capture_graph(graph)
+            outcome = await self._scheduler.run_until(
+                graph, stop_after="relevance_gate", cancellation=cancellation
+            )
+            if outcome.status != "paused":
+                return RunAdvanceResult(status="interrupted")
+            if hasattr(self._trace_hook, "capture_graph_state"):
+                self._trace_hook.capture_graph_state(graph)
+            dedup = graph.get_task("dedup")
+            relevance = graph.get_task("relevance_gate")
+            candidates = (
+                dedup.result if dedup and isinstance(dedup.result, list) else []
+            )
+            selected = (
+                relevance.result
+                if relevance and isinstance(relevance.result, list)
+                else []
+            )
+            candidate_ids = tuple(
+                item_id
+                for item in candidates
+                if isinstance(item, Mapping) and (item_id := paper_id(item))
+            )
+            if not candidate_ids:
+                return RunAdvanceResult(status="interrupted")
+            request_id = uuid.uuid4().hex
+            request = ReviewRequest(
+                request_id=request_id,
+                run_id=active_run_id,
+                stage="paper_selection",
+                revision=1,
+                candidate_paper_ids=candidate_ids,
+                automatic_selected_paper_ids=tuple(
+                    item_id
+                    for item in selected
+                    if isinstance(item, Mapping) and (item_id := paper_id(item))
+                ),
+            )
+            search_outcomes, degradation_codes = self._summarize_search_outcomes(
+                self._search.get_source_outcomes() if self._search else ()
+            )
+            created = ExecutionCheckpoint(
+                identity=self._resume_identity(active_run_id, options),
+                query=query,
+                options=options,
+                boundary="paper_selection",
+                graph=graph.to_snapshot(),
+                results=graph.get_results(),
+                budget=self._cost_budget.snapshot(),
+                search_outcomes=tuple(search_outcomes),
+                degradation_codes=tuple(degradation_codes),
+                review_request_id=request_id,
+            )
+            self._emit(
+                "human.requested",
+                {
+                    "run_id": active_run_id,
+                    "request_id": request_id,
+                    "stage": "paper_selection",
+                    "revision": 1,
+                },
+            )
+            return RunAdvanceResult(
+                status="awaiting_human", checkpoint=created, review=request
+            )
+
+        self._session_id = checkpoint.identity.run_id
+        checkpoint.identity.require_compatible(
+            self._resume_identity(self._session_id, options)
+        )
+        if checkpoint.query != query or checkpoint.options != options:
+            raise ValueError("checkpoint_input_mismatch")
+        self._cost_budget.restore(checkpoint.budget)
+        if decision is None:
+            raise ValueError("checkpoint_requires_decision")
+
+        if checkpoint.boundary == "paper_selection":
+            if decision.action == "cancel":
+                return RunAdvanceResult(status="cancelled")
+            checkpoint = apply_paper_decision(checkpoint, decision)
+            graph = TaskGraph.from_snapshot(checkpoint.graph)
+            outcome = await self._scheduler.run_until(graph, cancellation=cancellation)
+            if outcome.status != "completed":
+                return RunAdvanceResult(status="interrupted")
+            report_data, degradation_codes = await self._prepare_report(
+                query=query,
+                graph=graph,
+                results=graph.get_results(),
+                options=options,
+                search_outcomes=list(checkpoint.search_outcomes),
+                degradation_codes=list(checkpoint.degradation_codes),
+                cancellation=cancellation,
+            )
+            automatic_delivery = dict(report_data["delivery"])
+            report_data.setdefault("metadata", {})[
+                "automatic_delivery"
+            ] = automatic_delivery
+            report_data["metadata"]["human_review"] = {"status": "pending"}
+            report_data["metadata"]["report_revision"] = 1
+            report_data["delivery"] = {
+                "status": (
+                    "needs_review"
+                    if automatic_delivery.get("status") == "ready"
+                    else automatic_delivery.get("status")
+                ),
+                "publishable": False,
+                "reason_codes": list(
+                    dict.fromkeys(
+                        [
+                            *automatic_delivery.get("reason_codes", []),
+                            "human_review_pending",
+                        ]
+                    )
+                ),
+            }
+            revision = 1
+            version = ReportVersion(
+                run_id=self._session_id,
+                revision=revision,
+                report_language=options.report_language,
+                survey=report_data["survey"],
+                human_status="pending",
+            )
+            request_id = uuid.uuid4().hex
+            request = ReviewRequest(
+                request_id=request_id,
+                run_id=self._session_id,
+                stage="final_report",
+                revision=2,
+                report_revision=revision,
+                report_sha256=version.content_sha256,
+            )
+            created = ExecutionCheckpoint(
+                identity=checkpoint.identity,
+                query=query,
+                options=options,
+                boundary="final_report",
+                graph=graph.to_snapshot(),
+                results=graph.get_results(),
+                budget=self._cost_budget.snapshot(),
+                search_outcomes=checkpoint.search_outcomes,
+                degradation_codes=tuple(degradation_codes),
+                report_data=report_data,
+                report_revision=revision,
+                review_request_id=request_id,
+            )
+            return RunAdvanceResult(
+                status="awaiting_human", checkpoint=created, review=request
+            )
+
+        request = ReviewRequest(
+            request_id=checkpoint.review_request_id,
+            run_id=self._session_id,
+            stage="final_report",
+            revision=decision.revision,
+            revision_attempts=checkpoint.revision_attempts,
+            report_revision=checkpoint.report_revision,
+            report_sha256=report_version_from_checkpoint(checkpoint).content_sha256,
+        )
+        validate_decision(request, decision)
+        if decision.action == "cancel":
+            return RunAdvanceResult(status="cancelled")
+        report_data = dict(checkpoint.report_data or {})
+        metadata = report_data.setdefault("metadata", {})
+        automatic_delivery = dict(metadata.get("automatic_delivery") or {})
+        if decision.action == "reject":
+            metadata["human_review"] = {"status": "rejected"}
+            report_data["delivery"] = {
+                "status": "blocked",
+                "publishable": False,
+                "reason_codes": list(
+                    dict.fromkeys(
+                        [*automatic_delivery.get("reason_codes", []), "human_rejected"]
+                    )
+                ),
+            }
+            finalized = await self._finalize_report(
+                query=query,
+                report_data=report_data,
+                results=checkpoint.results,
+                degradation_codes=checkpoint.degradation_codes,
+                cancellation=cancellation,
+                allow_trusted_writes=False,
+            )
+            return RunAdvanceResult(status="rejected", report=finalized)
+        if decision.action == "revise":
+            revised, revision_result = await self._attempt_human_revision(
+                query=query,
+                report_data=report_data,
+                results=checkpoint.results,
+                feedback=decision.feedback,
+                report_language=options.report_language,
+            )
+            revised_metadata = revised.setdefault("metadata", {})
+            revised_metadata["human_revision"] = revision_result
+            revised_metadata["human_review"] = {"status": "pending"}
+            automatic_delivery = dict(revised.get("delivery") or automatic_delivery)
+            revised_metadata["automatic_delivery"] = automatic_delivery
+            revised["delivery"] = {
+                "status": (
+                    "needs_review"
+                    if automatic_delivery.get("status") == "ready"
+                    else automatic_delivery.get("status", "blocked")
+                ),
+                "publishable": False,
+                "reason_codes": list(
+                    dict.fromkeys(
+                        [
+                            *automatic_delivery.get("reason_codes", []),
+                            "human_review_pending",
+                        ]
+                    )
+                ),
+            }
+            next_revision = checkpoint.report_revision + 1
+            revised_metadata["report_revision"] = next_revision
+            next_version = ReportVersion(
+                run_id=self._session_id,
+                revision=next_revision,
+                report_language=options.report_language,
+                survey=revised["survey"],
+                human_status="pending",
+            )
+            next_request_id = uuid.uuid4().hex
+            next_request = ReviewRequest(
+                request_id=next_request_id,
+                run_id=self._session_id,
+                stage="final_report",
+                revision=decision.revision + 1,
+                revision_attempts=1,
+                report_revision=next_revision,
+                report_sha256=next_version.content_sha256,
+            )
+            next_checkpoint = checkpoint.model_copy(
+                update={
+                    "budget": self._cost_budget.snapshot(),
+                    "report_data": revised,
+                    "report_revision": next_revision,
+                    "revision_attempts": 1,
+                    "review_request_id": next_request_id,
+                }
+            )
+            return RunAdvanceResult(
+                status="awaiting_human",
+                checkpoint=next_checkpoint,
+                review=next_request,
+            )
+
+        metadata["human_review"] = {"status": "approved"}
+        publishable = can_publish(
+            bool(automatic_delivery.get("publishable")), options, "approved"
+        )
+        report_data["delivery"] = {
+            **automatic_delivery,
+            "publishable": publishable,
+        }
+        finalized = await self._finalize_report(
+            query=query,
+            report_data=report_data,
+            results=checkpoint.results,
+            degradation_codes=checkpoint.degradation_codes,
+            cancellation=cancellation,
+            allow_trusted_writes=publishable,
+        )
+        return RunAdvanceResult(status="completed", report=finalized)
+
     async def run(
         self,
         query: str,
         cancellation: CancellationToken | None = None,
+        *,
+        options: RunOptions | None = None,
     ) -> dict[str, Any]:
         """Run planning, scheduling, evaluation, and delivery for one query."""
+        if not isinstance(query, str) or not query.strip() or len(query) > 2000:
+            raise ValueError("invalid_research_question")
+        options = options or RunOptions()
+        if options.human_review:
+            raise ValueError("human_review_requires_interactive_service")
         if self._external_inputs is not None and query != self._external_inputs.query:
             raise ValueError("external input replay query does not match run query")
         if cancellation and cancellation.is_cancelled:
@@ -357,7 +692,20 @@ class LitAgent:
         if cancellation and cancellation.is_cancelled:
             return self._build_cancelled_report(query)
 
-        self._emit("survey.start", {"query": query, "session_id": self._session_id})
+        self._emit(
+            "survey.start",
+            {
+                "query": query,
+                "session_id": self._session_id,
+                "report_language": options.report_language,
+            },
+        )
+        if self._external_inputs is not None:
+            # Replay inputs are immutable before any profile-specific worker runs.
+            self._emit(
+                "external_inputs_ready",
+                {"fingerprint": self._external_inputs.fingerprint},
+            )
         logger.info("Starting survey: %s", query)
 
         graph: TaskGraph | None = None
@@ -373,6 +721,7 @@ class LitAgent:
             graph = await _await_with_cancellation(
                 self._planner.plan(query), cancellation
             )
+            self._apply_run_options_to_graph(graph, options)
             if hasattr(self._trace_hook, "capture_graph"):
                 self._trace_hook.capture_graph(graph)
             results = await self._scheduler.run(graph, cancellation=cancellation)
@@ -384,131 +733,22 @@ class LitAgent:
                 self._search.get_source_outcomes() if self._search else ()
             )
 
-            if cancellation and cancellation.is_cancelled:
-                raise _RunCancelled
-
-            report_data = self._extract_report(results, query)
-            adversarial_result = results.get("adversarial_review")
-            if isinstance(adversarial_result, Mapping):
-                degradation_codes.extend(
-                    str(item)
-                    for item in adversarial_result.get("degradation_reasons", [])
-                    if isinstance(item, str) and item
-                )
-                degradation_codes = list(dict.fromkeys(degradation_codes))
-            execution = self._derive_execution(
-                graph,
-                budget_exceeded=(
-                    self._cost_budget.is_exceeded() if self._cost_budget else False
-                ),
-                final_output_present=bool(
-                    isinstance(results.get("adversarial_review"), dict)
-                    and results["adversarial_review"].get("final_draft")
-                ),
-                run_cancelled=False,
+            report_data, degradation_codes = await self._prepare_report(
+                query=query,
+                graph=graph,
+                results=results,
+                options=options,
+                search_outcomes=search_outcomes,
+                degradation_codes=degradation_codes,
+                cancellation=cancellation,
             )
-            report_data["partial"] = execution["partial"]
-            report_data.setdefault("metadata", {})["execution"] = execution
-            report_data.setdefault("metadata", {})[
-                "search_source_outcomes"
-            ] = search_outcomes
-            report_data["metadata"]["degradation_reason_codes"] = list(
-                degradation_codes
+            return await self._finalize_report(
+                query=query,
+                report_data=report_data,
+                results=results,
+                degradation_codes=degradation_codes,
+                cancellation=cancellation,
             )
-
-            # Phase 1: initial evaluation.
-            initial_evaluation = await _await_with_cancellation(
-                self._evaluate(
-                    query=query,
-                    survey=report_data["survey"],
-                    results=results,
-                    phase="initial",
-                ),
-                cancellation,
-            )
-            initial_quality = self._derive_quality(initial_evaluation)
-            report_data.update(
-                {
-                    "evaluation": initial_evaluation,
-                    "quality": initial_quality,
-                }
-            )
-
-            # Phase 2: evidence rewrite on quality failure.
-            if initial_quality["status"] == "failed":
-                rewrite_outcome = await _await_with_cancellation(
-                    self._attempt_evidence_rewrite(
-                        query=query,
-                        report_data=report_data,
-                        results=results,
-                        initial_evaluation=initial_evaluation,
-                        initial_quality=initial_quality,
-                    ),
-                    cancellation,
-                )
-                report_data.setdefault("metadata", {})["evidence_rewrite"] = {
-                    "attempted": rewrite_outcome.attempted,
-                    "committed": rewrite_outcome.committed,
-                    "reason_code": rewrite_outcome.reason_code,
-                    "validation_reason_codes": (
-                        list(rewrite_outcome.validation.reason_codes)
-                        if rewrite_outcome.validation
-                        else []
-                    ),
-                    "candidate_quality": rewrite_outcome.candidate_quality,
-                }
-
-            # Phase 3: delivery + trusted claim promotion + memory + emit.
-            final_quality = report_data["quality"]
-            report_data["delivery"] = derive_delivery(
-                report_data["partial"],
-                final_quality,
-                degradation_codes,
-            )
-            if self._run_policy.claims_writes and self._infra.claims_index is not None:
-                promotion = await _await_with_cancellation(
-                    ClaimsPromoter(self._infra.claims_index).promote(
-                        run_id=self._session_id,
-                        domain=query,
-                        report_data=report_data,
-                        extractions=self._collect_extractions(results),
-                    ),
-                    cancellation,
-                )
-            elif not self._run_policy.claims_writes:
-                promotion = ClaimPromotionSummary(
-                    "skipped", 0, 0, 0, "claims_write_disabled"
-                )
-            else:
-                promotion = ClaimPromotionSummary(
-                    "skipped", 0, 0, 0, "claims_index_unavailable"
-                )
-            report_data.setdefault("metadata", {})[
-                "claims_promotion"
-            ] = promotion.to_dict()
-            report_data["metadata"]["memory"] = await _await_with_cancellation(
-                self._finalize_memory(report_data=report_data), cancellation
-            )
-
-            report_data = normalize_survey_result(
-                report_data, config_fingerprint=self._config_summary["fingerprint"]
-            )
-
-            self._emit(
-                "survey.complete",
-                {
-                    "query": query,
-                    "rounds": report_data.get("metadata", {}).get("total_rounds", 0),
-                    "accepted": report_data.get("metadata", {}).get("accepted", False),
-                    "quality_status": final_quality["status"],
-                    "total_tokens": self._cost_budget.used if self._cost_budget else 0,
-                    "delivery_status": report_data["delivery"]["status"],
-                    "config_fingerprint": report_data["config_fingerprint"],
-                },
-            )
-
-            logger.info("Survey complete: %d chars", len(report_data.get("survey", "")))
-            return report_data
 
         except _RunCancelled:
             if graph is not None:
@@ -539,6 +779,154 @@ class LitAgent:
         except Exception as e:
             self._emit("survey.error", {"query": query, "error": str(e)})
             raise
+
+    async def _prepare_report(
+        self,
+        *,
+        query: str,
+        graph: TaskGraph,
+        results: Mapping[str, Any],
+        options: RunOptions,
+        search_outcomes: list[dict[str, Any]],
+        degradation_codes: list[str],
+        cancellation: CancellationToken | None,
+    ) -> tuple[dict[str, Any], list[str]]:
+        """Assemble, evaluate, and optionally rewrite before trust side effects."""
+        if cancellation and cancellation.is_cancelled:
+            raise _RunCancelled
+        report_data = self._extract_report(dict(results), query)
+        adversarial_result = results.get("adversarial_review")
+        if isinstance(adversarial_result, Mapping):
+            degradation_codes.extend(
+                str(item)
+                for item in adversarial_result.get("degradation_reasons", [])
+                if isinstance(item, str) and item
+            )
+        degradation_codes = list(dict.fromkeys(degradation_codes))
+        execution = self._derive_execution(
+            graph,
+            budget_exceeded=(
+                self._cost_budget.is_exceeded() if self._cost_budget else False
+            ),
+            final_output_present=bool(
+                isinstance(results.get("adversarial_review"), dict)
+                and results["adversarial_review"].get("final_draft")
+            ),
+        )
+        report_data["partial"] = execution["partial"]
+        metadata = report_data.setdefault("metadata", {})
+        metadata["execution"] = execution
+        metadata["search_source_outcomes"] = search_outcomes
+        metadata["degradation_reason_codes"] = degradation_codes
+        metadata["report_language"] = options.report_language
+        metadata["run_options_fingerprint"] = options.fingerprint()
+
+        initial_evaluation = await _await_with_cancellation(
+            self._evaluate(
+                query=query,
+                survey=report_data["survey"],
+                results=results,
+                phase="initial",
+            ),
+            cancellation,
+        )
+        initial_quality = self._derive_quality(initial_evaluation)
+        report_data.update(
+            {"evaluation": initial_evaluation, "quality": initial_quality}
+        )
+        if initial_quality["status"] == "failed":
+            rewrite = await _await_with_cancellation(
+                self._attempt_evidence_rewrite(
+                    query=query,
+                    report_data=report_data,
+                    results=results,
+                    initial_evaluation=initial_evaluation,
+                    initial_quality=initial_quality,
+                    report_language=options.report_language,
+                ),
+                cancellation,
+            )
+            metadata["evidence_rewrite"] = {
+                "attempted": rewrite.attempted,
+                "committed": rewrite.committed,
+                "reason_code": rewrite.reason_code,
+                "validation_reason_codes": (
+                    list(rewrite.validation.reason_codes) if rewrite.validation else []
+                ),
+                "candidate_quality": rewrite.candidate_quality,
+            }
+        report_data["delivery"] = derive_delivery(
+            report_data["partial"], report_data["quality"], degradation_codes
+        )
+        return report_data, degradation_codes
+
+    async def _finalize_report(
+        self,
+        *,
+        query: str,
+        report_data: dict[str, Any],
+        results: Mapping[str, Any],
+        degradation_codes: Sequence[str],
+        cancellation: CancellationToken | None,
+        allow_trusted_writes: bool = True,
+    ) -> dict[str, Any]:
+        """Apply trusted side effects and emit one normalized terminal report."""
+        if (
+            allow_trusted_writes
+            and self._run_policy.claims_writes
+            and self._infra.claims_index is not None
+        ):
+            promotion = await _await_with_cancellation(
+                ClaimsPromoter(self._infra.claims_index).promote(
+                    run_id=self._session_id,
+                    domain=query,
+                    report_data=report_data,
+                    extractions=self._collect_extractions(results),
+                ),
+                cancellation,
+            )
+        elif not allow_trusted_writes:
+            promotion = ClaimPromotionSummary(
+                "skipped", 0, 0, 0, "human_approval_missing"
+            )
+        elif not self._run_policy.claims_writes:
+            promotion = ClaimPromotionSummary(
+                "skipped", 0, 0, 0, "claims_write_disabled"
+            )
+        else:
+            promotion = ClaimPromotionSummary(
+                "skipped", 0, 0, 0, "claims_index_unavailable"
+            )
+        metadata = report_data.setdefault("metadata", {})
+        metadata["claims_promotion"] = promotion.to_dict()
+        if allow_trusted_writes:
+            metadata["memory"] = await _await_with_cancellation(
+                self._finalize_memory(report_data=report_data), cancellation
+            )
+        else:
+            metadata["memory"] = {
+                "status": "skipped",
+                "reason_code": "human_approval_missing",
+            }
+
+        report_data = normalize_survey_result(
+            report_data, config_fingerprint=self._config_summary["fingerprint"]
+        )
+        final_quality = report_data["quality"]
+        self._emit(
+            "survey.complete",
+            {
+                "query": query,
+                "rounds": metadata.get("total_rounds", 0),
+                "accepted": metadata.get("accepted", False),
+                "quality_status": final_quality["status"],
+                "total_tokens": self._cost_budget.used if self._cost_budget else 0,
+                "delivery_status": report_data["delivery"]["status"],
+                "config_fingerprint": report_data["config_fingerprint"],
+            },
+        )
+        logger.info("Survey complete: %d chars", len(report_data.get("survey", "")))
+        return report_data
 
     @staticmethod
     def _derive_execution(
@@ -1287,11 +1675,11 @@ class LitAgent:
         query: str,
         survey: str,
         results: Mapping[str, Any],
-        phase: Literal["initial", "post_rewrite"],
+        phase: Literal["initial", "post_rewrite", "post_human_revision"],
         parent_task_id: str = "",
     ) -> dict[str, Any]:
         """Run evaluators concurrently and serialize results by metric."""
-        if phase not in {"initial", "post_rewrite"}:
+        if phase not in {"initial", "post_rewrite", "post_human_revision"}:
             raise ValueError(f"unsupported evaluation phase: {phase}")
         if not self._evaluators:
             return {}
@@ -1511,6 +1899,7 @@ class LitAgent:
         results: Mapping[str, Any],
         initial_evaluation: Mapping[str, Any],
         initial_quality: Mapping[str, Any],
+        report_language: Literal["en", "zh-CN"] = "en",
     ) -> RewriteOutcome:
         """Attempt evidence-grounded rewrite with full validation and atomic commit."""
         original_survey = str(report_data.get("survey") or "")
@@ -1561,24 +1950,62 @@ class LitAgent:
             max_chars=rewrite_cfg.max_chars,
         )
         original_refs = extract_evidence_refs(original_survey)
-        # Only remove references confined to exactly located failing paragraphs.
-        target_paragraphs = {
-            d.get("source_quote")
-            for d in diagnostics
-            if isinstance(d, Mapping)
-            and d.get("alignment_status") == "exact"
-            and isinstance(d.get("source_quote"), str)
+        # Only a uniquely located citation occurrence can be removed.
+        removable_refs = {
+            eid
+            for diagnostic in diagnostics
+            if isinstance(diagnostic, Mapping)
+            and diagnostic.get("alignment_status") == "exact"
+            and diagnostic.get("citation_scope") == "exact"
+            and isinstance(diagnostic.get("source_quote"), str)
+            for eid in diagnostic.get("evidence_ids", [])
+            if isinstance(eid, str)
+            and f"[E:{eid}]" in diagnostic["source_quote"]
+            and original_survey.count(f"[E:{eid}]") == 1
         }
-        unaffected_refs = extract_evidence_refs(
-            "\n\n".join(
-                p for p in original_survey.split("\n\n") if p not in target_paragraphs
-            )
-        )
-        removable_refs = original_refs - unaffected_refs
         reference_policy = {
             "must_preserve_evidence_ids": sorted(original_refs - removable_refs),
             "allowed_removed_evidence_ids": sorted(removable_refs),
             "instruction": "Repair only diagnosed claims. Preserve every must_preserve reference. Never invent IDs.",
+        }
+        aliases = build_citation_aliases(
+            list(
+                dict.fromkeys(
+                    [item["evidence_id"] for item in rewrite_items]
+                    + extract_evidence_refs_ordered(original_survey)
+                )
+            )
+        )
+        alias_by_id = aliases.evidence_id_to_alias
+        model_items = [
+            {
+                **{key: value for key, value in item.items() if key != "paper_id"},
+                "evidence_id": alias_by_id[item["evidence_id"]],
+            }
+            for item in rewrite_items
+        ]
+        model_diagnostics = [
+            {
+                **item,
+                "evidence_ids": [
+                    alias_by_id[eid]
+                    for eid in item.get("evidence_ids", [])
+                    if eid in alias_by_id
+                ],
+            }
+            for item in diagnostics
+            if isinstance(item, Mapping)
+        ]
+        model_policy = {
+            **reference_policy,
+            "must_preserve_evidence_ids": [
+                alias_by_id[eid]
+                for eid in reference_policy["must_preserve_evidence_ids"]
+            ],
+            "allowed_removed_evidence_ids": [
+                alias_by_id[eid]
+                for eid in reference_policy["allowed_removed_evidence_ids"]
+            ],
         }
 
         # Ask the model to repair the unsupported evidence claims.
@@ -1608,10 +2035,13 @@ class LitAgent:
                 response = await self._llm.chat(
                     self._synthesis.rewrite_with_evidence(
                         original_survey,
-                        json.dumps(rewrite_items, ensure_ascii=False),
-                        json.dumps(diagnostics, ensure_ascii=False, indent=2),
+                        json.dumps(model_items, ensure_ascii=False),
+                        json.dumps(model_diagnostics, ensure_ascii=False, indent=2),
+                        query=query,
+                        aliases=aliases,
+                        report_language=report_language,
                     )
-                    + [{"role": "user", "content": json.dumps(reference_policy)}],
+                    + [{"role": "user", "content": json.dumps(model_policy)}],
                     **chat_kwargs,
                 )
             candidate = (response.content or "").strip()
@@ -1647,6 +2077,13 @@ class LitAgent:
             )
 
         # Validate the candidate before running evaluators again.
+        candidate = decode_citations_traced(
+            candidate,
+            aliases,
+            trace_hook=self._trace_hook,
+            parent_task_id="evidence_rewrite",
+            stage="evidence_rewrite",
+        ).text
         candidate = normalize_citations_traced(
             candidate,
             {item["evidence_id"] for item in rewrite_items if item.get("evidence_id")},
@@ -1768,6 +2205,188 @@ class LitAgent:
             candidate_evaluation,
             candidate_quality,
             "committed",
+        )
+
+    async def _attempt_human_revision(
+        self,
+        *,
+        query: str,
+        report_data: dict[str, Any],
+        results: Mapping[str, Any],
+        feedback: str,
+        report_language: Literal["en", "zh-CN"],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Generate one feedback revision and commit it only after every gate."""
+        original = str(report_data.get("survey") or "")
+        eval_context = self._build_eval_context(
+            query=query, survey=original, results=results
+        )
+        selected_items = {
+            str(item["evidence_id"]): dict(item)
+            for item in eval_context[CTX_SELECTED_EVIDENCE]
+            if isinstance(item, Mapping) and item.get("evidence_id")
+        }
+        adversarial_result = results.get("adversarial_review")
+        summary = (
+            adversarial_result.get("evidence_selection", {})
+            if isinstance(adversarial_result, Mapping)
+            else {}
+        )
+        raw_sections = summary.get("section_evidence_ids", {})
+        sections = {
+            str(section): [
+                evidence_id
+                for evidence_id in raw_ids
+                if isinstance(evidence_id, str) and evidence_id in selected_items
+            ]
+            for section, raw_ids in raw_sections.items()
+            if isinstance(raw_ids, list)
+        }
+        selection = EvidenceSelection(
+            candidate_count=int(summary.get("candidate_count", len(selected_items))),
+            selected_items=selected_items,
+            section_evidence_ids=sections,
+            method_by_section=dict(summary.get("method_by_section") or {}),
+            omitted_count=int(summary.get("omitted_count", 0)),
+            estimated_tokens=int(summary.get("estimated_tokens", 0)),
+        )
+        if not selected_items:
+            return report_data, {
+                "committed": False,
+                "reason_code": "human_revision_evidence_missing",
+            }
+
+        messages = self._synthesis.revise(
+            original,
+            feedback,
+            selection,
+            query=query,
+            report_language=report_language,
+        )
+        self._emit(
+            "subspan.start",
+            {
+                "task_id": "human_revision",
+                "parent_task_id": "",
+                "name": "human_revision",
+                "round": 1,
+            },
+        )
+
+        def finish_revision(payload: dict[str, Any]) -> dict[str, Any]:
+            """Close the human-revision span before returning a stable outcome."""
+            self._emit(
+                "subspan.end",
+                {"task_id": "human_revision", "output": payload},
+            )
+            return payload
+
+        token = set_task_id("human_revision")
+        try:
+            kwargs: dict[str, Any] = {"max_tokens": self._config.eval.max_tokens}
+            if self._config.eval.thinking_mode != "provider_default":
+                kwargs["extra_body"] = {
+                    "thinking": {"type": self._config.eval.thinking_mode}
+                }
+            async with asyncio.timeout(self._config.eval.timeout_seconds):
+                response = await self._llm.chat(messages, **kwargs)
+            candidate = (response.content or "").strip()
+        except asyncio.CancelledError:
+            finish_revision(
+                {"committed": False, "reason_code": "human_revision_cancelled"}
+            )
+            raise
+        except TimeoutError:
+            return report_data, finish_revision(
+                {
+                    "committed": False,
+                    "reason_code": "human_revision_timeout",
+                }
+            )
+        except Exception as exc:
+            return report_data, finish_revision(
+                {
+                    "committed": False,
+                    "reason_code": "human_revision_llm_failed",
+                    "error_type": type(exc).__name__,
+                }
+            )
+        finally:
+            reset_task_id(token)
+
+        candidate = normalize_citations_traced(
+            candidate,
+            selected_items,
+            trace_hook=self._trace_hook,
+            parent_task_id="human_revision",
+            stage="human_revision",
+        ).text
+        original_refs = extract_evidence_refs(original)
+        validation = self._validate_rewrite_candidate(
+            original=original,
+            candidate=candidate,
+            evidence_ledger=eval_context[CTX_EVIDENCE],
+            allowed_removed_refs=sorted(original_refs),
+        )
+        if not validation.accepted:
+            return report_data, finish_revision(
+                {
+                    "committed": False,
+                    "reason_code": "human_revision_validation_failed",
+                    "validation_reason_codes": list(validation.reason_codes),
+                }
+            )
+
+        review = await self._reviewer.review_revision(
+            candidate,
+            {},
+            selection,
+            query=query,
+            report_language=report_language,
+        )
+        if not self._adversarial._review_passes(review):
+            return report_data, finish_revision(
+                {
+                    "committed": False,
+                    "reason_code": "human_revision_review_failed",
+                    "review": review,
+                }
+            )
+        evaluation = await self._evaluate(
+            query=query,
+            survey=candidate,
+            results=results,
+            phase="post_human_revision",
+            parent_task_id="human_revision",
+        )
+        quality = self._derive_quality(evaluation)
+        if quality["status"] != "passed" or self._passed_metric_regressed(
+            report_data.get("evaluation", {}), evaluation
+        ):
+            return report_data, finish_revision(
+                {
+                    "committed": False,
+                    "reason_code": "human_revision_quality_failed",
+                    "candidate_quality": quality,
+                }
+            )
+
+        updated = dict(report_data)
+        updated["survey"] = candidate
+        updated["evaluation"] = evaluation
+        updated["quality"] = quality
+        updated["delivery"] = derive_delivery(
+            bool(updated.get("partial")),
+            quality,
+            updated.get("metadata", {}).get("degradation_reason_codes", []),
+        )
+        return updated, finish_revision(
+            {
+                "committed": True,
+                "reason_code": "human_revision_committed",
+                "review": review,
+                "candidate_quality": quality,
+            }
         )
 
     @staticmethod

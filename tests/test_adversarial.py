@@ -774,7 +774,7 @@ class TestAdversarialEvidenceGate:
         class _SpySynthesis(_SW):
             """Synthesis worker that records revision evidence."""
 
-            def revise(self, draft, review_comments, evidence_selection):
+            def revise(self, draft, review_comments, evidence_selection, **kwargs):
                 sel = (
                     EvidenceSelection.from_dict(evidence_selection)
                     if not isinstance(evidence_selection, EvidenceSelection)
@@ -788,7 +788,9 @@ class TestAdversarialEvidenceGate:
                         },
                     }
                 )
-                return super().revise(draft, review_comments, evidence_selection)
+                return super().revise(
+                    draft, review_comments, evidence_selection, **kwargs
+                )
 
         class _SpyReviewer(_RW):
             """Reviewer that records revision evidence."""
@@ -887,9 +889,11 @@ class TestAdversarialEvidenceGate:
         class _SpySynthesis(_SW):
             """Synthesis worker that records revision feedback."""
 
-            def revise(self, draft, review_comments, evidence_selection):
+            def revise(self, draft, review_comments, evidence_selection, **kwargs):
                 revise_msgs.append(review_comments)
-                return super().revise(draft, review_comments, evidence_selection)
+                return super().revise(
+                    draft, review_comments, evidence_selection, **kwargs
+                )
 
         review_with_issues = _json.dumps(
             {

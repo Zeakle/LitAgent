@@ -7,6 +7,14 @@ import json
 from pathlib import Path
 from typing import Any, Literal, Mapping
 
+from litagent.report_render import (
+    build_reader_report,
+    paper_catalog_from_nodes,
+    reader_report_projection,
+    render_report_projection,
+)
+from litagent.workbench import ReportVersion
+
 BUNDLED_SAMPLE_PATH = (
     Path(__file__).resolve().parent / "static" / "flow-demo" / "samples.json"
 )
@@ -120,6 +128,27 @@ def project_flow_demo_view(
     nodes = _mapping(artifact.get("nodes"))
     trace = _mapping(artifact.get("trace"))
     metadata = _mapping(report.get("metadata"))
+    survey = str(report.get("survey") or "")
+    evidence = _extract_evidence(nodes)
+    evidence_by_id = {
+        item["evidence_id"]: item
+        for item in evidence
+        if isinstance(item.get("evidence_id"), str) and item["evidence_id"]
+    }
+    if survey and evidence_by_id:
+        reader = build_reader_report(
+            ReportVersion(
+                run_id=str(artifact.get("run_id") or "archive"),
+                revision=1,
+                report_language=metadata.get("report_language") or "en",
+                survey=survey,
+            ),
+            evidence_ledger=evidence_by_id,
+            paper_catalog=paper_catalog_from_nodes(nodes),
+        )
+        rendered_report = reader_report_projection(reader)
+    else:
+        rendered_report = render_report_projection(survey)
 
     summary = {
         "run_id": str(artifact.get("run_id") or ""),
@@ -152,11 +181,12 @@ def project_flow_demo_view(
         },
         "timeline": _list(artifact.get("events")),
         "report": {
-            "survey": str(report.get("survey") or ""),
+            "survey": survey,
             "review_history": _list(report.get("review_history")),
             "metadata": metadata,
         },
-        "evidence": _extract_evidence(nodes),
+        "rendered_report": rendered_report,
+        "evidence": evidence,
         "graph": _mapping(report.get("graph_data")),
         "evaluation": _mapping(report.get("evaluation")),
         "quality": quality,

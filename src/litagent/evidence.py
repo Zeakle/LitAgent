@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import re
-from collections.abc import Collection
+from collections.abc import Collection, Sequence
 from dataclasses import asdict, dataclass
 from typing import Any
 
@@ -40,6 +40,88 @@ class CitationNormalizationResult:
     text: str
     changes: tuple[CitationChange, ...]
     rejected: tuple[CitationRejection, ...]
+
+
+@dataclass(frozen=True)
+class CitationAliasMap:
+    """Bind short model-facing markers to one selected canonical inventory."""
+
+    alias_to_evidence_id: dict[str, str]
+
+    @property
+    def evidence_id_to_alias(self) -> dict[str, str]:
+        """Return the inverse map for prompt preparation."""
+        return {value: key for key, value in self.alias_to_evidence_id.items()}
+
+
+def build_citation_aliases(evidence_ids: Sequence[str]) -> CitationAliasMap:
+    """Assign stable aliases in first-appearance order without collisions."""
+    ordered = list(dict.fromkeys(evidence_ids))
+    if any(not _EVIDENCE_REF_RE.fullmatch(f"[E:{eid}]") for eid in ordered):
+        raise ValueError("invalid selected evidence id")
+    prefix = "e"
+    if any(
+        f"e{index}" in ordered and f"e{index}" != eid
+        for index, eid in enumerate(ordered, 1)
+    ):
+        prefix = "ref"
+    aliases = {f"{prefix}{index}": eid for index, eid in enumerate(ordered, 1)}
+    if any(alias in ordered and alias != eid for alias, eid in aliases.items()):
+        raise ValueError("citation alias collides with selected evidence")
+    return CitationAliasMap(aliases)
+
+
+def _transform_citation_aliases(
+    text: str, aliases: CitationAliasMap, *, decode: bool
+) -> CitationNormalizationResult:
+    replacements = (
+        aliases.alias_to_evidence_id if decode else aliases.evidence_id_to_alias
+    )
+    permitted = set(aliases.alias_to_evidence_id.values())
+    pieces: list[str] = []
+    changes: list[CitationChange] = []
+    rejected: list[CitationRejection] = []
+    cursor = 0
+    for match in _EVIDENCE_REF_RE.finditer(text):
+        start, end = match.span()
+        evidence_id = match.group(1)
+        pieces.append(text[cursor:start])
+        replacement_id = replacements.get(evidence_id)
+        if replacement_id is not None:
+            replacement = f"[E:{replacement_id}]"
+            if replacement != match.group():
+                changes.append(CitationChange(start, end, match.group(), replacement))
+            pieces.append(replacement)
+        else:
+            pieces.append(match.group())
+            if evidence_id not in permitted:
+                rejected.append(
+                    CitationRejection(start, end, match.group(), "unknown_evidence_id")
+                )
+        cursor = end
+    pieces.append(text[cursor:])
+    for marker in find_malformed_evidence_refs(text):
+        start = text.find(marker)
+        rejected.append(
+            CitationRejection(
+                start, start + len(marker), marker, "malformed_evidence_ref"
+            )
+        )
+    return CitationNormalizationResult("".join(pieces), tuple(changes), tuple(rejected))
+
+
+def encode_citation_aliases(
+    text: str, aliases: CitationAliasMap
+) -> CitationNormalizationResult:
+    """Project only exact selected evidence markers into a model prompt."""
+    return _transform_citation_aliases(text, aliases, decode=False)
+
+
+def decode_citation_aliases(
+    text: str, aliases: CitationAliasMap
+) -> CitationNormalizationResult:
+    """Restore exact selected evidence IDs without fuzzy recovery."""
+    return _transform_citation_aliases(text, aliases, decode=True)
 
 
 def normalize_evidence_citations(

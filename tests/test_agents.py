@@ -1968,7 +1968,8 @@ class TestSynthesisEvidencePipeline:
         assert "draft text" in user
         assert "needs more support" in user
         assert "<evidence_plan>" in user
-        assert "[E:p1:claim:0]" in user
+        assert "[E:e1]" in user
+        assert "[E:p1:claim:0]" not in user
 
     def test_revise_malformed_dict_raises(self):
         """Revision rejects malformed evidence selections."""

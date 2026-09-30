@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import html
 import json
 import re
 from collections.abc import Mapping, Sequence
@@ -12,18 +13,25 @@ from litagent.config import AdversarialConfig, ContextConfig
 from litagent.context.budget import BudgetManager
 from litagent.context.evidence_selector import (
     EvidenceSelection,
+    alias_evidence_selection,
     compact_evidence_selection,
     format_evidence_selection,
 )
 from litagent.context.pipeline import ContextLayer, ContextPipeline
 from litagent.context.templates import build_system_prompt, wrap_xml
-from litagent.evidence import extract_evidence_refs, find_malformed_evidence_refs
+from litagent.evidence import (
+    build_citation_aliases,
+    encode_citation_aliases,
+    extract_evidence_refs,
+    find_malformed_evidence_refs,
+)
 from litagent.llm.client import BaseLLMClient
 from litagent.logging import get_logger
 from litagent.orchestrator.scheduler import Worker
 from litagent.orchestrator.task_graph import SubTask
 from litagent.rag.claims_index import ClaimsIndex, TrustedClaim
 from litagent.skills.manager import SkillManager
+from litagent.workbench import ReportLanguage, language_instruction
 
 logger = get_logger("agents.reviewer")
 
@@ -95,6 +103,10 @@ Respond in JSON format:
 "action": "delete|downgrade|bind"}
         ],
         "unknown_evidence_ids": ["..."]
+    },
+    "language_compliance": {
+        "passed": true|false,
+        "reason": "brief explanation"
     }
 }"""
 
@@ -173,6 +185,7 @@ class ReviewerWorker(Worker):
     async def execute(self, task: SubTask) -> Any:
         """Review an upstream draft and enforce its evidence contract."""
         query = str(task.input_data.get("query") or "")
+        report_language: ReportLanguage = task.input_data.get("report_language", "en")
         upstream = task.input_data.get("upstream_results", {})
         synthesis = upstream.get("synthesis", {})
         if not isinstance(synthesis, dict):
@@ -203,7 +216,11 @@ class ReviewerWorker(Worker):
 
         system = build_system_prompt(
             role=REVIEWER_ROLE,
-            instructions=REVIEWER_INSTRUCTIONS,
+            instructions=(
+                REVIEWER_INSTRUCTIONS
+                + "\n\nREPORT LANGUAGE REQUIREMENT:\n"
+                + language_instruction(report_language)
+            ),
             skills=skills_text,
         )
 
@@ -213,6 +230,7 @@ class ReviewerWorker(Worker):
             selection=selection,
             query=query,
             evidence_context_missing=evidence_missing,
+            report_language=report_language,
         )
 
         if evidence_missing:
@@ -232,6 +250,7 @@ class ReviewerWorker(Worker):
         previous_review: dict[str, Any],
         evidence_selection: EvidenceSelection | Mapping[str, Any],
         query: str = "",
+        report_language: ReportLanguage = "en",
     ) -> dict[str, Any]:
         """Review a revision against the original evidence selection."""
 
@@ -249,6 +268,8 @@ class ReviewerWorker(Worker):
                 + "\n\nThis is a REVISION. Check if previous issues were addressed. "
                 "Be fair: if issues are fixed, raise the score. "
                 "You have the SAME evidence plan and ledger as the first review."
+                "\n\nREPORT LANGUAGE REQUIREMENT:\n"
+                + language_instruction(report_language)
             ),
         )
 
@@ -258,6 +279,7 @@ class ReviewerWorker(Worker):
             selection=selection,
             previous_review=previous_review,
             query=query,
+            report_language=report_language,
         )
 
     async def _request_review_with_compact_retry(
@@ -269,6 +291,7 @@ class ReviewerWorker(Worker):
         previous_review: dict[str, Any] | None = None,
         query: str = "",
         evidence_context_missing: bool = False,
+        report_language: ReportLanguage = "en",
     ) -> dict[str, Any]:
         """Retry one schema-invalid review with unchanged IDs and compact evidence."""
         review: dict[str, Any] | None = None
@@ -306,6 +329,9 @@ class ReviewerWorker(Worker):
                 review,
                 evidence_context_missing=evidence_context_missing,
             )
+            review = self._enforce_language_contract(
+                draft, review, report_language=report_language
+            )
             compliance = review.get("evidence_compliance")
             schema_invalid = bool(review.get("parse_error")) or (
                 isinstance(compliance, Mapping)
@@ -326,6 +352,50 @@ class ReviewerWorker(Worker):
         review["degradation_reasons"] = ["review_unverified"]
         return review
 
+    def _enforce_language_contract(
+        self,
+        draft: str,
+        review: dict[str, Any],
+        *,
+        report_language: ReportLanguage,
+    ) -> dict[str, Any]:
+        """Fail obvious language mismatches without changing evidence judgments."""
+        # Identifiers and URLs are intentionally language-neutral. This heuristic
+        # only catches clear mismatches; the model remains the semantic signal.
+        prose = re.sub(r"\[E:[^\]]+\]|https?://\S+", " ", draft)
+        cjk_count = len(re.findall(r"[\u3400-\u9fff]", prose))
+        latin_count = len(re.findall(r"[A-Za-z]", prose))
+        raw = review.get("language_compliance")
+        model_passed = raw.get("passed") if isinstance(raw, Mapping) else None
+        reason_codes: list[str] = []
+        if model_passed is False:
+            reason_codes.append("reviewer_language_rejected")
+        if report_language == "zh-CN" and cjk_count == 0 and latin_count >= 40:
+            reason_codes.append("simplified_chinese_prose_missing")
+        if report_language == "en" and cjk_count >= 20 and cjk_count > latin_count:
+            reason_codes.append("english_prose_missing")
+
+        passed = not reason_codes
+        review["language_compliance"] = {
+            "passed": passed,
+            "requested_language": report_language,
+            "reason_codes": reason_codes,
+            "model_declared_passed": (
+                model_passed if isinstance(model_passed, bool) else None
+            ),
+            "prose_signal": {
+                "cjk_characters": cjk_count,
+                "latin_characters": latin_count,
+            },
+        }
+        if not passed:
+            review["score"] = min(
+                review.get("score", 0), self._config.pass_threshold - 0.01
+            )
+            if review.get("verdict") == "accept":
+                review["verdict"] = "revise"
+        return review
+
     async def _build_review_context(
         self,
         draft: str,
@@ -335,10 +405,31 @@ class ReviewerWorker(Worker):
     ) -> tuple[str, int]:
         """Build budgeted draft, evidence, and optional prior-review context."""
         pipeline = ContextPipeline(self._budget)
+        aliases = (
+            build_citation_aliases(list(selection.selected_items))
+            if selection
+            else None
+        )
+
+        if query:
+            question = wrap_xml("research_question", html.escape(query, quote=False))
+            if self._budget.count_tokens(question) > min(512, self._budget.max_tokens):
+                raise ValueError("research_question_exceeds_context_budget")
+
+            async def _question_builder(state: dict) -> str:
+                """Keep the task scope in both normal and compact reviews."""
+                return question
+
+            pipeline.add_layer(
+                ContextLayer("research_question", -1, 512, _question_builder)
+            )
 
         async def _draft_builder(state: dict) -> str:
             """Return the draft context layer."""
-            return wrap_xml("survey_draft", state["draft"])
+            draft_text = state["draft"]
+            if aliases:
+                draft_text = encode_citation_aliases(draft_text, aliases).text
+            return wrap_xml("survey_draft", draft_text)
 
         pipeline.add_layer(
             ContextLayer(
@@ -350,7 +441,9 @@ class ReviewerWorker(Worker):
         )
 
         if selection is not None:
-            _ev_text = format_evidence_selection(selection)
+            _ev_text = format_evidence_selection(
+                alias_evidence_selection(selection, aliases) if aliases else selection
+            )
 
             async def _ev_builder(state: dict) -> str:
                 """Return the preformatted evidence-selection context."""
@@ -367,6 +460,10 @@ class ReviewerWorker(Worker):
 
         if previous_review is not None:
             _previous_review = json.dumps(previous_review, ensure_ascii=False)
+            if aliases:
+                _previous_review = encode_citation_aliases(
+                    _previous_review, aliases
+                ).text
 
             async def _previous_review_builder(state: dict) -> str:
                 """Return the prior review wrapped as untrusted context."""

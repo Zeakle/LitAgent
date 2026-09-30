@@ -1,102 +1,111 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>LitAgent Flow Replay</title>
-  <link rel="stylesheet" href="/static/flow-demo/styles.css">
+  <meta name="color-scheme" content="light">
+  <title>LitAgent Research Workbench</title>
+  <link rel="stylesheet" href="/static/flow-demo/styles.css?v=15.10.3">
 </head>
 <body>
-  <header class="topbar">
-    <div class="identity">
-      <p class="eyebrow">LITAGENT / REPRODUCIBLE FLOW REPLAY</p>
-      <h1>Survey execution archive</h1>
-      <p id="query" class="query">Loading run...</p>
-    </div>
-    <div class="controls">
-      <span id="mode" class="mode">OFFLINE</span>
-      <select id="archive-select" aria-label="Run archive"><option>Loading...</option></select>
-      <button id="new-run" type="button">Run live</button>
-      <button id="cancel-run" class="secondary" type="button" disabled>Cancel</button>
-      <a id="trace-link" class="disabled" target="_blank" rel="noreferrer">LangFuse</a>
-      <a id="download" class="disabled" download>JSON</a>
-    </div>
-  </header>
+  <div class="app-shell">
+    <aside id="run-sidebar" class="run-sidebar" aria-label="Run history">
+      <div class="brand-block"><span class="brand-mark" aria-hidden="true">LA</span><div><strong>LitAgent</strong><small>Research Workbench</small></div></div>
+      <button id="open-new-run" class="new-run-button" type="button"><span aria-hidden="true">＋</span><span data-i18n="newResearch">新建研究</span></button>
+      <label class="history-search"><span class="sr-only" data-i18n="searchRuns">搜索运行</span><span aria-hidden="true">⌕</span><input id="run-search" type="search" data-i18n-placeholder="searchRuns" placeholder="搜索运行"></label>
+      <div class="sidebar-heading"><span data-i18n="runs">运行历史</span><output id="run-count">0</output></div>
+      <div id="run-list" class="run-list"></div>
+      <div class="sidebar-footer"><span id="runtime-mode" class="runtime-mode">offline</span><button id="locale-toggle" class="quiet-button" type="button" aria-label="Switch UI language">EN</button></div>
+    </aside>
 
-  <section class="summary" aria-label="Run summary">
-    <span>Run <strong id="run-id">-</strong></span>
-    <span>Source <strong id="run-source">-</strong></span>
-    <span>Status <strong id="run-status">-</strong></span>
-    <span>Tokens <strong id="total-tokens">0</strong></span>
-    <span>Elapsed <strong id="total-elapsed">-</strong></span>
-    <span>Quality <strong id="quality">-</strong></span>
-    <span>Delivery <strong id="delivery">-</strong></span>
-  </section>
+    <main class="workspace">
+      <header class="command-bar">
+        <button id="sidebar-toggle" class="icon-command mobile-only" type="button" aria-label="Open run history">☰</button>
+        <button id="history-collapse" class="icon-command desktop-only" type="button" title="Toggle run history" aria-label="Toggle run history">☷</button>
+        <div class="run-heading"><p id="run-source-label" class="run-kicker">LITAGENT</p><h1 id="run-query" data-i18n="noRun">选择一条运行查看结果</h1></div>
+        <div class="command-actions">
+          <a id="trace-link" class="quiet-button" href="#" target="_blank" rel="noopener noreferrer" hidden data-i18n="trace">打开 Trace</a>
+          <button id="download-artifact" class="quiet-button" type="button" hidden data-i18n="download">下载 Artifact</button>
+          <button id="cancel-run" class="danger-button" type="button" hidden data-i18n="cancel">取消运行</button>
+          <label class="version-control" hidden><span class="sr-only">Report version</span><select id="version-select" aria-label="Report version"></select></label>
+          <div id="export-menu" class="export-menu" hidden><button class="quiet-button" type="button" data-i18n="export">导出</button><div class="export-options"><label class="export-style-label" for="export-style" data-i18n="citationStyle">引用格式</label><select id="export-style"><option value="numbered" data-i18n="numberedCitations">编号引用</option><option value="evidence" data-i18n="evidenceCitations">原始证据</option></select><button type="button" data-format="md">Markdown</button><button type="button" data-format="pdf">PDF</button><button type="button" data-format="docx">Word</button></div></div>
+        </div>
+      </header>
 
-  <div id="delivery-alert" class="delivery-alert" hidden></div>
-
-  <nav class="tabs" role="tablist" aria-label="Replay views">
-    <button role="tab" aria-selected="true" data-tab="flow">Flow / 流程</button>
-    <button role="tab" aria-selected="false" data-tab="report">Report / 报告</button>
-    <button role="tab" aria-selected="false" data-tab="evidence">Evidence / 证据</button>
-    <button role="tab" aria-selected="false" data-tab="graph">Graph / 图谱</button>
-    <button role="tab" aria-selected="false" data-tab="evaluation">Evaluation / 评估</button>
-    <button role="tab" aria-selected="false" data-tab="rag">RAG / Benchmark</button>
-  </nav>
-
-  <main>
-    <section id="tab-flow" class="tab-panel flow-workspace" role="tabpanel">
-      <section class="panel dag-panel">
-        <div class="panel-title"><h2>Actual DAG / 实际任务图</h2><span id="dag-count">0 tasks</span></div>
-        <p class="hint">Tasks are grouped by dependency depth. Each node retains its runtime terminal state.</p>
-        <div id="dag" class="dag"></div>
+      <section id="run-summary" class="run-summary" aria-label="Run summary">
+        <span><small data-i18n="status">状态</small><strong id="summary-status">—</strong></span>
+        <span><small data-i18n="delivery">交付</small><strong id="summary-delivery">—</strong></span>
+        <span><small data-i18n="quality">质量</small><strong id="summary-quality">—</strong></span>
+        <span><small data-i18n="tokens">Tokens</small><strong id="summary-tokens">—</strong></span>
+        <span><small data-i18n="elapsed">耗时</small><strong id="summary-elapsed">—</strong></span>
+        <span><small>Run ID</small><strong id="summary-run-id">—</strong></span>
       </section>
-      <section class="panel timeline-panel">
-        <div class="panel-title"><h2>Timeline / 调用时间线</h2><span id="event-count">0 events</span></div>
-        <p class="hint">Worker, LLM, Tool, RAG, Memory and Evaluation lifecycle events in recorded order.</p>
-        <div id="timeline" class="timeline"></div>
-      </section>
-      <aside class="panel inspector-panel">
-        <div class="panel-title"><h2>Inspector / 节点检查</h2><span id="node-kind">Select a node</span></div>
-        <pre id="inspector" class="inspector empty">Choose a task or event to inspect its local payload.</pre>
-      </aside>
-    </section>
+      <div id="notice" class="notice" role="status" hidden></div>
 
-    <section id="tab-report" class="tab-panel content-view" role="tabpanel" hidden>
-      <div class="section-heading"><h2>Final report / 最终报告</h2><span id="review-rounds">0 review rounds</span></div>
-      <pre id="report-text" class="report-text"></pre>
-    </section>
+      <nav class="section-tabs" aria-label="Workbench sections">
+        <button type="button" data-section="report" aria-current="page" data-i18n="report">报告</button>
+        <button type="button" data-section="execution" data-i18n="execution">执行</button>
+        <button id="review-tab" type="button" data-section="review" data-i18n="review">人工审核</button>
+        <button type="button" data-section="evidence" data-i18n="evidence">证据</button>
+        <button type="button" data-section="quality" data-i18n="quality">质量</button>
+        <button type="button" data-section="benchmark" data-i18n="benchmark">Benchmark</button>
+      </nav>
 
-    <section id="tab-evidence" class="tab-panel content-view" role="tabpanel" hidden>
-      <div class="section-heading"><h2>Selected evidence / 已选证据</h2><span id="evidence-count">0 items</span></div>
-      <div id="evidence-list" class="evidence-list"></div>
-    </section>
+      <div class="section-stage">
+        <section id="section-benchmark" class="workbench-section benchmark-section" hidden>
+          <header class="benchmark-heading"><div><span class="section-eyebrow">BENCHMARK</span><h2 data-i18n="benchmarkResults">Survey 基准结果</h2></div><button id="benchmark-refresh" class="quiet-button" type="button" data-i18n="refresh">刷新</button></header>
+          <div class="benchmark-layout"><aside class="benchmark-list-pane"><h3 data-i18n="benchmarkArchives">结果归档</h3><div id="benchmark-list"></div></aside><div id="benchmark-detail" class="benchmark-detail" aria-live="polite"></div></div>
+        </section>
+        <section id="section-report" class="workbench-section report-section">
+          <aside class="report-outline-pane"><h2 data-i18n="outline">目录</h2><nav id="report-outline" class="report-outline" aria-label="Report outline"></nav></aside>
+          <article id="report-document" class="report-document" tabindex="-1"></article>
+        </section>
 
-    <section id="tab-graph" class="tab-panel content-view" role="tabpanel" hidden>
-      <div class="section-heading"><h2>Paper graph / 论文图谱</h2><span id="paper-count">0 papers</span></div>
-      <div id="graph-summary" class="metric-strip"></div>
-      <div id="paper-list" class="paper-list"></div>
-    </section>
+        <section id="section-execution" class="workbench-section execution-section" hidden>
+          <header class="execution-toolbar">
+            <div><span class="section-eyebrow">EXECUTION</span><h2 data-i18n="executionFlow">Agent 执行流程</h2></div>
+            <div id="execution-mode" class="segmented-control" role="group" aria-label="Execution view" data-i18n-label="executionView">
+              <button type="button" data-execution-mode="overview" aria-pressed="true" data-i18n="stageOverview">阶段总览</button>
+              <button type="button" data-execution-mode="dag" aria-pressed="false" data-i18n="taskDag">任务 DAG</button>
+              <button type="button" data-execution-mode="timeline" aria-pressed="false" data-i18n="callTimeline">调用时间轴</button>
+            </div>
+            <div id="graph-tools" class="graph-tools" hidden>
+              <button id="graph-zoom-out" class="icon-command" type="button" title="Zoom out" aria-label="Zoom out" data-i18n-label="zoomOut">−</button>
+              <output id="graph-scale" aria-live="polite">100%</output>
+              <button id="graph-zoom-in" class="icon-command" type="button" title="Zoom in" aria-label="Zoom in" data-i18n-label="zoomIn">＋</button>
+              <button id="graph-fit" class="icon-command" type="button" title="Fit graph" aria-label="Fit graph" data-i18n-label="fitGraph">⊙</button>
+              <button id="graph-focus" class="icon-command" type="button" title="Focus selected node" aria-label="Focus selected node" data-i18n-label="focusSelected">⌖</button>
+              <button id="graph-fullscreen" class="icon-command" type="button" title="Toggle full screen" aria-label="Toggle full screen" data-i18n-label="toggleFullscreen">⛶</button>
+            </div>
+            <label id="timeline-filter-control" class="timeline-filter-control" hidden><span class="sr-only" data-i18n="eventCategory">事件类别</span><select id="timeline-filter" aria-label="Timeline category" data-i18n-label="timelineCategory"><option value="all" data-i18n="allEvents">全部事件</option><option value="worker">Worker</option><option value="llm">LLM</option><option value="tool">Tool</option><option value="rag">RAG</option><option value="memory">Memory</option><option value="evaluation">Evaluation</option><option value="rewrite">Rewrite</option><option value="error">Error</option></select></label>
+          </header>
+          <div id="graph-diagnostic" class="graph-diagnostic" hidden></div>
+          <div class="execution-panels">
+            <div id="stage-overview" class="stage-overview"></div>
+            <div id="execution-graph" class="execution-graph" tabindex="0" aria-label="Agent task dependency graph" hidden></div>
+            <div id="execution-timeline" class="execution-timeline" hidden><div id="timeline" class="timeline"></div></div>
+          </div>
+        </section>
 
-    <section id="tab-evaluation" class="tab-panel content-view" role="tabpanel" hidden>
-      <div class="section-heading"><h2>Quality and delivery / 质量与交付</h2></div>
-      <div id="evaluation-grid" class="evaluation-grid"></div>
-      <div class="delivery-detail">
-        <h3>Delivery policy result</h3>
-        <pre id="delivery-detail"></pre>
+        <section id="section-review" class="workbench-section review-section" hidden><header class="section-header"><div><span class="section-eyebrow">HUMAN-IN-THE-LOOP</span><h2 data-i18n="review">人工审核</h2></div><span id="review-stage"></span></header><div id="review-content" class="review-content"></div></section>
+        <section id="section-evidence" class="workbench-section evidence-section" hidden><header class="section-header"><div><span class="section-eyebrow">LEDGER</span><h2 data-i18n="evidence">证据</h2></div><output id="evidence-count">0</output></header><div id="evidence-list" class="evidence-list"></div></section>
+        <section id="section-quality" class="workbench-section quality-section" hidden><header class="section-header"><div><span class="section-eyebrow">EVALUATION</span><h2 data-i18n="quality">质量</h2></div></header><div id="quality-content" class="quality-content"></div></section>
       </div>
-    </section>
+    </main>
 
-    <section id="tab-rag" class="tab-panel content-view" role="tabpanel" hidden>
-      <div class="section-heading"><h2>Corpus and benchmark / 语料与基准</h2></div>
-      <div id="benchmark-list" class="benchmark-list"></div>
-      <p class="boundary-note">Offline fixtures demonstrate contracts only. They are not benchmark evidence.</p>
-    </section>
-  </main>
+    <aside id="inspector-drawer" class="inspector-drawer" aria-label="Inspector" aria-hidden="true"><header><div><span class="section-eyebrow" data-i18n="inspect">检查详情</span><h2 id="inspector-title">—</h2></div><button id="close-inspector" class="icon-command" type="button" aria-label="Close inspector">×</button></header><div id="inspector-content" class="inspector-content"></div></aside>
+  </div>
 
-  <template id="node-template">
-    <button class="node" type="button"><span class="node-name"></span><small></small></button>
-  </template>
-  <script type="module" src="/static/flow-demo/app.js"></script>
+  <dialog id="new-run-dialog" class="new-run-dialog">
+    <form method="dialog" id="new-run-form">
+      <header><div><span class="section-eyebrow">NEW SURVEY</span><h2 data-i18n="newResearch">新建研究</h2></div><button class="icon-command" value="cancel" aria-label="Close">×</button></header>
+      <label><span data-i18n="question">研究问题</span><textarea id="query-input" rows="5" maxlength="4000" required data-i18n-placeholder="queryPlaceholder"></textarea></label>
+      <div class="form-row"><label><span data-i18n="language">报告语言</span><select id="report-language"><option value="zh-CN">简体中文</option><option value="en">English</option></select></label><label class="toggle-field"><input id="human-review" type="checkbox" checked><span data-i18n="humanReview">人工审核</span></label></div>
+      <p id="live-warning" class="form-note"></p>
+      <footer><button class="quiet-button" value="cancel" type="button" id="close-new-run">取消</button><button class="primary-command" value="default" type="submit" data-i18n="start">开始运行</button></footer>
+    </form>
+  </dialog>
+  <div id="sidebar-scrim" class="sidebar-scrim" hidden></div>
+  <script type="module" src="/static/flow-demo/app.js?v=15.10.3"></script>
 </body>
 </html>

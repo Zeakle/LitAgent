@@ -3,4 +3,5 @@ model: gpt-5-mini
 api_key_env: BENCHMARK_JUDGE_API_KEY
 max_tokens: 16384
 timeout_seconds: 180
-max_retries: 1
+max_retries: 0
+response_format_mode: json_schema

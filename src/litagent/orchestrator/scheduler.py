@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import Any, Callable
 
 from litagent.logging import get_logger
@@ -12,6 +13,15 @@ from litagent.orchestrator.task_graph import SubTask, TaskGraph, TaskStatus
 from litagent.safety.budget import CostBudget
 
 logger = get_logger("orchestrator.scheduler")
+
+
+@dataclass(frozen=True)
+class SchedulerOutcome:
+    """Return an explicit completion or safe-boundary pause result."""
+
+    status: str
+    results: dict[str, Any]
+    stop_after: str | None = None
 
 
 class Worker(ABC):
@@ -98,11 +108,50 @@ class Scheduler:
                 except Exception as e:
                     logger.warning(f"on_complete failed: {e}")
 
+    async def run_until(
+        self,
+        graph: TaskGraph,
+        *,
+        stop_after: str | None = None,
+        cancellation: CancellationToken | None = None,
+    ) -> SchedulerOutcome:
+        """Run to completion or pause after one completed task boundary."""
+        if stop_after is not None and graph.get_task(stop_after) is None:
+            raise ValueError("unknown_stop_task")
+        try:
+            result = await asyncio.wait_for(
+                self._loop(graph, cancellation, stop_after=stop_after),
+                timeout=self._timeout_ms / 1000,
+            )
+        except asyncio.TimeoutError:
+            self._finalize_incomplete(graph, "orchestration_timeout")
+            return SchedulerOutcome("interrupted", graph.get_results(), stop_after)
+
+        if result == "paused":
+            return SchedulerOutcome("paused", graph.get_results(), stop_after)
+        status = "completed" if graph.is_complete() else "interrupted"
+        if status == "completed" and self._on_complete:
+            try:
+                await self._on_complete(graph)
+            except Exception as exc:
+                logger.warning("on_complete failed: %s", exc)
+        return SchedulerOutcome(status, graph.get_results(), stop_after)
+
     async def _loop(
-        self, graph: TaskGraph, cancellation: CancellationToken | None = None
-    ) -> dict[str, Any]:
+        self,
+        graph: TaskGraph,
+        cancellation: CancellationToken | None = None,
+        *,
+        stop_after: str | None = None,
+    ) -> dict[str, Any] | str:
         """Dispatch ready tasks until the graph reaches a terminal state."""
         while not graph.is_complete():
+
+            if (
+                stop_after is not None
+                and graph.get_task(stop_after).status == TaskStatus.DONE
+            ):
+                return "paused"
 
             if self._cost_budget and self._cost_budget.is_exceeded():
                 logger.warning(
@@ -131,7 +180,7 @@ class Scheduler:
                 self._finalize_incomplete(graph, "user_cancelled")
                 return graph.get_results()
 
-        return graph.get_results()
+        return "completed" if stop_after is not None else graph.get_results()
 
     def _finalize_incomplete(self, graph: TaskGraph, reason: str) -> None:
         """Move unfinished graph tasks into terminal states."""

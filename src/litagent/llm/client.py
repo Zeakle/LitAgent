@@ -53,6 +53,7 @@ class OpenAICompatibleClient(BaseLLMClient):
         trace_hook=None,
         *,
         api_key: str | None = None,
+        transport_max_attempts: int = 3,
     ):
         """Initialize the OpenAI-compatible client."""
         resolved_api_key = (
@@ -71,6 +72,13 @@ class OpenAICompatibleClient(BaseLLMClient):
         self._temperature = temperature
         self._cost_budget = cost_budget
         self._trace_hook = trace_hook
+        if not 1 <= transport_max_attempts <= 3:
+            raise ValueError("transport_max_attempts must be between 1 and 3")
+        self._transport_max_attempts = transport_max_attempts
+
+    async def close(self) -> None:
+        """Release the owned HTTP client within its event loop."""
+        await self._client.close()
 
     def _emit(self, event: str, data: dict) -> None:
         """Emit a trace event."""
@@ -84,12 +92,12 @@ class OpenAICompatibleClient(BaseLLMClient):
         """Retry transient provider failures with one lifecycle per attempt."""
         from openai import APIConnectionError, APIStatusError
 
-        for attempt in range(3):
+        for attempt in range(self._transport_max_attempts):
             try:
                 return await self._chat_attempt(messages, **kwargs)
             except (APIConnectionError, APIStatusError) as exc:
                 status = getattr(exc, "status_code", None)
-                if attempt == 2 or (
+                if attempt == self._transport_max_attempts - 1 or (
                     status is not None
                     and status not in {408, 409, 429}
                     and status < 500
@@ -102,7 +110,7 @@ class OpenAICompatibleClient(BaseLLMClient):
                         # Retry events describe the next provider attempt, matching
                         # the worker/tool lifecycle contract.
                         "attempt": attempt + 2,
-                        "max_attempts": 3,
+                        "max_attempts": self._transport_max_attempts,
                         "error_type": type(exc).__name__,
                         "reason_code": "transient_provider_error",
                         "backoff_ms": 1000 * 2**attempt,

@@ -14,21 +14,31 @@ from litagent.context.budget import BudgetManager
 from litagent.context.evidence_selector import (
     EvidenceSelection,
     EvidenceSelector,
+    alias_evidence_selection,
     compact_evidence_selection,
     format_evidence_selection,
 )
 from litagent.context.pipeline import ContextLayer, ContextPipeline
 from litagent.context.templates import build_system_prompt, wrap_xml
-from litagent.evidence import collect_ledger
+from litagent.evidence import (
+    CitationAliasMap,
+    build_citation_aliases,
+    collect_ledger,
+    encode_citation_aliases,
+)
 from litagent.llm.client import BaseLLMClient
 from litagent.logging import get_logger
 from litagent.memory.manager import MemoryManager
-from litagent.observability.citations import normalize_citations_traced
+from litagent.observability.citations import (
+    decode_citations_traced,
+    normalize_citations_traced,
+)
 from litagent.observability.context import get_task_id
 from litagent.orchestrator.scheduler import Worker
 from litagent.orchestrator.task_graph import SubTask
 from litagent.skills.manager import SkillManager
 from litagent.tools.worker_tools import make_load_skill_tool
+from litagent.workbench import ReportLanguage, language_instruction
 
 logger = get_logger("agents.synthesis")
 
@@ -174,6 +184,7 @@ class SynthesisWorker(Worker):
         extractions = self._get_extractions(upstream)
         graph_data = self._get_graph_data(upstream)
         query = task.input_data.get("query", "")
+        report_language: ReportLanguage = task.input_data.get("report_language", "en")
 
         degradation_reasons: list[str] = []
 
@@ -224,13 +235,18 @@ class SynthesisWorker(Worker):
             )
             degradation_reasons.append("evidence_selector_unavailable")
 
+        aliases = build_citation_aliases(list(selection.selected_items))
         user_msg, used = await self._build_synthesis_context(
+            query=query,
+            aliases=aliases,
             extractions=extractions,
             graph_data=graph_data,
             selection=selection,
         )
         compact_selection = compact_evidence_selection(selection)
         compact_user_msg, compact_used = await self._build_synthesis_context(
+            query=query,
+            aliases=aliases,
             extractions=extractions,
             graph_data=graph_data,
             selection=compact_selection,
@@ -256,7 +272,13 @@ class SynthesisWorker(Worker):
         )
 
         system = build_system_prompt(
-            role=SYNTHESIS_ROLE, instructions=SYNTHESIS_INSTRUCTIONS, skills=skills_text
+            role=SYNTHESIS_ROLE,
+            instructions=(
+                SYNTHESIS_INSTRUCTIONS
+                + "\n\nREPORT LANGUAGE (MANDATORY):\n"
+                + language_instruction(report_language)
+            ),
+            skills=skills_text,
         )
 
         result_text, generation_reasons = await self._generate_with_bounded_fallback(
@@ -291,6 +313,14 @@ class SynthesisWorker(Worker):
             # Non-JSON output is already the draft text.
             pass
 
+        draft = decode_citations_traced(
+            draft,
+            aliases,
+            trace_hook=self._trace_hook,
+            parent_task_id=get_task_id() or task.task_id,
+            stage="initial_draft",
+            round_num=1,
+        ).text
         draft = normalize_citations_traced(
             draft,
             selection.selected_items,
@@ -323,18 +353,37 @@ class SynthesisWorker(Worker):
     async def _build_synthesis_context(
         self,
         *,
+        query: str = "",
+        aliases: CitationAliasMap | None = None,
         extractions: list[dict],
         graph_data: dict,
         selection: EvidenceSelection,
     ) -> tuple[str, int]:
         """Assemble one evidence-first synthesis context within configured caps."""
-        evidence_text = format_evidence_selection(selection)
+        evidence_text = format_evidence_selection(
+            alias_evidence_selection(selection, aliases) if aliases else selection
+        )
+
+        if query:
+            question = wrap_xml("research_question", html.escape(query, quote=False))
+            if self._budget.count_tokens(question) > min(512, self._budget.max_tokens):
+                raise ValueError("research_question_exceeds_context_budget")
+
+            async def _question_layer(state: dict) -> str:
+                """Reserve the original research question before evidence layers."""
+                return question
+
+            pipeline = ContextPipeline(self._budget)
+            pipeline.add_layer(
+                ContextLayer("research_question", -1, 512, _question_layer)
+            )
+        else:
+            pipeline = ContextPipeline(self._budget)
 
         async def _evidence_layer(state: dict) -> str:
             """Return the preformatted selected-evidence layer."""
             return evidence_text
 
-        pipeline = ContextPipeline(self._budget)
         pipeline.add_layer(
             ContextLayer(
                 "evidence",
@@ -356,6 +405,7 @@ class SynthesisWorker(Worker):
                 "extractions": extractions,
                 "graph_data": graph_data,
                 "evidence_selection": selection,
+                "citation_aliases": aliases,
             }
         )
 
@@ -412,6 +462,9 @@ class SynthesisWorker(Worker):
         draft: str,
         review_comments: str,
         evidence_selection: EvidenceSelection | Mapping[str, Any],
+        *,
+        query: str = "",
+        report_language: ReportLanguage = "en",
     ) -> list[dict[str, str]]:
         """Build revision messages against the original evidence selection."""
         if isinstance(evidence_selection, Mapping) and not isinstance(
@@ -422,10 +475,18 @@ class SynthesisWorker(Worker):
             selection = evidence_selection
 
         system = build_system_prompt(
-            role=SYNTHESIS_ROLE, instructions=REVISE_INSTRUCTIONS
+            role=SYNTHESIS_ROLE,
+            instructions=(
+                REVISE_INSTRUCTIONS
+                + "\n\nREPORT LANGUAGE (MANDATORY):\n"
+                + language_instruction(report_language)
+            ),
         )
 
-        evidence_text = format_evidence_selection(selection)
+        aliases = build_citation_aliases(list(selection.selected_items))
+        evidence_text = format_evidence_selection(
+            alias_evidence_selection(selection, aliases)
+        )
 
         return [
             {"role": "system", "content": system},
@@ -433,8 +494,15 @@ class SynthesisWorker(Worker):
                 "role": "user",
                 "content": "\n\n".join(
                     [
-                        wrap_xml("current_draft", draft),
-                        wrap_xml("reviewer_feedback", review_comments),
+                        wrap_xml("research_question", html.escape(query, quote=False)),
+                        wrap_xml(
+                            "current_draft",
+                            encode_citation_aliases(draft, aliases).text,
+                        ),
+                        wrap_xml(
+                            "reviewer_feedback",
+                            encode_citation_aliases(review_comments, aliases).text,
+                        ),
                         evidence_text,
                     ]
                 ),
@@ -442,11 +510,23 @@ class SynthesisWorker(Worker):
         ]
 
     def rewrite_with_evidence(
-        self, draft: str, ledger_text: str, diagnostics_text: str
+        self,
+        draft: str,
+        ledger_text: str,
+        diagnostics_text: str,
+        *,
+        query: str = "",
+        aliases: CitationAliasMap | None = None,
+        report_language: ReportLanguage = "en",
     ) -> list[dict]:
         """Build messages that rewrite unsupported claims against a ledger."""
         system = build_system_prompt(
-            role=SYNTHESIS_ROLE, instructions=REWRITE_INSTRUCTIONS
+            role=SYNTHESIS_ROLE,
+            instructions=(
+                REWRITE_INSTRUCTIONS
+                + "\n\nREPORT LANGUAGE (MANDATORY):\n"
+                + language_instruction(report_language)
+            ),
         )
 
         return [
@@ -455,9 +535,24 @@ class SynthesisWorker(Worker):
                 "role": "user",
                 "content": "\n\n".join(
                     [
-                        wrap_xml("current_draft", draft),
+                        wrap_xml("research_question", html.escape(query, quote=False)),
+                        wrap_xml(
+                            "current_draft",
+                            (
+                                encode_citation_aliases(draft, aliases).text
+                                if aliases
+                                else draft
+                            ),
+                        ),
                         wrap_xml("evidence_ledger", ledger_text),
-                        wrap_xml("unsupported_claims", diagnostics_text),
+                        wrap_xml(
+                            "unsupported_claims",
+                            (
+                                encode_citation_aliases(diagnostics_text, aliases).text
+                                if aliases
+                                else diagnostics_text
+                            ),
+                        ),
                     ]
                 ),
             },
@@ -485,6 +580,9 @@ class SynthesisWorker(Worker):
             state["graph_data"],
             state.get("evidence_selection"),
         )
+        aliases = state.get("citation_aliases")
+        if aliases and ctx:
+            ctx = encode_citation_aliases(ctx, aliases).text
         return wrap_xml("papers", ctx) if ctx else ""
 
     def _build_papers_context(

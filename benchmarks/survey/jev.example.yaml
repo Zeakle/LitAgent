@@ -1,0 +1,12 @@
+enabled: false
+base_url: https://api.typesafe.ai
+model: jev-1.13.0
+api_key_env: TYPESAFE_API_KEY
+timeout_seconds: 30
+max_questions_per_batch: 16
+concurrency: 2
+max_retries: 0
+confidence_threshold: 0.9
+max_requests: 20
+max_input_tokens: 200000
+max_request_bytes: 24000

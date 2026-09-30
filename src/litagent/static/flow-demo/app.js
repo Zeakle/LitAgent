@@ -1,337 +1,292 @@
+import { createApiClient, openEventStream } from "./api-client.js";
+import { renderBenchmarkDetail, renderBenchmarkList, renderBenchmarkObservation } from "./benchmark-view.js?v=15.10.3";
+import { adaptArchiveView, adaptInteractiveView, chooseDefaultSection, normalizeRunList } from "./adapters.js";
+import { evidenceMap, renderEvidenceList } from "./evidence-view.js";
+import { createExecutionWorkspace } from "./execution-workspace.js";
+import { renderExecutionInspector } from "./execution-inspector.js";
+import { renderHistory } from "./history-view.js";
+import { applyTranslations, translator } from "./i18n.js?v=15.10.3";
+import { renderQuality } from "./quality-view.js";
+import { renderOutline, renderReportDocument } from "./report-view.js";
+import { renderReview } from "./review-view.js";
+import { createWorkbenchStore } from "./state.js";
+
 const $ = (selector) => document.querySelector(selector);
-const state = { context: null, view: null, selectedRunId: null, stream: null };
+const locale = localStorage.getItem("litagent-locale") || "zh-CN";
+const store = createWorkbenchStore({ locale });
+let context = null;
+let eventSource = null;
+let inspectorTrigger = null;
+const benchmarkState = { results: [], selectedId: null, detail: null, observation: null, loaded: false };
+const api = createApiClient(() => context?.operation_token);
+const executionWorkspace = createExecutionWorkspace({ store, t, onInspect: setInspector });
 
-function formatJson(value) {
-  return JSON.stringify(value ?? null, null, 2);
+function t(key) { return translator(store.get().locale)(key); }
+function setNotice(message = "", kind = "info") {
+  const element = $("#notice");
+  element.hidden = !message;
+  element.dataset.kind = kind;
+  element.textContent = message;
 }
 
-function empty(container, message) {
-  const text = document.createElement("p");
-  text.className = "empty-state";
-  text.textContent = message;
-  container.replaceChildren(text);
-}
-
-function showInspector(label, value) {
-  $("#node-kind").textContent = label;
-  const box = $("#inspector");
-  box.classList.remove("empty");
-  box.textContent = formatJson(value);
-}
-
-function statusLabel(source) {
-  return { sample: "Offline sample", archive: "Local archive", live: "Live run" }[source] || source;
-}
-
-function renderSummary() {
-  const summary = state.view?.summary;
-  if (!summary) return;
-  $("#query").textContent = summary.query || "No query recorded";
-  $("#run-id").textContent = summary.run_id;
-  $("#run-source").textContent = statusLabel(state.view.source);
-  $("#run-status").textContent = summary.status;
-  $("#total-tokens").textContent = Number(summary.total_tokens || 0).toLocaleString();
-  $("#total-elapsed").textContent = summary.elapsed_ms == null ? "-" : `${(summary.elapsed_ms / 1000).toFixed(1)}s`;
-  $("#quality").textContent = summary.quality_status;
-  $("#delivery").textContent = summary.delivery_status;
-
-  const alert = $("#delivery-alert");
-  if (summary.publishable) {
-    alert.hidden = true;
-  } else {
-    alert.hidden = false;
-    alert.dataset.status = summary.delivery_status;
-    const reasons = summary.reason_codes.length ? ` Reasons: ${summary.reason_codes.join(", ")}.` : "";
-    alert.textContent = `Not publishable / 不可发布: ${summary.delivery_status}.${reasons}`;
-  }
-
-  const download = $("#download");
-  download.href = `/flow-demo/runs/${encodeURIComponent(summary.run_id)}/download`;
-  download.classList.remove("disabled");
-
-  const trace = $("#trace-link");
-  const traceUrl = state.view.trace?.trace_url;
-  if (traceUrl) {
-    trace.href = traceUrl;
-    trace.classList.remove("disabled");
-  } else {
-    trace.removeAttribute("href");
-    trace.classList.add("disabled");
-  }
-
-  const cancellable = state.view.source === "live" && ["queued", "running", "cancelling"].includes(summary.status);
-  $("#cancel-run").disabled = !cancellable;
-}
-
-function taskDepth(taskId, dependencies, cache, active = new Set()) {
-  if (cache.has(taskId)) return cache.get(taskId);
-  if (active.has(taskId)) return 0;
-  active.add(taskId);
-  const parents = dependencies[taskId] || [];
-  const depth = parents.length ? Math.max(...parents.map((parent) => taskDepth(parent, dependencies, cache, active))) + 1 : 0;
-  active.delete(taskId);
-  cache.set(taskId, depth);
-  return depth;
-}
-
-function renderDag() {
-  const dagData = state.view?.dag || { tasks: {}, dependencies: {}, nodes: {} };
-  const tasks = Object.entries(dagData.tasks || {});
-  const dag = $("#dag");
-  dag.replaceChildren();
-  $("#dag-count").textContent = `${tasks.length} tasks`;
-  if (!tasks.length) {
-    empty(dag, "No planner graph was recorded.");
+function setInspector(selection, trigger = null) {
+  const drawer = $("#inspector-drawer");
+  const content = $("#inspector-content");
+  if (!selection) {
+    drawer.dataset.open = "false";
+    drawer.setAttribute("aria-hidden", "true");
+    if (inspectorTrigger?.isConnected) inspectorTrigger.focus();
+    inspectorTrigger = null;
     return;
   }
-
-  const depths = new Map();
-  const lanes = new Map();
-  for (const [taskId, task] of tasks) {
-    const depth = taskDepth(taskId, dagData.dependencies || {}, depths);
-    if (!lanes.has(depth)) lanes.set(depth, []);
-    lanes.get(depth).push([taskId, task]);
+  inspectorTrigger = trigger;
+  $("#inspector-title").textContent = selection.id || selection.kind;
+  content.replaceChildren();
+  if (renderExecutionInspector(content, selection, t)) {
+    drawer.dataset.open = "true";
+    drawer.setAttribute("aria-hidden", "false");
+    $("#close-inspector").focus();
+    return;
   }
-
-  for (const [depth, laneTasks] of [...lanes.entries()].sort((a, b) => a[0] - b[0])) {
-    const lane = document.createElement("section");
-    lane.className = "dag-lane";
-    const label = document.createElement("h3");
-    label.textContent = `Stage ${depth + 1}`;
-    lane.append(label);
-    const group = document.createElement("div");
-    group.className = "dag-nodes";
-    for (const [taskId, task] of laneTasks) {
-      const node = document.importNode($("#node-template").content, true).querySelector("button");
-      const execution = dagData.nodes?.[`worker:${taskId}`] || {};
-      const status = execution.status || task.status || "unknown";
-      node.dataset.status = status;
-      node.querySelector(".node-name").textContent = `${task.agent_type || "worker"} / ${taskId}`;
-      const dependencies = dagData.dependencies?.[taskId] || [];
-      node.querySelector("small").textContent = dependencies.length ? `after ${dependencies.join(", ")}` : "root";
-      node.addEventListener("click", () => showInspector(`worker / ${taskId}`, { task, dependencies, execution }));
-      group.append(node);
+  const description = document.createElement("dl");
+  const fields = selection.kind === "evidence"
+    ? ["evidence_id", "paper_id", "paper_title", "content_scope", "locator", "confidence", "text"]
+    : [];
+  if (fields.length) {
+    for (const field of fields) {
+      if (selection.value?.[field] == null || selection.value[field] === "") continue;
+      const term = document.createElement("dt"); term.textContent = field;
+      const value = document.createElement("dd"); value.textContent = String(selection.value[field]);
+      description.append(term, value);
     }
-    lane.append(group);
-    dag.append(lane);
-  }
-}
-
-function renderTimeline() {
-  const events = state.view?.timeline || [];
-  const timeline = $("#timeline");
-  timeline.replaceChildren();
-  $("#event-count").textContent = `${events.length} events`;
-  if (!events.length) {
-    empty(timeline, "No lifecycle events were recorded.");
-    return;
-  }
-  for (const event of events) {
-    const button = document.createElement("button");
-    button.className = "event";
-    const time = document.createElement("time");
-    time.textContent = event.at ? new Date(event.at).toLocaleTimeString() : "-";
-    const name = document.createElement("span");
-    name.className = "event-name";
-    name.textContent = event.event || "unknown";
-    const task = document.createElement("span");
-    task.className = "event-task";
-    task.textContent = event.data?.task_id || event.data?.operation_id || "";
-    button.append(time, name, task);
-    button.addEventListener("click", () => showInspector(`event / ${event.event}`, event));
-    timeline.append(button);
-  }
-}
-
-function renderReport() {
-  const report = state.view?.report || {};
-  $("#report-text").textContent = report.survey || "No final report was recorded.";
-  $("#review-rounds").textContent = `${(report.review_history || []).length} review rounds`;
-}
-
-function renderEvidence() {
-  const items = state.view?.evidence || [];
-  const list = $("#evidence-list");
-  list.replaceChildren();
-  $("#evidence-count").textContent = `${items.length} items`;
-  if (!items.length) {
-    empty(list, "No selected evidence is available for this run.");
-    return;
-  }
-  for (const item of items) {
-    const article = document.createElement("article");
-    const heading = document.createElement("h3");
-    heading.textContent = `${item.evidence_id} / ${item.paper_title || item.paper_id || "Unknown paper"}`;
-    const meta = document.createElement("p");
-    meta.className = "evidence-meta";
-    const locator = typeof item.locator === "string" ? item.locator : formatJson(item.locator);
-    meta.textContent = `${item.paper_id || "no paper id"} · ${item.content_scope} · ${locator || "no locator"}`;
-    const text = document.createElement("p");
-    text.textContent = item.text || "No evidence text recorded.";
-    article.append(heading, meta, text);
-    article.addEventListener("click", () => showInspector(`evidence / ${item.evidence_id}`, item));
-    list.append(article);
-  }
-}
-
-function renderGraph() {
-  const graph = state.view?.graph || {};
-  const papers = Array.isArray(graph.papers) ? graph.papers : [];
-  $("#paper-count").textContent = `${papers.length} papers`;
-  const summary = $("#graph-summary");
-  summary.replaceChildren();
-  const counts = graph.tier_counts || {};
-  for (const [tier, count] of Object.entries(counts)) {
-    const item = document.createElement("span");
-    item.textContent = `${tier}: ${count}`;
-    summary.append(item);
-  }
-  const list = $("#paper-list");
-  list.replaceChildren();
-  if (!papers.length) {
-    empty(list, "No paper graph was produced.");
-    return;
-  }
-  for (const paper of papers) {
-    const row = document.createElement("button");
-    row.className = "paper-row";
-    row.textContent = `${paper.title || paper.paper_id || "Unknown paper"} · ${paper.tier || "unclassified"}`;
-    row.addEventListener("click", () => showInspector("paper", paper));
-    list.append(row);
-  }
-}
-
-function renderEvaluation() {
-  const evaluation = state.view?.evaluation || {};
-  const grid = $("#evaluation-grid");
-  grid.replaceChildren();
-  if (!Object.keys(evaluation).length) {
-    empty(grid, "Evaluation was not completed for this run.");
   } else {
-    for (const [metric, result] of Object.entries(evaluation)) {
-      const item = document.createElement("section");
-      item.className = "metric";
-      const name = document.createElement("h3");
-      name.textContent = metric.replaceAll("_", " ");
-      const score = document.createElement("strong");
-      score.textContent = result?.score == null ? "unverified" : Number(result.score).toFixed(3);
-      const status = document.createElement("span");
-      status.textContent = result?.passed === true ? "passed" : result?.passed === false ? "failed" : "unverified";
-      item.dataset.status = status.textContent;
-      item.append(name, score, status);
-      grid.append(item);
-    }
+    const raw = document.createElement("pre");
+    raw.textContent = JSON.stringify(selection.value ?? null, null, 2);
+    description.append(raw);
   }
-  $("#delivery-detail").textContent = formatJson({ quality: state.view?.quality || {}, delivery: state.view?.delivery || {} });
+  content.append(description);
+  drawer.dataset.open = "true";
+  drawer.setAttribute("aria-hidden", "false");
+  $("#close-inspector").focus();
 }
 
-function renderBenchmarks() {
-  const benchmarks = state.context?.benchmarks || {};
-  const list = $("#benchmark-list");
-  list.replaceChildren();
-  for (const [name, benchmark] of Object.entries(benchmarks)) {
-    const row = document.createElement("section");
-    const heading = document.createElement("h3");
-    heading.textContent = `${name.toUpperCase()} benchmark`;
-    const status = document.createElement("strong");
-    status.textContent = benchmark.status;
-    const detail = document.createElement("p");
-    detail.textContent = benchmark.result ? `Repository evidence: ${benchmark.result}` : "Formal live result is not available yet.";
-    row.append(heading, status, detail);
-    list.append(row);
+function summaryValue(value, suffix = "") { return value == null || value === "" ? "—" : `${value}${suffix}`; }
+function renderSummary(view) {
+  const summary = view?.summary || {};
+  $("#run-query").textContent = view?.identity?.query || t("noRun");
+  $("#run-source-label").textContent = view ? `${view.identity.source} / ${summary.report_language || view.identity.reportLanguage || "—"}` : "LITAGENT";
+  $("#summary-status").textContent = summaryValue(view?.identity?.status);
+  $("#summary-delivery").textContent = summaryValue(view?.delivery?.status || summary.delivery_status);
+  $("#summary-quality").textContent = summaryValue(view?.quality?.status || summary.quality_status);
+  $("#summary-tokens").textContent = summary.total_tokens == null ? "—" : Number(summary.total_tokens).toLocaleString();
+  $("#summary-elapsed").textContent = summary.elapsed_ms == null ? "—" : `${(Number(summary.elapsed_ms) / 1000).toFixed(1)}s`;
+  $("#summary-run-id").textContent = summaryValue(view?.identity?.runId);
+}
+
+function renderReport(view) {
+  const evidence = evidenceMap(view?.evidence || []);
+  const projection = view?.renderedReport?.html
+    ? view.renderedReport
+    : { html: "", headings: [], plainText: view?.report?.survey || "" };
+  if (projection.plainText && !projection.html) {
+    $("#report-document").textContent = projection.plainText;
+    $("#report-document").classList.add("render-fallback");
+    $("#report-outline").replaceChildren();
+    return;
   }
+  $("#report-document").classList.remove("render-fallback");
+  const result = renderReportDocument($("#report-document"), projection, evidence, t, (id, trigger) => setInspector({ kind: "evidence", id, value: evidence.get(id) }, trigger));
+  renderOutline($("#report-outline"), result.headings, (heading) => {
+    const target = document.getElementById(heading.anchor); if (!target) return; target.tabIndex = -1; target.scrollIntoView({ behavior: "smooth", block: "start" }); target.focus({ preventScroll: true });
+  });
+}
+
+function renderControls(view) {
+  const capabilities = view?.capabilities || {};
+  $("#cancel-run").hidden = !capabilities.canCancel;
+  $("#download-artifact").hidden = !capabilities.canDownloadArtifact;
+  $("#trace-link").hidden = !capabilities.hasTrace;
+  if (capabilities.hasTrace) $("#trace-link").href = view.trace.trace_url;
+  const versions = view?.versions || [];
+  const versionControl = $(".version-control"); versionControl.hidden = !versions.length;
+  const select = $("#version-select"); const selected = select.value; select.replaceChildren();
+  for (const version of versions) select.add(new Option(`v${version.revision} · ${version.delivery?.status || "—"}`, version.revision));
+  if ([...select.options].some((option) => option.value === selected)) select.value = selected;
+  $("#export-menu").hidden = !capabilities.canExport;
+  $("#review-tab").dataset.pending = String(Boolean(view?.review));
 }
 
 function render() {
-  renderSummary();
-  renderDag();
-  renderTimeline();
-  renderReport();
-  renderEvidence();
-  renderGraph();
-  renderEvaluation();
-  renderBenchmarks();
-}
-
-async function loadView(runId) {
-  const response = await fetch(`/flow-demo/runs/${encodeURIComponent(runId)}/view`);
-  if (!response.ok) return;
-  state.view = await response.json();
-  state.selectedRunId = runId;
-  render();
-}
-
-function stream(runId) {
-  state.stream?.close();
-  const source = new EventSource(`/flow-demo/runs/${encodeURIComponent(runId)}/events`);
-  state.stream = source;
-  source.addEventListener("trace", () => loadView(runId));
-  source.addEventListener("done", async () => {
-    await loadView(runId);
-    source.close();
-    await loadRuns(runId);
+  const state = store.get(); const view = state.view;
+  applyTranslations(document, t);
+  $("#locale-toggle").textContent = state.locale === "zh-CN" ? "EN" : "中文";
+  $("#run-count").textContent = state.runs.length;
+  renderHistory($("#run-list"), state.runs, state.selectedRunKey, $("#run-search").value, state.locale, t, selectRun);
+  renderSummary(view); renderControls(view);
+  const benchmarkActive = state.activeSection === "benchmark";
+  $("#run-summary").hidden = benchmarkActive;
+  if (benchmarkActive) {
+    $("#run-query").textContent = t("benchmarkResults");
+    $("#run-source-label").textContent = "LITAGENT / BENCHMARK";
+    for (const selector of ["#trace-link", "#download-artifact", "#cancel-run", ".version-control", "#export-menu"]) $(selector).hidden = true;
+  }
+  for (const tab of document.querySelectorAll("[data-section]")) tab.setAttribute("aria-current", tab.dataset.section === state.activeSection ? "page" : "false");
+  for (const section of document.querySelectorAll(".workbench-section")) section.hidden = section.id !== `section-${state.activeSection}`;
+  renderReport(view); executionWorkspace.render(view);
+  $("#review-stage").textContent = view?.review?.stage || "";
+  const requestId = view?.review?.request_id; const draft = state.draftReviewState[requestId] || {};
+  renderReview($("#review-content"), view?.review, draft, t, submitReview, (nextDraft) => {
+    if (requestId) state.draftReviewState[requestId] = nextDraft;
   });
-  source.onerror = () => source.close();
+  $("#evidence-count").textContent = view?.evidence?.length || 0;
+  renderEvidenceList($("#evidence-list"), view?.evidence || [], t, setInspector);
+  renderQuality($("#quality-content"), view?.runtimeEvaluation || {}, view?.quality, view?.delivery, setInspector);
+  renderBenchmarkState();
 }
 
-async function loadRuns(selectedId) {
-  const response = await fetch("/flow-demo/runs");
-  const runs = response.ok ? await response.json() : [];
-  const select = $("#archive-select");
-  select.replaceChildren();
-  for (const run of runs) {
-    const label = `${statusLabel(run.source)} · ${run.run_id} · ${run.status}`;
-    select.add(new Option(label, run.run_id));
+function renderBenchmarkState() {
+  renderBenchmarkList($("#benchmark-list"), benchmarkState.results, benchmarkState.selectedId, selectBenchmark, t);
+  renderBenchmarkDetail($("#benchmark-detail"), benchmarkState.detail, selectBenchmarkObservation, t);
+  if (benchmarkState.observation) renderBenchmarkObservation($("#benchmark-observation-detail"), benchmarkState.observation, t);
+}
+
+async function loadBenchmarks() {
+  try {
+    benchmarkState.results = await api.json("/workbench/benchmarks");
+    benchmarkState.loaded = true;
+    const preferred = benchmarkState.selectedId || benchmarkState.results[0]?.benchmark_id;
+    if (preferred) await selectBenchmark(preferred);
+    else renderBenchmarkState();
+  } catch (error) { setNotice(`${t("operationFailed")}: ${error.message}`, "error"); }
+}
+
+async function selectBenchmark(id) {
+  try {
+    const detail = await api.json(`/workbench/benchmarks/${encodeURIComponent(id)}`);
+    benchmarkState.selectedId = id;
+    benchmarkState.detail = detail;
+    benchmarkState.observation = null;
+    renderBenchmarkState();
+  } catch (error) { setNotice(`${t("operationFailed")}: ${error.message}`, "error"); }
+}
+
+async function selectBenchmarkObservation(id) {
+  try {
+    const payload = await api.json(`/workbench/benchmarks/${encodeURIComponent(benchmarkState.selectedId)}/observations/${encodeURIComponent(id)}`);
+    benchmarkState.observation = payload;
+    renderBenchmarkObservation($("#benchmark-observation-detail"), payload, t);
+  } catch (error) { setNotice(`${t("operationFailed")}: ${error.message}`, "error"); }
+}
+
+function setSection(section, user = true) {
+  store.update({ activeSection: section, sectionWasUserSelected: user || store.get().sectionWasUserSelected });
+  const params = new URLSearchParams(location.search); params.set("view", section); history.replaceState(null, "", `?${params}`);
+  if (section === "benchmark" && !benchmarkState.loaded) loadBenchmarks();
+}
+
+function connectEvents(runId, kind = "interactive") {
+  eventSource?.close();
+  eventSource = openEventStream(runId, {
+    onTrace(event) {
+      const view = store.get().view; if (!view || view.identity.runId !== runId) return;
+      const sequence = event.seq ?? event.sequence;
+      const source = event.source || "sse";
+      const known = view.events.some((item) => (
+        sequence != null
+        && (item.seq ?? item.sequence) === sequence
+        && (item.source || "sse") === source
+      ));
+      if (!known) store.update({ view: { ...view, events: [...view.events, { ...event, source }] } });
+    },
+    async onSettle() { if (kind === "interactive") await refreshInteractive(runId); else await refreshLegacy(runId, store.get().view?.identity?.query || ""); await loadRunList(); },
+  });
+}
+
+async function refreshInteractive(runId, preferredSection = null) {
+  const epoch = store.beginRequest();
+  try {
+    const raw = await api.json(`/survey/${encodeURIComponent(runId)}/view`); if (!store.isCurrent(epoch)) return;
+    const identity = store.get().runs.find((item) => item.key === `interactive:${runId}`) || { key: `interactive:${runId}`, runId, source: "interactive", query: raw.summary?.query || "", status: raw.summary?.status || "unknown" };
+    const view = adaptInteractiveView(raw, identity);
+    const activeSection = preferredSection || (store.get().sectionWasUserSelected ? store.get().activeSection : chooseDefaultSection(view));
+    store.update({ selectedRunKey: identity.key, view, activeSection, loading: false, error: null });
+    if (["queued", "running", "cancelling"].includes(view.identity.status)) connectEvents(runId);
+    return true;
+  } catch (error) { if (store.isCurrent(epoch)) { store.update({ loading: false, error }); setNotice(`${t("operationFailed")}: ${error.message}`, "error"); } return false; }
+}
+
+async function refreshLegacy(runId, query) {
+  const status = await api.json(`/survey/${encodeURIComponent(runId)}`); let report = null;
+  if (["completed", "cancelled"].includes(status.status)) report = await api.json(`/survey/${encodeURIComponent(runId)}/report`);
+  const identity = { key: `legacy:${runId}`, runId, source: "legacy", query, status: status.status };
+  const view = { identity, summary: { run_id: runId, query, status: status.status }, report, renderedReport: { html: "", headings: [] }, graph: { tasks: {}, dependencies: {}, nodes: {} }, events: [], evidence: [], runtimeEvaluation: report?.evaluation || {}, quality: report?.quality, delivery: report?.delivery, review: null, versions: [], trace: {}, capabilities: { canCancel: ["queued", "running", "cancelling"].includes(status.status) } };
+  store.update({ selectedRunKey: identity.key, view, activeSection: chooseDefaultSection(view), loading: false });
+  if (view.capabilities.canCancel) connectEvents(runId, "legacy");
+}
+
+async function selectRun(key, preferredSection = null) {
+  eventSource?.close(); api.abort(); store.update({ sectionWasUserSelected: Boolean(preferredSection) });
+  const identity = store.get().runs.find((item) => item.key === key); if (!identity) return;
+  if (identity.source === "interactive") await refreshInteractive(identity.runId, preferredSection);
+  else {
+    const epoch = store.beginRequest();
+    try { const raw = await api.json(`/flow-demo/runs/${encodeURIComponent(identity.runId)}/view`); if (!store.isCurrent(epoch)) return; const view = adaptArchiveView(raw, identity); store.update({ selectedRunKey: key, view, activeSection: preferredSection || chooseDefaultSection(view), loading: false }); }
+    catch (error) { if (store.isCurrent(epoch)) { store.update({ loading: false, error }); setNotice(`${t("operationFailed")}: ${error.message}`, "error"); } }
   }
-  const runId = selectedId || state.selectedRunId || state.context?.default_run_id || runs[0]?.run_id;
-  if (runId) {
-    select.value = runId;
-    await loadView(runId);
-  }
+  history.replaceState(null, "", `?run=${encodeURIComponent(key)}&view=${encodeURIComponent(store.get().activeSection)}`);
+  $("#run-sidebar").dataset.open = "false"; $("#sidebar-scrim").hidden = true;
+}
+
+async function loadRunList(preferred = null) {
+  const [interactive, archives] = await Promise.all([api.json("/workbench/runs"), api.json("/flow-demo/runs")]);
+  const runs = normalizeRunList(interactive, archives); store.update({ runs });
+  const key = preferred || store.get().selectedRunKey || runs[0]?.key; if (key && key !== store.get().selectedRunKey) await selectRun(key, new URLSearchParams(location.search).get("view"));
+}
+
+async function submitReview(action, values, form) {
+  const view = store.get().view; const request = view?.review; if (!request) return;
+  for (const button of form.querySelectorAll("button")) button.disabled = true;
+  const payload = { request_id: request.request_id, revision: request.revision, action };
+  if (action === "confirm") payload.selected_paper_ids = values.selectedPaperIds;
+  if (action === "revise") payload.feedback = values.feedback;
+  try { await api.json(`/survey/${encodeURIComponent(view.identity.runId)}/review/decision`, { method: "POST", mutate: true, body: payload }); if (!await refreshInteractive(view.identity.runId)) setNotice(t("submittedSyncFailed"), "error"); }
+  catch (error) { setNotice(`${t("operationFailed")}: ${error.message}`, "error"); for (const button of form.querySelectorAll("button")) button.disabled = false; }
+}
+
+async function startRun(event) {
+  event.preventDefault(); if (!context?.live_enabled) return setNotice(t("offline"), "error");
+  const query = $("#query-input").value.trim(); if (!query) return;
+  const humanReview = $("#human-review").checked;
+  try {
+    const created = await api.json("/survey", { method: "POST", mutate: true, body: { query, report_language: $("#report-language").value, human_review: humanReview } });
+    $("#new-run-dialog").close();
+    if (humanReview) { await loadRunList(`interactive:${created.task_id}`); } else { await refreshLegacy(created.task_id, query); }
+  } catch (error) { setNotice(`${t("operationFailed")}: ${error.message}`, "error"); }
 }
 
 async function initialize() {
-  const response = await fetch("/flow-demo/context");
-  state.context = response.ok ? await response.json() : { mode: "offline", live_enabled: false, benchmarks: {} };
-  $("#mode").textContent = state.context.mode.toUpperCase();
-  $("#mode").dataset.mode = state.context.mode;
-  $("#new-run").disabled = !state.context.live_enabled;
-  await loadRuns(state.context.default_run_id);
+  context = await api.json("/workbench/context"); $("#runtime-mode").textContent = context.mode;
+  $("#open-new-run").disabled = !context.live_enabled; $("#live-warning").textContent = context.live_enabled ? "" : t("offline");
+  const params = new URLSearchParams(location.search); await loadRunList(params.get("run"));
+  if (params.get("view") === "benchmark") setSection("benchmark", false);
 }
 
-$("#archive-select").addEventListener("change", (event) => {
-  if (event.target.value) loadView(event.target.value);
-});
+store.subscribe(render);
+document.querySelectorAll("[data-section]").forEach((tab) => tab.addEventListener("click", () => setSection(tab.dataset.section)));
+$("#run-search").addEventListener("input", render);
+$("#benchmark-refresh").addEventListener("click", loadBenchmarks);
+$("#close-inspector").addEventListener("click", () => setInspector(null));
+$("#open-new-run").addEventListener("click", () => $("#new-run-dialog").showModal());
+$("#close-new-run").addEventListener("click", () => $("#new-run-dialog").close());
+$("#new-run-form").addEventListener("submit", startRun);
+$("#locale-toggle").addEventListener("click", () => { const next = store.get().locale === "zh-CN" ? "en" : "zh-CN"; localStorage.setItem("litagent-locale", next); store.update({ locale: next }); });
+$("#cancel-run").addEventListener("click", async () => { const view = store.get().view; if (!view) return; await api.request(`/survey/${encodeURIComponent(view.identity.runId)}`, { method: "DELETE", mutate: true }); await refreshInteractive(view.identity.runId); });
+$("#download-artifact").addEventListener("click", () => { const view = store.get().view; if (view) location.href = `/flow-demo/runs/${encodeURIComponent(view.identity.runId)}/download`; });
+$("#version-select").addEventListener("change", async (event) => { const view = store.get().view; const previous = view.report; try { const version = await api.json(`/survey/${encodeURIComponent(view.identity.runId)}/versions/${event.target.value}`); store.update({ view: { ...view, report: version.report, renderedReport: version.rendered_report, runtimeEvaluation: version.report.evaluation || {}, quality: version.report.quality, delivery: version.report.delivery } }); } catch (error) { view.report = previous; setNotice(`${t("operationFailed")}: ${error.message}`, "error"); } });
+document.querySelectorAll("[data-format]").forEach((button) => button.addEventListener("click", () => { const view = store.get().view; const revision = $("#version-select").value; if (view && revision) { const style = $("#export-style").value; location.href = `/survey/${encodeURIComponent(view.identity.runId)}/export?revision=${revision}&format=${button.dataset.format}&citation_style=${style}`; } }));
+$("#sidebar-toggle").addEventListener("click", () => { $("#run-sidebar").dataset.open = "true"; $("#sidebar-scrim").hidden = false; });
+$("#sidebar-scrim").addEventListener("click", () => { $("#run-sidebar").dataset.open = "false"; $("#sidebar-scrim").hidden = true; });
+executionWorkspace.bind();
 
-$("#new-run").addEventListener("click", async () => {
-  const button = $("#new-run");
-  button.disabled = true;
-  try {
-    const response = await fetch("/flow-demo/runs", { method: "POST" });
-    if (!response.ok) return;
-    const run = await response.json();
-    await loadRuns(run.run_id);
-    stream(run.run_id);
-  } finally {
-    button.disabled = !state.context?.live_enabled;
-  }
-});
-
-$("#cancel-run").addEventListener("click", async () => {
-  const runId = state.view?.summary?.run_id;
-  if (!runId) return;
-  await fetch(`/survey/${encodeURIComponent(runId)}`, { method: "DELETE" });
-  await loadView(runId);
-});
-
-for (const tab of document.querySelectorAll('[role="tab"]')) {
-  tab.addEventListener("click", () => {
-    for (const candidate of document.querySelectorAll('[role="tab"]')) {
-      const selected = candidate === tab;
-      candidate.setAttribute("aria-selected", String(selected));
-      $(`#tab-${candidate.dataset.tab}`).hidden = !selected;
-    }
-  });
-}
-
-initialize();
+render();
+initialize().catch((error) => setNotice(`${t("operationFailed")}: ${error.message}`, "error"));

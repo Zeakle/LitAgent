@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
@@ -52,6 +53,105 @@ class TaskGraph:
         """Add or replace a task with its dependency IDs."""
         self._tasks[task.task_id] = task
         self._deps[task.task_id] = set(depends_on or [])
+
+    def to_snapshot(self) -> dict[str, Any]:
+        """Serialize graph state at a quiescent execution boundary."""
+        snapshot = {
+            "schema_version": 1,
+            "tasks": [
+                {
+                    "task_id": task.task_id,
+                    "description": task.description,
+                    "agent_type": task.agent_type,
+                    "input_data": task.input_data,
+                    "output_schema": task.output_schema,
+                    "status": task.status.value,
+                    "priority": task.priority,
+                    "timeout_ms": task.timeout_ms,
+                    "max_retries": task.max_retries,
+                    "result": task.result,
+                    "error": task.error,
+                }
+                for task in self._tasks.values()
+            ],
+            "dependencies": {
+                task_id: sorted(dependencies)
+                for task_id, dependencies in self._deps.items()
+            },
+        }
+        try:
+            json.dumps(snapshot)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("task_graph_not_json_serializable") from exc
+        return snapshot
+
+    @classmethod
+    def from_snapshot(cls, data: dict[str, Any]) -> "TaskGraph":
+        """Restore and validate a graph without converting corruption to new work."""
+        if not isinstance(data, dict) or data.get("schema_version") != 1:
+            raise ValueError("unsupported_task_graph_snapshot")
+        raw_tasks = data.get("tasks")
+        dependencies = data.get("dependencies")
+        if not isinstance(raw_tasks, list) or not isinstance(dependencies, dict):
+            raise ValueError("invalid_task_graph_snapshot")
+
+        graph = cls()
+        seen: set[str] = set()
+        for raw in raw_tasks:
+            if not isinstance(raw, dict):
+                raise ValueError("invalid_task_record")
+            task_id = raw.get("task_id")
+            if not isinstance(task_id, str) or not task_id or task_id in seen:
+                raise ValueError("invalid_or_duplicate_task_id")
+            seen.add(task_id)
+            try:
+                status = TaskStatus(raw.get("status", "pending"))
+            except ValueError as exc:
+                raise ValueError("invalid_task_status") from exc
+            if status == TaskStatus.RUNNING:
+                raise ValueError("running_task_not_resumable")
+            if status == TaskStatus.DONE and "result" not in raw:
+                raise ValueError("done_task_missing_result")
+            graph._tasks[task_id] = SubTask(
+                task_id=task_id,
+                description=str(raw.get("description") or ""),
+                agent_type=str(raw.get("agent_type") or ""),
+                input_data=dict(raw.get("input_data") or {}),
+                output_schema=dict(raw.get("output_schema") or {}),
+                status=status,
+                priority=int(raw.get("priority", 0)),
+                timeout_ms=int(raw.get("timeout_ms", 120000)),
+                max_retries=int(raw.get("max_retries", 2)),
+                result=raw.get("result"),
+                error=raw.get("error"),
+            )
+
+        if set(dependencies) != seen:
+            raise ValueError("dependency_keys_mismatch")
+        for task_id, raw_deps in dependencies.items():
+            if not isinstance(raw_deps, list) or any(
+                not isinstance(dep, str) or dep not in seen for dep in raw_deps
+            ):
+                raise ValueError("unknown_dependency")
+            graph._deps[task_id] = set(raw_deps)
+
+        visiting: set[str] = set()
+        visited: set[str] = set()
+
+        def visit(task_id: str) -> None:
+            if task_id in visiting:
+                raise ValueError("cyclic_task_graph")
+            if task_id in visited:
+                return
+            visiting.add(task_id)
+            for dependency in graph._deps[task_id]:
+                visit(dependency)
+            visiting.remove(task_id)
+            visited.add(task_id)
+
+        for task_id in seen:
+            visit(task_id)
+        return graph
 
     def get_task(self, task_id: str) -> SubTask | None:
         """Return a task by ID."""

@@ -14,6 +14,7 @@ from typing import Any, Callable
 from langchain_core.documents import Document
 
 from litagent.context.budget import BudgetManager
+from litagent.evidence import CitationAliasMap
 from litagent.logging import get_logger
 from litagent.observability.context import get_task_id
 from litagent.rag.interfaces import Reranker, ScoredDoc
@@ -664,3 +665,27 @@ def format_evidence_selection(selection: EvidenceSelection) -> str:
     ledger = "<evidence_ledger>\n" + "\n".join(ledger_parts) + "\n</evidence_ledger>"
 
     return plan + "\n" + ledger
+
+
+def alias_evidence_selection(
+    selection: EvidenceSelection, aliases: CitationAliasMap
+) -> EvidenceSelection:
+    """Project selected IDs for LLM prompts without changing the trusted selection."""
+    inverse = aliases.evidence_id_to_alias
+    if set(inverse) != set(selection.selected_items):
+        raise ValueError("citation alias inventory differs from selected evidence")
+    return EvidenceSelection(
+        candidate_count=selection.candidate_count,
+        selected_items={
+            inverse[eid]: {**item, "evidence_id": inverse[eid]}
+            for eid, item in selection.selected_items.items()
+        },
+        section_evidence_ids={
+            key: [inverse[eid] for eid in values]
+            for key, values in selection.section_evidence_ids.items()
+        },
+        method_by_section=dict(selection.method_by_section),
+        omitted_count=selection.omitted_count,
+        estimated_tokens=selection.estimated_tokens,
+        ranking_decisions=list(selection.ranking_decisions),
+    )

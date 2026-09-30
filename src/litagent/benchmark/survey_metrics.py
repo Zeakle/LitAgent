@@ -27,7 +27,7 @@ from litagent.evidence import (
 )
 from litagent.rag.models import normalize_paper_identity
 
-METRICS_VERSION = "survey-metrics-v3-citation-contract"
+METRICS_VERSION = "survey-metrics-v4-paired-downstream"
 
 
 def _mean_optional(values: Sequence[float | int | None]) -> float | None:
@@ -302,6 +302,27 @@ def _stage_latencies(artifact: Mapping[str, Any]) -> dict[str, int]:
     return {stage: elapsed for stage, elapsed in latencies.items() if elapsed}
 
 
+def _controlled_downstream_ms(artifact: Mapping[str, Any]) -> int | None:
+    """Measure one recorded wall-clock interval, never infer it by span sums."""
+    start = None
+    for event in artifact.get("events", []):
+        if not isinstance(event, Mapping):
+            continue
+        if event.get("event") == "external_inputs_ready":
+            try:
+                start = datetime.fromisoformat(str(event["at"]))
+            except (KeyError, ValueError):
+                return None
+        elif event.get("event") == "survey.complete" and start is not None:
+            try:
+                end = datetime.fromisoformat(str(event["at"]))
+                elapsed = (end - start).total_seconds() * 1000
+            except (KeyError, ValueError, TypeError):
+                return None
+            return round(elapsed) if elapsed >= 0 else None
+    return None
+
+
 def evaluate_survey_artifact(
     *,
     case: SurveyBenchmarkCase,
@@ -399,6 +420,7 @@ def evaluate_survey_artifact(
         delivery_accurate=delivery_status in case.allowed_delivery_statuses,
         partial=bool(report.get("partial", False)),
         elapsed_ms=max(0, int(artifact.get("elapsed_ms") or 0)),
+        controlled_downstream_ms=_controlled_downstream_ms(artifact),
         stage_latency_ms=_stage_latencies(artifact),
         cost=RuntimeCostMetrics(
             usage_complete=missing_usage == 0,
@@ -503,6 +525,9 @@ def _aggregate_case(group: Sequence[SurveyCaseObservation]) -> SurveyCaseAggrega
         elapsed_ms=_mean_optional(
             [item.metrics.elapsed_ms for item in valid if item.metrics]
         ),
+        controlled_downstream_ms=_mean_optional(
+            [item.metrics.controlled_downstream_ms for item in valid if item.metrics]
+        ),
     )
 
 
@@ -562,6 +587,9 @@ def _aggregate_profile(
         ),
         latency_p50_ms=_percentile_optional([item.elapsed_ms for item in cases], 0.50),
         latency_p95_ms=_percentile_optional([item.elapsed_ms for item in cases], 0.95),
+        controlled_downstream_p95_ms=_percentile_optional(
+            [item.controlled_downstream_ms for item in cases], 0.95
+        ),
         delivery_distribution=delivery_distribution,
         stage_latency_p95_ms={
             stage: value

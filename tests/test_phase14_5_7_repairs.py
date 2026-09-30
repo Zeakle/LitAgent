@@ -137,8 +137,9 @@ def test_negative_subclaim_does_not_capture_other_sentence_references():
         [{"statement": "A is false", "verdict": 0, "reason": "not entailed"}],
         {"e1", "e2"},
     )
-    assert result[0]["alignment_status"] == "unmapped"
-    assert result[0]["evidence_ids"] == []
+    assert result[0]["alignment_status"] == "exact"
+    assert result[0]["citation_scope"] == "exact"
+    assert result[0]["evidence_ids"] == ["e1"]
 
 
 @pytest.mark.asyncio

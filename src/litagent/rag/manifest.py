@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import hashlib
+from datetime import date
 from pathlib import Path
+from typing import Literal
 from urllib.parse import urlsplit
 
 import yaml
@@ -47,12 +49,35 @@ class ManifestPaper(BaseModel):
     paper_id: str
     title: str
     abstract: str = ""
+    abstract_summary: str | None = None
+    abstract_source: Literal["unknown", "summary", "arxiv_api"] = "unknown"
+    abstract_source_version: str | None = None
+    abstract_url: str | None = None
+    abstract_accessed_at: date | None = None
+    abstract_sha256: str | None = None
     authors: list[str] = Field(default_factory=list)
     year: int | None = None
     doi: str | None = None
     arxiv_id: str | None = None
     license: str | None = None
     pdf: PDFSource | None = None
+
+    @model_validator(mode="after")
+    def _validate_abstract_origin(self):
+        """Bind original abstracts to the exact arXiv source and bytes."""
+        if self.abstract_source != "arxiv_api":
+            return self
+        expected_url = f"https://arxiv.org/abs/{self.arxiv_id}"
+        if (
+            not self.arxiv_id
+            or self.abstract_source_version != "arxiv_atom_v1"
+            or self.abstract_url != expected_url
+            or self.abstract_accessed_at is None
+            or self.abstract_sha256
+            != hashlib.sha256(self.abstract.strip().encode("utf-8")).hexdigest()
+        ):
+            raise ValueError("abstract_sha256 or source metadata mismatch")
+        return self
 
 
 class CorpusManifest(BaseModel):
@@ -76,12 +101,14 @@ class CorpusManifest(BaseModel):
                     license=paper.license,
                 )
             ]
-            if paper.arxiv_id:
+            if paper.arxiv_id and paper.abstract_source == "arxiv_api":
                 sources.append(
                     SourceRef(
                         kind=SourceKind.ARXIV_METADATA,
                         source_id=paper.arxiv_id,
+                        uri=paper.abstract_url,
                         license=paper.license,
+                        sha256=paper.abstract_sha256,
                     )
                 )
 

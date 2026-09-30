@@ -25,6 +25,7 @@ from litagent.benchmark.survey_judge import (
     judge_prompt_fingerprint,
 )
 from litagent.benchmark.survey_metrics import (
+    METRICS_VERSION,
     aggregate_profiles,
     artifact_evidence_ledger,
     evaluate_survey_artifact,
@@ -32,6 +33,7 @@ from litagent.benchmark.survey_metrics import (
 )
 from litagent.benchmark.survey_models import (
     ExternalInputSnapshot,
+    JudgeUsage,
     SurveyBenchmarkBudget,
     SurveyBenchmarkCase,
     SurveyBenchmarkDataset,
@@ -39,8 +41,14 @@ from litagent.benchmark.survey_models import (
     SurveyBenchmarkResult,
     SurveyCaseObservation,
     SurveyJudgeConfig,
+    SurveyJudgeMetrics,
     SurveyProfileComparison,
     SurveyProfileSummary,
+)
+from litagent.benchmark.survey_recovery import (
+    SurveyRecoveryStore,
+    recovery_key,
+    verified_product,
 )
 from litagent.config import AppConfig
 from litagent.contracts import build_config_summary
@@ -241,6 +249,18 @@ def runtime_prompt_source_fingerprint() -> str:
     )
 
 
+def product_source_fingerprint() -> str:
+    """Fingerprint product code independently of benchmark/Judge implementation."""
+    root = Path(__file__).resolve().parents[1]
+    return _hash_files(
+        [
+            path
+            for path in root.rglob("*.py")
+            if "benchmark" not in path.relative_to(root).parts
+        ]
+    )
+
+
 def _rank_key(summary: SurveyProfileSummary) -> tuple[float, ...]:
     """Rank profiles lexicographically without manufacturing a total score."""
     quality = (
@@ -285,9 +305,10 @@ def _profile_comparisons(
         dict
     )
     for observation in observations:
-        by_cohort[(observation.case_id, observation.repetition)][
-            observation.profile_id
-        ] = observation
+        cohort = by_cohort[(observation.case_id, observation.repetition)]
+        if observation.profile_id in cohort:
+            raise ValueError("duplicate benchmark cohort observation")
+        cohort[observation.profile_id] = observation
     fields = (
         "valid_observation_rate",
         "delivery_accuracy",
@@ -299,6 +320,23 @@ def _profile_comparisons(
         "total_tokens",
         "latency_p95_ms",
     )
+
+    def available(item: SurveyCaseObservation, field: str) -> bool:
+        metrics = item.metrics
+        if field == "valid_observation_rate":
+            return True
+        if item.status != "completed" or metrics is None:
+            return False
+        if field == "total_tokens":
+            return metrics.cost.usage_complete
+        if field == "latency_p95_ms":
+            return metrics.controlled_downstream_ms is not None
+        if field in {"faithfulness", "topic_coverage"}:
+            return bool(item.judge and getattr(item.judge, field) is not None)
+        if field == "citation_precision":
+            return metrics.citations.precision is not None
+        return True
+
     comparisons: list[SurveyProfileComparison] = []
     for left_id, right_id in combinations(sorted(by_profile), 2):
         shared = [
@@ -312,15 +350,67 @@ def _profile_comparisons(
             if not values[left_id].external_input_fingerprint
             or values[left_id].external_input_fingerprint
             != values[right_id].external_input_fingerprint
+            or any(
+                getattr(values[left_id], name)
+                and getattr(values[right_id], name)
+                and getattr(values[left_id], name) != getattr(values[right_id], name)
+                for name in (
+                    "dataset_fingerprint",
+                    "manifest_fingerprint",
+                    "generation_model",
+                    "judge_model",
+                    "judge_config_fingerprint",
+                    "prompt_source_fingerprint",
+                    "git_sha",
+                )
+                if hasattr(values[left_id], name)
+            )
         ]
         comparable = bool(shared) and not mismatches
-        left = by_profile[left_id]
-        right = by_profile[right_id]
         deltas: dict[str, float | None] = {}
+        paired_counts: dict[str, int] = {}
+        exclusions: dict[str, list[str]] = {}
         if comparable:
             for field in fields:
-                left_value = getattr(left, field)
-                right_value = getattr(right, field)
+                exclusions[field] = [
+                    f"{values[left_id].case_id}:r{values[left_id].repetition}:"
+                    + ",".join(
+                        f"{profile_id}_unavailable"
+                        for profile_id in (left_id, right_id)
+                        if not available(values[profile_id], field)
+                    )
+                    for values in shared
+                    if not (
+                        available(values[left_id], field)
+                        and available(values[right_id], field)
+                    )
+                ]
+                paired = [
+                    values
+                    for values in shared
+                    if available(values[left_id], field)
+                    and available(values[right_id], field)
+                ]
+                paired_counts[field] = len(paired)
+                if not paired:
+                    deltas[field] = None
+                    continue
+                paired_observations = [
+                    values[profile_id]
+                    for values in paired
+                    for profile_id in (left_id, right_id)
+                ]
+                _, paired_summaries = aggregate_profiles(paired_observations)
+                paired_by_profile = {
+                    summary.profile_id: summary for summary in paired_summaries
+                }
+                summary_field = (
+                    "controlled_downstream_p95_ms"
+                    if field == "latency_p95_ms"
+                    else field
+                )
+                left_value = getattr(paired_by_profile[left_id], summary_field)
+                right_value = getattr(paired_by_profile[right_id], summary_field)
                 deltas[field] = (
                     float(left_value) - float(right_value)
                     if left_value is not None and right_value is not None
@@ -332,6 +422,8 @@ def _profile_comparisons(
                 right_profile_id=right_id,
                 comparable=comparable,
                 shared_cohort_count=len(shared),
+                metric_paired_counts=paired_counts,
+                metric_exclusion_reasons=exclusions,
                 metric_deltas=deltas,
                 reason_codes=([] if comparable else ["non_comparable_external_inputs"]),
             )
@@ -363,13 +455,14 @@ class SurveyBenchmarkRunner:
         self._budget = budget
         self._budget_observations: list[SurveyCaseObservation] = []
         self._halt_reason_codes: list[str] = []
+        self._recovery = SurveyRecoveryStore(artifacts)
 
     def _reset_budget_state(self) -> None:
         """Reset accounting before one top-level benchmark stage."""
         self._budget_observations = []
         self._halt_reason_codes = []
 
-    def _budget_allows_new_observation(self) -> bool:
+    def _budget_allows_new_observation(self, *, judge_only: bool = False) -> bool:
         """Stop before the next paid run once any configured cap is reached."""
         if self._budget is None:
             return True
@@ -381,13 +474,22 @@ class SurveyBenchmarkRunner:
         judge_tokens = sum(
             item.judge_usage.total_tokens for item in self._budget_observations
         )
+        observation_count = len(self._budget_observations)
+        if self._uses_live_executor:
+            accounting = self._recovery.accounting()
+            product_tokens = accounting["product_tokens"]
+            judge_tokens = accounting["judge_tokens"]
+            observation_count = accounting["products"]
+            if not accounting["usage_complete"]:
+                self._halt_reason_codes.append("budget_usage_unknown")
+                return False
         checks = (
             (
-                len(self._budget_observations) >= self._budget.max_observations,
+                not judge_only and observation_count >= self._budget.max_observations,
                 "budget_exhausted:max_observations",
             ),
             (
-                product_tokens >= self._budget.max_product_tokens,
+                not judge_only and product_tokens >= self._budget.max_product_tokens,
                 "budget_exhausted:max_product_tokens",
             ),
             (
@@ -417,6 +519,206 @@ class SurveyBenchmarkRunner:
             raise ValueError(
                 f"survey benchmark requires {self._judge_config.api_key_env}"
             )
+
+    async def rejudge(
+        self,
+        *,
+        source: Path,
+        dataset: SurveyBenchmarkDataset,
+        case_ids: Sequence[str] = (),
+        profile_ids: Sequence[str] = (),
+        dry_run: bool = False,
+    ) -> dict[str, Any]:
+        """Audit explicit frozen reports; never initialize product or corpus services."""
+        raw = source.read_bytes()
+        original = SurveyBenchmarkResult.model_validate_json(raw)
+        selected = [
+            item
+            for item in original.observations
+            if (not case_ids or item.case_id in case_ids)
+            and (not profile_ids or item.profile_id in profile_ids)
+        ]
+        if (
+            not selected
+            or set(case_ids) - {item.case_id for item in selected}
+            or set(profile_ids) - {item.profile_id for item in selected}
+        ):
+            raise ValueError("judge_only_selection_not_found")
+        entries = []
+        for item in selected:
+            artifact = verified_product(item)
+            case = dataset.case_by_id(item.case_id)
+            if artifact.get("query") != case.query:
+                raise ValueError("judge_only_query_mismatch")
+            entries.append((item, artifact, case))
+        actions = []
+        for item, artifact, case in entries:
+            key = self._judge_key(case, item, artifact)
+            state = self._recovery.judge(key)
+            actions.append(
+                {
+                    "run_id": item.run_id,
+                    "product": "reuse",
+                    "judge": (
+                        "reuse"
+                        if state.get("metrics", {}).get("status") == "completed"
+                        else (
+                            "audit" if state.get("inventory") else "inventory_and_audit"
+                        )
+                    ),
+                    "artifact_sha256": item.artifact_sha256,
+                }
+            )
+            if (
+                item.status != "completed"
+                or item.metrics is None
+                or item.metrics.partial
+            ):
+                actions[-1]["judge"] = "blocked_product_incomplete"
+        payload = {
+            "run_id": f"survey-rejudge-{uuid.uuid4().hex}",
+            "benchmark_type": "survey_rejudge",
+            "status": "planned",
+            "formal_eligible": False,
+            "source_path": str(source.resolve()),
+            "source_sha256": f"sha256:{hashlib.sha256(raw).hexdigest()}",
+            "judge_config_fingerprint": self._judge_config.fingerprint,
+            "judge_prompt_fingerprint": judge_prompt_fingerprint(),
+            "actions": actions,
+            "observations": [],
+            "reason_codes": ["diagnostic_rejudge_not_baseline"],
+        }
+        if dry_run:
+            return payload
+        if self._budget is None:
+            raise ValueError("judge-only execution requires explicit budgets")
+        if not os.getenv(self._judge_config.api_key_env):
+            raise ValueError(f"judge-only requires {self._judge_config.api_key_env}")
+        if len(entries) > self._budget.max_observations:
+            raise ValueError("judge-only selection exceeds max_observations")
+        self._reset_budget_state()
+        # Import source provenance separately; these bytes are never rewritten.
+        for item, artifact, case in entries:
+            slot = recovery_key({"imported_artifact": item.artifact_sha256})
+            if self._recovery.product(slot, item.artifact_sha256) is None:
+                self._recovery.save_product(slot, item.artifact_sha256, item)
+            result = await self._judge_product(case, self._base_config, item, artifact)
+            payload["observations"].append(result.model_dump(mode="json"))
+            payload["status"] = "partial"
+            payload["accounting"] = self._recovery.accounting()
+            self._artifacts.write(payload)
+            if result.judge is None or result.judge.status != "completed":
+                break
+        if len(payload["observations"]) == len(entries) and all(
+            item["judge"] and item["judge"]["status"] == "completed"
+            for item in payload["observations"]
+        ):
+            payload["status"] = "succeeded"
+        self._artifacts.write(payload)
+        return payload
+
+    def _judge_key(
+        self,
+        case: SurveyBenchmarkCase,
+        product: SurveyCaseObservation,
+        artifact: dict[str, Any],
+    ) -> str:
+        """Bind audit recovery to exact inputs and the current Judge contract."""
+        return recovery_key(
+            {
+                "survey": str((artifact.get("report") or {}).get("survey") or ""),
+                "ledger": artifact_evidence_ledger(artifact),
+                "artifact_sha": product.artifact_sha256,
+                "case": case.model_dump(mode="json"),
+                "config": self._judge_config.fingerprint,
+                "prompt": judge_prompt_fingerprint(),
+            }
+        )
+
+    def plan_matrix(
+        self,
+        dataset: SurveyBenchmarkDataset,
+        cases: Sequence[SurveyBenchmarkCase],
+        profiles: Sequence[SurveyBenchmarkProfile],
+    ) -> dict[str, Any]:
+        """Inspect first-pass recovery actions without credentials or service access."""
+        actions = []
+        for case in cases:
+            for profile in profiles:
+                slot, identity = self._product_identity(dataset, case, profile, 1)
+                try:
+                    product = self._recovery.product(slot, identity)
+                    action = {
+                        "case_id": case.case_id,
+                        "profile_id": profile.profile_id,
+                        "product": "reuse" if product else "generate",
+                    }
+                    if product:
+                        state = self._recovery.judge(
+                            self._judge_key(case, product, verified_product(product))
+                        )
+                        action["judge"] = (
+                            "reuse"
+                            if state.get("metrics", {}).get("status") == "completed"
+                            else (
+                                "audit"
+                                if state.get("inventory")
+                                else "inventory_and_audit"
+                            )
+                        )
+                    else:
+                        action["judge"] = "inventory_and_audit"
+                    if product and (
+                        product.status != "completed"
+                        or product.metrics is None
+                        or product.metrics.partial
+                    ):
+                        action["judge"] = "blocked_product_incomplete"
+                except (ValueError, OSError) as exc:
+                    action = {
+                        "case_id": case.case_id,
+                        "profile_id": profile.profile_id,
+                        "product": "blocked",
+                        "reason": str(exc),
+                    }
+                actions.append(action)
+        return {
+            "status": "planned",
+            "actions": actions,
+            "accounting": self._recovery.accounting(),
+            "budget": self._budget.model_dump() if self._budget else None,
+        }
+
+    def _product_identity(
+        self,
+        dataset: SurveyBenchmarkDataset,
+        case: SurveyBenchmarkCase,
+        profile: SurveyBenchmarkProfile,
+        repetition: int,
+    ) -> tuple[str, str]:
+        """Keep a stable slot and reject changed product inputs within an output root."""
+        slot = recovery_key(
+            {
+                "case_id": case.case_id,
+                "profile_id": profile.profile_id,
+                "repetition": repetition,
+            }
+        )
+        identity = recovery_key(
+            {
+                "case": case.model_dump(mode="json"),
+                "profile": profile.fingerprint,
+                "config": build_config_summary(
+                    self._config_for(profile, dataset.dataset_version)
+                )["fingerprint"],
+                "product_source": product_source_fingerprint(),
+                "dataset": dataset.fingerprint,
+                "manifest": _hash_files(
+                    [Path(path) for path in dataset.manifest_paths]
+                ),
+            }
+        )
+        return slot, identity
 
     def _config_for(
         self, profile: SurveyBenchmarkProfile, dataset_version: str
@@ -530,9 +832,7 @@ class SurveyBenchmarkRunner:
                     "semantic_scholar_enabled": bool(
                         os.environ.get("SEMANTIC_SCHOLAR_API_KEY")
                     ),
-                    "git_sha": git_sha,
-                    "git_dirty": git_dirty,
-                    "prompt_source_fingerprint": prompt_fingerprint,
+                    "product_source_fingerprint": product_source_fingerprint(),
                     "dataset_fingerprint": dataset_fingerprint,
                     "manifest_fingerprint": manifest_fingerprint,
                 }
@@ -578,9 +878,19 @@ class SurveyBenchmarkRunner:
                     }
                 )
                 checkpoint = self._artifacts.read_checkpoint(
-                    "survey-observations", checkpoint_key
+                    "survey-observations",
+                    checkpoint_key,
+                    strict=self._uses_live_executor,
                 )
                 observation = None
+                product_slot, product_identity = self._product_identity(
+                    dataset, case, profile, repetition
+                )
+                product = (
+                    self._recovery.product(product_slot, product_identity)
+                    if self._uses_live_executor
+                    else None
+                )
                 if checkpoint is not None:
                     try:
                         candidate = SurveyCaseObservation.model_validate(checkpoint)
@@ -599,6 +909,32 @@ class SurveyBenchmarkRunner:
                         )
                     ):
                         observation = candidate
+                    elif self._uses_live_executor and product is None:
+                        raise ValueError(
+                            "legacy_observation_requires_explicit_judge_only_import"
+                        )
+
+                if observation is None and product is not None:
+                    artifact = verified_product(product)
+                    product = product.model_copy(
+                        update={
+                            "metrics": evaluate_survey_artifact(
+                                case=case,
+                                artifact=artifact,
+                                judged_paper_ids=self._judged_paper_ids
+                                or set(dataset.corpus_paper_ids),
+                            )
+                        }
+                    )
+                    if (
+                        snapshot is not None
+                        and product.external_input_fingerprint
+                        != snapshot.external_input_fingerprint
+                    ):
+                        raise ValueError("product_external_inputs_mismatch")
+                    observation = await self._judge_product(
+                        case, config, product, artifact
+                    )
 
                 if observation is None:
                     if not self._budget_allows_new_observation():
@@ -631,6 +967,16 @@ class SurveyBenchmarkRunner:
                                 config,
                                 repetition,
                                 external_inputs=replay,
+                                product_slot=product_slot,
+                                product_identity=product_identity,
+                                provenance={
+                                    "git_sha": git_sha,
+                                    "git_dirty": git_dirty,
+                                    "profile_fingerprint": profile.fingerprint,
+                                    "prompt_source_fingerprint": product_source_fingerprint(),
+                                    "dataset_fingerprint": dataset_fingerprint,
+                                    "manifest_fingerprint": manifest_fingerprint,
+                                },
                             )
                         else:
                             observation = await self._case_executor(
@@ -655,8 +1001,12 @@ class SurveyBenchmarkRunner:
                     update={
                         "generation_model": self._base_config.llm.model,
                         "judge_model": self._judge_config.model,
-                        "git_sha": git_sha,
-                        "git_dirty": git_dirty,
+                        "git_sha": observation.git_sha or git_sha,
+                        "git_dirty": (
+                            observation.git_dirty
+                            if observation.git_dirty is not None
+                            else git_dirty
+                        ),
                         "config_fingerprint": config_fingerprint,
                         "profile_fingerprint": profile.fingerprint,
                         "prompt_source_fingerprint": prompt_fingerprint,
@@ -1033,7 +1383,6 @@ class SurveyBenchmarkRunner:
             status == "succeeded"
             and stage != "pilot"
             and dataset.judgment_status in BASELINE_ELIGIBLE_JUDGMENT_STATUSES
-            and not self_judged
         )
         if self_judged:
             final_reasons.append("self_judged")
@@ -1044,6 +1393,7 @@ class SurveyBenchmarkRunner:
         manifest_paths = [Path(path) for path in dataset.manifest_paths]
         config_summary = build_config_summary(self._base_config)
         return SurveyBenchmarkResult(
+            metrics_version=METRICS_VERSION,
             run_id=f"survey-{stage}-{uuid.uuid4().hex}",
             status=status,
             stage=stage,
@@ -1092,8 +1442,12 @@ class SurveyBenchmarkRunner:
         repetition: int,
         *,
         external_inputs: ExternalInputReplay | None = None,
+        product_slot: str,
+        product_identity: str,
+        provenance: Mapping[str, Any] | None = None,
     ) -> SurveyCaseObservation:
         """Run one real Survey, persist it, then invoke the independent Judge."""
+        self._recovery.save_product(product_slot, product_identity, None)
         run_id = (
             f"survey-{profile.profile_id}-{case.case_id}-r{repetition}-"
             f"{uuid.uuid4().hex[:12]}"
@@ -1129,7 +1483,7 @@ class SurveyBenchmarkRunner:
                 report=report,
                 terminal_status="completed",
             )
-        except Exception as exc:
+        except BaseException as exc:
             error = f"survey_run_failed:{type(exc).__name__}"
             self._finalize_survey_artifact(
                 recorder,
@@ -1138,7 +1492,7 @@ class SurveyBenchmarkRunner:
                 terminal_status="failed",
             )
             artifact_path = self._run_archive.path_for(run_id)
-            return SurveyCaseObservation(
+            failed_product = SurveyCaseObservation(
                 run_id=run_id,
                 case_id=case.case_id,
                 domain=case.domain,
@@ -1154,6 +1508,10 @@ class SurveyBenchmarkRunner:
                 survey_trace_url=survey_tracer.trace_url,
                 reason_codes=[error],
             )
+            self._recovery.save_product(product_slot, product_identity, failed_product)
+            if isinstance(exc, (asyncio.CancelledError, KeyboardInterrupt, SystemExit)):
+                raise
+            return failed_product
 
         artifact_path = self._run_archive.path_for(run_id)
         metrics = evaluate_survey_artifact(
@@ -1161,45 +1519,7 @@ class SurveyBenchmarkRunner:
             artifact=artifact,
             judged_paper_ids=self._judged_paper_ids,
         )
-        judge_trace = LangFuseTracer(
-            host=config.observability.langfuse_host,
-            public_key=os.getenv("LANGFUSE_PUBLIC_KEY", ""),
-            secret_key=os.getenv("LANGFUSE_SECRET_KEY", ""),
-            trace_seed=f"{run_id}:judge",
-        )
-        judge_hook = RedactingTraceHook(
-            judge_trace,
-            payload_mode=config.observability.payload_mode,
-        )
-        judge_hook("survey.start", {"query": case.query, "session_id": run_id})
-        judge_client = OpenAICompatibleClient(
-            base_url=self._judge_config.base_url,
-            model=self._judge_config.model,
-            max_tokens=self._judge_config.max_tokens,
-            temperature=0,
-            trace_hook=judge_hook,
-            api_key=os.getenv(self._judge_config.api_key_env, ""),
-        )
-        judge, judge_usage = await SurveyBenchmarkJudge(
-            judge_client, self._judge_config
-        ).evaluate(
-            case=case,
-            survey=str((artifact.get("report") or {}).get("survey") or ""),
-            ledger=artifact_evidence_ledger(artifact),
-        )
-        judge_hook(
-            "survey.complete",
-            {
-                "quality_status": (
-                    "passed" if judge.status == "completed" else "unverified"
-                ),
-                "total_tokens": judge_usage.total_tokens,
-                "delivery_status": metrics.delivery_status,
-                "judge": judge.model_dump(mode="json"),
-            },
-        )
-        judge_hook.flush()
-        return SurveyCaseObservation(
+        product = SurveyCaseObservation(
             run_id=run_id,
             case_id=case.case_id,
             domain=case.domain,
@@ -1207,17 +1527,150 @@ class SurveyBenchmarkRunner:
             repetition=repetition,
             status="completed",
             metrics=metrics,
-            judge=judge,
-            judge_usage=judge_usage,
             artifact_id=run_id,
             artifact_path=str(artifact_path),
-            artifact_sha256=(
-                f"sha256:{hashlib.sha256(artifact_path.read_bytes()).hexdigest()}"
-            ),
+            artifact_sha256=f"sha256:{hashlib.sha256(artifact_path.read_bytes()).hexdigest()}",
             survey_trace_id=survey_tracer.trace_id,
             survey_trace_url=survey_tracer.trace_url,
-            judge_trace_id=judge_trace.trace_id,
-            judge_trace_url=judge_trace.trace_url,
             external_input_fingerprint=external_input_fingerprint(artifact),
-            reason_codes=list(judge.reason_codes),
+            generation_model=config.llm.model,
+            config_fingerprint=build_config_summary(config)["fingerprint"],
+        ).model_copy(update=dict(provenance or {}))
+        self._recovery.save_product(product_slot, product_identity, product)
+        return await self._judge_product(case, config, product, artifact)
+
+    async def _judge_product(
+        self,
+        case: SurveyBenchmarkCase,
+        config: AppConfig,
+        product: SurveyCaseObservation,
+        artifact: dict[str, Any],
+    ) -> SurveyCaseObservation:
+        """Audit a frozen product, persisting inventory and all paid attempts."""
+        if (
+            product.status != "completed"
+            or product.metrics is None
+            or product.metrics.partial
+        ):
+            return product.model_copy(
+                update={
+                    "judge": SurveyJudgeMetrics(
+                        status="skipped", reason_codes=["product_incomplete"]
+                    ),
+                    "judge_usage": JudgeUsage(usage_complete=True),
+                    "reason_codes": ["product_incomplete"],
+                }
+            )
+        survey = str((artifact.get("report") or {}).get("survey") or "")
+        ledger = artifact_evidence_ledger(artifact)
+        key = self._judge_key(case, product, artifact)
+        state = self._recovery.judge(key)
+        if state.get("metrics", {}).get("status") == "completed":
+            cached_judge = SurveyJudgeMetrics.model_validate(state["metrics"])
+            return product.model_copy(
+                update={
+                    "judge": cached_judge,
+                    "judge_usage": JudgeUsage.model_validate(state["usage"]),
+                    "judge_trace_id": state.get("trace_id"),
+                    "judge_trace_url": state.get("trace_url"),
+                    "judge_model": self._judge_config.model,
+                    "reason_codes": list(cached_judge.reason_codes),
+                }
+            )
+        if not self._budget_allows_new_observation(judge_only=True):
+            return product.model_copy(
+                update={
+                    "judge": SurveyJudgeMetrics(
+                        status="skipped", reason_codes=["judge_budget_exhausted"]
+                    )
+                }
+            )
+        run_id = product.run_id
+        judge_trace = LangFuseTracer(
+            host=config.observability.langfuse_host,
+            public_key=os.getenv("LANGFUSE_PUBLIC_KEY", ""),
+            secret_key=os.getenv("LANGFUSE_SECRET_KEY", ""),
+            trace_seed=f"{run_id}:judge:{uuid.uuid4().hex}",
+        )
+        judge_hook = RedactingTraceHook(
+            judge_trace,
+            payload_mode=config.observability.payload_mode,
+        )
+        judge_hook("survey.start", {"query": case.query, "session_id": run_id})
+        previous_tokens = sum(
+            call.get("prompt_tokens", 0) + call.get("completion_tokens", 0)
+            for call in state.get("calls", [])
+        )
+        judge_client = OpenAICompatibleClient(
+            base_url=self._judge_config.base_url,
+            model=self._judge_config.model,
+            max_tokens=self._judge_config.max_tokens,
+            temperature=0,
+            trace_hook=judge_hook,
+            api_key=os.getenv(self._judge_config.api_key_env, ""),
+            transport_max_attempts=1,
+        )
+        state["trace_id"] = judge_trace.trace_id
+        state["trace_url"] = judge_trace.trace_url
+        state.setdefault("trace_history", []).append(judge_trace.trace_id)
+        try:
+            judge, judge_usage = await SurveyBenchmarkJudge(
+                judge_client, self._judge_config, trace_hook=judge_hook
+            ).evaluate(
+                case=case,
+                survey=survey,
+                ledger=ledger,
+                checkpoint=state,
+                save_checkpoint=lambda value: self._recovery.save_judge(key, value),
+                before_call=lambda: self._budget_allows_new_observation(
+                    judge_only=True
+                ),
+            )
+            state.update(
+                metrics=judge.model_dump(mode="json"),
+                usage=judge_usage.model_dump(mode="json"),
+            )
+            self._recovery.save_judge(key, state)
+        except BaseException as exc:
+            judge_hook(
+                "survey.failed",
+                {
+                    "error": type(exc).__name__,
+                    "reason_code": (
+                        "judge_cancelled"
+                        if isinstance(exc, asyncio.CancelledError)
+                        else "judge_execution_failed"
+                    ),
+                },
+            )
+            raise
+        finally:
+            try:
+                await judge_client.close()
+            finally:
+                judge_hook.flush()
+        judge_hook(
+            "survey.complete",
+            {
+                "quality_status": (
+                    "passed" if judge.status == "completed" else "unverified"
+                ),
+                "total_tokens": judge_usage.total_tokens - previous_tokens,
+                "cumulative_judge_tokens": judge_usage.total_tokens,
+                "delivery_status": (
+                    product.metrics.delivery_status if product.metrics else "unknown"
+                ),
+                "judge": judge.model_dump(mode="json"),
+            },
+        )
+        judge_hook.flush()
+        return product.model_copy(
+            update={
+                "judge": judge,
+                "judge_usage": judge_usage,
+                "judge_trace_id": judge_trace.trace_id,
+                "judge_trace_url": judge_trace.trace_url,
+                "judge_model": self._judge_config.model,
+                "reason_codes": list(judge.reason_codes),
+            }
         )

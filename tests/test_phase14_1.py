@@ -357,10 +357,10 @@ def test_manifest_loads_metadata_and_local_pdf_into_one_asset(tmp_path):
     assert len(assets) == 1
     assert assets[0].paper_id == "arxiv:2401.00001"
     assert assets[0].pdf_path == pdf.resolve()
-    assert {
-        "arxiv_metadata",
-        "local_pdf",
-    } <= {source.kind.value for source in assets[0].sources}
+    assert {"manifest", "local_pdf"} <= {
+        source.kind.value for source in assets[0].sources
+    }
+    assert "arxiv_metadata" not in {source.kind.value for source in assets[0].sources}
 
 
 @pytest.mark.parametrize(

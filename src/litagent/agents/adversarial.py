@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from collections.abc import Mapping
 from contextlib import asynccontextmanager
 from typing import Any
@@ -10,12 +11,17 @@ from typing import Any
 from litagent.agents.reviewer import ReviewerWorker
 from litagent.agents.synthesis import SynthesisWorker
 from litagent.context.evidence_selector import EvidenceSelection
+from litagent.evidence import build_citation_aliases
 from litagent.llm.client import BaseLLMClient
 from litagent.logging import get_logger
-from litagent.observability.citations import normalize_citations_traced
+from litagent.observability.citations import (
+    decode_citations_traced,
+    normalize_citations_traced,
+)
 from litagent.observability.context import reset_task_id, set_task_id
 from litagent.orchestrator.scheduler import Worker
 from litagent.orchestrator.task_graph import SubTask
+from litagent.workbench import ReportLanguage
 
 logger = get_logger("agents.adversarial")
 
@@ -99,6 +105,7 @@ class AdversarialReviewWorker(Worker):
         if not isinstance(draft, str) or not draft.strip():
             raise ValueError("synthesis returned an empty draft")
         draft = draft.strip()
+        report_language: ReportLanguage = task.input_data.get("report_language", "en")
         degradation_reasons = [
             str(item)
             for item in synthesis_result.get("degradation_reasons", [])
@@ -137,6 +144,8 @@ class AdversarialReviewWorker(Worker):
         )
 
         rounds: list[dict] = []
+        reviewed_draft: str | None = None
+        seen_drafts = {hashlib.sha256(draft.encode("utf-8")).hexdigest()}
 
         try:
             for round_num in range(1, self._max_rounds + 1):
@@ -148,6 +157,7 @@ class AdversarialReviewWorker(Worker):
                             agent_type="reviewer",
                             input_data={
                                 "query": task.input_data.get("query", ""),
+                                "report_language": report_language,
                                 "upstream_results": {
                                     "synthesis": {
                                         "draft": draft,
@@ -160,16 +170,22 @@ class AdversarialReviewWorker(Worker):
                         )
                         review = await self._reviewer.execute(review_task)
                     else:
+                        review_kwargs: dict[str, Any] = {
+                            "query": task.input_data.get("query", "")
+                        }
+                        if report_language != "en":
+                            review_kwargs["report_language"] = report_language
                         review = await self._reviewer.review_revision(
                             draft,
                             rounds[-1]["review"],
                             evidence_selection,
-                            query=task.input_data.get("query", ""),
+                            **review_kwargs,
                         )
 
                 rounds.append(
                     {"round": round_num, "review": review, "draft_length": len(draft)}
                 )
+                reviewed_draft = draft
                 degradation_reasons.extend(
                     str(item)
                     for item in review.get("degradation_reasons", [])
@@ -203,8 +219,15 @@ class AdversarialReviewWorker(Worker):
                 if round_num < self._max_rounds:
                     review_text = self._format_review_for_revision(review)
                     try:
+                        revise_kwargs: dict[str, Any] = {}
+                        revise_kwargs["query"] = task.input_data.get("query", "")
+                        if report_language != "en":
+                            revise_kwargs["report_language"] = report_language
                         messages = self._synthesis.revise(
-                            draft, review_text, evidence_selection
+                            draft,
+                            review_text,
+                            evidence_selection,
+                            **revise_kwargs,
                         )
                     except (ValueError, TypeError) as e:
                         logger.warning(f"revise rejected malformed selection: {e}")
@@ -229,14 +252,47 @@ class AdversarialReviewWorker(Worker):
                             )
                             degradation_reasons.append("revision_empty")
                             break
-                        draft = normalize_citations_traced(
+                        aliases = build_citation_aliases(
+                            list(evidence_selection.selected_items)
+                        )
+                        decoded = decode_citations_traced(
                             new_draft,
+                            aliases,
+                            trace_hook=self._trace_hook,
+                            parent_task_id=task.task_id,
+                            stage="revision",
+                            round_num=round_num + 1,
+                        ).text
+                        candidate = normalize_citations_traced(
+                            decoded,
                             evidence_selection.selected_items,
                             trace_hook=self._trace_hook,
                             parent_task_id=task.task_id,
                             stage="revision",
                             round_num=round_num + 1,
                         ).text
+                        candidate_hash = hashlib.sha256(
+                            candidate.encode("utf-8")
+                        ).hexdigest()
+                        if candidate_hash in seen_drafts:
+                            reason = (
+                                "revision_no_progress"
+                                if candidate == draft
+                                else "revision_cycle_detected"
+                            )
+                            degradation_reasons.append(reason)
+                            self._emit(
+                                "revision.no_progress",
+                                {
+                                    "task_id": task.task_id,
+                                    "round": round_num + 1,
+                                    "candidate_hash": candidate_hash,
+                                    "reason_code": reason,
+                                },
+                            )
+                            break
+                        seen_drafts.add(candidate_hash)
+                        draft = candidate
                     except Exception as e:
                         logger.warning(
                             f"Revision LLM call failed: {e}, keeping current draft"
@@ -249,6 +305,10 @@ class AdversarialReviewWorker(Worker):
                 f"Adversarial loop aborted ({e}), returning current draft as fallback"
             )
             degradation_reasons.append("adversarial_loop_degraded")
+
+        if reviewed_draft is not None and draft != reviewed_draft:
+            draft = reviewed_draft
+            degradation_reasons.append("unreviewed_revision_discarded")
 
         last_review = rounds[-1]["review"] if rounds else {}
 
@@ -273,13 +333,16 @@ class AdversarialReviewWorker(Worker):
         }
 
     def _review_passes(self, review: dict[str, Any]) -> bool:
-        """Accept only when score, verdict, and evidence checks all pass."""
+        """Accept only when score, verdict, evidence, and language checks pass."""
         compliance = review.get("evidence_compliance")
+        language = review.get("language_compliance", {"passed": True})
         return (
             review.get("score", 0) >= self._pass_threshold
             and review.get("verdict") == "accept"
             and isinstance(compliance, dict)
             and compliance.get("passed") is True
+            and isinstance(language, dict)
+            and language.get("passed") is True
         )
 
     def _format_review_for_revision(self, review: dict) -> str:

@@ -1,5 +1,27 @@
 # Survey Benchmark
 
+## Recovery and Cost Safety
+
+Survey products and Judge audits now have independent atomic checkpoints. An audit failure
+does not invalidate a completed product. Incompatible, interrupted, or corrupt product
+checkpoints stop execution instead of silently triggering another paid Survey.
+
+Use `--judge-only --reuse-surveys <benchmark.json>` to audit explicitly selected immutable
+historical products. This path does not initialize LitAgent or rebuild the corpus. Add
+`--dry-run` to inspect reuse/actions without credentials, network calls, or writes. Execution
+still requires `--live` and all three budget flags. Rejudge artifacts are diagnostic only,
+never automatically combined with an old formal baseline.
+
+Judge v6 requires an exact `source_quote` for each atomic claim and uses deterministic short
+evidence aliases. A validated inventory is persisted; audit retries and restarts reuse it.
+Strict schema is the default, contract retries default to zero, and Judge transport attempts
+are limited to one. Product-client transport defaults are unchanged.
+
+Budgets include historical attempts in the same output root. Missing usage is not zero cost:
+unknown usage stops further paid calls. Per-call checks cannot guarantee that a single request
+will not overshoot a token cap. Use one process per output root; distributed leases are not
+implemented. A new root does not constitute permission to spend again.
+
 Phase 14.5 evaluates the complete Survey product path rather than retrieval alone. The versioned files in
 this directory are safe to review in Git; private reports, RunArtifacts, and traces are written under
 `artifacts/benchmarks/survey/` and `artifacts/runs/`.
@@ -9,6 +31,12 @@ accepted its labels on 2026-08-13. This status permits the project baseline whil
 `human_reviewed`; every artifact preserves that provenance. The unchecked items in
 [`HUMAN_REVIEW_CHECKLIST.md`](HUMAN_REVIEW_CHECKLIST.md) remain available if an independent human
 paper-by-paper audit is performed later.
+
+The generation and Judge models may be the same. Such runs retain
+`self_judged=true` and the `self_judged` reason code for disclosure, but model
+identity alone no longer disqualifies an otherwise complete ablation or baseline.
+Same-model Judge scores are not independent confirmation; report deterministic
+metrics and runtime evaluation separately. Pilot runs remain non-formal.
 
 The ablation command performs 30 runs (18 first pass plus 12 repeats for the top two profiles):
 

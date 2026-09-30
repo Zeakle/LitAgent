@@ -36,6 +36,125 @@ def _atomic_write(path: Path, text: str) -> None:
 
 def _markdown(payload: Mapping[str, Any]) -> str:
     """Render benchmark results as Markdown."""
+    if payload.get("benchmark_type") == "citation_audit":
+        summary = payload.get("summary") or {}
+        usage = payload.get("usage") or {}
+        lines = [
+            f"# Citation Audit {payload.get('run_id')}",
+            "",
+            f"- Status: `{payload.get('status')}`",
+            f"- Source run: `{payload.get('source_run_id')}`",
+            f"- Model: `{payload.get('actual_model') or payload.get('requested_model')}`",
+            f"- Inventory: `{payload.get('inventory_sha256')}`",
+            "- Experimental sidecar only; product delivery and quality are unchanged.",
+            "",
+            "## Protocol",
+            "",
+            "| Metric | Value |",
+            "|---|---:|",
+            f"| Planned questions | {summary.get('planned_questions', 0)} |",
+            f"| Valid questions | {summary.get('valid_questions', 0)} |",
+            f"| Protocol completion | {summary.get('protocol_completion_rate')} |",
+            f"| Uncertain rate | {summary.get('uncertain_rate')} |",
+            f"| Input tokens | {usage.get('input_tokens')} |",
+            f"| Usage complete | {usage.get('usage_complete', False)} |",
+        ]
+        reasons = payload.get("reason_codes") or []
+        if reasons:
+            lines.extend(["", "## Reason Codes", ""])
+            lines.extend(f"- `{reason}`" for reason in reasons)
+        lines.extend(["", "## Decisions", ""])
+        for decision in payload.get("decisions") or []:
+            target = decision.get("evidence_id") or "citation set"
+            lines.append(
+                f"- `{decision.get('claim_id')}` / `{target}`: "
+                f"`{decision.get('choice')}` (confidence={decision.get('confidence')})"
+            )
+        return "\n".join(lines) + "\n"
+    if payload.get("benchmark_type") == "survey_corrected":
+        lines = [
+            f"# Corrected Survey Diagnostic {payload.get('run_id')}",
+            "",
+            "Historical offline recomputation only; not a new Survey or formal baseline.",
+            f"Source run: `{payload.get('source_run_id')}`",
+            f"Source SHA-256: `{payload.get('source_sha256')}`",
+            f"Metrics version: `{payload.get('metrics_version')}`",
+            "",
+            "## Profile summaries",
+            "",
+            "| Profile | N | Coverage | Citation recall | Judge faithfulness | Product tokens |",
+            "|---|---:|---:|---:|---:|---:|",
+        ]
+        for item in payload.get("profile_summaries", []):
+            lines.append(
+                f"| {item['profile_id']} | {item['observation_count']} | "
+                f"{item.get('coverage_evidence')} | {item.get('citation_recall')} | "
+                f"{item.get('faithfulness')} | {item.get('product_total_tokens')} |"
+            )
+        lines.extend(["", "## Paired comparisons", ""])
+        for item in payload.get("profile_comparisons", []):
+            lines.extend(
+                [
+                    f"### {item['left_profile_id']} vs {item['right_profile_id']}",
+                    "",
+                    f"Comparable: `{item['comparable']}`; shared cohorts: `{item['shared_cohort_count']}`.",
+                    "",
+                    "```json",
+                    json.dumps(
+                        {
+                            "paired_counts": item.get("metric_paired_counts"),
+                            "exclusions": item.get("metric_exclusion_reasons"),
+                            "left_minus_right": item.get("metric_deltas"),
+                            "reason_codes": item.get("reason_codes"),
+                        },
+                        ensure_ascii=False,
+                        indent=2,
+                    ),
+                    "```",
+                ]
+            )
+        lines.extend(
+            [
+                "",
+                "Old runs have no external_inputs_ready boundary; controlled latency is unavailable.",
+                "Historical RAGAS usage cannot be recovered; cost superiority is not inferred.",
+            ]
+        )
+        return "\n".join(lines) + "\n"
+    if payload.get("benchmark_type") == "survey_rejudge":
+        lines = [
+            f"# Survey Judge Recovery {payload.get('run_id')}",
+            "",
+            f"- Status: `{payload.get('status')}`",
+            "- Diagnostic only; not a formal baseline.",
+            f"- Source SHA-256: `{payload.get('source_sha256')}`",
+            "",
+            "| Product | Runtime Faithfulness | Judge Claims | Judge Faithfulness | Judge Tokens | Usage Complete |",
+            "|---|---|---|---|---|---|",
+        ]
+        for item in payload.get("observations", []):
+            metrics = item.get("metrics") or {}
+            runtime = metrics.get("runtime_evaluation") or {}
+            judge = item.get("judge") or {}
+            usage = item.get("judge_usage") or {}
+            lines.append(
+                f"| {item.get('run_id')} | {runtime.get('faithfulness')} | "
+                f"{judge.get('factual_claim_count')} | {judge.get('faithfulness')} | "
+                f"{usage.get('total_tokens')} | {usage.get('usage_complete')} |"
+            )
+        lines.extend(
+            [
+                "",
+                "## Accounting",
+                "",
+                "```json",
+                json.dumps(payload.get("accounting", {}), indent=2),
+                "```",
+                "",
+                "Claim inventories and evidence scopes can differ; scores are not interchangeable.",
+            ]
+        )
+        return "\n".join(lines) + "\n"
     if payload.get("benchmark_type") == "survey":
         return _survey_markdown(payload)
     run_id = str(payload.get("run_id") or "unknown")
@@ -267,13 +386,27 @@ class BenchmarkArtifactRepository:
         )
         return path
 
-    def read_checkpoint(self, namespace: str, key: str) -> dict[str, Any] | None:
+    def read_checkpoint(
+        self, namespace: str, key: str, *, strict: bool = False
+    ) -> dict[str, Any] | None:
         """Load a valid checkpoint, treating corruption as a cache miss."""
         path = self._checkpoint_path(namespace, key)
         if not path.is_file():
             return None
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+        except (OSError, json.JSONDecodeError) as exc:
+            if strict:
+                raise ValueError(f"corrupt checkpoint: {namespace}/{key}") from exc
             return None
+        if strict and not isinstance(payload, dict):
+            raise ValueError(f"invalid checkpoint: {namespace}/{key}")
         return payload if isinstance(payload, dict) else None
+
+    def list_checkpoints(self, namespace: str) -> list[dict[str, Any]]:
+        """Read all accounting records, refusing to hide corrupt paid-run state."""
+        directory = self._checkpoint_path(namespace, "0" * 64).parent
+        return [
+            self.read_checkpoint(namespace, path.stem, strict=True)
+            for path in sorted(directory.glob("*.json"))
+        ]

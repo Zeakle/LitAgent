@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -24,6 +23,7 @@ from litagent.eval.base import (
 from litagent.evidence import extract_evidence_refs_ordered
 from litagent.llm.client import BaseLLMClient
 from litagent.logging import get_logger
+from litagent.report_render import align_claim_to_source, build_report_source_units
 
 logger = get_logger("eval.ragas")
 
@@ -319,33 +319,28 @@ class RagasFaithfulnessEvaluator(Evaluator):
         survey: str, verdicts: list[dict[str, Any]], known_ids: set[str]
     ) -> list[dict[str, Any]]:
         """Preserve every negative verdict without guessing original citations."""
-        paragraphs = survey.split("\n\n")
+        units = build_report_source_units(survey)
         diagnostics = []
         for item in verdicts:
             if item.get("verdict") != 0:
                 continue
             claim = str(item.get("statement") or "").strip()
-            # Only whole-paragraph equivalence may associate citations with a claim.
-            # Substring matches can accidentally capture another sentence's evidence.
-            normalized_claim = " ".join(claim.split()).strip(" .!?")
-            matches = [
-                p
-                for p in paragraphs
-                if normalized_claim
-                and " ".join(re.sub(r"\[E:[^\]]+\]", "", p).split()).strip(" .!?")
-                == normalized_claim
-            ]
-            mapped = len(matches) == 1
-            refs = extract_evidence_refs_ordered(matches[0]) if mapped else []
+            alignment = align_claim_to_source(claim, units)
             diagnostics.append(
                 {
                     "claim_text": claim,
                     "statement_id": item.get("statement_id"),
-                    "evidence_ids": [r for r in refs if r in known_ids],
+                    "evidence_ids": [
+                        ref for ref in alignment.evidence_ids if ref in known_ids
+                    ],
                     "reason_code": "insufficient_support",
                     "explanation": str(item.get("reason") or ""),
-                    "source_quote": matches[0] if mapped else None,
-                    "alignment_status": "exact" if mapped else "unmapped",
+                    "source_quote": alignment.source_quote,
+                    "source_unit_id": alignment.source_unit_id,
+                    "source_start": alignment.start,
+                    "source_end": alignment.end,
+                    "citation_scope": alignment.citation_scope,
+                    "alignment_status": alignment.status,
                     "diagnostic_source": "ragas_verdict",
                 }
             )

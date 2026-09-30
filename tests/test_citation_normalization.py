@@ -318,4 +318,4 @@ def test_runtime_fingerprint_includes_serialization_behavior(monkeypatch):
         "eval/citation.py",
         "observability/citations.py",
     } <= relative
-    assert METRICS_VERSION == "survey-metrics-v3-citation-contract"
+    assert METRICS_VERSION == "survey-metrics-v4-paired-downstream"

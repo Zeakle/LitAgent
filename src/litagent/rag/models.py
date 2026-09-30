@@ -9,6 +9,7 @@ import re
 from enum import Enum
 from pathlib import Path
 from typing import Any, Sequence
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -486,7 +487,10 @@ def merge_paper_records(records: list[PaperRecord]) -> list[PaperRecord]:
         if current is None:
             grouped[record.paper_id] = record.model_copy(deep=True)
             continue
-        chunks = _merge_chunks(current.chunks, record.chunks)
+        abstract = _preferred_abstract(current, record, "sources")
+        chunks = _merge_chunks(
+            current.chunks, record.chunks, abstract=abstract, paper_id=record.paper_id
+        )
         sources = {
             (
                 source.kind.value,
@@ -502,7 +506,7 @@ def merge_paper_records(records: list[PaperRecord]) -> list[PaperRecord]:
         grouped[record.paper_id] = current.model_copy(
             update={
                 "title": record.title or current.title,
-                "abstract": record.abstract or current.abstract,
+                "abstract": abstract,
                 "authors": record.authors or current.authors,
                 "year": record.year or current.year,
                 "content_scope": strongest,
@@ -519,6 +523,9 @@ def merge_paper_records(records: list[PaperRecord]) -> list[PaperRecord]:
 def _merge_chunks(
     current: Sequence[ContentChunk],
     incoming: Sequence[ContentChunk],
+    *,
+    abstract: str | None = None,
+    paper_id: str | None = None,
 ) -> list[ContentChunk]:
     """Merge by key while preserving order and preferring richer content."""
     merged = list(current)
@@ -526,15 +533,73 @@ def _merge_chunks(
     for chunk in incoming:
         position = positions.get(chunk.chunk_key)
         if position is None:
+            if (
+                chunk.chunk_key == "abstract"
+                and abstract
+                and " ".join(chunk.text.split()) != " ".join(abstract.split())
+            ):
+                continue
             positions[chunk.chunk_key] = len(merged)
             merged.append(chunk)
+            continue
+        if chunk.chunk_key == "abstract" and abstract:
+            if " ".join(chunk.text.split()) == " ".join(abstract.split()):
+                merged[position] = chunk
             continue
         if (
             _SCOPE_RANK[chunk.content_scope]
             >= _SCOPE_RANK[merged[position].content_scope]
         ):
             merged[position] = chunk
+    if abstract:
+        normalized = " ".join(abstract.split())
+        position = positions.get("abstract")
+        if position is None or merged[position].text != normalized:
+            if paper_id is None:
+                paper_id = next(iter(current or incoming)).paper_id
+            abstract_chunk = ContentChunk.from_text(
+                paper_id=paper_id,
+                chunk_key="abstract",
+                text=abstract,
+                section="abstract",
+                content_scope=ContentScope.ABSTRACT,
+            )
+            if position is None:
+                merged.append(abstract_chunk)
+            else:
+                merged[position] = abstract_chunk
     return merged
+
+
+def _preferred_abstract(current: Any, incoming: Any, source_field: str) -> str:
+    """Keep a source-verified abstract when conflicting summaries arrive."""
+
+    def verified(item: Any) -> bool:
+        content = item.abstract.strip()
+        paper_id = normalize_paper_identity(item.paper_id)
+        if not content or not paper_id.startswith("arxiv:"):
+            return False
+        arxiv_id = paper_id.removeprefix("arxiv:")
+        digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
+        for source in getattr(item, source_field):
+            if source.kind != SourceKind.ARXIV_METADATA or source.sha256 != digest:
+                continue
+            if source.source_id != arxiv_id or not source.uri:
+                continue
+            parsed = urlsplit(source.uri)
+            if (
+                parsed.scheme == "https"
+                and parsed.hostname == "arxiv.org"
+                and parsed.path == f"/abs/{arxiv_id}"
+            ):
+                return True
+        return False
+
+    if incoming.abstract.strip() and (
+        not current.abstract.strip() or verified(incoming) and not verified(current)
+    ):
+        return incoming.abstract
+    return current.abstract
 
 
 def merge_paper_candidates(
@@ -557,7 +622,13 @@ def merge_paper_candidates(
                 title_keys[fallback] = key
             continue
 
-        merged_chunks = _merge_chunks(current.chunks, candidate.chunks)
+        abstract = _preferred_abstract(current, candidate, "provenance")
+        merged_chunks = _merge_chunks(
+            current.chunks,
+            candidate.chunks,
+            abstract=abstract,
+            paper_id=current.paper_id,
+        )
         strongest = max(
             (current.content_scope, candidate.content_scope),
             key=_SCOPE_RANK.__getitem__,
@@ -574,7 +645,7 @@ def merge_paper_candidates(
         grouped[key] = current.model_copy(
             update={
                 "title": candidate.title or current.title,
-                "abstract": candidate.abstract or current.abstract,
+                "abstract": abstract,
                 "authors": candidate.authors or current.authors,
                 "year": candidate.year or current.year,
                 "citation_count": max(

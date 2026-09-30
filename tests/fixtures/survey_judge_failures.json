@@ -1,0 +1,10 @@
+{
+  "provenance": "Minimized from the 2026-09-14 few-shot fulltext Judge diagnostic; surrounding paper text omitted.",
+  "source_quote": "Claim [E:arxiv:2003.04390:section:abstract:13:ca7c0511b416:claim:330ca7c81da4].",
+  "invented_claim": "Claim [E:arxiv:2003.04390:section:abstract:13:ca7c0511b416:claim:330ca7c0511b416].",
+  "malformed_assessment": {
+    "claim_11": "supported",
+    "evidence_ids": ["arxiv:2003.04390:section:abstract:13:ca7c0511b416:claim:330ca7c81da4"],
+    "explanation": "Explanation omitted from minimized fixture."
+  }
+}

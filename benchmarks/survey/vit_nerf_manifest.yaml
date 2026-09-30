@@ -1,243 +1,806 @@
 schema_version: 1
-corpus_version: survey-cv-v1
+corpus_version: survey-cv-v2-verified-abstracts
 papers:
-  - paper_id: arxiv:2010.11929
-    arxiv_id: "2010.11929"
-    title: "An Image is Worth 16x16 Words: Transformers for Image Recognition at Scale"
-    year: 2020
-    abstract: >-
-      A pure transformer applied to sequences of image patches performs well on image classification
-      when pretrained at scale and transferred to downstream recognition benchmarks.
-    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2010.11929}
-  - paper_id: arxiv:1512.03385
-    arxiv_id: "1512.03385"
-    title: Deep Residual Learning for Image Recognition
-    year: 2015
-    abstract: >-
-      Residual learning makes substantially deeper convolutional networks easier to optimize and
-      establishes a strong ImageNet and dense-prediction backbone for comparison with vision transformers.
-    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/1512.03385}
-  - paper_id: arxiv:2201.03545
-    arxiv_id: "2201.03545"
-    title: A ConvNet for the 2020s
-    year: 2022
-    abstract: >-
-      ConvNeXt modernizes a ResNet using design choices associated with vision transformers and shows
-      that a pure convolutional network can compete on classification and dense prediction.
-    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2201.03545}
-  - paper_id: arxiv:2012.12877
-    arxiv_id: "2012.12877"
-    title: Training data-efficient image transformers and distillation through attention
-    year: 2020
-    abstract: >-
-      DeiT trains competitive convolution-free transformers on ImageNet without massive external data
-      and introduces a distillation token for teacher-student training through attention.
-    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2012.12877}
-  - paper_id: arxiv:2101.11986
-    arxiv_id: "2101.11986"
-    title: "Tokens-to-Token ViT: Training Vision Transformers from Scratch on ImageNet"
-    year: 2021
-    abstract: >-
-      T2T-ViT recursively aggregates neighboring tokens to model local structure and uses a deep-narrow
-      transformer backbone to improve sample efficiency when training on ImageNet from scratch.
-    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2101.11986}
-  - paper_id: arxiv:2103.14030
-    arxiv_id: "2103.14030"
-    title: "Swin Transformer: Hierarchical Vision Transformer using Shifted Windows"
-    year: 2021
-    abstract: >-
-      Swin Transformer uses a hierarchical representation and shifted local windows to obtain linear
-      image-size complexity and serve as a general-purpose vision backbone.
-    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2103.14030}
-  - paper_id: arxiv:2102.12122
-    arxiv_id: "2102.12122"
-    title: "Pyramid Vision Transformer: A Versatile Backbone for Dense Prediction without Convolutions"
-    year: 2021
-    abstract: >-
-      PVT builds a progressive shrinking pyramid that produces multi-scale, high-resolution features for
-      object detection and segmentation without a convolutional backbone.
-    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2102.12122}
-  - paper_id: arxiv:2103.15808
-    arxiv_id: "2103.15808"
-    title: "CvT: Introducing Convolutions to Vision Transformers"
-    year: 2021
-    abstract: >-
-      CvT introduces convolutional token embedding, hierarchy, and convolutional projections to combine
-      CNN inductive biases with global transformer context.
-    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2103.15808}
-  - paper_id: arxiv:2104.14294
-    arxiv_id: "2104.14294"
-    title: Emerging Properties in Self-Supervised Vision Transformers
-    year: 2021
-    abstract: >-
-      DINO studies self-supervised vision transformers and finds emergent semantic segmentation and strong
-      nearest-neighbor features using momentum encoders, multi-crop training, and small patches.
-    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2104.14294}
-  - paper_id: arxiv:2111.06377
-    arxiv_id: "2111.06377"
-    title: Masked Autoencoders Are Scalable Vision Learners
-    year: 2021
-    abstract: >-
-      MAE masks most image patches and uses an asymmetric encoder-decoder to reconstruct pixels, enabling
-      efficient scalable self-supervised pretraining of large vision transformers.
-    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2111.06377}
-  - paper_id: arxiv:2104.01136
-    arxiv_id: "2104.01136"
-    title: "LeViT: a Vision Transformer in ConvNet's Clothing for Faster Inference"
-    year: 2021
-    abstract: >-
-      LeViT combines attention architectures with decreasing-resolution convolutional design principles
-      to optimize the high-speed inference accuracy trade-off.
-    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2104.01136}
-  - paper_id: arxiv:2110.02178
-    arxiv_id: "2110.02178"
-    title: "MobileViT: Light-weight, General-purpose, and Mobile-friendly Vision Transformer"
-    year: 2021
-    abstract: >-
-      MobileViT combines local convolutional processing with global transformer representations to build
-      lightweight models for classification, detection, and mobile deployment.
-    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2110.02178}
-  - paper_id: arxiv:2206.01191
-    arxiv_id: "2206.01191"
-    title: "EfficientFormer: Vision Transformers at MobileNet Speed"
-    year: 2022
-    abstract: >-
-      EfficientFormer removes latency-heavy operators and applies latency-driven slimming to produce pure
-      transformers with mobile-device inference speed and competitive ImageNet accuracy.
-    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2206.01191}
-  - paper_id: arxiv:2105.01601
-    arxiv_id: "2105.01601"
-    title: "MLP-Mixer: An all-MLP Architecture for Vision"
-    year: 2021
-    abstract: >-
-      MLP-Mixer performs channel and spatial token mixing using only multilayer perceptrons, providing a
-      neighboring non-attention architecture for the vision-transformer corpus.
-    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2105.01601}
-  - paper_id: arxiv:2105.03404
-    arxiv_id: "2105.03404"
-    title: "ResMLP: Feedforward networks for image classification with data-efficient training"
-    year: 2021
-    abstract: >-
-      ResMLP alternates cross-patch linear layers and per-patch feed-forward networks without convolution
-      or attention, providing a neighboring non-transformer visual architecture.
-    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2105.03404}
-  - paper_id: arxiv:2003.08934
-    arxiv_id: "2003.08934"
-    title: "NeRF: Representing Scenes as Neural Radiance Fields for View Synthesis"
-    year: 2020
-    abstract: >-
-      NeRF represents a scene as a continuous 5D function of position and viewing direction and uses
-      differentiable volume rendering to synthesize novel views from posed images.
-    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2003.08934}
-  - paper_id: arxiv:2201.05989
-    arxiv_id: "2201.05989"
-    title: Instant Neural Graphics Primitives with a Multiresolution Hash Encoding
-    year: 2022
-    abstract: >-
-      A trainable multiresolution hash encoding reduces neural graphics primitive training and rendering
-      cost by enabling small networks and fully fused GPU execution.
-    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2201.05989}
-  - paper_id: arxiv:2112.05131
-    arxiv_id: "2112.05131"
-    title: "Plenoxels: Radiance Fields without Neural Networks"
-    year: 2021
-    abstract: >-
-      Plenoxels uses a sparse voxel grid with spherical harmonics and direct optimization to train radiance
-      fields much faster without neural network components.
-    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2112.05131}
-  - paper_id: arxiv:2111.11215
-    arxiv_id: "2111.11215"
-    title: "Direct Voxel Grid Optimization: Super-fast Convergence for Radiance Fields Reconstruction"
-    year: 2021
-    abstract: >-
-      Direct voxel-grid optimization combines density and feature grids with interpolation and priors to
-      achieve NeRF-like quality with much faster per-scene convergence.
-    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2111.11215}
-  - paper_id: arxiv:2012.02190
-    arxiv_id: "2012.02190"
-    title: "pixelNeRF: Neural Radiance Fields from One or Few Images"
-    year: 2020
-    abstract: >-
-      pixelNeRF conditions a continuous radiance field on image features and learns across scenes, enabling
-      feed-forward novel-view synthesis from one or a few input images.
-    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2012.02190}
-  - paper_id: arxiv:2102.13090
-    arxiv_id: "2102.13090"
-    title: "IBRNet: Learning Multi-View Image-Based Rendering"
-    year: 2021
-    abstract: >-
-      IBRNet draws appearance from nearby source views at render time and learns a generic multi-view
-      interpolation function that generalizes to novel scenes.
-    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2102.13090}
-  - paper_id: arxiv:2103.15595
-    arxiv_id: "2103.15595"
-    title: "MVSNeRF: Fast Generalizable Radiance Field Reconstruction from Multi-View Stereo"
-    year: 2021
-    abstract: >-
-      MVSNeRF combines plane-swept cost volumes with volume rendering to reconstruct generalizable radiance
-      fields from three input views and optionally fine-tune per scene.
-    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2103.15595}
-  - paper_id: arxiv:2103.13415
-    arxiv_id: "2103.13415"
-    title: "Mip-NeRF: A Multiscale Representation for Anti-Aliasing Neural Radiance Fields"
-    year: 2021
-    abstract: >-
-      Mip-NeRF renders conical frustums rather than individual rays so a radiance field can represent
-      continuously varying scale and reduce blur and aliasing.
-    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2103.13415}
-  - paper_id: arxiv:2111.12077
-    arxiv_id: "2111.12077"
-    title: "Mip-NeRF 360: Unbounded Anti-Aliased Neural Radiance Fields"
-    year: 2021
-    abstract: >-
-      Mip-NeRF 360 adds a nonlinear unbounded-scene parameterization, online distillation, and distortion
-      regularization for detailed 360-degree captures.
-    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2111.12077}
-  - paper_id: arxiv:2010.07492
-    arxiv_id: "2010.07492"
-    title: "NeRF++: Analyzing and Improving Neural Radiance Fields"
-    year: 2020
-    abstract: >-
-      NeRF++ analyzes shape-radiance ambiguity and introduces a parameterization for 360-degree captures
-      of objects embedded in large unbounded scenes.
-    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2010.07492}
-  - paper_id: arxiv:2011.13961
-    arxiv_id: "2011.13961"
-    title: "D-NeRF: Neural Radiance Fields for Dynamic Scenes"
-    year: 2020
-    abstract: >-
-      D-NeRF adds time and a learned deformation into canonical space to reconstruct and render rigid and
-      non-rigid dynamic scenes from a moving monocular camera.
-    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2011.13961}
-  - paper_id: arxiv:2011.12948
-    arxiv_id: "2011.12948"
-    title: "Nerfies: Deformable Neural Radiance Fields"
-    year: 2020
-    abstract: >-
-      Nerfies augments NeRF with a continuous deformation field, coarse-to-fine optimization, and elastic
-      regularization for casually captured deformable scenes.
-    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2011.12948}
-  - paper_id: arxiv:2106.13228
-    arxiv_id: "2106.13228"
-    title: "HyperNeRF: A Higher-Dimensional Representation for Topologically Varying Neural Radiance Fields"
-    year: 2021
-    abstract: >-
-      HyperNeRF lifts dynamic radiance fields into a higher-dimensional space so slices can represent
-      topological changes that continuous canonical deformation fields cannot.
-    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2106.13228}
-  - paper_id: arxiv:2308.04079
-    arxiv_id: "2308.04079"
-    title: 3D Gaussian Splatting for Real-Time Radiance Field Rendering
-    year: 2023
-    abstract: >-
-      3D Gaussian Splatting uses optimized anisotropic Gaussian primitives and a visibility-aware rasterizer
-      for real-time novel-view synthesis, serving as a close non-NeRF distractor.
-    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/2308.04079}
-  - paper_id: arxiv:1906.07751
-    arxiv_id: "1906.07751"
-    title: "Neural Volumes: Learning Dynamic Renderable Volumes from Images"
-    year: 2019
-    abstract: >-
-      Neural Volumes learns dynamic 3D volume representations and differentiable ray marching from
-      multi-view images, serving as a neighboring pre-NeRF volumetric rendering paper.
-    pdf: {kind: arxiv_pdf, url: https://arxiv.org/pdf/1906.07751}
+- paper_id: arxiv:2010.11929
+  arxiv_id: '2010.11929'
+  title: 'An Image is Worth 16x16 Words: Transformers for Image Recognition at Scale'
+  year: 2020
+  abstract: While the Transformer architecture has become the de-facto standard for natural language processing
+    tasks, its applications to computer vision remain limited. In vision, attention is either applied
+    in conjunction with convolutional networks, or used to replace certain components of convolutional
+    networks while keeping their overall structure in place. We show that this reliance on CNNs is not
+    necessary and a pure transformer applied directly to sequences of image patches can perform very well
+    on image classification tasks. When pre-trained on large amounts of data and transferred to multiple
+    mid-sized or small image recognition benchmarks (ImageNet, CIFAR-100, VTAB, etc.), Vision Transformer
+    (ViT) attains excellent results compared to state-of-the-art convolutional networks while requiring
+    substantially fewer computational resources to train.
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/2010.11929
+  abstract_summary: A pure transformer applied to sequences of image patches performs well on image classification
+    when pretrained at scale and transferred to downstream recognition benchmarks.
+  abstract_source: arxiv_api
+  abstract_url: https://arxiv.org/abs/2010.11929
+  abstract_accessed_at: '2026-09-19'
+  abstract_sha256: 2519d883b5c415a860f3921bd2e19d3c98574a7df1d05aee93ee254ad3597cba
+  abstract_source_version: arxiv_atom_v1
+- paper_id: arxiv:1512.03385
+  arxiv_id: '1512.03385'
+  title: Deep Residual Learning for Image Recognition
+  year: 2015
+  abstract: Deeper neural networks are more difficult to train. We present a residual learning framework
+    to ease the training of networks that are substantially deeper than those used previously. We explicitly
+    reformulate the layers as learning residual functions with reference to the layer inputs, instead
+    of learning unreferenced functions. We provide comprehensive empirical evidence showing that these
+    residual networks are easier to optimize, and can gain accuracy from considerably increased depth.
+    On the ImageNet dataset we evaluate residual nets with a depth of up to 152 layers---8x deeper than
+    VGG nets but still having lower complexity. An ensemble of these residual nets achieves 3.57% error
+    on the ImageNet test set. This result won the 1st place on the ILSVRC 2015 classification task. We
+    also present analysis on CIFAR-10 with 100 and 1000 layers. The depth of representations is of central
+    importance for many visual recognition tasks. Solely due to our extremely deep representations, we
+    obtain a 28% relative improvement on the COCO object detection dataset. Deep residual nets are foundations
+    of our submissions to ILSVRC & COCO 2015 competitions, where we also won the 1st places on the tasks
+    of ImageNet detection, ImageNet localization, COCO detection, and COCO segmentation.
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/1512.03385
+  abstract_summary: Residual learning makes substantially deeper convolutional networks easier to optimize
+    and establishes a strong ImageNet and dense-prediction backbone for comparison with vision transformers.
+  abstract_source: arxiv_api
+  abstract_url: https://arxiv.org/abs/1512.03385
+  abstract_accessed_at: '2026-09-19'
+  abstract_sha256: 37cc294d52ef0292a0955214d189cb62b98a5073ae213897a00dcf94c132cbfc
+  abstract_source_version: arxiv_atom_v1
+- paper_id: arxiv:2201.03545
+  arxiv_id: '2201.03545'
+  title: A ConvNet for the 2020s
+  year: 2022
+  abstract: The "Roaring 20s" of visual recognition began with the introduction of Vision Transformers
+    (ViTs), which quickly superseded ConvNets as the state-of-the-art image classification model. A vanilla
+    ViT, on the other hand, faces difficulties when applied to general computer vision tasks such as object
+    detection and semantic segmentation. It is the hierarchical Transformers (e.g., Swin Transformers)
+    that reintroduced several ConvNet priors, making Transformers practically viable as a generic vision
+    backbone and demonstrating remarkable performance on a wide variety of vision tasks. However, the
+    effectiveness of such hybrid approaches is still largely credited to the intrinsic superiority of
+    Transformers, rather than the inherent inductive biases of convolutions. In this work, we reexamine
+    the design spaces and test the limits of what a pure ConvNet can achieve. We gradually "modernize"
+    a standard ResNet toward the design of a vision Transformer, and discover several key components that
+    contribute to the performance difference along the way. The outcome of this exploration is a family
+    of pure ConvNet models dubbed ConvNeXt. Constructed entirely from standard ConvNet modules, ConvNeXts
+    compete favorably with Transformers in terms of accuracy and scalability, achieving 87.8% ImageNet
+    top-1 accuracy and outperforming Swin Transformers on COCO detection and ADE20K segmentation, while
+    maintaining the simplicity and efficiency of standard ConvNets.
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/2201.03545
+  abstract_summary: ConvNeXt modernizes a ResNet using design choices associated with vision transformers
+    and shows that a pure convolutional network can compete on classification and dense prediction.
+  abstract_source: arxiv_api
+  abstract_url: https://arxiv.org/abs/2201.03545
+  abstract_accessed_at: '2026-09-19'
+  abstract_sha256: a0de4d89d6514f9af95046c6372869491359b53cc7fd45f8818ee88a134d3296
+  abstract_source_version: arxiv_atom_v1
+- paper_id: arxiv:2012.12877
+  arxiv_id: '2012.12877'
+  title: Training data-efficient image transformers and distillation through attention
+  year: 2020
+  abstract: Recently, neural networks purely based on attention were shown to address image understanding
+    tasks such as image classification. However, these visual transformers are pre-trained with hundreds
+    of millions of images using an expensive infrastructure, thereby limiting their adoption. In this
+    work, we produce a competitive convolution-free transformer by training on Imagenet only. We train
+    them on a single computer in less than 3 days. Our reference vision transformer (86M parameters) achieves
+    top-1 accuracy of 83.1% (single-crop evaluation) on ImageNet with no external data. More importantly,
+    we introduce a teacher-student strategy specific to transformers. It relies on a distillation token
+    ensuring that the student learns from the teacher through attention. We show the interest of this
+    token-based distillation, especially when using a convnet as a teacher. This leads us to report results
+    competitive with convnets for both Imagenet (where we obtain up to 85.2% accuracy) and when transferring
+    to other tasks. We share our code and models.
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/2012.12877
+  abstract_summary: DeiT trains competitive convolution-free transformers on ImageNet without massive
+    external data and introduces a distillation token for teacher-student training through attention.
+  abstract_source: arxiv_api
+  abstract_url: https://arxiv.org/abs/2012.12877
+  abstract_accessed_at: '2026-09-19'
+  abstract_sha256: defeaa5bbbb2ab9b28844bfba779e99b48f144bb76f6935521d3757ef91ea26d
+  abstract_source_version: arxiv_atom_v1
+- paper_id: arxiv:2101.11986
+  arxiv_id: '2101.11986'
+  title: 'Tokens-to-Token ViT: Training Vision Transformers from Scratch on ImageNet'
+  year: 2021
+  abstract: 'Transformers, which are popular for language modeling, have been explored for solving vision
+    tasks recently, e.g., the Vision Transformer (ViT) for image classification. The ViT model splits
+    each image into a sequence of tokens with fixed length and then applies multiple Transformer layers
+    to model their global relation for classification. However, ViT achieves inferior performance to CNNs
+    when trained from scratch on a midsize dataset like ImageNet. We find it is because: 1) the simple
+    tokenization of input images fails to model the important local structure such as edges and lines
+    among neighboring pixels, leading to low training sample efficiency; 2) the redundant attention backbone
+    design of ViT leads to limited feature richness for fixed computation budgets and limited training
+    samples. To overcome such limitations, we propose a new Tokens-To-Token Vision Transformer (T2T-ViT),
+    which incorporates 1) a layer-wise Tokens-to-Token (T2T) transformation to progressively structurize
+    the image to tokens by recursively aggregating neighboring Tokens into one Token (Tokens-to-Token),
+    such that local structure represented by surrounding tokens can be modeled and tokens length can be
+    reduced; 2) an efficient backbone with a deep-narrow structure for vision transformer motivated by
+    CNN architecture design after empirical study. Notably, T2T-ViT reduces the parameter count and MACs
+    of vanilla ViT by half, while achieving more than 3.0\% improvement when trained from scratch on ImageNet.
+    It also outperforms ResNets and achieves comparable performance with MobileNets by directly training
+    on ImageNet. For example, T2T-ViT with comparable size to ResNet50 (21.5M parameters) can achieve
+    83.3\% top1 accuracy in image resolution 384$\times$384 on ImageNet. (Code: https://github.com/yitu-opensource/T2T-ViT)'
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/2101.11986
+  abstract_summary: T2T-ViT recursively aggregates neighboring tokens to model local structure and uses
+    a deep-narrow transformer backbone to improve sample efficiency when training on ImageNet from scratch.
+  abstract_source: arxiv_api
+  abstract_url: https://arxiv.org/abs/2101.11986
+  abstract_accessed_at: '2026-09-19'
+  abstract_sha256: b5f537f90a219a54fdd2931eb54511af5cc4ac1b8772147e219819e02a2a9b17
+  abstract_source_version: arxiv_atom_v1
+- paper_id: arxiv:2103.14030
+  arxiv_id: '2103.14030'
+  title: 'Swin Transformer: Hierarchical Vision Transformer using Shifted Windows'
+  year: 2021
+  abstract: This paper presents a new vision Transformer, called Swin Transformer, that capably serves
+    as a general-purpose backbone for computer vision. Challenges in adapting Transformer from language
+    to vision arise from differences between the two domains, such as large variations in the scale of
+    visual entities and the high resolution of pixels in images compared to words in text. To address
+    these differences, we propose a hierarchical Transformer whose representation is computed with \textbf{S}hifted
+    \textbf{win}dows. The shifted windowing scheme brings greater efficiency by limiting self-attention
+    computation to non-overlapping local windows while also allowing for cross-window connection. This
+    hierarchical architecture has the flexibility to model at various scales and has linear computational
+    complexity with respect to image size. These qualities of Swin Transformer make it compatible with
+    a broad range of vision tasks, including image classification (87.3 top-1 accuracy on ImageNet-1K)
+    and dense prediction tasks such as object detection (58.7 box AP and 51.1 mask AP on COCO test-dev)
+    and semantic segmentation (53.5 mIoU on ADE20K val). Its performance surpasses the previous state-of-the-art
+    by a large margin of +2.7 box AP and +2.6 mask AP on COCO, and +3.2 mIoU on ADE20K, demonstrating
+    the potential of Transformer-based models as vision backbones. The hierarchical design and the shifted
+    window approach also prove beneficial for all-MLP architectures. The code and models are publicly
+    available at~\url{https://github.com/microsoft/Swin-Transformer}.
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/2103.14030
+  abstract_summary: Swin Transformer uses a hierarchical representation and shifted local windows to obtain
+    linear image-size complexity and serve as a general-purpose vision backbone.
+  abstract_source: arxiv_api
+  abstract_url: https://arxiv.org/abs/2103.14030
+  abstract_accessed_at: '2026-09-19'
+  abstract_sha256: b9c930545e191331d369eccb46b0bd5ce7502a8ed91ba43c3f051724393a95e2
+  abstract_source_version: arxiv_atom_v1
+- paper_id: arxiv:2102.12122
+  arxiv_id: '2102.12122'
+  title: 'Pyramid Vision Transformer: A Versatile Backbone for Dense Prediction without Convolutions'
+  year: 2021
+  abstract: Although using convolutional neural networks (CNNs) as backbones achieves great successes
+    in computer vision, this work investigates a simple backbone network useful for many dense prediction
+    tasks without convolutions. Unlike the recently-proposed Transformer model (e.g., ViT) that is specially
+    designed for image classification, we propose Pyramid Vision Transformer~(PVT), which overcomes the
+    difficulties of porting Transformer to various dense prediction tasks. PVT has several merits compared
+    to prior arts. (1) Different from ViT that typically has low-resolution outputs and high computational
+    and memory cost, PVT can be not only trained on dense partitions of the image to achieve high output
+    resolution, which is important for dense predictions but also using a progressive shrinking pyramid
+    to reduce computations of large feature maps. (2) PVT inherits the advantages from both CNN and Transformer,
+    making it a unified backbone in various vision tasks without convolutions by simply replacing CNN
+    backbones. (3) We validate PVT by conducting extensive experiments, showing that it boosts the performance
+    of many downstream tasks, e.g., object detection, semantic, and instance segmentation. For example,
+    with a comparable number of parameters, RetinaNet+PVT achieves 40.4 AP on the COCO dataset, surpassing
+    RetinNet+ResNet50 (36.3 AP) by 4.1 absolute AP. We hope PVT could serve as an alternative and useful
+    backbone for pixel-level predictions and facilitate future researches. Code is available at https://github.com/whai362/PVT.
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/2102.12122
+  abstract_summary: PVT builds a progressive shrinking pyramid that produces multi-scale, high-resolution
+    features for object detection and segmentation without a convolutional backbone.
+  abstract_source: arxiv_api
+  abstract_url: https://arxiv.org/abs/2102.12122
+  abstract_accessed_at: '2026-09-19'
+  abstract_sha256: 8613f51e4a78907556243373be5dfe604a04e56366b092c84ef73b6d5d45272b
+  abstract_source_version: arxiv_atom_v1
+- paper_id: arxiv:2103.15808
+  arxiv_id: '2103.15808'
+  title: 'CvT: Introducing Convolutions to Vision Transformers'
+  year: 2021
+  abstract: 'We present in this paper a new architecture, named Convolutional vision Transformer (CvT),
+    that improves Vision Transformer (ViT) in performance and efficiency by introducing convolutions into
+    ViT to yield the best of both designs. This is accomplished through two primary modifications: a hierarchy
+    of Transformers containing a new convolutional token embedding, and a convolutional Transformer block
+    leveraging a convolutional projection. These changes introduce desirable properties of convolutional
+    neural networks (CNNs) to the ViT architecture (\ie shift, scale, and distortion invariance) while
+    maintaining the merits of Transformers (\ie dynamic attention, global context, and better generalization).
+    We validate CvT by conducting extensive experiments, showing that this approach achieves state-of-the-art
+    performance over other Vision Transformers and ResNets on ImageNet-1k, with fewer parameters and lower
+    FLOPs. In addition, performance gains are maintained when pretrained on larger datasets (\eg ImageNet-22k)
+    and fine-tuned to downstream tasks. Pre-trained on ImageNet-22k, our CvT-W24 obtains a top-1 accuracy
+    of 87.7\% on the ImageNet-1k val set. Finally, our results show that the positional encoding, a crucial
+    component in existing Vision Transformers, can be safely removed in our model, simplifying the design
+    for higher resolution vision tasks. Code will be released at \url{https://github.com/leoxiaobin/CvT}.'
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/2103.15808
+  abstract_summary: CvT introduces convolutional token embedding, hierarchy, and convolutional projections
+    to combine CNN inductive biases with global transformer context.
+  abstract_source: arxiv_api
+  abstract_url: https://arxiv.org/abs/2103.15808
+  abstract_accessed_at: '2026-09-19'
+  abstract_sha256: 7af63a51a9beeb88f915766a9c8affff815d0dc8c86ab2ca89b4e85231360b9b
+  abstract_source_version: arxiv_atom_v1
+- paper_id: arxiv:2104.14294
+  arxiv_id: '2104.14294'
+  title: Emerging Properties in Self-Supervised Vision Transformers
+  year: 2021
+  abstract: 'In this paper, we question if self-supervised learning provides new properties to Vision
+    Transformer (ViT) that stand out compared to convolutional networks (convnets). Beyond the fact that
+    adapting self-supervised methods to this architecture works particularly well, we make the following
+    observations: first, self-supervised ViT features contain explicit information about the semantic
+    segmentation of an image, which does not emerge as clearly with supervised ViTs, nor with convnets.
+    Second, these features are also excellent k-NN classifiers, reaching 78.3% top-1 on ImageNet with
+    a small ViT. Our study also underlines the importance of momentum encoder, multi-crop training, and
+    the use of small patches with ViTs. We implement our findings into a simple self-supervised method,
+    called DINO, which we interpret as a form of self-distillation with no labels. We show the synergy
+    between DINO and ViTs by achieving 80.1% top-1 on ImageNet in linear evaluation with ViT-Base.'
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/2104.14294
+  abstract_summary: DINO studies self-supervised vision transformers and finds emergent semantic segmentation
+    and strong nearest-neighbor features using momentum encoders, multi-crop training, and small patches.
+  abstract_source: arxiv_api
+  abstract_url: https://arxiv.org/abs/2104.14294
+  abstract_accessed_at: '2026-09-19'
+  abstract_sha256: 59338873cb647006eb740f58e07d1b3391819ffb9d58047d9d73613b638afbcb
+  abstract_source_version: arxiv_atom_v1
+- paper_id: arxiv:2111.06377
+  arxiv_id: '2111.06377'
+  title: Masked Autoencoders Are Scalable Vision Learners
+  year: 2021
+  abstract: 'This paper shows that masked autoencoders (MAE) are scalable self-supervised learners for
+    computer vision. Our MAE approach is simple: we mask random patches of the input image and reconstruct
+    the missing pixels. It is based on two core designs. First, we develop an asymmetric encoder-decoder
+    architecture, with an encoder that operates only on the visible subset of patches (without mask tokens),
+    along with a lightweight decoder that reconstructs the original image from the latent representation
+    and mask tokens. Second, we find that masking a high proportion of the input image, e.g., 75%, yields
+    a nontrivial and meaningful self-supervisory task. Coupling these two designs enables us to train
+    large models efficiently and effectively: we accelerate training (by 3x or more) and improve accuracy.
+    Our scalable approach allows for learning high-capacity models that generalize well: e.g., a vanilla
+    ViT-Huge model achieves the best accuracy (87.8%) among methods that use only ImageNet-1K data. Transfer
+    performance in downstream tasks outperforms supervised pre-training and shows promising scaling behavior.'
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/2111.06377
+  abstract_summary: MAE masks most image patches and uses an asymmetric encoder-decoder to reconstruct
+    pixels, enabling efficient scalable self-supervised pretraining of large vision transformers.
+  abstract_source: arxiv_api
+  abstract_url: https://arxiv.org/abs/2111.06377
+  abstract_accessed_at: '2026-09-19'
+  abstract_sha256: c465c9c043178422233b1d8aa70ccfe2d873fb271063b32ff71c0336e7826de5
+  abstract_source_version: arxiv_atom_v1
+- paper_id: arxiv:2104.01136
+  arxiv_id: '2104.01136'
+  title: 'LeViT: a Vision Transformer in ConvNet''s Clothing for Faster Inference'
+  year: 2021
+  abstract: 'We design a family of image classification architectures that optimize the trade-off between
+    accuracy and efficiency in a high-speed regime. Our work exploits recent findings in attention-based
+    architectures, which are competitive on highly parallel processing hardware. We revisit principles
+    from the extensive literature on convolutional neural networks to apply them to transformers, in particular
+    activation maps with decreasing resolutions. We also introduce the attention bias, a new way to integrate
+    positional information in vision transformers. As a result, we propose LeVIT: a hybrid neural network
+    for fast inference image classification. We consider different measures of efficiency on different
+    hardware platforms, so as to best reflect a wide range of application scenarios. Our extensive experiments
+    empirically validate our technical choices and show they are suitable to most architectures. Overall,
+    LeViT significantly outperforms existing convnets and vision transformers with respect to the speed/accuracy
+    tradeoff. For example, at 80% ImageNet top-1 accuracy, LeViT is 5 times faster than EfficientNet on
+    CPU. We release the code at https://github.com/facebookresearch/LeViT'
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/2104.01136
+  abstract_summary: LeViT combines attention architectures with decreasing-resolution convolutional design
+    principles to optimize the high-speed inference accuracy trade-off.
+  abstract_source: arxiv_api
+  abstract_url: https://arxiv.org/abs/2104.01136
+  abstract_accessed_at: '2026-09-19'
+  abstract_sha256: e165065d9ac7d67b2e417b0ab1a255ab4cdaa1222b893e25e4e52875f87bf95e
+  abstract_source_version: arxiv_atom_v1
+- paper_id: arxiv:2110.02178
+  arxiv_id: '2110.02178'
+  title: 'MobileViT: Light-weight, General-purpose, and Mobile-friendly Vision Transformer'
+  year: 2021
+  abstract: 'Light-weight convolutional neural networks (CNNs) are the de-facto for mobile vision tasks.
+    Their spatial inductive biases allow them to learn representations with fewer parameters across different
+    vision tasks. However, these networks are spatially local. To learn global representations, self-attention-based
+    vision trans-formers (ViTs) have been adopted. Unlike CNNs, ViTs are heavy-weight. In this paper,
+    we ask the following question: is it possible to combine the strengths of CNNs and ViTs to build a
+    light-weight and low latency network for mobile vision tasks? Towards this end, we introduce MobileViT,
+    a light-weight and general-purpose vision transformer for mobile devices. MobileViT presents a different
+    perspective for the global processing of information with transformers, i.e., transformers as convolutions.
+    Our results show that MobileViT significantly outperforms CNN- and ViT-based networks across different
+    tasks and datasets. On the ImageNet-1k dataset, MobileViT achieves top-1 accuracy of 78.4% with about
+    6 million parameters, which is 3.2% and 6.2% more accurate than MobileNetv3 (CNN-based) and DeIT (ViT-based)
+    for a similar number of parameters. On the MS-COCO object detection task, MobileViT is 5.7% more accurate
+    than MobileNetv3 for a similar number of parameters. Our source code is open-source and available
+    at: https://github.com/apple/ml-cvnets'
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/2110.02178
+  abstract_summary: MobileViT combines local convolutional processing with global transformer representations
+    to build lightweight models for classification, detection, and mobile deployment.
+  abstract_source: arxiv_api
+  abstract_url: https://arxiv.org/abs/2110.02178
+  abstract_accessed_at: '2026-09-19'
+  abstract_sha256: dc154d38ddbc7c9fd10dcc36187cda8075a9f370918066b9aa9c692435ce6792
+  abstract_source_version: arxiv_atom_v1
+- paper_id: arxiv:2206.01191
+  arxiv_id: '2206.01191'
+  title: 'EfficientFormer: Vision Transformers at MobileNet Speed'
+  year: 2022
+  abstract: 'Vision Transformers (ViT) have shown rapid progress in computer vision tasks, achieving promising
+    results on various benchmarks. However, due to the massive number of parameters and model design,
+    \textit{e.g.}, attention mechanism, ViT-based models are generally times slower than lightweight convolutional
+    networks. Therefore, the deployment of ViT for real-time applications is particularly challenging,
+    especially on resource-constrained hardware such as mobile devices. Recent efforts try to reduce the
+    computation complexity of ViT through network architecture search or hybrid design with MobileNet
+    block, yet the inference speed is still unsatisfactory. This leads to an important question: can transformers
+    run as fast as MobileNet while obtaining high performance? To answer this, we first revisit the network
+    architecture and operators used in ViT-based models and identify inefficient designs. Then we introduce
+    a dimension-consistent pure transformer (without MobileNet blocks) as a design paradigm. Finally,
+    we perform latency-driven slimming to get a series of final models dubbed EfficientFormer. Extensive
+    experiments show the superiority of EfficientFormer in performance and speed on mobile devices. Our
+    fastest model, EfficientFormer-L1, achieves $79.2\%$ top-1 accuracy on ImageNet-1K with only $1.6$
+    ms inference latency on iPhone 12 (compiled with CoreML), which runs as fast as MobileNetV2$\times
+    1.4$ ($1.6$ ms, $74.7\%$ top-1), and our largest model, EfficientFormer-L7, obtains $83.3\%$ accuracy
+    with only $7.0$ ms latency. Our work proves that properly designed transformers can reach extremely
+    low latency on mobile devices while maintaining high performance.'
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/2206.01191
+  abstract_summary: EfficientFormer removes latency-heavy operators and applies latency-driven slimming
+    to produce pure transformers with mobile-device inference speed and competitive ImageNet accuracy.
+  abstract_source: arxiv_api
+  abstract_url: https://arxiv.org/abs/2206.01191
+  abstract_accessed_at: '2026-09-19'
+  abstract_sha256: dd02c43a7b996276c44eccf384a7aadbcd455aee17e21013fb76ac463a78beda
+  abstract_source_version: arxiv_atom_v1
+- paper_id: arxiv:2105.01601
+  arxiv_id: '2105.01601'
+  title: 'MLP-Mixer: An all-MLP Architecture for Vision'
+  year: 2021
+  abstract: 'Convolutional Neural Networks (CNNs) are the go-to model for computer vision. Recently, attention-based
+    networks, such as the Vision Transformer, have also become popular. In this paper we show that while
+    convolutions and attention are both sufficient for good performance, neither of them are necessary.
+    We present MLP-Mixer, an architecture based exclusively on multi-layer perceptrons (MLPs). MLP-Mixer
+    contains two types of layers: one with MLPs applied independently to image patches (i.e. "mixing"
+    the per-location features), and one with MLPs applied across patches (i.e. "mixing" spatial information).
+    When trained on large datasets, or with modern regularization schemes, MLP-Mixer attains competitive
+    scores on image classification benchmarks, with pre-training and inference cost comparable to state-of-the-art
+    models. We hope that these results spark further research beyond the realms of well established CNNs
+    and Transformers.'
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/2105.01601
+  abstract_summary: MLP-Mixer performs channel and spatial token mixing using only multilayer perceptrons,
+    providing a neighboring non-attention architecture for the vision-transformer corpus.
+  abstract_source: arxiv_api
+  abstract_url: https://arxiv.org/abs/2105.01601
+  abstract_accessed_at: '2026-09-19'
+  abstract_sha256: 28f9d0058cca0f016925b2ae893be69bbefa5ad826f5b713cb72d106dfb1178a
+  abstract_source_version: arxiv_atom_v1
+- paper_id: arxiv:2105.03404
+  arxiv_id: '2105.03404'
+  title: 'ResMLP: Feedforward networks for image classification with data-efficient training'
+  year: 2021
+  abstract: We present ResMLP, an architecture built entirely upon multi-layer perceptrons for image classification.
+    It is a simple residual network that alternates (i) a linear layer in which image patches interact,
+    independently and identically across channels, and (ii) a two-layer feed-forward network in which
+    channels interact independently per patch. When trained with a modern training strategy using heavy
+    data-augmentation and optionally distillation, it attains surprisingly good accuracy/complexity trade-offs
+    on ImageNet. We also train ResMLP models in a self-supervised setup, to further remove priors from
+    employing a labelled dataset. Finally, by adapting our model to machine translation we achieve surprisingly
+    good results. We share pre-trained models and our code based on the Timm library.
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/2105.03404
+  abstract_summary: ResMLP alternates cross-patch linear layers and per-patch feed-forward networks without
+    convolution or attention, providing a neighboring non-transformer visual architecture.
+  abstract_source: arxiv_api
+  abstract_url: https://arxiv.org/abs/2105.03404
+  abstract_accessed_at: '2026-09-19'
+  abstract_sha256: e2d88da57822d17a9ec0d63f0143b0b6f2bf265af99dd989a8bff0c245ba31f3
+  abstract_source_version: arxiv_atom_v1
+- paper_id: arxiv:2003.08934
+  arxiv_id: '2003.08934'
+  title: 'NeRF: Representing Scenes as Neural Radiance Fields for View Synthesis'
+  year: 2020
+  abstract: We present a method that achieves state-of-the-art results for synthesizing novel views of
+    complex scenes by optimizing an underlying continuous volumetric scene function using a sparse set
+    of input views. Our algorithm represents a scene using a fully-connected (non-convolutional) deep
+    network, whose input is a single continuous 5D coordinate (spatial location $(x,y,z)$ and viewing
+    direction $(θ, φ)$) and whose output is the volume density and view-dependent emitted radiance at
+    that spatial location. We synthesize views by querying 5D coordinates along camera rays and use classic
+    volume rendering techniques to project the output colors and densities into an image. Because volume
+    rendering is naturally differentiable, the only input required to optimize our representation is a
+    set of images with known camera poses. We describe how to effectively optimize neural radiance fields
+    to render photorealistic novel views of scenes with complicated geometry and appearance, and demonstrate
+    results that outperform prior work on neural rendering and view synthesis. View synthesis results
+    are best viewed as videos, so we urge readers to view our supplementary video for convincing comparisons.
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/2003.08934
+  abstract_summary: NeRF represents a scene as a continuous 5D function of position and viewing direction
+    and uses differentiable volume rendering to synthesize novel views from posed images.
+  abstract_source: arxiv_api
+  abstract_url: https://arxiv.org/abs/2003.08934
+  abstract_accessed_at: '2026-09-19'
+  abstract_sha256: 2850c17df06efdf5afe77b7b61f151e88e86eae4a9b0c883d65a7ef806489f67
+  abstract_source_version: arxiv_atom_v1
+- paper_id: arxiv:2201.05989
+  arxiv_id: '2201.05989'
+  title: Instant Neural Graphics Primitives with a Multiresolution Hash Encoding
+  year: 2022
+  abstract: 'Neural graphics primitives, parameterized by fully connected neural networks, can be costly
+    to train and evaluate. We reduce this cost with a versatile new input encoding that permits the use
+    of a smaller network without sacrificing quality, thus significantly reducing the number of floating
+    point and memory access operations: a small neural network is augmented by a multiresolution hash
+    table of trainable feature vectors whose values are optimized through stochastic gradient descent.
+    The multiresolution structure allows the network to disambiguate hash collisions, making for a simple
+    architecture that is trivial to parallelize on modern GPUs. We leverage this parallelism by implementing
+    the whole system using fully-fused CUDA kernels with a focus on minimizing wasted bandwidth and compute
+    operations. We achieve a combined speedup of several orders of magnitude, enabling training of high-quality
+    neural graphics primitives in a matter of seconds, and rendering in tens of milliseconds at a resolution
+    of ${1920\!\times\!1080}$.'
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/2201.05989
+  abstract_summary: A trainable multiresolution hash encoding reduces neural graphics primitive training
+    and rendering cost by enabling small networks and fully fused GPU execution.
+  abstract_source: arxiv_api
+  abstract_url: https://arxiv.org/abs/2201.05989
+  abstract_accessed_at: '2026-09-19'
+  abstract_sha256: b9c344697885ff66ed04257ad9841f3599ee7e89d5addfa6acabbfd9a9a55324
+  abstract_source_version: arxiv_atom_v1
+- paper_id: arxiv:2112.05131
+  arxiv_id: '2112.05131'
+  title: 'Plenoxels: Radiance Fields without Neural Networks'
+  year: 2021
+  abstract: We introduce Plenoxels (plenoptic voxels), a system for photorealistic view synthesis. Plenoxels
+    represent a scene as a sparse 3D grid with spherical harmonics. This representation can be optimized
+    from calibrated images via gradient methods and regularization without any neural components. On standard,
+    benchmark tasks, Plenoxels are optimized two orders of magnitude faster than Neural Radiance Fields
+    with no loss in visual quality.
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/2112.05131
+  abstract_summary: Plenoxels uses a sparse voxel grid with spherical harmonics and direct optimization
+    to train radiance fields much faster without neural network components.
+  abstract_source: arxiv_api
+  abstract_url: https://arxiv.org/abs/2112.05131
+  abstract_accessed_at: '2026-09-19'
+  abstract_sha256: 2f5bd4d6c96558619bf7d9e3debd2a514ab6e1240e40ac224f29747b64a0adc6
+  abstract_source_version: arxiv_atom_v1
+- paper_id: arxiv:2111.11215
+  arxiv_id: '2111.11215'
+  title: 'Direct Voxel Grid Optimization: Super-fast Convergence for Radiance Fields Reconstruction'
+  year: 2021
+  abstract: We present a super-fast convergence approach to reconstructing the per-scene radiance field
+    from a set of images that capture the scene with known poses. This task, which is often applied to
+    novel view synthesis, is recently revolutionized by Neural Radiance Field (NeRF) for its state-of-the-art
+    quality and flexibility. However, NeRF and its variants require a lengthy training time ranging from
+    hours to days for a single scene. In contrast, our approach achieves NeRF-comparable quality and converges
+    rapidly from scratch in less than 15 minutes with a single GPU. We adopt a representation consisting
+    of a density voxel grid for scene geometry and a feature voxel grid with a shallow network for complex
+    view-dependent appearance. Modeling with explicit and discretized volume representations is not new,
+    but we propose two simple yet non-trivial techniques that contribute to fast convergence speed and
+    high-quality output. First, we introduce the post-activation interpolation on voxel density, which
+    is capable of producing sharp surfaces in lower grid resolution. Second, direct voxel density optimization
+    is prone to suboptimal geometry solutions, so we robustify the optimization process by imposing several
+    priors. Finally, evaluation on five inward-facing benchmarks shows that our method matches, if not
+    surpasses, NeRF's quality, yet it only takes about 15 minutes to train from scratch for a new scene.
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/2111.11215
+  abstract_summary: Direct voxel-grid optimization combines density and feature grids with interpolation
+    and priors to achieve NeRF-like quality with much faster per-scene convergence.
+  abstract_source: arxiv_api
+  abstract_url: https://arxiv.org/abs/2111.11215
+  abstract_accessed_at: '2026-09-19'
+  abstract_sha256: 1844a2410a446b4f47c4b1dafcb4ac8049183cdcf1e81ec279e47243b40cfe6a
+  abstract_source_version: arxiv_atom_v1
+- paper_id: arxiv:2012.02190
+  arxiv_id: '2012.02190'
+  title: 'pixelNeRF: Neural Radiance Fields from One or Few Images'
+  year: 2020
+  abstract: 'We propose pixelNeRF, a learning framework that predicts a continuous neural scene representation
+    conditioned on one or few input images. The existing approach for constructing neural radiance fields
+    involves optimizing the representation to every scene independently, requiring many calibrated views
+    and significant compute time. We take a step towards resolving these shortcomings by introducing an
+    architecture that conditions a NeRF on image inputs in a fully convolutional manner. This allows the
+    network to be trained across multiple scenes to learn a scene prior, enabling it to perform novel
+    view synthesis in a feed-forward manner from a sparse set of views (as few as one). Leveraging the
+    volume rendering approach of NeRF, our model can be trained directly from images with no explicit
+    3D supervision. We conduct extensive experiments on ShapeNet benchmarks for single image novel view
+    synthesis tasks with held-out objects as well as entire unseen categories. We further demonstrate
+    the flexibility of pixelNeRF by demonstrating it on multi-object ShapeNet scenes and real scenes from
+    the DTU dataset. In all cases, pixelNeRF outperforms current state-of-the-art baselines for novel
+    view synthesis and single image 3D reconstruction. For the video and code, please visit the project
+    website: https://alexyu.net/pixelnerf'
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/2012.02190
+  abstract_summary: pixelNeRF conditions a continuous radiance field on image features and learns across
+    scenes, enabling feed-forward novel-view synthesis from one or a few input images.
+  abstract_source: arxiv_api
+  abstract_url: https://arxiv.org/abs/2012.02190
+  abstract_accessed_at: '2026-09-19'
+  abstract_sha256: 21f3fec4cbd6de5731ac4b264bc1a32dcda3bd73d1066e2c4f0c7350f64c6230
+  abstract_source_version: arxiv_atom_v1
+- paper_id: arxiv:2102.13090
+  arxiv_id: '2102.13090'
+  title: 'IBRNet: Learning Multi-View Image-Based Rendering'
+  year: 2021
+  abstract: 'We present a method that synthesizes novel views of complex scenes by interpolating a sparse
+    set of nearby views. The core of our method is a network architecture that includes a multilayer perceptron
+    and a ray transformer that estimates radiance and volume density at continuous 5D locations (3D spatial
+    locations and 2D viewing directions), drawing appearance information on the fly from multiple source
+    views. By drawing on source views at render time, our method hearkens back to classic work on image-based
+    rendering (IBR), and allows us to render high-resolution imagery. Unlike neural scene representation
+    work that optimizes per-scene functions for rendering, we learn a generic view interpolation function
+    that generalizes to novel scenes. We render images using classic volume rendering, which is fully
+    differentiable and allows us to train using only multi-view posed images as supervision. Experiments
+    show that our method outperforms recent novel view synthesis methods that also seek to generalize
+    to novel scenes. Further, if fine-tuned on each scene, our method is competitive with state-of-the-art
+    single-scene neural rendering methods. Project page: https://ibrnet.github.io/'
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/2102.13090
+  abstract_summary: IBRNet draws appearance from nearby source views at render time and learns a generic
+    multi-view interpolation function that generalizes to novel scenes.
+  abstract_source: arxiv_api
+  abstract_url: https://arxiv.org/abs/2102.13090
+  abstract_accessed_at: '2026-09-19'
+  abstract_sha256: 8b73c7e70a4a82d5105ce79957cdd48aa9c9bc89613a2c6c5520e374a4526083
+  abstract_source_version: arxiv_atom_v1
+- paper_id: arxiv:2103.15595
+  arxiv_id: '2103.15595'
+  title: 'MVSNeRF: Fast Generalizable Radiance Field Reconstruction from Multi-View Stereo'
+  year: 2021
+  abstract: We present MVSNeRF, a novel neural rendering approach that can efficiently reconstruct neural
+    radiance fields for view synthesis. Unlike prior works on neural radiance fields that consider per-scene
+    optimization on densely captured images, we propose a generic deep neural network that can reconstruct
+    radiance fields from only three nearby input views via fast network inference. Our approach leverages
+    plane-swept cost volumes (widely used in multi-view stereo) for geometry-aware scene reasoning, and
+    combines this with physically based volume rendering for neural radiance field reconstruction. We
+    train our network on real objects in the DTU dataset, and test it on three different datasets to evaluate
+    its effectiveness and generalizability. Our approach can generalize across scenes (even indoor scenes,
+    completely different from our training scenes of objects) and generate realistic view synthesis results
+    using only three input images, significantly outperforming concurrent works on generalizable radiance
+    field reconstruction. Moreover, if dense images are captured, our estimated radiance field representation
+    can be easily fine-tuned; this leads to fast per-scene reconstruction with higher rendering quality
+    and substantially less optimization time than NeRF.
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/2103.15595
+  abstract_summary: MVSNeRF combines plane-swept cost volumes with volume rendering to reconstruct generalizable
+    radiance fields from three input views and optionally fine-tune per scene.
+  abstract_source: arxiv_api
+  abstract_url: https://arxiv.org/abs/2103.15595
+  abstract_accessed_at: '2026-09-19'
+  abstract_sha256: afb58150749d2a8c3f1cdb179e77d0b277e4f7cb5d71f0277b0cd57dc68cc9e3
+  abstract_source_version: arxiv_atom_v1
+- paper_id: arxiv:2103.13415
+  arxiv_id: '2103.13415'
+  title: 'Mip-NeRF: A Multiscale Representation for Anti-Aliasing Neural Radiance Fields'
+  year: 2021
+  abstract: The rendering procedure used by neural radiance fields (NeRF) samples a scene with a single
+    ray per pixel and may therefore produce renderings that are excessively blurred or aliased when training
+    or testing images observe scene content at different resolutions. The straightforward solution of
+    supersampling by rendering with multiple rays per pixel is impractical for NeRF, because rendering
+    each ray requires querying a multilayer perceptron hundreds of times. Our solution, which we call
+    "mip-NeRF" (a la "mipmap"), extends NeRF to represent the scene at a continuously-valued scale. By
+    efficiently rendering anti-aliased conical frustums instead of rays, mip-NeRF reduces objectionable
+    aliasing artifacts and significantly improves NeRF's ability to represent fine details, while also
+    being 7% faster than NeRF and half the size. Compared to NeRF, mip-NeRF reduces average error rates
+    by 17% on the dataset presented with NeRF and by 60% on a challenging multiscale variant of that dataset
+    that we present. Mip-NeRF is also able to match the accuracy of a brute-force supersampled NeRF on
+    our multiscale dataset while being 22x faster.
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/2103.13415
+  abstract_summary: Mip-NeRF renders conical frustums rather than individual rays so a radiance field
+    can represent continuously varying scale and reduce blur and aliasing.
+  abstract_source: arxiv_api
+  abstract_url: https://arxiv.org/abs/2103.13415
+  abstract_accessed_at: '2026-09-19'
+  abstract_sha256: c37932d077266ca97fb7040d3041e6f9c9f7a4fb7ed25a50bb50cf8948636f49
+  abstract_source_version: arxiv_atom_v1
+- paper_id: arxiv:2111.12077
+  arxiv_id: '2111.12077'
+  title: 'Mip-NeRF 360: Unbounded Anti-Aliased Neural Radiance Fields'
+  year: 2021
+  abstract: Though neural radiance fields (NeRF) have demonstrated impressive view synthesis results on
+    objects and small bounded regions of space, they struggle on "unbounded" scenes, where the camera
+    may point in any direction and content may exist at any distance. In this setting, existing NeRF-like
+    models often produce blurry or low-resolution renderings (due to the unbalanced detail and scale of
+    nearby and distant objects), are slow to train, and may exhibit artifacts due to the inherent ambiguity
+    of the task of reconstructing a large scene from a small set of images. We present an extension of
+    mip-NeRF (a NeRF variant that addresses sampling and aliasing) that uses a non-linear scene parameterization,
+    online distillation, and a novel distortion-based regularizer to overcome the challenges presented
+    by unbounded scenes. Our model, which we dub "mip-NeRF 360" as we target scenes in which the camera
+    rotates 360 degrees around a point, reduces mean-squared error by 57% compared to mip-NeRF, and is
+    able to produce realistic synthesized views and detailed depth maps for highly intricate, unbounded
+    real-world scenes.
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/2111.12077
+  abstract_summary: Mip-NeRF 360 adds a nonlinear unbounded-scene parameterization, online distillation,
+    and distortion regularization for detailed 360-degree captures.
+  abstract_source: arxiv_api
+  abstract_url: https://arxiv.org/abs/2111.12077
+  abstract_accessed_at: '2026-09-19'
+  abstract_sha256: c0c70de44ef95a39d7c05e62698dbb4323ea602e9ed797311f32a8d6895fdcb4
+  abstract_source_version: arxiv_atom_v1
+- paper_id: arxiv:2010.07492
+  arxiv_id: '2010.07492'
+  title: 'NeRF++: Analyzing and Improving Neural Radiance Fields'
+  year: 2020
+  abstract: Neural Radiance Fields (NeRF) achieve impressive view synthesis results for a variety of capture
+    settings, including 360 capture of bounded scenes and forward-facing capture of bounded and unbounded
+    scenes. NeRF fits multi-layer perceptrons (MLPs) representing view-invariant opacity and view-dependent
+    color volumes to a set of training images, and samples novel views based on volume rendering techniques.
+    In this technical report, we first remark on radiance fields and their potential ambiguities, namely
+    the shape-radiance ambiguity, and analyze NeRF's success in avoiding such ambiguities. Second, we
+    address a parametrization issue involved in applying NeRF to 360 captures of objects within large-scale,
+    unbounded 3D scenes. Our method improves view synthesis fidelity in this challenging scenario. Code
+    is available at https://github.com/Kai-46/nerfplusplus.
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/2010.07492
+  abstract_summary: NeRF++ analyzes shape-radiance ambiguity and introduces a parameterization for 360-degree
+    captures of objects embedded in large unbounded scenes.
+  abstract_source: arxiv_api
+  abstract_url: https://arxiv.org/abs/2010.07492
+  abstract_accessed_at: '2026-09-19'
+  abstract_sha256: 39e77f3b4a36928b435663b136b92fd67ca66bf420f92c5d329fcba1e9bb12d2
+  abstract_source_version: arxiv_atom_v1
+- paper_id: arxiv:2011.13961
+  arxiv_id: '2011.13961'
+  title: 'D-NeRF: Neural Radiance Fields for Dynamic Scenes'
+  year: 2020
+  abstract: 'Neural rendering techniques combining machine learning with geometric reasoning have arisen
+    as one of the most promising approaches for synthesizing novel views of a scene from a sparse set
+    of images. Among these, stands out the Neural radiance fields (NeRF), which trains a deep network
+    to map 5D input coordinates (representing spatial location and viewing direction) into a volume density
+    and view-dependent emitted radiance. However, despite achieving an unprecedented level of photorealism
+    on the generated images, NeRF is only applicable to static scenes, where the same spatial location
+    can be queried from different images. In this paper we introduce D-NeRF, a method that extends neural
+    radiance fields to a dynamic domain, allowing to reconstruct and render novel images of objects under
+    rigid and non-rigid motions from a \emph{single} camera moving around the scene. For this purpose
+    we consider time as an additional input to the system, and split the learning process in two main
+    stages: one that encodes the scene into a canonical space and another that maps this canonical representation
+    into the deformed scene at a particular time. Both mappings are simultaneously learned using fully-connected
+    networks. Once the networks are trained, D-NeRF can render novel images, controlling both the camera
+    view and the time variable, and thus, the object movement. We demonstrate the effectiveness of our
+    approach on scenes with objects under rigid, articulated and non-rigid motions. Code, model weights
+    and the dynamic scenes dataset will be released.'
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/2011.13961
+  abstract_summary: D-NeRF adds time and a learned deformation into canonical space to reconstruct and
+    render rigid and non-rigid dynamic scenes from a moving monocular camera.
+  abstract_source: arxiv_api
+  abstract_url: https://arxiv.org/abs/2011.13961
+  abstract_accessed_at: '2026-09-19'
+  abstract_sha256: 7174015741e67e2d2d8f658d40d52172f5b79f9e714aca84335767d4daad92bc
+  abstract_source_version: arxiv_atom_v1
+- paper_id: arxiv:2011.12948
+  arxiv_id: '2011.12948'
+  title: 'Nerfies: Deformable Neural Radiance Fields'
+  year: 2020
+  abstract: We present the first method capable of photorealistically reconstructing deformable scenes
+    using photos/videos captured casually from mobile phones. Our approach augments neural radiance fields
+    (NeRF) by optimizing an additional continuous volumetric deformation field that warps each observed
+    point into a canonical 5D NeRF. We observe that these NeRF-like deformation fields are prone to local
+    minima, and propose a coarse-to-fine optimization method for coordinate-based models that allows for
+    more robust optimization. By adapting principles from geometry processing and physical simulation
+    to NeRF-like models, we propose an elastic regularization of the deformation field that further improves
+    robustness. We show that our method can turn casually captured selfie photos/videos into deformable
+    NeRF models that allow for photorealistic renderings of the subject from arbitrary viewpoints, which
+    we dub "nerfies." We evaluate our method by collecting time-synchronized data using a rig with two
+    mobile phones, yielding train/validation images of the same pose at different viewpoints. We show
+    that our method faithfully reconstructs non-rigidly deforming scenes and reproduces unseen views with
+    high fidelity.
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/2011.12948
+  abstract_summary: Nerfies augments NeRF with a continuous deformation field, coarse-to-fine optimization,
+    and elastic regularization for casually captured deformable scenes.
+  abstract_source: arxiv_api
+  abstract_url: https://arxiv.org/abs/2011.12948
+  abstract_accessed_at: '2026-09-19'
+  abstract_sha256: 68219bc19c2914193da71f026ff7f10827192efbdffebc39a7f1595e180e99db
+  abstract_source_version: arxiv_atom_v1
+- paper_id: arxiv:2106.13228
+  arxiv_id: '2106.13228'
+  title: 'HyperNeRF: A Higher-Dimensional Representation for Topologically Varying Neural Radiance Fields'
+  year: 2021
+  abstract: 'Neural Radiance Fields (NeRF) are able to reconstruct scenes with unprecedented fidelity,
+    and various recent works have extended NeRF to handle dynamic scenes. A common approach to reconstruct
+    such non-rigid scenes is through the use of a learned deformation field mapping from coordinates in
+    each input image into a canonical template coordinate space. However, these deformation-based approaches
+    struggle to model changes in topology, as topological changes require a discontinuity in the deformation
+    field, but these deformation fields are necessarily continuous. We address this limitation by lifting
+    NeRFs into a higher dimensional space, and by representing the 5D radiance field corresponding to
+    each individual input image as a slice through this "hyper-space". Our method is inspired by level
+    set methods, which model the evolution of surfaces as slices through a higher dimensional surface.
+    We evaluate our method on two tasks: (i) interpolating smoothly between "moments", i.e., configurations
+    of the scene, seen in the input images while maintaining visual plausibility, and (ii) novel-view
+    synthesis at fixed moments. We show that our method, which we dub HyperNeRF, outperforms existing
+    methods on both tasks. Compared to Nerfies, HyperNeRF reduces average error rates by 4.1% for interpolation
+    and 8.6% for novel-view synthesis, as measured by LPIPS. Additional videos, results, and visualizations
+    are available at https://hypernerf.github.io.'
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/2106.13228
+  abstract_summary: HyperNeRF lifts dynamic radiance fields into a higher-dimensional space so slices
+    can represent topological changes that continuous canonical deformation fields cannot.
+  abstract_source: arxiv_api
+  abstract_url: https://arxiv.org/abs/2106.13228
+  abstract_accessed_at: '2026-09-19'
+  abstract_sha256: 626b853453729fd5bbae18900d3730f4be6665635f925e4291e4b766a6b7cba7
+  abstract_source_version: arxiv_atom_v1
+- paper_id: arxiv:2308.04079
+  arxiv_id: '2308.04079'
+  title: 3D Gaussian Splatting for Real-Time Radiance Field Rendering
+  year: 2023
+  abstract: Radiance Field methods have recently revolutionized novel-view synthesis of scenes captured
+    with multiple photos or videos. However, achieving high visual quality still requires neural networks
+    that are costly to train and render, while recent faster methods inevitably trade off speed for quality.
+    For unbounded and complete scenes (rather than isolated objects) and 1080p resolution rendering, no
+    current method can achieve real-time display rates. We introduce three key elements that allow us
+    to achieve state-of-the-art visual quality while maintaining competitive training times and importantly
+    allow high-quality real-time (>= 30 fps) novel-view synthesis at 1080p resolution. First, starting
+    from sparse points produced during camera calibration, we represent the scene with 3D Gaussians that
+    preserve desirable properties of continuous volumetric radiance fields for scene optimization while
+    avoiding unnecessary computation in empty space; Second, we perform interleaved optimization/density
+    control of the 3D Gaussians, notably optimizing anisotropic covariance to achieve an accurate representation
+    of the scene; Third, we develop a fast visibility-aware rendering algorithm that supports anisotropic
+    splatting and both accelerates training and allows realtime rendering. We demonstrate state-of-the-art
+    visual quality and real-time rendering on several established datasets.
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/2308.04079
+  abstract_summary: 3D Gaussian Splatting uses optimized anisotropic Gaussian primitives and a visibility-aware
+    rasterizer for real-time novel-view synthesis, serving as a close non-NeRF distractor.
+  abstract_source: arxiv_api
+  abstract_url: https://arxiv.org/abs/2308.04079
+  abstract_accessed_at: '2026-09-19'
+  abstract_sha256: 5f0257f9c75e41e06ddc6539e97df2f117295fa87534ebd5ff390135c3f79d7f
+  abstract_source_version: arxiv_atom_v1
+- paper_id: arxiv:1906.07751
+  arxiv_id: '1906.07751'
+  title: 'Neural Volumes: Learning Dynamic Renderable Volumes from Images'
+  year: 2019
+  abstract: 'Modeling and rendering of dynamic scenes is challenging, as natural scenes often contain
+    complex phenomena such as thin structures, evolving topology, translucency, scattering, occlusion,
+    and biological motion. Mesh-based reconstruction and tracking often fail in these cases, and other
+    approaches (e.g., light field video) typically rely on constrained viewing conditions, which limit
+    interactivity. We circumvent these difficulties by presenting a learning-based approach to representing
+    dynamic objects inspired by the integral projection model used in tomographic imaging. The approach
+    is supervised directly from 2D images in a multi-view capture setting and does not require explicit
+    reconstruction or tracking of the object. Our method has two primary components: an encoder-decoder
+    network that transforms input images into a 3D volume representation, and a differentiable ray-marching
+    operation that enables end-to-end training. By virtue of its 3D representation, our construction extrapolates
+    better to novel viewpoints compared to screen-space rendering techniques. The encoder-decoder architecture
+    learns a latent representation of a dynamic scene that enables us to produce novel content sequences
+    not seen during training. To overcome memory limitations of voxel-based representations, we learn
+    a dynamic irregular grid structure implemented with a warp field during ray-marching. This structure
+    greatly improves the apparent resolution and reduces grid-like artifacts and jagged motion. Finally,
+    we demonstrate how to incorporate surface-based representations into our volumetric-learning framework
+    for applications where the highest resolution is required, using facial performance capture as a case
+    in point.'
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/1906.07751
+  abstract_summary: Neural Volumes learns dynamic 3D volume representations and differentiable ray marching
+    from multi-view images, serving as a neighboring pre-NeRF volumetric rendering paper.
+  abstract_source: arxiv_api
+  abstract_url: https://arxiv.org/abs/1906.07751
+  abstract_accessed_at: '2026-09-19'
+  abstract_sha256: e440d9c954b1669f668520304d2a5e9a64a19a5e12698c3b79ab9bc8c6ee3071
+  abstract_source_version: arxiv_atom_v1

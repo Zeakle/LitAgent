@@ -103,7 +103,8 @@ class TestFlowDemo:
         response = client.get("/flow-demo")
 
         assert response.status_code == 200
-        assert "Actual DAG" in response.text
+        assert 'id="report-document"' in response.text
+        assert 'id="execution-graph"' in response.text
 
     def test_starts_fixed_live_demo(self, tmp_path, monkeypatch):
         monkeypatch.setattr(app.state, "flow_repository", ArchiveRepository(tmp_path))

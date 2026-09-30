@@ -245,14 +245,30 @@ def test_judge_metrics_keep_unavailable_values_null():
     assert metrics.contradiction_rate is None
 
 
-def _prime_judge_inventory(llm):
+def _prime_judge_inventory(llm, source_quote=None):
     """Prepend the independent extraction response to a mocked audit response."""
+    from litagent.evidence import extract_evidence_refs_ordered
+    from litagent.report_render import build_report_source_units
+
     audit = llm.chat.return_value
     audit_payload = json.loads(audit.content)
     claims = []
+    source = source_quote or "\n\n".join(
+        item["claim_text"] for item in audit_payload["claim_assessments"]
+    )
+    unit_id = build_report_source_units(source)[0].unit_id
+    evidence_aliases = extract_evidence_refs_ordered(source)
     for index, item in enumerate(audit_payload["claim_assessments"]):
-        claims.append(item.pop("claim_text"))
+        text = item.pop("claim_text")
+        claims.append(
+            {
+                "claim_text": text,
+                "source_unit_id": unit_id,
+                "evidence_aliases": evidence_aliases,
+            }
+        )
         item["claim_id"] = f"claim_{index}"
+        item["source_faithful"] = True
     audit.content = json.dumps(audit_payload)
     llm.chat.side_effect = [
         LLMResponse(
@@ -309,7 +325,8 @@ async def test_independent_judge_derives_claim_and_topic_metrics():
         ),
         usage={"prompt_tokens": 50, "completion_tokens": 10},
     )
-    _prime_judge_inventory(llm)
+    survey = "Supported one. Supported two. Supported three. Unsupported. [E:e1]"
+    _prime_judge_inventory(llm, survey)
     judge = SurveyBenchmarkJudge(
         llm,
         SurveyJudgeConfig(
@@ -321,7 +338,7 @@ async def test_independent_judge_derives_claim_and_topic_metrics():
 
     metrics, usage = await judge.evaluate(
         case=_case(),
-        survey="A supported claim [E:e1].",
+        survey=survey,
         ledger={"e1": {"paper_id": "arxiv:1606.04080", "text": "Support."}},
     )
 
@@ -428,7 +445,7 @@ async def test_independent_judge_preserves_untrusted_xml_boundaries():
             }
         )
     )
-    _prime_judge_inventory(llm)
+    _prime_judge_inventory(llm, "Claim [E:e1].")
     judge = SurveyBenchmarkJudge(
         llm,
         SurveyJudgeConfig(base_url="https://judge.example", model="judge-v1"),
@@ -584,9 +601,23 @@ async def test_independent_judge_reports_semantic_contract_failure_details(
 ):
     from litagent.benchmark.survey_judge import SurveyBenchmarkJudge
 
+    for assessment in audit_payload.get("claim_assessments", []):
+        assessment.setdefault("source_faithful", True)
     llm = AsyncMock()
     llm.chat.side_effect = [
-        LLMResponse(content=json.dumps({"claims": ["Claim."]})),
+        LLMResponse(
+            content=json.dumps(
+                {
+                    "claims": [
+                        {
+                            "claim_text": "Claim.",
+                            "source_unit_id": "unit:0:0",
+                            "evidence_aliases": ["e1"],
+                        }
+                    ]
+                }
+            )
+        ),
         LLMResponse(content=json.dumps(audit_payload)),
     ]
     judge = SurveyBenchmarkJudge(
@@ -665,7 +696,19 @@ async def test_independent_judge_distinguishes_inventory_and_audit_schema_failur
 
     audit_llm = AsyncMock()
     audit_llm.chat.side_effect = [
-        LLMResponse(content=json.dumps({"claims": ["Claim."]})),
+        LLMResponse(
+            content=json.dumps(
+                {
+                    "claims": [
+                        {
+                            "claim_text": "Claim.",
+                            "source_unit_id": "unit:0:0",
+                            "evidence_aliases": [],
+                        }
+                    ]
+                }
+            )
+        ),
         LLMResponse(content=json.dumps({"topic_assessments": []})),
     ]
     audit_judge = SurveyBenchmarkJudge(
@@ -693,7 +736,19 @@ async def test_independent_judge_reports_audit_json_failure_and_recovery(monkeyp
     from litagent.benchmark.survey_judge import SurveyBenchmarkJudge
 
     monkeypatch.setattr("litagent.benchmark.survey_judge.asyncio.sleep", AsyncMock())
-    valid_inventory = LLMResponse(content=json.dumps({"claims": ["Claim."]}))
+    valid_inventory = LLMResponse(
+        content=json.dumps(
+            {
+                "claims": [
+                    {
+                        "claim_text": "Claim.",
+                        "source_unit_id": "unit:0:0",
+                        "evidence_aliases": ["e1"],
+                    }
+                ]
+            }
+        )
+    )
     valid_audit = LLMResponse(
         content=json.dumps(
             {
@@ -701,6 +756,7 @@ async def test_independent_judge_reports_audit_json_failure_and_recovery(monkeyp
                 "claim_assessments": [
                     {
                         "claim_id": "claim_0",
+                        "source_faithful": True,
                         "supported": True,
                         "evidence_ids": ["e1"],
                     }
@@ -713,7 +769,6 @@ async def test_independent_judge_reports_audit_json_failure_and_recovery(monkeyp
     llm.chat.side_effect = [
         valid_inventory,
         LLMResponse(content="not-json"),
-        valid_inventory,
         valid_audit,
     ]
     judge = SurveyBenchmarkJudge(
@@ -760,7 +815,7 @@ async def test_independent_judge_supports_json_object_provider_mode():
             }
         )
     )
-    _prime_judge_inventory(llm)
+    _prime_judge_inventory(llm, "Supported claim [E:e1].")
     judge = SurveyBenchmarkJudge(
         llm,
         SurveyJudgeConfig(
@@ -1516,7 +1571,7 @@ def test_partial_observation_makes_benchmark_partial_and_clears_recommendation(
     )
 
 
-def test_self_judged_result_is_never_formal_eligible(tmp_path):
+def test_self_judged_completed_ablation_can_be_formal_eligible(tmp_path):
     from litagent.benchmark.artifacts import BenchmarkArtifactRepository
     from litagent.benchmark.survey_metrics import aggregate_profiles
     from litagent.benchmark.survey_runner import SurveyBenchmarkRunner
@@ -1572,8 +1627,71 @@ def test_self_judged_result_is_never_formal_eligible(tmp_path):
     )
 
     assert result.self_judged is True
-    assert result.formal_eligible is False
+    assert result.formal_eligible is True
     assert "self_judged" in result.reason_codes
+
+    pilot = runner._build_result(
+        stage="pilot",
+        dataset=dataset,
+        profiles=[load_survey_profiles(Path("benchmarks/survey/profiles.yaml"))[0]],
+        observations=[observation],
+        case_aggregates=case_aggregates,
+        summaries=summaries,
+        recommended_profile_id=None,
+        git_sha="test",
+        git_dirty=False,
+        reason_codes=[],
+    )
+    assert pilot.self_judged is True
+    assert pilot.formal_eligible is False
+
+
+@pytest.mark.asyncio
+async def test_partial_survey_benchmark_exits_nonzero(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from litagent.cli import _cmd_benchmark, build_parser
+
+    runner = SimpleNamespace(
+        run_pilot=AsyncMock(
+            return_value=SimpleNamespace(
+                status="partial", model_dump=lambda mode: {"status": "partial"}
+            )
+        )
+    )
+    monkeypatch.setattr(
+        "litagent.benchmark.survey_runner.SurveyBenchmarkRunner",
+        lambda **kwargs: runner,
+    )
+    args = build_parser().parse_args(
+        [
+            "benchmark",
+            "survey",
+            "--stage",
+            "pilot",
+            "--dataset",
+            "benchmarks/survey/dataset.yaml",
+            "--profiles",
+            "benchmarks/survey/profiles.yaml",
+            "--judge-config",
+            "benchmarks/survey/judge.example.yaml",
+            "--case-id",
+            "few-shot-metric",
+            "--profile-id",
+            "external-only",
+            "--output-root",
+            str(tmp_path / "benchmark"),
+            "--run-artifact-root",
+            str(tmp_path / "runs"),
+            "--live",
+        ]
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        await _cmd_benchmark(args)
+
+    assert exc_info.value.code == 1
+    runner.run_pilot.assert_awaited_once()
 
 
 def test_parallel_worker_latencies_are_not_added_together():

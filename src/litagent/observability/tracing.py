@@ -183,7 +183,7 @@ class LangFuseTracer:
             self._spans[sub_tid] = parent.start_observation(
                 name=data.get("name", sub_tid),
                 as_type="span",
-                input={"round": data.get("round", 0)},
+                input=data.get("input", {"round": data.get("round", 0)}),
             )
 
         elif event == "rag.search.start":
@@ -230,7 +230,7 @@ class LangFuseTracer:
             if span:
                 if data.get("error"):
                     span.update(level="ERROR", status_message=data.get("error", ""))
-                elif "output" in data:
+                if "output" in data:
                     self._safe_update_output(span, data["output"])
                 span.end()
 

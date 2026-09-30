@@ -229,7 +229,7 @@ class SurveyJudgeConfig(BaseModel):
     )
     max_tokens: int = Field(default=16384, ge=1024, le=65536)
     timeout_seconds: float = Field(default=180.0, gt=0, le=600)
-    max_retries: int = Field(default=1, ge=0, le=2)
+    max_retries: int = Field(default=0, ge=0, le=1)
 
     @property
     def fingerprint(self) -> str:
@@ -378,6 +378,7 @@ class SurveyRunMetrics(BaseModel):
     delivery_accurate: bool
     partial: bool
     elapsed_ms: int = Field(ge=0)
+    controlled_downstream_ms: int | None = Field(default=None, ge=0)
     stage_latency_ms: dict[str, int] = Field(default_factory=dict)
     cost: RuntimeCostMetrics
     runtime_evaluation: dict[str, Any] = Field(default_factory=dict)
@@ -398,7 +399,9 @@ class JudgeClaimAssessment(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    claim_id: str | None = None
     claim_text: str = Field(min_length=1)
+    source_faithful: bool | None = None
     supported: bool
     evidence_ids: list[str] = Field(default_factory=list)
     explanation: str = ""
@@ -409,6 +412,45 @@ class JudgeClaimAssessment(BaseModel):
         if self.supported and not self.evidence_ids:
             raise ValueError("supported claim requires at least one evidence id")
         return self
+
+
+class AnchoredJudgeClaim(BaseModel):
+    """Bind one atomic claim to host-owned report text and evidence IDs."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    claim_id: str = Field(min_length=1)
+    claim_text: str = Field(min_length=1)
+    source_unit_id: str = Field(min_length=1)
+    source_quote: str = Field(min_length=1)
+    source_start: int = Field(ge=0)
+    source_end: int = Field(gt=0)
+    evidence_ids: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def _validate_source_range(self):
+        """Reject reversed source coordinates and duplicate evidence IDs."""
+        if self.source_end <= self.source_start:
+            raise ValueError("source_end must be greater than source_start")
+        if len(set(self.evidence_ids)) != len(self.evidence_ids):
+            raise ValueError("anchored claim evidence IDs must be unique")
+        return self
+
+
+class JudgeInventorySnapshot(BaseModel):
+    """Freeze the source-anchored claim denominator used by every auditor."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_version: Literal[1] = 1
+    protocol_version: Literal["survey-judge-v7-source-units"] = (
+        "survey-judge-v7-source-units"
+    )
+    survey_sha256: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    source_units_sha256: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    ledger_sha256: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    inventory_sha256: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    claims: tuple[AnchoredJudgeClaim, ...]
 
 
 class UnsupportedClaim(BaseModel):
@@ -479,6 +521,7 @@ class SurveyJudgeMetrics(BaseModel):
     claim_assessments: list[JudgeClaimAssessment] = Field(default_factory=list)
     unsupported_claims: list[UnsupportedClaim] = Field(default_factory=list)
     contradictions: list[ContradictionPair] = Field(default_factory=list)
+    inventory_snapshot: JudgeInventorySnapshot | None = None
     reason_codes: list[str] = Field(default_factory=list)
     failure_details: list[JudgeFailureDetail] = Field(default_factory=list)
 
@@ -492,6 +535,9 @@ class JudgeUsage(BaseModel):
     completion_tokens: int = Field(default=0, ge=0)
     total_tokens: int = Field(default=0, ge=0)
     elapsed_ms: int = Field(default=0, ge=0)
+    call_count: int = Field(default=0, ge=0)
+    usage_complete: bool | None = None
+    missing_usage_calls: int = Field(default=0, ge=0)
 
 
 class SurveyCaseObservation(BaseModel):
@@ -548,6 +594,7 @@ class SurveyCaseAggregate(BaseModel):
     contradiction_rate: float | None = Field(default=None, ge=0, le=1)
     total_tokens: float | None = Field(default=None, ge=0)
     elapsed_ms: float | None = Field(default=None, ge=0)
+    controlled_downstream_ms: float | None = Field(default=None, ge=0)
 
 
 class SurveyProfileSummary(BaseModel):
@@ -570,6 +617,7 @@ class SurveyProfileSummary(BaseModel):
     total_tokens: float | None = Field(default=None, ge=0)
     latency_p50_ms: float | None = Field(default=None, ge=0)
     latency_p95_ms: float | None = Field(default=None, ge=0)
+    controlled_downstream_p95_ms: float | None = Field(default=None, ge=0)
     delivery_distribution: dict[str, int] = Field(default_factory=dict)
     stage_latency_p95_ms: dict[str, float] = Field(default_factory=dict)
     product_total_tokens: int = Field(default=0, ge=0)
@@ -591,6 +639,8 @@ class SurveyProfileComparison(BaseModel):
     right_profile_id: str
     comparable: bool
     shared_cohort_count: int = Field(ge=0)
+    metric_paired_counts: dict[str, int] = Field(default_factory=dict)
+    metric_exclusion_reasons: dict[str, list[str]] = Field(default_factory=dict)
     metric_deltas: dict[str, float | None] = Field(default_factory=dict)
     reason_codes: list[str] = Field(default_factory=list)
 
@@ -602,6 +652,7 @@ class SurveyBenchmarkResult(BaseModel):
 
     schema_version: Literal[1] = 1
     benchmark_type: Literal["survey"] = "survey"
+    metrics_version: str | None = None
     run_id: str
     status: Literal["succeeded", "partial", "failed"]
     stage: Literal["pilot", "ablation", "baseline"]

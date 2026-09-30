@@ -24,6 +24,8 @@ dependencies = [
     "mcp>=1.27,<2",
     "jsonschema>=4.23,<5",
     "pymupdf>=1.24,<2",
+    "markdown-it-py>=4.0,<5",
+    "python-docx>=1.2,<2",
 ]
 
 [project.scripts]
