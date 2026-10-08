@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import re
 from collections.abc import Mapping
@@ -13,15 +14,26 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from litagent.evidence import extract_evidence_refs_ordered
 from litagent.report_render import build_report_source_units
+from litagent.review_structure import _managed_span
 from litagent.safety.budget import CostBudget
 
 EVALUATION_VERSION = "survey-evaluation-v2"
 
 EXTRACTION_CONTRACT = "host-source-fragments-v2"
-CLASSIFICATION_CONTRACT = "assertion-kinds-v3"
+CLASSIFICATION_CONTRACT = "assertion-kinds-v4"
 SUPPORT_CONTRACT = "host-support-passages-v2"
 
-CLASSIFICATION_RULES = """CLASSIFICATION RULES (assertion-kinds-v3):
+
+class ScopedEvaluationError(ValueError):
+    """Preserve host failure diagnostics without exposing an accepted score."""
+
+    def __init__(self, reason: str, details: dict):
+        """Attach only parsed completeness observations to a rejected assessment."""
+        super().__init__(reason)
+        self.details = details
+
+
+CLASSIFICATION_RULES = """CLASSIFICATION RULES (assertion-kinds-v4):
 Classify what each atomic assertion actually asserts, independently of the heading,
 its citation presence, and phrases such as "this review" / "本综述".
 - report_structure: ONLY this report's chosen scope, organization, aims, or grouping.
@@ -45,6 +57,9 @@ and source-fragment ownership. "We screened 50 papers; EViT speeds up DeiT-S" co
 runtime_method and scientific assertions. Never exempt the whole mixed sentence.
 An exact source match alone does NOT prove the kind correct or a paper fact supported.
 Keep claim_text in the report's language; do not translate away its scope or qualifiers.
+Host scope_context is preceding report text for interpreting a list's qualifiers;
+it never grants evidence citations. 'This run's selected evidence does not cover X'
+does not mean 'no research on X exists'. Preserve that bounded scope in claim_text.
 """
 
 INVENTORY_PROMPT = """Extract every atomic assertion from every supplied source unit.
@@ -128,6 +143,14 @@ ASSESSMENT_PROMPT += (
     "If the assigned kind is wrong, set classification_valid=false and explain the "
     "correct kind. Do not silently reclassify or approve the wrong denominator."
 )
+ASSESSMENT_PROMPT += """\nUnit completeness measures faithful inventory coverage, not scientific support.
+A legitimately empty unit with an appropriate exclusion_reason can be complete=true.
+Retrieval metadata and statements about this run are runtime_method assertions;
+do not call them invalid kinds merely because they are not scientific claims.
+Use complete=false if any actual assertion is omitted or misrepresented, including
+omitted runtime assertions. Unsupported but faithfully extracted science is still
+complete; mark its decision unsupported instead of declaring extraction incomplete.
+Never approve an invalid inventory merely to make all unit flags true."""
 ASSESSMENT_PROMPT += """\nSUPPORT CONTRACT (host-support-passages-v2):
 Return correct_kind independently of the inventory and atomic=false if an assertion
 combines independently verifiable facts or loses a scientific premise. For every
@@ -156,6 +179,9 @@ If no adequate basis exists use unsupported or unverifiable, not a generic suppo
 explanation. Other kinds and unsupported decisions return an empty support_basis.
 The host resolves all selected IDs and source offsets itself. Do not use a passage
 ID from another citation, nor invent abbreviations absent from the actual source.
+Choose original_support passages containing the actual findings, not just a paper's
+introductory motivation. Keep reduced TO (remaining amount) separate from reduced BY
+(change amount); a dataset name such as JFT-300M is an entity, not a reported result.
 """
 
 
@@ -381,7 +407,7 @@ def required_support_aspects(text: str) -> list[str]:
         re.I,
     ):
         aspects.append("conditions")
-    if _NUMBER.search(text):
+    if _numeric_facts(text):
         aspects.append("quantities")
     if re.search(
         r"\b(?:cause\w*|lead\w* to|due to|because|therefore|thus|via|through)\b|导致|因而|因此|由于|通过|使得",
@@ -408,6 +434,23 @@ def _source_entity_forms(entity: str, sources: list[str]) -> set[str]:
                 phrase = " ".join(words[-count:])
                 forms.add(phrase[:-1] if phrase.endswith("s") else phrase)
     return forms
+
+
+def _source_defined_aliases(text: str, sources: list[str]) -> dict[str, str]:
+    """Resolve full names only when their complete spelling occurs in the claim."""
+    aliases = {}
+    for source in sources:
+        for match in re.finditer(
+            r"([A-Za-z][A-Za-z -]{2,100})\s*\(([A-Za-z][A-Za-z0-9-]{1,24})\)", source
+        ):
+            words = match[1].strip().split()
+            for count in range(2, min(8, len(words)) + 1):
+                phrase = " ".join(words[-count:])
+                if re.search(
+                    rf"(?<![A-Za-z-]){re.escape(phrase)}(?![A-Za-z-])", text, re.I
+                ):
+                    aliases[phrase] = match[2]
+    return aliases
 
 
 _RELATION_SCOPES = {
@@ -497,7 +540,7 @@ def _protected_entities(text: str) -> set[str]:
     }
 
 
-_NUMBER = re.compile(r"(?<![A-Za-z0-9_.])([+-]?(?:\d+(?:\.\d+)?|\.\d+))\s*(%|％)?")
+_NUMBER = re.compile(r"(?<![A-Za-z0-9_.-])([+-]?(?:\d+(?:\.\d+)?|\.\d+))\s*(%|％)?")
 _METRIC = re.compile(
     r"(?P<compute>(?<![A-Za-z0-9_])FLOPs?(?![A-Za-z0-9_])|浮点运算)|"
     r"(?P<speed>\b(?:speedups?|speed)\b|加速|推理速度)|"
@@ -508,7 +551,7 @@ _METRIC = re.compile(
 )
 _DIRECTION = re.compile(
     r"(?P<increase>\b(?:improv\w*|increas\w*|higher|gains?|speedups?|accelerat\w*)\b|提升|提高|增加|加速)|"
-    r"(?P<decrease>\b(?:reduc\w*|decreas\w*|lower|drops?|loss)\b|减少|下降|降低|损失)",
+    r"(?P<decrease>\b(?:reduc\w*|decreas\w*|trimm\w*|lower|drops?|loss)\b|减少|下降|降低|降至|降到|损失)",
     re.I,
 )
 
@@ -560,6 +603,58 @@ def _numeric_facts(text: str) -> list[tuple[str, bool, str | None, str | None]]:
             (str(Decimal(number[1]).normalize()), bool(number[2]), metric, direction)
         )
     return facts
+
+
+def _reduction_bases(text: str, value: str) -> set[str]:
+    """Keep remaining quantity ('to') distinct from a change amount ('by')."""
+    modes = set()
+    for match in _NUMBER.finditer(text):
+        if str(Decimal(match[1]).normalize()) != value:
+            continue
+        before = re.split(
+            r"[。;；!?]|\.(?:\s|$)", text[max(0, match.start() - 80) : match.start()]
+        )[-1]
+        found = list(
+            re.finditer(
+                r"\b(?:reduc\w*|decreas\w*|trimm\w*)\b[^.;。；]{0,50}?\b(to|by)\b|"
+                r"(降至|降到|降低至|降低到|减少至|减少到)|"
+                r"(降低了?|减少了?)",
+                before,
+                re.I,
+            )
+        )
+        if found:
+            last = found[-1]
+            modes.add((last[1].lower() if last[1] else "to" if last[2] else "by"))
+    return modes
+
+
+def _pure_organization(text: str) -> bool:
+    """Recognize narrow scope announcements without exempting mixed science."""
+    return bool(
+        re.match(
+            r"\s*(?:本综述|本文|this review|this survey)\s*(?:系统)?(?:梳理|比较|介绍|涵盖|讨论|总结|compares?\b|covers?\b|summari[sz]es?\b)",
+            text,
+            re.I,
+        )
+        and not has_scientific_predicate(text)
+        and not re.search(
+            r"\b(?:that|uses?|employs?|is|are|enables?)\b|采用|使用|实现|证明|表明|发现|基于|提出|\d+\s*[%％]",
+            text,
+            re.I,
+        )
+    )
+
+
+def _source_scope_issue(claim: str, quote: str, context: str) -> bool:
+    """Reject a definite field-wide absence invented from a scoped coverage list."""
+    absence = r"研究不足|研究缺失|没有.{0,16}研究|分析有限|\b(?:no research|lack of research|research is limited)\b"
+    scoped = r"(?:本次|现有|检索到的).{0,8}(?:证据|材料).{0,10}(?:未覆盖|缺少|不足)|(?:selected|retrieved|this review.{0,8}) evidence.{0,20}(?:does not cover|missing|lacks)"
+    return bool(
+        re.search(scoped, context, re.I)
+        and re.search(absence, claim, re.I)
+        and not re.search(absence, quote, re.I)
+    )
 
 
 def _respectively_binding_valid(claim: str, proof: str) -> bool:
@@ -699,6 +794,12 @@ def validate_support_basis(
         str((ledger.get(s["evidence_id"]) or {}).get("supporting_text") or "")
         for s in spans
     ]
+    # Whole source-defined names may map to their own abbreviation; partial suffixes
+    # cannot license a different full name such as Global Self-Attention.
+    for phrase, abbreviation in sorted(
+        _source_defined_aliases(text, sources).items(), key=lambda item: -len(item[0])
+    ):
+        text = re.sub(re.escape(phrase), abbreviation, text, flags=re.I)
     # Absence is not proof of falsehood. Keep uncertain aliases/units unverified.
     for entity in _protected_entities(text):
         forms = _source_entity_forms(entity, sources)
@@ -749,6 +850,14 @@ def validate_support_basis(
                 "issue": "support_direction_unverified",
                 "value": value,
                 "direction": direction,
+                "spans": spans,
+            }
+        bases = _reduction_bases(text, value) if direction == "decrease" else set()
+        if bases and not bases.intersection(_reduction_bases(proof, value)):
+            return {
+                "status": "unverified",
+                "issue": "support_quantity_basis_unverified",
+                "value": value,
                 "spans": spans,
             }
     return {"status": "passed", "spans": spans}
@@ -874,7 +983,26 @@ async def evaluate_scoped(
     config: Any,
 ) -> dict:
     """Run exactly two bounded stages and return complete, located diagnostics."""
-    units = build_report_source_units(survey)
+    all_units = build_report_source_units(survey)
+    try:
+        managed = _managed_span(survey, context.get("review_methodology"))
+    except ValueError as exc:
+        raise ValueError("evaluation_host_methodology_invalid") from exc
+    host_units = [
+        u
+        for u in all_units
+        if managed and managed[0] <= u.start and u.end <= managed[1]
+    ]
+    host_ids = {u.unit_id for u in host_units}
+    units = [u for u in all_units if u.unit_id not in host_ids]
+    host_validation = {
+        "contract": "canonical-host-owned-metadata-v1",
+        "status": "passed" if managed else "not_applicable",
+        "processed_units": len(host_units),
+        "source_unit_ids": [u.unit_id for u in host_units],
+        "source_sha256": hashlib.sha256(survey.encode("utf-8")).hexdigest(),
+        "verification": "byte_equal_to_rendered_host_record",
+    }
     if not units:
         raise ValueError("evaluation_no_source_units")
     ledger = context.get("evidence") or {}
@@ -909,6 +1037,7 @@ async def evaluate_scoped(
         input_units.append(
             {
                 "source_unit_id": unit.unit_id,
+                "scope_context": survey[max(0, unit.start - 400) : unit.start],
                 "citation_aliases": extract_evidence_refs_ordered(text),
                 "source_fragments": [
                     {
@@ -978,6 +1107,7 @@ async def evaluate_scoped(
                 "classification_contract": CLASSIFICATION_CONTRACT,
                 "support_contract": SUPPORT_CONTRACT,
                 "research_question": context.get("query", ""),
+                "host_methodology_validation": host_validation,
                 "source_units": input_units,
                 "allowed_citation_aliases": list(inverse),
                 "schema": inventory_schema,
@@ -1032,6 +1162,13 @@ async def evaluate_scoped(
                         else None
                     )
                 )
+                scope_context = survey[max(0, start - 400) : start]
+                if assertion.kind == "scientific" and _pure_organization(
+                    assertion.claim_text
+                ):
+                    local = "evaluation_atomic_classification_unverified"
+                if _source_scope_issue(assertion.claim_text, quote, scope_context):
+                    local = "evaluation_source_scope_unverified"
                 claims.append(
                     {
                         "claim_id": f"claim_{len(claims)}",
@@ -1131,6 +1268,7 @@ async def evaluate_scoped(
                     for pid, passage in support_passages.items()
                 },
                 "host_runtime_record": context.get("review_methodology") or {},
+                "host_methodology_validation": host_validation,
                 "schema": Assessment.model_json_schema(),
             },
         )
@@ -1146,7 +1284,46 @@ async def evaluate_scoped(
             "evaluation_decision_coverage_invalid",
         )
         if any(not u.complete for u in assessment.units):
-            raise ValueError("evaluation_extraction_incomplete")
+            incomplete_units = [
+                u.model_dump() for u in assessment.units if not u.complete
+            ]
+            complete_ids = {u.source_unit_id for u in assessment.units if u.complete}
+            raise ScopedEvaluationError(
+                "evaluation_extraction_incomplete",
+                {
+                    "coverage": {
+                        "source_units": len(all_units),
+                        "processed_units": len(assessment.units) + len(host_units),
+                        "model_source_units": len(units),
+                        "model_processed_units": len(assessment.units),
+                        "host_processed_units": len(host_units),
+                        "complete": False,
+                        "incomplete_unit_ids": [
+                            u["source_unit_id"] for u in incomplete_units
+                        ],
+                    },
+                    "incomplete_units": incomplete_units,
+                    "host_methodology_validation": host_validation,
+                    "completed_scientific_claim_count": sum(
+                        c["kind"] == "scientific"
+                        and c["source_unit_id"] in complete_ids
+                        for c in claims
+                    ),
+                    "provider": {
+                        "algorithm_version": EVALUATION_VERSION,
+                        "model": [r.model for r in responses],
+                        "call_count": len(responses),
+                        "usage": {
+                            key: sum(int(r.usage.get(key) or 0) for r in responses)
+                            for key in ("prompt_tokens", "completion_tokens")
+                        },
+                        "usage_complete": all(
+                            r.usage.get("usage_available", bool(r.usage))
+                            for r in responses
+                        ),
+                    },
+                },
+            )
         if any(
             not entry.assertions
             and has_scientific_predicate(unit_by_id[entry.source_unit_id].text)
@@ -1171,6 +1348,13 @@ async def evaluate_scoped(
             ):
                 raise ValueError("evaluation_decision_status_invalid")
             value = {**claim, **decision.model_dump()}
+            if claim["local_error"] in {
+                "evaluation_atomic_classification_unverified",
+                "evaluation_source_scope_unverified",
+            }:
+                value.update(status="unverifiable", reason_code="unverifiable")
+                decisions.append(value)
+                continue
             if claim["local_error"]:
                 value.update(status="unsupported", reason_code=claim["local_error"])
             if claim["kind"] == "runtime_method" and not context.get(
@@ -1250,8 +1434,11 @@ async def evaluate_scoped(
         "unsupported_count": sum(d["status"] == "unsupported" for d in science),
         "unverified_count": sum(d["status"] == "unverifiable" for d in science),
         "coverage": {
-            "source_units": len(units),
-            "processed_units": len(inventory.units),
+            "source_units": len(all_units),
+            "processed_units": len(inventory.units) + len(host_units),
+            "model_source_units": len(units),
+            "model_processed_units": len(inventory.units),
+            "host_processed_units": len(host_units),
             "assertions": len(decisions),
             "complete": not incomplete,
         },
@@ -1259,6 +1446,7 @@ async def evaluate_scoped(
         "unsupported_claims": diagnostics,
         "structure_checks": context.get("structure_checks", {}),
         "method_checks": context.get("method_checks", {}),
+        "host_methodology_validation": host_validation,
         "language_checks": context.get("language_checks", {}),
         "critical_attribution_errors": [
             d["claim_id"] for d in science if d["reason_code"] == "attribution_mismatch"

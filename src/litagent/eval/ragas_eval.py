@@ -262,6 +262,7 @@ class RagasFaithfulnessEvaluator(Evaluator):
                 EVALUATION_VERSION,
                 EXTRACTION_CONTRACT,
                 SUPPORT_CONTRACT,
+                ScopedEvaluationError,
                 evaluate_scoped,
             )
 
@@ -275,6 +276,7 @@ class RagasFaithfulnessEvaluator(Evaluator):
                 "method_checks": context.get("method_checks", {}),
                 "language_checks": context.get("language_checks", {}),
             }
+            failure_details = {}
             try:
                 details = await evaluate_scoped(
                     llm=self._llm, survey=survey, context=context, config=self._cfg.eval
@@ -292,6 +294,9 @@ class RagasFaithfulnessEvaluator(Evaluator):
                 return self._make_result(score, details)
             except asyncio.CancelledError:
                 raise
+            except ScopedEvaluationError as exc:
+                reason = str(exc)
+                failure_details = exc.details
             except TimeoutError:
                 reason = "evaluation_timeout"
             except (ValueError, TypeError, json.JSONDecodeError) as exc:
@@ -306,6 +311,7 @@ class RagasFaithfulnessEvaluator(Evaluator):
             result.details.update(
                 base, coverage={"complete": False}, unverified_count=None
             )
+            result.details.update(failure_details)
             return result
 
         resolved = self._resolve_contexts(context)
