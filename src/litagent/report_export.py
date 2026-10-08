@@ -55,6 +55,12 @@ class LocalReportExporter:
             if citation_style != "evidence" and reader_report is not None
             else report.survey
         )
+        if (
+            format != "md"
+            and reader_report is not None
+            and citation_style != "evidence"
+        ):
+            markdown = _export_reader_markdown(reader_report)
         content = await asyncio.to_thread(
             self._render, report, markdown, format, publishable
         )
@@ -118,32 +124,24 @@ class LocalReportExporter:
         story = fitz.Story(
             html=f"<p class='metadata'>{metadata}</p>{rendered}", user_css=css
         )
-        buffer = io.BytesIO()
-        writer = fitz.DocumentWriter(buffer)
+        page_rect = fitz.paper_rect("a4")
+        document = story.write_with_links(
+            lambda _page, _filled: (
+                page_rect,
+                fitz.Rect(48, 48, page_rect.width - 48, page_rect.height - 48),
+                None,
+            ),
+        )
         try:
-            page_rect = fitz.paper_rect("a4")
-            story.write(
-                writer,
-                lambda _page, _filled: (
-                    page_rect,
-                    fitz.Rect(48, 48, page_rect.width - 48, page_rect.height - 48),
-                    None,
-                ),
-            )
-        finally:
-            writer.close()
-        if publishable:
-            return buffer.getvalue()
-        # Keep the draft warning visible after page one in long exports.
-        document = fitz.open(stream=buffer.getvalue(), filetype="pdf")
-        try:
-            for page in document:
-                page.insert_text(
-                    (48, page.rect.height - 30),
-                    _DRAFT_LABEL,
-                    fontsize=8,
-                    color=(0.56, 0.25, 0.15),
-                )
+            if not publishable:
+                # Keep the warning visible after page one without dropping links.
+                for page in document:
+                    page.insert_text(
+                        (48, page.rect.height - 30),
+                        _DRAFT_LABEL,
+                        fontsize=8,
+                        color=(0.56, 0.25, 0.15),
+                    )
             return document.tobytes()
         finally:
             document.close()
@@ -222,6 +220,27 @@ class LocalReportExporter:
         buffer = io.BytesIO()
         document.save(buffer)
         return buffer.getvalue()
+
+
+def _export_reader_markdown(reader: ReaderReport) -> str:
+    """Link source URLs and remove UI-only evidence targets in binary exports."""
+    markdown = reader.markdown
+    if reader.bibliography_span:
+        start, end = reader.bibliography_span
+
+        def autolink(match: re.Match) -> str:
+            value = match.group()
+            url = value.rstrip(".,;。；，)")
+            return f"<{url}>" + value[len(url) :]
+
+        bibliography = re.sub(r"https?://[^\s<>]+", autolink, markdown[start:end])
+        markdown = markdown[:start] + bibliography + markdown[end:]
+    # These targets represent browser evidence buttons, not document bookmarks.
+    for link in reader.citation_links:
+        markdown = markdown.replace(
+            f"[{link['label']}](#{link['anchor']})", link["label"]
+        )
+    return markdown
 
 
 def _append_inline(paragraph, children: list) -> None:
