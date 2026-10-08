@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import unicodedata
 from enum import Enum
 from typing import Callable, Sequence
 
@@ -57,8 +58,34 @@ Do NOT drift to unrelated topics. Keep each sub-query concise \
 (a search-engine query, not a sentence).
 
 Provide one broad short query and focused queries covering explicitly named methods.
+Focused discovery queries should name one method at a time, not require every
+original paper to discuss all compared methods. Avoid filler such as 'representative
+methods', 'experimental comparison' and 'open problems' in discovery queries.
+For foundational methods, prefer distinctive original-paper title terms when known.
+An acronym alone often retrieves derivatives instead of the original method paper.
+Use OR between known acronym/title alternatives, never AND between those aliases.
+Title terms are discovery hypotheses; retrieved records must establish identity.
 Do not return the full long user request as a search query. Do not invent paper IDs.
-Respond ONLY with JSON: {"sub_queries": ["...", "..."], "named_methods": ["literal method name from the user request"]}"""
+When several named methods are compared, also provide original_paper_queries with
+one original-paper title discovery query per known method. Use distinctive quoted
+title terms, not an acronym that predominantly retrieves derivative papers. Omit
+unknown titles rather than guessing an identifier. These queries are hypotheses,
+not accepted source records, and share the same existing sub-query limit.
+Respond ONLY with JSON: {"sub_queries": ["...", "..."], "named_methods": ["literal method name from the user request"], "original_paper_queries": [{"method": "the same named method", "query": "quoted original-title terms"}]}"""
+
+
+def _method_key(value: str) -> str:
+    """Match literal method names across typographic parenthesis variants."""
+    value = unicodedata.normalize("NFKC", value).casefold()
+    return re.sub(r"\s*([()])\s*", r"\1", value).strip()
+
+
+def _independent_method_query(name: str) -> str:
+    """Treat a parenthetical acronym as an alternative, not an AND requirement."""
+    match = re.fullmatch(r"(.+?)\s*[（(]([A-Za-z][A-Za-z0-9 -]*)[）)]", name)
+    if match:
+        return f'"{match[1].strip()}" OR "{match[2].strip()}"'
+    return name
 
 
 class SurveyPlanner:
@@ -284,7 +311,7 @@ class SurveyPlanner:
                     for x in (names if isinstance(names, list) else [])
                     if isinstance(x, str)
                     and x.strip()
-                    and x.strip().casefold() in query.casefold()
+                    and _method_key(x) in _method_key(query)
                 )
             )[:12]
             if not isinstance(raw, list):
@@ -300,6 +327,49 @@ class SurveyPlanner:
                     seen.add(k)
                     merged.append(q)
 
+            if (
+                len(self._named_methods) > 1
+                and merged
+                and all(
+                    sum(name.casefold() in q.casefold() for name in self._named_methods)
+                    > 1
+                    and not re.search(r"\bOR\b", q)
+                    for q in merged
+                )
+            ):
+                # arXiv ANDs plain terms; joint queries miss individual source papers.
+                # Preserve the existing query/call cap and the original downstream topic.
+                original_queries = {}
+                raw_original = parsed.get("original_paper_queries")
+                for item in raw_original if isinstance(raw_original, list) else []:
+                    if not isinstance(item, dict):
+                        continue
+                    name, original = item.get("method"), item.get("query")
+                    if (
+                        isinstance(name, str)
+                        and isinstance(original, str)
+                        and 0 < len(original.strip()) <= 300
+                    ):
+                        key = _method_key(name)
+                        if any(
+                            _method_key(method) == key for method in self._named_methods
+                        ):
+                            original_queries.setdefault(key, original.strip())
+                merged = [
+                    original_queries.get(
+                        _method_key(name), _independent_method_query(name)
+                    )
+                    for name in self._named_methods
+                ]
+            elif (
+                len(self._named_methods) == 1
+                and merged
+                and all(
+                    _method_key(q) == _method_key(self._named_methods[0])
+                    for q in merged
+                )
+            ):
+                merged = [_independent_method_query(self._named_methods[0])]
             clamped = merged[: self._config.max_sub_queries] or fallback
             logger.info(f"Decompose: {query!r} -> {len(clamped)} sub-queries")
             return clamped
