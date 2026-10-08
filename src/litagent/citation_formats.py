@@ -28,9 +28,15 @@ REF_PATTERN = re.compile(r"\[E:([^\[\]\s;,]+)\]")
 
 def format_capabilities() -> dict:
     """Expose installed capabilities without invoking models or external services."""
+    available = shutil.which("node") is not None
+    if available:
+        try:
+            _verify_assets()
+        except RuntimeError:
+            available = False
     return {
         "citation_styles": list(STYLES),
-        "academic_engine_available": shutil.which("node") is not None,
+        "academic_engine_available": available,
         "report_formats": ["md", "pdf", "docx"],
         "bibliography_formats": list(BIBLIOGRAPHY_FORMATS),
     }
@@ -141,7 +147,9 @@ def build_bibliographic_snapshot(report, ledger: Mapping, catalog: Mapping) -> d
 def _verify_assets() -> None:
     """Detect changed vendored assets before invoking the deterministic processor."""
     try:
-        manifest = json.loads((ASSET_ROOT / "manifest.json").read_text())
+        manifest = json.loads(
+            (ASSET_ROOT / "manifest.json").read_text(encoding="utf-8")
+        )
         for name, entry in manifest["files"].items():
             if (
                 hashlib.sha256((ASSET_ROOT / name).read_bytes()).hexdigest()
@@ -169,6 +177,7 @@ def format_citations(items: list[dict], clusters: list[list[str]], style: str) -
             input=request,
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=15,
         )
     except subprocess.TimeoutExpired as exc:

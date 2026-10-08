@@ -1,9 +1,13 @@
 """Exercise real CSL rendering, interchange exports, and immutable report views."""
 
 import copy
+import hashlib
 import io
 import json
 import shutil
+import subprocess
+import sys
+from pathlib import Path
 from unittest.mock import AsyncMock
 
 import fitz
@@ -296,3 +300,60 @@ def test_missing_processor_assets_fail_explicitly(monkeypatch, tmp_path):
     with pytest.raises(RuntimeError, match="citation_assets_unavailable"):
         formats.format_citations([], [], "apa7")
     formats._verify_assets.cache_clear()
+
+
+def test_capabilities_disable_academic_styles_for_invalid_assets(monkeypatch, tmp_path):
+    """Broken pinned resources remain unavailable even when Node is installed."""
+    formats._verify_assets.cache_clear()
+    monkeypatch.setattr(formats, "ASSET_ROOT", tmp_path)
+    monkeypatch.setattr(formats.shutil, "which", lambda name: "node")
+    try:
+        capabilities = formats.format_capabilities()
+        assert capabilities["academic_engine_available"] is False
+        assert "numbered" in capabilities["citation_styles"]
+        with pytest.raises(RuntimeError, match="citation_assets_unavailable"):
+            formats._verify_assets()
+    finally:
+        formats._verify_assets.cache_clear()
+
+
+def test_csl_chinese_roundtrip_without_utf8_mode():
+    """The Python/Node protocol does not depend on the process locale."""
+    script = """
+import json
+from litagent.citation_formats import format_citations
+items = [{"id": "a", "type": "article-journal", "title": "中文研究",
+          "author": [{"literal": "张三"}], "issued": {"date-parts": [[2024]]}}]
+result = format_citations(items, [["a"]], "ieee")
+assert "中文研究" in json.dumps(result, ensure_ascii=False)
+"""
+    result = subprocess.run(
+        [sys.executable, "-X", "utf8=0", "-c", script],
+        capture_output=True,
+        encoding="utf-8",
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_pinned_assets_match_manifest_after_windows_checkout(tmp_path):
+    """A real autocrlf checkout preserves the pinned upstream resource bytes."""
+    project = Path(__file__).resolve().parents[1]
+    (tmp_path / ".gitattributes").write_bytes((project / ".gitattributes").read_bytes())
+    target = tmp_path / "src/litagent/csl"
+    target.mkdir(parents=True)
+    manifest = json.loads(
+        (formats.ASSET_ROOT / "manifest.json").read_text(encoding="utf-8")
+    )
+    for name in manifest["files"]:
+        (target / name).write_bytes((formats.ASSET_ROOT / name).read_bytes())
+    for args in (["init", "-q"], ["add", "."], ["checkout-index", "--all", "--force"]):
+        subprocess.run(
+            ["git", "-C", str(tmp_path), "-c", "core.autocrlf=true", *args],
+            check=True,
+            capture_output=True,
+        )
+    for name, item in manifest["files"].items():
+        assert (
+            hashlib.sha256((target / name).read_bytes()).hexdigest() == item["sha256"]
+        )
