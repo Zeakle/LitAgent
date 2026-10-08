@@ -268,8 +268,8 @@ def structure_instruction(structure: str, language: str = "en") -> str:
             else ""
         )
         + (
-            "The host will insert a managed methodology block. Leave this section empty "
-            "or retain its existing managed block verbatim; do not paraphrase run disclosures. "
+            "The host will insert a managed methodology block. Leave this section empty. "
+            "Never copy or generate host markers, timestamps or run disclosures. "
             "Additional scientific assertions still require their own evidence. "
             "In the search-method section, use ONLY <run_methodology> runtime data. "
             "Disclose every recorded search query (search_queries), source and "
@@ -497,12 +497,71 @@ def render_methodology(record: Mapping | None, language: str = "en") -> str:
     return "\n".join(lines)
 
 
+def _managed_span(survey: str, record: Mapping | None) -> tuple[int, int] | None:
+    """Validate an existing host block before exposing authored prose to a model."""
+    if "litagent:run-methodology" not in survey:
+        return None
+    if survey.count(METHOD_BEGIN) != 1 or survey.count(METHOD_END) != 1:
+        raise ValueError("methodology_managed_block_invalid")
+    start = survey.index(METHOD_BEGIN)
+    end = survey.index(METHOD_END) + len(METHOD_END)
+    canonical = {render_methodology(record, locale) for locale in ("en", "zh-CN")}
+    if end <= start or survey[start:end] not in canonical:
+        raise ValueError("methodology_managed_block_invalid")
+    return start, end
+
+
+def prepare_authored_body(
+    survey: str, structure: str, language: str, record: Mapping | None
+) -> str:
+    """Remove only verified host-owned text from a revision input."""
+    if structure not in {"method_transparent_v1", "academic_v2"}:
+        return survey
+    managed = _managed_span(survey, record)
+    if managed is None:
+        return survey
+    start, end = managed
+    if structure == "academic_v2":
+        for section in top_level_sections(survey):
+            if (
+                section["section"] in {appendix_title("en"), appendix_title("zh-CN")}
+                and section["content_start"] <= start < end <= section["end"]
+                and survey[section["content_start"] : section["end"]].strip()
+                == survey[start:end]
+            ):
+                return (survey[: section["start"]] + survey[section["end"] :]).rstrip()
+        raise ValueError("methodology_managed_block_invalid")
+    return (survey[:start] + survey[end:]).rstrip()
+
+
+def validate_authored_methodology(survey: str, structure: str) -> None:
+    """Reject model ownership of reserved disclosures without deleting its output."""
+    if structure not in {"method_transparent_v1", "academic_v2"}:
+        return
+    if "litagent:run-methodology" in survey:
+        raise ValueError("methodology_model_authored")
+    reserved = (
+        {appendix_title("en"), appendix_title("zh-CN")}
+        if structure == "academic_v2"
+        else {"Search and Evidence Selection Methods", "检索与证据选择方法"}
+    )
+    for section in top_level_sections(survey):
+        if section["section"] in reserved and (
+            structure == "academic_v2"
+            or survey[section["content_start"] : section["end"]].strip()
+        ):
+            raise ValueError("methodology_model_authored")
+
+
 def assemble_methodology(
     survey: str, structure: str, language: str, record: Mapping | None
 ) -> str:
     """Replace only the managed block and retain additional authored content."""
     if structure not in {"method_transparent_v1", "academic_v2"} or not survey.strip():
         return survey
+    _managed_span(survey, record)
+    if structure == "academic_v2" and METHOD_BEGIN in survey:
+        prepare_authored_body(survey, structure, language, record)
     block = render_methodology(record, language)
     if structure == "academic_v2":
         # Only canonical, exclusively host-owned appendices may be replaced wholesale.

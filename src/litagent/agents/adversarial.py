@@ -21,7 +21,10 @@ from litagent.observability.citations import (
 from litagent.observability.context import reset_task_id, set_task_id
 from litagent.orchestrator.scheduler import Worker
 from litagent.orchestrator.task_graph import SubTask
-from litagent.review_structure import assemble_methodology
+from litagent.review_structure import (
+    assemble_methodology,
+    validate_authored_methodology,
+)
 from litagent.workbench import ReportLanguage
 
 logger = get_logger("agents.adversarial")
@@ -292,6 +295,7 @@ class AdversarialReviewWorker(Worker):
                             stage="revision",
                             round_num=round_num + 1,
                         ).text
+                        validate_authored_methodology(candidate, review_structure)
                         candidate = assemble_methodology(
                             candidate,
                             review_structure,
@@ -433,7 +437,12 @@ class AdversarialReviewWorker(Worker):
                         + "\n".join(
                             f"- [{c.get('section', '?')}] {c.get('claim', '')}"
                             f"  reason: {c.get('reason', '')}"
-                            f"  action: {c.get('action', 'delete')}"
+                            f"  action: {c.get('action', 'verify')}"
+                            f"  source_quote: {c.get('source_quote', 'unmapped')}"
+                            f"  source_start: {c.get('source_start', 'unmapped')}"
+                            f"  source_end: {c.get('source_end', 'unmapped')}"
+                            "  offset_scope: frozen canonical report before citation alias encoding"
+                            f"  existing_evidence_ids: {c.get('existing_evidence_ids', [])}"
                             for c in safe_claims
                         )
                     )

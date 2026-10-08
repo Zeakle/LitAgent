@@ -98,6 +98,7 @@ from litagent.review_structure import (
     assemble_methodology,
     build_methodology,
     check_methodology,
+    validate_authored_methodology,
 )
 from litagent.safety.budget import CostBudget
 from litagent.safety.injection import InjectionDetector
@@ -2363,6 +2364,20 @@ class LitAgent:
             parent_task_id="evidence_rewrite",
             stage="evidence_rewrite",
         ).text
+        try:
+            validate_authored_methodology(
+                candidate,
+                report_data.get("metadata", {}).get("review_structure", "legacy"),
+            )
+        except ValueError as exc:
+            self._emit(
+                "subspan.end",
+                {
+                    "task_id": "evidence_rewrite",
+                    "output": {"accepted": False, "reason": str(exc)},
+                },
+            )
+            return RewriteOutcome(True, False, candidate, None, None, None, str(exc))
         candidate = assemble_methodology(
             candidate,
             report_data.get("metadata", {}).get("review_structure", "legacy"),
@@ -2613,6 +2628,15 @@ class LitAgent:
             parent_task_id="human_revision",
             stage="human_revision",
         ).text
+        try:
+            validate_authored_methodology(
+                candidate,
+                report_data.get("metadata", {}).get("review_structure", "legacy"),
+            )
+        except ValueError as exc:
+            return report_data, finish_revision(
+                {"committed": False, "reason_code": str(exc)}
+            )
         candidate = assemble_methodology(
             candidate,
             report_data.get("metadata", {}).get("review_structure", "legacy"),

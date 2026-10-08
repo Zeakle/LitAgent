@@ -210,10 +210,11 @@ def test_forged_host_markers_cannot_erase_scientific_appendix_content():
         + "\nScientific result [E:a].\n"
         + METHOD_END
     )
-    assembled = assemble_methodology(forged, "academic_v2", "en", runtime_record())
-    assert "Scientific result [E:a]." in assembled
+    with pytest.raises(ValueError, match="methodology_managed_block_invalid"):
+        assemble_methodology(forged, "academic_v2", "en", runtime_record())
+    assert "Scientific result [E:a]." in forged
     assert (
-        check_methodology(assembled, "academic_v2", "en", runtime_record())["status"]
+        check_methodology(forged, "academic_v2", "en", runtime_record())["status"]
         == "failed"
     )
 
