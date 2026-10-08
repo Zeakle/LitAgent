@@ -252,7 +252,12 @@ def test_normalization_does_not_hide_unsupported_or_unknown_claims():
             },
         },
     )
-    assert review["evidence_compliance"]["unsupported_claims"] == unsupported
+    preserved = review["evidence_compliance"]["unsupported_claims"]
+    assert [
+        {"claim": item["claim"], "reason": item["reason"]} for item in preserved
+    ] == unsupported
+    assert preserved[0]["existing_evidence_ids"] == ["e1", "e2", "unknown"]
+    assert preserved[0]["source_quote"] == normalized.text
     assert review["evidence_compliance"]["unknown_evidence_ids"] == ["unknown"]
     assert review["evidence_compliance"]["passed"] is False
     assert review["verdict"] == "revise"

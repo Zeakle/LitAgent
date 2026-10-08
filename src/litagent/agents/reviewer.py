@@ -600,7 +600,11 @@ class ReviewerWorker(Worker):
             from litagent.report_render import build_report_source_units
 
             fragments = [
-                f
+                {
+                    **f,
+                    "source_start": unit.start + f["start"],
+                    "source_end": unit.start + f["end"],
+                }
                 for unit in build_report_source_units(draft)
                 for f in build_source_fragments(unit)
             ]
@@ -608,20 +612,37 @@ class ReviewerWorker(Worker):
             for item in unsupported:
                 item = dict(item)
                 claim = item.get("claim")
+                normalize = lambda text: " ".join(
+                    re.sub(r"\[E:[^\]]+\]|\*", "", text).split()
+                )
+                matches = [
+                    f
+                    for f in fragments
+                    if isinstance(claim, str)
+                    and normalize(claim)
+                    and normalize(claim) in normalize(f["source_quote"])
+                ]
+                if len(matches) == 1:
+                    item.update(
+                        source_quote=matches[0]["source_quote"],
+                        source_start=matches[0]["source_start"],
+                        source_end=matches[0]["source_end"],
+                        existing_evidence_ids=matches[0]["citation_aliases"],
+                    )
+                else:
+                    # Model-provided positions are never trusted as edit authorization.
+                    for key in (
+                        "source_quote",
+                        "source_start",
+                        "source_end",
+                        "existing_evidence_ids",
+                    ):
+                        item.pop(key, None)
                 if (
                     item.get("action") == "bind"
                     and isinstance(claim, str)
                     and claim.strip()
                 ):
-                    normalize = lambda text: " ".join(
-                        re.sub(r"\[E:[^\]]+\]|\*", "", text).split()
-                    )
-                    matches = [
-                        f
-                        for f in fragments
-                        if normalize(claim)
-                        and normalize(claim) in normalize(f["source_quote"])
-                    ]
                     if (
                         len(matches) == 1
                         and matches[0]["citation_aliases"]
