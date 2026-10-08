@@ -172,7 +172,10 @@ class ArchiveRepository:
         except (OSError, json.JSONDecodeError) as exc:
             logger.warning("Ignoring unreadable flow archive %s: %s", path, exc)
             return None
-        return value if isinstance(value, dict) and value.get("run_id") else None
+        if not isinstance(value, dict) or not value.get("run_id"):
+            return None
+        # Sidecar acceptance files may share a run_id but are not RunArtifacts.
+        return value if path.name == self.path_for(str(value["run_id"])).name else None
 
 
 class RunRecorder:
@@ -228,6 +231,10 @@ class RunRecorder:
             for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
                 usage[key] += int(payload.get(key, 0) or 0)
         self._apply_event(event, payload, record["at"])
+
+    def set_citation_style(self, style: str) -> None:
+        """Save the initial display preference without changing report content."""
+        self._artifact["citation_style"] = style
 
     def set_config_summary(self, summary: dict[str, Any]) -> None:
         """Store one canonical config summary and expose its fingerprint."""

@@ -6,6 +6,7 @@ import asyncio
 import html
 import io
 import re
+import sys
 from typing import Literal
 
 import fitz
@@ -16,7 +17,12 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from markdown_it import MarkdownIt
 
-from litagent.report_render import ReaderReport, render_report_html
+from litagent.citation_formats import STYLES
+from litagent.report_render import (
+    ReaderReport,
+    _without_managed_markers,
+    render_report_html,
+)
 from litagent.workbench import ExportResult, ReportVersion
 
 _DRAFT_LABEL = "DRAFT - NOT APPROVED FOR PUBLICATION"
@@ -31,22 +37,22 @@ class LocalReportExporter:
         *,
         format: Literal["md", "pdf", "docx"],
         publishable: bool,
-        citation_style: Literal["evidence", "numbered"] = "evidence",
+        citation_style: str = "evidence",
         reader_report: ReaderReport | None = None,
     ) -> ExportResult:
         """Render one exact revision and expose its source-content hash."""
         if format not in {"md", "pdf", "docx"}:
             raise ValueError("unsupported_export_format")
-        if citation_style not in {"evidence", "numbered"}:
+        if citation_style not in STYLES:
             raise ValueError("unsupported_citation_style")
-        if citation_style == "numbered" and (
+        if citation_style != "evidence" and (
             reader_report is None
             or reader_report.source_sha256 != report.content_sha256
         ):
             raise ValueError("reader_projection_unavailable")
         markdown = (
             reader_report.markdown
-            if citation_style == "numbered" and reader_report is not None
+            if citation_style != "evidence" and reader_report is not None
             else report.survey
         )
         content = await asyncio.to_thread(
@@ -69,6 +75,7 @@ class LocalReportExporter:
     ) -> bytes:
         if format == "md":
             return self._markdown(report, markdown, publishable).encode("utf-8")
+        markdown = _without_managed_markers(markdown)
         if format == "pdf":
             return self._pdf(report, markdown, publishable)
         return self._docx(report, markdown, publishable)
@@ -143,6 +150,14 @@ class LocalReportExporter:
 
     def _docx(self, report: ReportVersion, markdown: str, publishable: bool) -> bytes:
         document = Document()
+        # Explicit East Asian fonts prevent theme fallbacks from dropping CJK glyphs.
+        east_asian_font = (
+            "Arial Unicode MS" if sys.platform == "darwin" else "Microsoft YaHei"
+        )
+        for style in document.styles:
+            fonts = style.element.get_or_add_rPr().get_or_add_rFonts()
+            fonts.set(qn("w:eastAsia"), east_asian_font)
+            fonts.attrib.pop(qn("w:eastAsiaTheme"), None)
         document.sections[0].header.paragraphs[0].text = (
             _DRAFT_LABEL if not publishable else ""
         )

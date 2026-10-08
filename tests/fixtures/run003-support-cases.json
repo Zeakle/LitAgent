@@ -1,0 +1,178 @@
+{
+  "provenance": "Public original support and read-only source excerpts from run-003; no provider calls or archived score modification.",
+  "issues": [
+    {
+      "claim": "Evo-ViT increases DeiT-S inference speed by 50% with only 0.3% accuracy drop",
+      "kind": "scientific",
+      "materials": [
+        {
+          "alias": "e12",
+          "paper_id": "arxiv:2202.07800",
+          "paper_title": "Not All Patches are What You Need: Expediting Vision Transformers via\n  Token Reorganizations",
+          "evidence_text": "The proposed method EViT improves ViTs by reducing computation under the same number of input tokens (e.g., DeiT-S inference speed increased by 50% with only 0.3% accuracy drop on ImageNet) and improving accuracy under the same computational cost (e.g., DeiT-S accuracy improved by 1% on ImageNet), with no additional parameters.",
+          "original_support": {
+            "paper_id": "arxiv:2202.07800",
+            "text": "Vision Transformers (ViTs) take all the image patches as tokens and construct multi-head self-attention (MHSA) among them. Complete leverage of these image tokens brings redundant computations since not all the tokens are attentive in MHSA. Examples include that tokens containing semantically meaningless or distractive image backgrounds do not positively contribute to the ViT predictions. In this work, we propose to reorganize image tokens during the feed-forward process of ViT models, which is integrated into ViT during training. For each forward inference, we identify the attentive image tokens between MHSA and FFN (i.e., feed-forward network) modules, which is guided by the corresponding class token attention. Then, we reorganize image tokens by preserving attentive image tokens and fusing inattentive ones to expedite subsequent MHSA and FFN computations. To this end, our method EViT improves ViTs from two perspectives. First, under the same amount of input image tokens, our method reduces MHSA and FFN computation for efficient inference. For instance, the inference speed of DeiT-S is increased by 50% while its recognition accuracy is decreased by only 0.3% for ImageNet classification. Second, by maintaining the same computational cost, our method empowers ViTs to take more image tokens as input for recognition accuracy improvement, where the image tokens are from higher resolution images. An example is that we improve the recognition accuracy of DeiT-S by 1% for ImageNet classification at the same computational cost of a vanilla DeiT-S. Meanwhile, our method does not introduce more parameters to ViTs. Experiments on the standard benchmarks show the effectiveness of our method. The code is available at https://github.com/youweiliang/evit"
+          }
+        }
+      ],
+      "issue_type": "entity_attribution_mismatch"
+    },
+    {
+      "claim": "Efficient variants like Evo-ViT and Multi-criteria Token Fusion further optimized ViTs for speed, with Evo-ViT increasing DeiT-S inference speed by 50% and MCTF achieving 44% FLOP reduction while improving accuracy",
+      "kind": "scientific",
+      "materials": [
+        {
+          "alias": "e10",
+          "paper_id": "arxiv:2403.10030",
+          "paper_title": "Multi-criteria Token Fusion with One-step-ahead Attention for Efficient Vision Transformers",
+          "evidence_text": "The proposed Multi-criteria Token Fusion (MCTF) method gradually fuses tokens based on multi-criteria including similarity, informativeness, and size of fused tokens, and uses one-step-ahead attention to capture token informativeness, achieving the best speed-accuracy trade-off on ImageNet1K image classification.",
+          "original_support": {
+            "paper_id": "arxiv:2403.10030",
+            "text": "Vision Transformer (ViT) has emerged as a prominent backbone for computer vision. For more efficient ViTs, recent works lessen the quadratic cost of the self-attention layer by pruning or fusing the redundant tokens. However, these works faced the speed-accuracy trade-off caused by the loss of information. Here, we argue that token fusion needs to consider diverse relations between tokens to minimize information loss. In this paper, we propose a Multi-criteria Token Fusion (MCTF), that gradually fuses the tokens based on multi-criteria (e.g., similarity, informativeness, and size of fused tokens). Further, we utilize the one-step-ahead attention, which is the improved approach to capture the informativeness of the tokens. By training the model equipped with MCTF using a token reduction consistency, we achieve the best speed-accuracy trade-off in the image classification (ImageNet1K). Experimental results prove that MCTF consistently surpasses the previous reduction methods with and without training. Specifically, DeiT-T and DeiT-S with MCTF reduce FLOPs by about 44% while improving the performance (+0.5%, and +0.3%) over the base model, respectively. We also demonstrate the applicability of MCTF in various Vision Transformers (e.g., T2T-ViT, LV-ViT), achieving at least 31% speedup without performance degradation. Code is available at https://github.com/mlvlab/MCTF."
+          }
+        },
+        {
+          "alias": "e12",
+          "paper_id": "arxiv:2202.07800",
+          "paper_title": "Not All Patches are What You Need: Expediting Vision Transformers via\n  Token Reorganizations",
+          "evidence_text": "The proposed method EViT improves ViTs by reducing computation under the same number of input tokens (e.g., DeiT-S inference speed increased by 50% with only 0.3% accuracy drop on ImageNet) and improving accuracy under the same computational cost (e.g., DeiT-S accuracy improved by 1% on ImageNet), with no additional parameters.",
+          "original_support": {
+            "paper_id": "arxiv:2202.07800",
+            "text": "Vision Transformers (ViTs) take all the image patches as tokens and construct multi-head self-attention (MHSA) among them. Complete leverage of these image tokens brings redundant computations since not all the tokens are attentive in MHSA. Examples include that tokens containing semantically meaningless or distractive image backgrounds do not positively contribute to the ViT predictions. In this work, we propose to reorganize image tokens during the feed-forward process of ViT models, which is integrated into ViT during training. For each forward inference, we identify the attentive image tokens between MHSA and FFN (i.e., feed-forward network) modules, which is guided by the corresponding class token attention. Then, we reorganize image tokens by preserving attentive image tokens and fusing inattentive ones to expedite subsequent MHSA and FFN computations. To this end, our method EViT improves ViTs from two perspectives. First, under the same amount of input image tokens, our method reduces MHSA and FFN computation for efficient inference. For instance, the inference speed of DeiT-S is increased by 50% while its recognition accuracy is decreased by only 0.3% for ImageNet classification. Second, by maintaining the same computational cost, our method empowers ViTs to take more image tokens as input for recognition accuracy improvement, where the image tokens are from higher resolution images. An example is that we improve the recognition accuracy of DeiT-S by 1% for ImageNet classification at the same computational cost of a vanilla DeiT-S. Meanwhile, our method does not introduce more parameters to ViTs. Experiments on the standard benchmarks show the effectiveness of our method. The code is available at https://github.com/youweiliang/evit"
+          }
+        }
+      ],
+      "issue_type": "entity_attribution_mismatch_and_unsplit_compound"
+    },
+    {
+      "claim": "Multi-criteria Token Fusion (MCTF) fuses tokens based on similarity, informativeness, and size, achieving speedups of up to 44% on DeiT models while improving accuracy",
+      "kind": "scientific",
+      "materials": [
+        {
+          "alias": "e10",
+          "paper_id": "arxiv:2403.10030",
+          "paper_title": "Multi-criteria Token Fusion with One-step-ahead Attention for Efficient Vision Transformers",
+          "evidence_text": "The proposed Multi-criteria Token Fusion (MCTF) method gradually fuses tokens based on multi-criteria including similarity, informativeness, and size of fused tokens, and uses one-step-ahead attention to capture token informativeness, achieving the best speed-accuracy trade-off on ImageNet1K image classification.",
+          "original_support": {
+            "paper_id": "arxiv:2403.10030",
+            "text": "Vision Transformer (ViT) has emerged as a prominent backbone for computer vision. For more efficient ViTs, recent works lessen the quadratic cost of the self-attention layer by pruning or fusing the redundant tokens. However, these works faced the speed-accuracy trade-off caused by the loss of information. Here, we argue that token fusion needs to consider diverse relations between tokens to minimize information loss. In this paper, we propose a Multi-criteria Token Fusion (MCTF), that gradually fuses the tokens based on multi-criteria (e.g., similarity, informativeness, and size of fused tokens). Further, we utilize the one-step-ahead attention, which is the improved approach to capture the informativeness of the tokens. By training the model equipped with MCTF using a token reduction consistency, we achieve the best speed-accuracy trade-off in the image classification (ImageNet1K). Experimental results prove that MCTF consistently surpasses the previous reduction methods with and without training. Specifically, DeiT-T and DeiT-S with MCTF reduce FLOPs by about 44% while improving the performance (+0.5%, and +0.3%) over the base model, respectively. We also demonstrate the applicability of MCTF in various Vision Transformers (e.g., T2T-ViT, LV-ViT), achieving at least 31% speedup without performance degradation. Code is available at https://github.com/mlvlab/MCTF."
+          }
+        },
+        {
+          "alias": "e11",
+          "paper_id": "arxiv:2403.10030",
+          "paper_title": "Multi-criteria Token Fusion with One-step-ahead Attention for Efficient Vision Transformers",
+          "evidence_text": "MCTF is applicable to various Vision Transformers including T2T-ViT and LV-ViT, achieving at least 31% speedup without performance degradation.",
+          "original_support": {
+            "paper_id": "arxiv:2403.10030",
+            "text": "Vision Transformer (ViT) has emerged as a prominent backbone for computer vision. For more efficient ViTs, recent works lessen the quadratic cost of the self-attention layer by pruning or fusing the redundant tokens. However, these works faced the speed-accuracy trade-off caused by the loss of information. Here, we argue that token fusion needs to consider diverse relations between tokens to minimize information loss. In this paper, we propose a Multi-criteria Token Fusion (MCTF), that gradually fuses the tokens based on multi-criteria (e.g., similarity, informativeness, and size of fused tokens). Further, we utilize the one-step-ahead attention, which is the improved approach to capture the informativeness of the tokens. By training the model equipped with MCTF using a token reduction consistency, we achieve the best speed-accuracy trade-off in the image classification (ImageNet1K). Experimental results prove that MCTF consistently surpasses the previous reduction methods with and without training. Specifically, DeiT-T and DeiT-S with MCTF reduce FLOPs by about 44% while improving the performance (+0.5%, and +0.3%) over the base model, respectively. We also demonstrate the applicability of MCTF in various Vision Transformers (e.g., T2T-ViT, LV-ViT), achieving at least 31% speedup without performance degradation. Code is available at https://github.com/mlvlab/MCTF."
+          }
+        }
+      ],
+      "issue_type": "metric_attribution_mismatch"
+    },
+    {
+      "claim": "DeiT-S achieves 81.2% top-1 accuracy on ImageNet, while MCTF applied to DeiT-T and DeiT-S reduces FLOPs by ~44% and improves accuracy by +0.5% and +0.3% respectively",
+      "kind": "scientific",
+      "materials": [
+        {
+          "alias": "e10",
+          "paper_id": "arxiv:2403.10030",
+          "paper_title": "Multi-criteria Token Fusion with One-step-ahead Attention for Efficient Vision Transformers",
+          "evidence_text": "The proposed Multi-criteria Token Fusion (MCTF) method gradually fuses tokens based on multi-criteria including similarity, informativeness, and size of fused tokens, and uses one-step-ahead attention to capture token informativeness, achieving the best speed-accuracy trade-off on ImageNet1K image classification.",
+          "original_support": {
+            "paper_id": "arxiv:2403.10030",
+            "text": "Vision Transformer (ViT) has emerged as a prominent backbone for computer vision. For more efficient ViTs, recent works lessen the quadratic cost of the self-attention layer by pruning or fusing the redundant tokens. However, these works faced the speed-accuracy trade-off caused by the loss of information. Here, we argue that token fusion needs to consider diverse relations between tokens to minimize information loss. In this paper, we propose a Multi-criteria Token Fusion (MCTF), that gradually fuses the tokens based on multi-criteria (e.g., similarity, informativeness, and size of fused tokens). Further, we utilize the one-step-ahead attention, which is the improved approach to capture the informativeness of the tokens. By training the model equipped with MCTF using a token reduction consistency, we achieve the best speed-accuracy trade-off in the image classification (ImageNet1K). Experimental results prove that MCTF consistently surpasses the previous reduction methods with and without training. Specifically, DeiT-T and DeiT-S with MCTF reduce FLOPs by about 44% while improving the performance (+0.5%, and +0.3%) over the base model, respectively. We also demonstrate the applicability of MCTF in various Vision Transformers (e.g., T2T-ViT, LV-ViT), achieving at least 31% speedup without performance degradation. Code is available at https://github.com/mlvlab/MCTF."
+          }
+        }
+      ],
+      "issue_type": "partially_supported_compound"
+    },
+    {
+      "claim": "Hierarchical ViTs like Swin-B achieve 83.5% top-1 accuracy on ImageNet with lower FLOPs than ViT-Base",
+      "kind": "scientific",
+      "materials": [
+        {
+          "alias": "e7",
+          "paper_id": "arxiv:2404.13648",
+          "paper_title": "Data-independent Module-aware Pruning for Hierarchical Vision\n  Transformers",
+          "evidence_text": "Hierarchical vision transformers have linear computational complexity with respect to image size due to local self-attention and create hierarchical feature maps by merging image patches in deeper layers for dense prediction.",
+          "original_support": {
+            "paper_id": "arxiv:2404.13648",
+            "text": "Hierarchical vision transformers (ViTs) have two advantages over conventional ViTs. First, hierarchical ViTs achieve linear computational complexity with respect to image size by local self-attention. Second, hierarchical ViTs create hierarchical feature maps by merging image patches in deeper layers for dense prediction. However, existing pruning methods ignore the unique properties of hierarchical ViTs and use the magnitude value as the weight importance. This approach leads to two main drawbacks. First, the \"local\" attention weights are compared at a \"global\" level, which may cause some \"locally\" important weights to be pruned due to their relatively small magnitude \"globally\". The second issue with magnitude pruning is that it fails to consider the distinct weight distributions of the network, which are essential for extracting coarse to fine-grained features at various hierarchical levels. To solve the aforementioned issues, we have developed a Data-independent Module-Aware Pruning method (DIMAP) to compress hierarchical ViTs. To ensure that \"local\" attention weights at different hierarchical levels are compared fairly in terms of their contribution, we treat them as a module and examine their contribution by analyzing their information distortion. Furthermore, we introduce a novel weight metric that is solely based on weights and does not require input images, thereby eliminating the dependence on the patch merging process. Our method validates its usefulness and strengths on Swin Transformers of different sizes on ImageNet-1k classification. Notably, the top-5 accuracy drop is only 0.07% when we remove 52.5% FLOPs and 52.7% parameters of Swin-B. When we reduce 33.2% FLOPs and 33.2% parameters of Swin-S, we can even achieve a 0.8% higher relative top-5 accuracy than the original model. Code is available at: https://github.com/he-y/Data-independent-Module-Aware-Pruning"
+          }
+        }
+      ],
+      "issue_type": "unsupported_numeric_condition"
+    },
+    {
+      "claim": "A key limitation of original ViTs is its high data requirement: ViTs typically require pre-training on datasets like JFT-300M to outperform CNNs, as their weak inductive biases for locality lead to poor performance on small datasets",
+      "kind": "scientific",
+      "materials": [
+        {
+          "alias": "e3",
+          "paper_id": "arxiv:2210.15722",
+          "paper_title": "PatchRot: A Self-Supervised Technique for Training Vision Transformers",
+          "evidence_text": "Vision transformers typically require a large amount of labeled data to outperform convolutional neural networks, and self-supervised learning techniques address the high cost of labeling large datasets.",
+          "original_support": {
+            "paper_id": "arxiv:2210.15722",
+            "text": "Vision transformers require a huge amount of labeled data to outperform convolutional neural networks. However, labeling a huge dataset is a very expensive process. Self-supervised learning techniques alleviate this problem by learning features similar to supervised learning in an unsupervised way. In this paper, we propose a self-supervised technique PatchRot that is crafted for vision transformers. PatchRot rotates images and image patches and trains the network to predict the rotation angles. The network learns to extract both global and local features from an image. Our extensive experiments on different datasets showcase PatchRot training learns rich features which outperform supervised learning and compared baseline."
+          }
+        }
+      ],
+      "issue_type": "unsupported_dataset_and_explanation"
+    },
+    {
+      "claim": "The motivation for this survey stems from the success of ViTs in computer vision, which has shifted focus from traditional CNNs to transformer-based architectures",
+      "kind": "report_structure",
+      "materials": [],
+      "issue_type": "scientific_premise_classified_as_organization"
+    },
+    {
+      "claim": "Open problems focus on addressing these gaps, with future research aiming to develop more efficient, data-efficient, and robust ViT architectures that combine the strengths of transformers and convolutional networks",
+      "kind": "report_structure",
+      "materials": [],
+      "issue_type": "scientific_proposal_classification_review"
+    }
+  ],
+  "positive_controls": [
+    {
+      "claim_id": "claim_34",
+      "status": "source_supported_positive_control",
+      "reason": "SPT/LSA原文确实给出Tiny-ImageNet平均提升2.96%；不能只看短claim没数值就拒绝，要读取该断言指定的完整原始支持。",
+      "frozen_assertion": {
+        "claim_id": "claim_34",
+        "kind": "scientific",
+        "claim_text": "For small datasets, methods like Shifted Patch Tokenization (SPT) and Locality Self-Attention (LSA) improve ViT performance by 2.96% on Tiny-ImageNet",
+        "source_unit_id": "unit:13:6636",
+        "source_fragment_id": "unit:13:6636:fragment:1",
+        "source_quote": "For small datasets, methods like Shifted Patch Tokenization (SPT) and Locality Self-Attention (LSA) improve ViT performance by 2.96% on Tiny-ImageNet [E:arxiv:2112.13492:abstract:claim:e65925bd2909].",
+        "source_start": 6832,
+        "source_end": 7031,
+        "section": "数据效率对比",
+        "evidence_ids": [
+          "arxiv:2112.13492:abstract:claim:e65925bd2909"
+        ],
+        "local_error": null,
+        "classification_valid": true,
+        "source_faithful": true,
+        "status": "supported",
+        "reason_code": "supported",
+        "explanation": "The scientific assertion matches the source fragment text, and is supported by citation e13 which directly confirms the claim."
+      },
+      "actual_cited_materials": [
+        {
+          "alias": "e13",
+          "paper_id": "arxiv:2112.13492",
+          "paper_title": "Vision Transformer for Small-Size Datasets",
+          "evidence_text": "This paper proposes Shifted Patch Tokenization (SPT) and Locality Self-Attention (LSA) to address ViT's lack of locality inductive bias, enabling ViTs to learn effectively from scratch on small-size datasets",
+          "original_support": {
+            "paper_id": "arxiv:2112.13492",
+            "text": "Recently, the Vision Transformer (ViT), which applied the transformer structure to the image classification task, has outperformed convolutional neural networks. However, the high performance of the ViT results from pre-training using a large-size dataset such as JFT-300M, and its dependence on a large dataset is interpreted as due to low locality inductive bias. This paper proposes Shifted Patch Tokenization (SPT) and Locality Self-Attention (LSA), which effectively solve the lack of locality inductive bias and enable it to learn from scratch even on small-size datasets. Moreover, SPT and LSA are generic and effective add-on modules that are easily applicable to various ViTs. Experimental results show that when both SPT and LSA were applied to the ViTs, the performance improved by an average of 2.96% in Tiny-ImageNet, which is a representative small-size dataset. Especially, Swin Transformer achieved an overwhelming performance improvement of 4.08% thanks to the proposed SPT and LSA."
+          }
+        }
+      ]
+    }
+  ]
+}

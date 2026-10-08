@@ -66,6 +66,23 @@ class ConsistencyEvaluator(Evaluator):
         if not survey or not survey.strip():
             return EvalResult.skip(self.metric_name, "empty_survey")
 
+        if context.get("evaluation_version") == "survey-evaluation-v2":
+            shared = context.get("scoped_faithfulness_result")
+            if shared is None or shared.skipped:
+                return EvalResult.skip(
+                    self.metric_name, "shared_scoped_evaluation_unavailable"
+                )
+            conflicts = shared.details.get("conflicts", [])
+            return self._make_result(
+                max(0.0, 1.0 - len(conflicts) * self._penalty),
+                {
+                    "evaluation_version": "survey-evaluation-v2",
+                    "threshold": self._threshold,
+                    "conflict_count": len(conflicts),
+                    "conflicts": conflicts,
+                    "material_scope": "frozen_scientific_assertions",
+                },
+            )
         try:
             kwargs: dict[str, Any] = {
                 "response_format": {"type": "json_object"},

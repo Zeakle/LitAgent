@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import json
 import os
 import secrets
@@ -19,9 +20,18 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from litagent.benchmark.survey_archive import SurveyBenchmarkArchive
+from litagent.citation_formats import (
+    build_bibliographic_snapshot,
+    export_bibliography,
+    format_capabilities,
+)
 from litagent.config import AppConfig, load_config
 from litagent.contracts import SurveyResult, build_config_summary
-from litagent.demo import load_bundled_samples, project_flow_demo_view
+from litagent.demo import (
+    extract_report_evidence,
+    load_bundled_samples,
+    project_flow_demo_view,
+)
 from litagent.interaction_store import SqliteReviewRepository
 from litagent.interactive_service import InteractiveRunService
 from litagent.logging import get_logger
@@ -33,8 +43,23 @@ from litagent.observability.recorder import (
 )
 from litagent.observability.tracing import LangFuseTracer
 from litagent.orchestrator.scheduler import CancellationToken
+from litagent.report_audit import ReportAuditService
+from litagent.report_export import LocalReportExporter
+from litagent.report_render import (
+    build_reader_report,
+    paper_catalog_from_nodes,
+    reader_report_projection,
+)
 from litagent.runner import LitAgent, derive_delivery
-from litagent.workbench import HumanDecision, RunOptions
+from litagent.workbench import (
+    AutoAuditMode,
+    CitationStyle,
+    ExportResult,
+    HumanDecision,
+    ReportVersion,
+    ReviewStructure,
+    RunOptions,
+)
 
 logger = get_logger("api")
 
@@ -60,6 +85,10 @@ class SurveyRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=2000)
     report_language: Literal["en", "zh-CN"] = "en"
     human_review: bool = False
+    review_structure: ReviewStructure = "legacy"
+    citation_style: CitationStyle = "numbered"
+    auto_audit_mode: AutoAuditMode = "off"
+    auto_audit_max_versions: int = Field(default=1, ge=1, le=3, strict=True)
 
     @field_validator("query")
     @classmethod
@@ -167,11 +196,16 @@ async def lifespan(application: FastAPI):
     application.state.survey_semaphore = asyncio.Semaphore(
         application.state.config.api.max_concurrent_surveys
     )
+    application.state.report_audit_service = ReportAuditService(
+        application.state.config
+    )
+    await application.state.report_audit_service.initialize()
     application.state.interactive_service = InteractiveRunService(
         application.state.config,
         application.state.interactive_repository,
         semaphore=application.state.survey_semaphore,
         archive_repository=application.state.flow_repository,
+        auto_audit_submitter=_submit_automatic_audit,
     )
     await application.state.interactive_service.initialize()
     application.state.flow_archive_index = {
@@ -185,6 +219,7 @@ async def lifespan(application: FastAPI):
     finally:
         await application.state.interactive_service.shutdown()
         await _shutdown_owned_tasks(application)
+        await application.state.report_audit_service.shutdown()
         cleanup_task.cancel()
         await asyncio.gather(cleanup_task, return_exceptions=True)
         logger.info("LitAgent API shut down")
@@ -208,6 +243,7 @@ app.state.survey_semaphore = None
 app.state.interactive_repository = SqliteReviewRepository()
 app.state.interactive_service = None
 app.state.operation_token = secrets.token_urlsafe(24)
+app.state.report_audit_service = None
 
 app.mount(
     "/static",
@@ -240,6 +276,7 @@ async def _interactive_service() -> InteractiveRunService:
             app.state.interactive_repository,
             semaphore=_runtime_semaphore(),
             archive_repository=app.state.flow_repository,
+            auto_audit_submitter=_submit_automatic_audit,
         )
         await app.state.interactive_service.initialize()
     return app.state.interactive_service
@@ -399,6 +436,19 @@ async def _run_survey(entry: SurveyTaskEntry) -> None:
         except Exception:
             logger.exception("Failed to finalize survey %s", entry.task_id)
         logger.exception("Survey %s failed", entry.task_id)
+    if entry.status == "completed" and entry.options.auto_audit_mode != "off":
+        # Keep audit submission outside the Survey failure handler: cancellation
+        # after finalization must not rewrite the successfully saved artifact.
+        try:
+            await _submit_automatic_artifact(artifact, entry.options)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                "Automatic audit submission failed for %s: %s",
+                entry.task_id,
+                type(exc).__name__,
+            )
 
 
 def _status(entry: SurveyTaskEntry | dict[str, Any]) -> SurveyStatus:
@@ -433,13 +483,35 @@ async def create_survey(
 ):
     """Submit a survey and return its API-owned queued task."""
     options = RunOptions(
-        report_language=req.report_language, human_review=req.human_review
+        report_language=req.report_language,
+        human_review=req.human_review,
+        review_structure=req.review_structure,
+        auto_audit_mode=req.auto_audit_mode,
+        auto_audit_max_versions=req.auto_audit_max_versions,
     )
+    if req.auto_audit_mode != "off":
+        _require_operation_token(request, x_litagent_operation_token)
+        capabilities = (await _report_audit_service()).capabilities()
+        if not capabilities["judge_available"]:
+            raise HTTPException(409, capabilities["judge_reason"])
+        if req.auto_audit_mode == "judge_jev" and not capabilities["jev_available"]:
+            raise HTTPException(409, capabilities["jev_reason"])
     if req.human_review:
         _require_operation_token(request, x_litagent_operation_token)
-        run_id = await (await _interactive_service()).start(req.query, options)
+        service = await _interactive_service()
+        run_id = await service.start(
+            req.query,
+            options,
+            **(
+                {"citation_style": req.citation_style}
+                if req.citation_style != "numbered"
+                else {}
+            ),
+        )
         return SurveyStatus(task_id=run_id, status="queued", progress="queued")
-    return _status(_new_entry(req.query, options=options))
+    entry = _new_entry(req.query, options=options)
+    entry.recorder.set_citation_style(req.citation_style)
+    return _status(entry)
 
 
 @app.delete("/survey/{task_id}", status_code=202, response_model=SurveyStatus)
@@ -609,6 +681,9 @@ async def get_workbench_context():
     """Return local UI capabilities and the same-origin mutation token."""
     mode = os.getenv("LITAGENT_DEMO_MODE", "live").lower()
     live_enabled = mode == "live"
+    audit_service = app.state.report_audit_service or ReportAuditService(
+        app.state.config or load_config()
+    )
     return {
         "schema_version": 1,
         "operation_token": app.state.operation_token,
@@ -616,7 +691,10 @@ async def get_workbench_context():
         "live_enabled": live_enabled,
         "report_languages": ["zh-CN", "en"],
         "export_formats": ["md", "pdf", "docx"],
+        "format_capabilities": format_capabilities(),
+        "review_structures": ["academic_v2", "academic_v1", "method_transparent_v1"],
         "human_review_stages": ["paper_selection", "final_report"],
+        "auto_audit_capabilities": audit_service.capabilities(),
     }
 
 
@@ -724,10 +802,12 @@ async def list_survey_versions(task_id: str):
 
 
 @app.get("/survey/{task_id}/view")
-async def get_survey_view(task_id: str):
+async def get_survey_view(task_id: str, citation_style: CitationStyle | None = None):
     """Return the complete durable projection used by the research workbench."""
     try:
-        return await (await _interactive_service()).get_view(task_id)
+        return await (await _interactive_service()).get_view(
+            task_id, **({"citation_style": citation_style} if citation_style else {})
+        )
     except KeyError as exc:
         raise HTTPException(
             status_code=404, detail=f"Task '{task_id}' not found"
@@ -735,12 +815,25 @@ async def get_survey_view(task_id: str):
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
 
 @app.get("/survey/{task_id}/versions/{revision}")
-async def get_survey_version(task_id: str, revision: int):
+async def get_survey_version(
+    task_id: str, revision: int, citation_style: CitationStyle = "numbered"
+):
     """Return one immutable report revision without rendering or mutation."""
     try:
-        return await (await _interactive_service()).get_version(task_id, revision)
+        return await (await _interactive_service()).get_version(
+            task_id,
+            revision,
+            **(
+                {"citation_style": citation_style}
+                if citation_style != "numbered"
+                else {}
+            ),
+        )
     except KeyError as exc:
         raise HTTPException(
             status_code=404, detail=f"Report revision '{revision}' not found"
@@ -750,13 +843,273 @@ async def get_survey_version(task_id: str, revision: int):
         status = 422 if code == "invalid_report_revision" else 409
         raise HTTPException(status_code=status, detail=code) from exc
 
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+async def _resolve_formatting_source(task_id: str, revision: int):
+    """Resolve an immutable revision before rendering or exporting its bibliography."""
+    service = await _interactive_service()
+    try:
+        version = await service.get_version(task_id, revision)
+        report = version["report"]
+        artifact = await service.get_audit_artifact(task_id)
+    except KeyError as exc:
+        if exc.args and isinstance(exc.args[0], tuple):
+            raise ValueError("report_revision_not_found") from exc
+        artifact = _flow_artifact(task_id)
+        if artifact is None:
+            raise KeyError(task_id)
+        if revision != 1:
+            raise ValueError("report_revision_not_found")
+        report = artifact.get("report") or {}
+    artifact = artifact or {}
+    if not report.get("survey"):
+        raise ValueError("report_unavailable")
+    metadata = report.get("metadata") or {}
+    version = ReportVersion(
+        run_id=task_id,
+        revision=revision,
+        report_language=metadata.get("report_language", "en"),
+        survey=report["survey"],
+        human_status=(metadata.get("human_review") or {}).get(
+            "status", "not_requested"
+        ),
+    )
+    ledger = {
+        i["evidence_id"]: i
+        for i in extract_report_evidence(artifact.get("nodes") or {})
+    }
+    return (
+        version,
+        report,
+        ledger,
+        paper_catalog_from_nodes(artifact.get("nodes") or {}),
+    )
+
+
+class ReportAuditRequest(BaseModel):
+    """Accept only an immutable target and bounded server-owned audit choices."""
+
+    model_config = ConfigDict(extra="forbid")
+    report_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    include_jev: bool = False
+    new_attempt: bool = False
+
+
+async def _report_audit_service() -> ReportAuditService:
+    """Reuse one application-owned executor and its shutdown lifecycle."""
+    if app.state.report_audit_service is None:
+        app.state.report_audit_service = ReportAuditService(
+            app.state.config or load_config()
+        )
+        await app.state.report_audit_service.initialize()
+    return app.state.report_audit_service
+
+
+async def _report_audit_snapshot(task_id: str, revision: int) -> dict:
+    """Freeze exact source text and host-selected evidence without rendering styles."""
+    try:
+        version, report, ledger, _ = await _resolve_formatting_source(task_id, revision)
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(
+            status_code=404, detail="report_revision_not_found"
+        ) from exc
+    try:
+        artifact = await (await _interactive_service()).get_audit_artifact(task_id)
+    except KeyError:
+        artifact = _flow_artifact(task_id) or {}
+    return _audit_snapshot_from_source(version, report, ledger, artifact)
+
+
+def _audit_snapshot_from_source(
+    version: ReportVersion, report: dict, ledger: dict, artifact: dict
+) -> dict:
+    """Freeze version-owned input without rendering or reading a newer report."""
+    metadata = report.get("metadata") or {}
+    generation = (metadata.get("config_summary") or artifact.get("config") or {}).get(
+        "llm"
+    ) or {}
+    # Reconstructed observation timestamps are not evidence. Excluding them keeps
+    # identical pending versions deduplicated even after local event replay.
+    source_nodes = {
+        key: {
+            "kind": node.get("kind"),
+            "task_id": node.get("task_id"),
+            "output": copy.deepcopy(node.get("output")),
+        }
+        for key, node in (artifact.get("nodes") or {}).items()
+        if isinstance(node, dict)
+    }
+    return {
+        "generation_provider": {
+            "model": generation.get("model"),
+            "origin": generation.get("origin") or generation.get("base_url"),
+        },
+        "source_run_id": version.run_id,
+        "source_report_revision": version.revision,
+        "source_report_sha256": version.content_sha256,
+        "report": copy.deepcopy(report),
+        "ledger": copy.deepcopy(ledger),
+        "context": {
+            "query": metadata.get("query") or artifact.get("query") or "",
+            "report_language": version.report_language,
+            "review_structure": metadata.get("review_structure") or "legacy",
+            "review_methodology": copy.deepcopy(
+                metadata.get("review_methodology") or {}
+            ),
+        },
+        "artifact": {
+            "run_id": version.run_id,
+            "query": artifact.get("query"),
+            "report": copy.deepcopy(report),
+            "nodes": source_nodes,
+        },
+    }
+
+
+async def _submit_automatic_audit(
+    task_id: str, revision: int, options: RunOptions
+) -> None:
+    """Submit only a newly persisted interactive version with stored consent."""
+    if options.auto_audit_mode == "off":
+        return
+    snapshot = await _report_audit_snapshot(task_id, revision)
+    await (await _report_audit_service()).submit_automatic(
+        snapshot,
+        mode=options.auto_audit_mode,
+        max_versions=options.auto_audit_max_versions,
+    )
+
+
+async def _submit_automatic_artifact(artifact: dict, options: RunOptions) -> None:
+    """Submit a finalized ordinary API run without archive lookup or replay."""
+    if options.auto_audit_mode == "off":
+        return
+    report = artifact.get("report") or {}
+    if not report.get("survey"):
+        return
+    metadata = report.get("metadata") or {}
+    version = ReportVersion(
+        run_id=artifact["run_id"],
+        revision=metadata.get("report_revision", 1),
+        report_language=metadata.get("report_language", options.report_language),
+        survey=report["survey"],
+    )
+    ledger = {
+        item["evidence_id"]: item
+        for item in extract_report_evidence(artifact.get("nodes") or {})
+    }
+    snapshot = _audit_snapshot_from_source(version, report, ledger, artifact)
+    await (await _report_audit_service()).submit_automatic(
+        snapshot,
+        mode=options.auto_audit_mode,
+        max_versions=options.auto_audit_max_versions,
+    )
+
+
+@app.get("/survey/{task_id}/versions/{revision}/audits")
+async def list_report_audits(task_id: str, revision: int):
+    """Expose capabilities and attempts for exactly one available report version."""
+    snapshot = await _report_audit_snapshot(task_id, revision)
+    result = await (await _report_audit_service()).list(task_id, revision)
+    result["capabilities"].update(
+        (await _report_audit_service()).model_comparison(snapshot)
+    )
+    return {**result, "source_report_sha256": snapshot["source_report_sha256"]}
+
+
+@app.get("/survey/{task_id}/versions/{revision}/audits/dry-run")
+async def dry_run_report_audit(task_id: str, revision: int, include_jev: bool = False):
+    """Report credential and input gates without creating tasks or provider calls."""
+    snapshot = await _report_audit_snapshot(task_id, revision)
+    return (await _report_audit_service()).dry_run(snapshot, include_jev=include_jev)
+
+
+@app.post("/survey/{task_id}/versions/{revision}/audits", status_code=202)
+async def start_report_audit(
+    task_id: str,
+    revision: int,
+    body: ReportAuditRequest,
+    request: Request,
+    x_litagent_operation_token: str | None = Header(default=None),
+):
+    """Queue a manually authorized independent audit after exact SHA comparison."""
+    _require_operation_token(request, x_litagent_operation_token)
+    snapshot = await _report_audit_snapshot(task_id, revision)
+    if snapshot["source_report_sha256"] != body.report_sha256:
+        raise HTTPException(status_code=409, detail="report_sha_mismatch")
+    try:
+        return await (await _report_audit_service()).submit(
+            snapshot, include_jev=body.include_jev, new_attempt=body.new_attempt
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/survey/{task_id}/versions/{revision}/audits/{audit_id}")
+async def get_report_audit(task_id: str, revision: int, audit_id: str):
+    """Read one immutable-version audit; never fall back to another revision."""
+    try:
+        return await (await _report_audit_service()).get(task_id, revision, audit_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="audit_not_found") from exc
+
+
+@app.post("/survey/{task_id}/versions/{revision}/audits/{audit_id}/cancel")
+async def cancel_report_audit(
+    task_id: str,
+    revision: int,
+    audit_id: str,
+    request: Request,
+    x_litagent_operation_token: str | None = Header(default=None),
+):
+    """Cancel this audit without touching the source Survey or approval state."""
+    _require_operation_token(request, x_litagent_operation_token)
+    try:
+        return await (await _report_audit_service()).cancel(task_id, revision, audit_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="audit_not_found") from exc
+
+
+@app.get("/survey/{task_id}/bibliography")
+async def download_survey_bibliography(
+    task_id: str, revision: int, format: Literal["bibtex", "ris", "csl_json"]
+):
+    """Export only the current revision's cited metadata without network enrichment."""
+    try:
+        version, _, ledger, catalog = await _resolve_formatting_source(
+            task_id, revision
+        )
+        snapshot = build_bibliographic_snapshot(version, ledger, catalog)
+        content = export_bibliography(snapshot, format)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="report_not_found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    types = {
+        "bibtex": ("bib", "application/x-bibtex; charset=utf-8"),
+        "ris": ("ris", "application/x-research-info-systems; charset=utf-8"),
+        "csl_json": ("json", "application/vnd.citationstyles.csl+json; charset=utf-8"),
+    }
+    extension, media = types[format]
+    return Response(
+        content=content,
+        media_type=media,
+        headers={
+            "Content-Disposition": f'attachment; filename="litagent-{task_id}-r{revision}.{extension}"',
+            "X-Report-SHA256": version.content_sha256,
+            "X-Bibliography-Warning-Count": str(len(snapshot["warnings"])),
+        },
+    )
+
 
 @app.get("/survey/{task_id}/export")
 async def export_survey(
     task_id: str,
     revision: int,
     format: str,
-    citation_style: Literal["evidence", "numbered"] = "evidence",
+    citation_style: CitationStyle = "evidence",
 ):
     """Download one immutable current revision in a supported format."""
     try:
@@ -773,8 +1126,38 @@ async def export_survey(
         ) from exc
     except ValueError as exc:
         code = str(exc)
-        status = 404 if code == "report_revision_not_found" else 422
-        raise HTTPException(status_code=status, detail=code) from exc
+        if code == "report_revision_not_found" and _flow_artifact(task_id) is not None:
+            try:
+                version, report, ledger, catalog = await _resolve_formatting_source(
+                    task_id, revision
+                )
+                reader = await asyncio.to_thread(
+                    build_reader_report,
+                    version,
+                    evidence_ledger=ledger,
+                    paper_catalog=catalog,
+                    citation_style=citation_style,
+                )
+                exported = await LocalReportExporter().export(
+                    version,
+                    format=format,
+                    publishable=bool((report.get("delivery") or {}).get("publishable")),
+                    citation_style=citation_style,
+                    reader_report=reader,
+                )
+            except KeyError as missing:
+                raise HTTPException(
+                    status_code=404, detail="report_revision_not_found"
+                ) from missing
+            except ValueError as invalid:
+                raise HTTPException(status_code=422, detail=str(invalid)) from invalid
+            except RuntimeError as unavailable:
+                raise HTTPException(
+                    status_code=503, detail=str(unavailable)
+                ) from unavailable
+        else:
+            status = 404 if code == "report_revision_not_found" else 422
+            raise HTTPException(status_code=status, detail=code) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     return Response(
@@ -904,12 +1287,24 @@ async def get_flow_demo_run(run_id: str):
 
 
 @app.get("/flow-demo/runs/{run_id}/view")
-async def get_flow_demo_view(run_id: str):
+async def get_flow_demo_view(run_id: str, citation_style: CitationStyle | None = None):
     """Return one normalized, browser-facing flow-demo projection."""
     artifact = _flow_artifact(run_id)
     if artifact is None:
         raise HTTPException(status_code=404, detail=f"Flow run '{run_id}' not found")
-    return project_flow_demo_view(artifact, source=_flow_source(run_id))
+    style = citation_style or artifact.get("citation_style", "numbered")
+    try:
+        view = await asyncio.to_thread(
+            project_flow_demo_view,
+            artifact,
+            source=_flow_source(run_id),
+            citation_style=style,
+        )
+        view["format_capabilities"] = format_capabilities()
+        view["citation_style"] = style
+        return view
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @app.get("/flow-demo/runs/{run_id}/events")

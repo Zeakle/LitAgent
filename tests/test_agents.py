@@ -634,8 +634,8 @@ class TestPlannerRecallTasks:
 
         recall_tasks = [t for t in graph.tasks.values() if t.agent_type == "recall"]
         search_tasks = [t for t in graph.tasks.values() if t.agent_type == "search"]
-        assert len(recall_tasks) == 3
-        assert len(search_tasks) == 6
+        assert len(recall_tasks) == 2
+        assert len(search_tasks) == 4
 
         for t in recall_tasks:
             assert "query" in t.input_data
@@ -796,7 +796,7 @@ class TestRecallWorker:
         for t in graph.tasks.values():
             if t.agent_type == "recall":
                 await w.execute(t)
-        assert retriever.search_papers.await_count == 3
+        assert retriever.search_papers.await_count == 2
 
 
 class TestSearchWorkerPureExternal:
@@ -2394,7 +2394,9 @@ class TestReviewerEvidenceCompliance:
     def test_reviewer_prompt_forbids_ledger_external_suggestions(self):
         from litagent.agents.reviewer import REVIEWER_INSTRUCTIONS
 
-        assert "ONLY describe evidence present in the" in REVIEWER_INSTRUCTIONS
+        assert "supporting material in the <evidence_ledger>" in REVIEWER_INSTRUCTIONS
+        assert "An unused selected ID alone" in REVIEWER_INSTRUCTIONS
+        assert "Do NOT suggest new papers" in REVIEWER_INSTRUCTIONS
         assert "MUST NOT" in REVIEWER_INSTRUCTIONS
 
     def test_reviewer_prompt_contains_evidence_compliance_schema(self):

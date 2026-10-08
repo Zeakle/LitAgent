@@ -391,6 +391,8 @@ class TestBuiltinSearch:
                 "paper_id": "2401.01234",
                 "title": "Few-shot Learning",
                 "abstract": "A test abstract.",
+                "authors": [],
+                "year": None,
                 "source": "arxiv",
             }
         ]

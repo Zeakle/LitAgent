@@ -111,7 +111,7 @@ class ToolExecutor:
         exc: BaseException,
     ) -> ToolResult:
         """Build a normalized failed tool result."""
-        if isinstance(exc, asyncio.TimeoutError):
+        if isinstance(exc, (asyncio.TimeoutError, httpx.TimeoutException)):
             code = "tool_timeout"
             error_type = "TimeoutError"
             error = "Timeout while executing tool"
@@ -119,6 +119,10 @@ class ToolExecutor:
             code = "http_rate_limited"
             error_type = type(exc).__name__
             error = str(exc)[:512]
+        elif isinstance(exc, httpx.HTTPStatusError):
+            code = f"http_status_{exc.response.status_code}"
+            error_type = type(exc).__name__
+            error = f"HTTP status {exc.response.status_code}"
         else:
             code = "tool_execution_failed"
             error_type = type(exc).__name__

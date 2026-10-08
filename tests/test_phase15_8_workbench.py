@@ -1,6 +1,7 @@
 """Verify Phase 15.8 workbench projections and safe report rendering."""
 
 import json
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -177,5 +178,5 @@ def test_workbench_shell_is_report_first_and_modular() -> None:
     assert 'id="report-document"' in html
     assert 'id="inspector-drawer"' in html
     assert 'id="new-run-dialog"' in html
-    assert 'from "./report-view.js"' in app
+    assert re.search(r'from "\./report-view\.js(?:\?v=[\d.]+)?"', app)
     assert len(app.splitlines()) < 360

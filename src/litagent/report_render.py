@@ -11,7 +11,19 @@ from urllib.parse import urlsplit
 
 from markdown_it import MarkdownIt
 
+from litagent.citation_formats import (
+    REF_PATTERN,
+    STYLES,
+    build_bibliographic_snapshot,
+    csl_markdown,
+    format_citations,
+)
 from litagent.evidence import extract_evidence_refs_ordered
+from litagent.review_structure import (
+    METHOD_BEGIN,
+    METHOD_END,
+    appendix_span,
+)
 from litagent.workbench import ReportVersion
 
 
@@ -65,6 +77,29 @@ class ReaderReport:
     warnings: tuple[str, ...]
     source_sha256: str
     projection_sha256: str
+    citation_style: str = "numbered"
+    citation_links: tuple[dict, ...] = ()
+    bibliography_span: tuple[int, int] | None = None
+
+
+def _insert_bibliography(
+    markdown: str, bibliography: tuple | list, language: str
+) -> tuple[str, tuple[int, int] | None]:
+    """Insert host references before the appendix without altering source blocks."""
+    if not bibliography:
+        return markdown, None
+    span = appendix_span(markdown)
+    at = span["start"] if span else len(markdown)
+    prefix = markdown[:at].rstrip() + "\n\n"
+    references = (
+        ("## 参考文献\n\n" if language == "zh-CN" else "## References\n\n")
+        + "\n\n".join(bibliography)
+        + "\n\n"
+    )
+    return prefix + references + markdown[at:], (
+        len(prefix),
+        len(prefix) + len(references),
+    )
 
 
 def build_reader_report(
@@ -72,8 +107,25 @@ def build_reader_report(
     *,
     evidence_ledger: Mapping[str, Mapping[str, object]],
     paper_catalog: Mapping[str, Mapping[str, object]],
+    citation_style: str = "numbered",
 ) -> ReaderReport:
     """Number known papers by first citation while retaining evidence identity."""
+    if citation_style not in STYLES:
+        raise ValueError("unsupported_citation_style")
+    if citation_style not in {"numbered", "evidence"}:
+        return _build_styled_report(
+            report, evidence_ledger, paper_catalog, citation_style
+        )
+    if citation_style == "evidence":
+        return ReaderReport(
+            report.survey,
+            (),
+            (),
+            (),
+            report.content_sha256,
+            report.content_sha256,
+            "evidence",
+        )
     numbers: dict[str, int] = {}
     titles: dict[str, str] = {}
     occurrences: list[tuple[int, str]] = []
@@ -108,10 +160,19 @@ def build_reader_report(
             if isinstance(raw_authors, list)
             else ""
         )
-        authors = authors or "Authors unavailable"
-        title = str(metadata.get("title") or titles[paper_id] or "Title unavailable")
+        chinese = report.report_language == "zh-CN"
+        authors = authors or ("作者信息不可用" if chinese else "Authors unavailable")
+        title = str(
+            metadata.get("title")
+            or titles[paper_id]
+            or ("标题不可用" if chinese else "Title unavailable")
+        )
         year = metadata.get("year")
-        year_text = str(year) if isinstance(year, int) else "Year unavailable"
+        year_text = (
+            str(year)
+            if isinstance(year, int)
+            else ("年份信息不可用" if chinese else "Year unavailable")
+        )
         url = (
             f"https://arxiv.org/abs/{paper_id[6:]}"
             if re.fullmatch(r"arxiv:\d{4}\.\d{4,5}", paper_id)
@@ -121,13 +182,9 @@ def build_reader_report(
             f"[{number}] {authors}. {title} ({year_text}). {url}".strip()
         )
     markdown = "".join(pieces)
-    if bibliography:
-        markdown = (
-            markdown.rstrip()
-            + "\n\n## References\n\n"
-            + "\n\n".join(bibliography)
-            + "\n"
-        )
+    markdown, bibliography_span = _insert_bibliography(
+        markdown, bibliography, report.report_language
+    )
     payload = {
         "source_sha256": report.content_sha256,
         "version": 1,
@@ -145,11 +202,81 @@ def build_reader_report(
         warnings=tuple(dict.fromkeys(warnings)),
         source_sha256=report.content_sha256,
         projection_sha256=projection_sha,
+        bibliography_span=bibliography_span,
+    )
+
+
+def _build_styled_report(report, ledger, catalog, style) -> ReaderReport:
+    """Render scholarly styles while preserving occurrence-level evidence links."""
+    snapshot = build_bibliographic_snapshot(report, ledger, catalog)
+    numbers = {item["id"]: i + 1 for i, item in enumerate(snapshot["items"])}
+    group_pattern = re.compile(r"\[E:[^\[\]\s;,]+\](?:[ \t]*\[E:[^\[\]\s;,]+\])*")
+    groups = []
+    for group in group_pattern.finditer(report.survey):
+        refs = list(REF_PATTERN.finditer(group.group()))
+        # Unknown IDs remain in place and cannot become fabricated CSL items.
+        if all(
+            (ledger.get(ref.group(1)) or {}).get("paper_id") in numbers for ref in refs
+        ):
+            groups.append((group.start(), group.end(), [ref.group(1) for ref in refs]))
+        else:
+            for ref in refs:
+                if (ledger.get(ref.group(1)) or {}).get("paper_id") in numbers:
+                    groups.append(
+                        (
+                            group.start() + ref.start(),
+                            group.start() + ref.end(),
+                            [ref.group(1)],
+                        )
+                    )
+    clusters = [
+        list(dict.fromkeys(ledger[eid]["paper_id"] for eid in ids))
+        for _, _, ids in groups
+    ]
+    formatted = format_citations(snapshot["items"], clusters, style)
+    links = []
+    occurrences = []
+    pieces = []
+    cursor = 0
+    for (start, end, ids), raw_label in zip(
+        groups, formatted["citations"], strict=True
+    ):
+        label = csl_markdown(raw_label)
+        anchor = f"citation-{len(links) + 1}"
+        links.append({"anchor": anchor, "label": label, "evidence_ids": ids})
+        occurrences.extend((numbers[ledger[eid]["paper_id"]], eid) for eid in ids)
+        pieces.extend([report.survey[cursor:start], f"[{label}](#{anchor})"])
+        cursor = end
+    pieces.append(report.survey[cursor:])
+    markdown = "".join(pieces)
+    bibliography = tuple(csl_markdown(x) for x in formatted["bibliography"])
+    markdown, bibliography_span = _insert_bibliography(
+        markdown, bibliography, report.report_language
+    )
+    payload = {
+        "source": report.content_sha256,
+        "style": style,
+        "snapshot": snapshot["snapshot_sha256"],
+        "markdown": markdown,
+    }
+    sha = hashlib.sha256(
+        json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()
+    ).hexdigest()
+    return ReaderReport(
+        markdown,
+        bibliography,
+        tuple(occurrences),
+        tuple(snapshot["warnings"]),
+        report.content_sha256,
+        sha,
+        style,
+        tuple(links),
+        bibliography_span,
     )
 
 
 def paper_catalog_from_nodes(
-    nodes: Mapping[str, object]
+    nodes: Mapping[str, object],
 ) -> dict[str, dict[str, object]]:
     """Recover source paper metadata from a run's deterministic worker output."""
     catalog: dict[str, dict[str, object]] = {}
@@ -168,7 +295,19 @@ def paper_catalog_from_nodes(
                 catalog.setdefault(paper_id, {}).update(
                     {
                         key: paper[key]
-                        for key in ("title", "authors", "year")
+                        for key in (
+                            "title",
+                            "authors",
+                            "year",
+                            "author_details",
+                            "doi",
+                            "url",
+                            "journal",
+                            "venue",
+                            "volume",
+                            "issue",
+                            "pages",
+                        )
                         if paper.get(key)
                     }
                 )
@@ -177,13 +316,19 @@ def paper_catalog_from_nodes(
 
 def reader_report_projection(reader: ReaderReport) -> dict[str, object]:
     """Render numbered report text and retain occurrence-level evidence links."""
-    projection = render_report_projection(reader.markdown)
+    projection = render_report_projection(
+        reader.markdown, bibliography_span=reader.bibliography_span
+    )
+    if projection.get("methodology"):
+        projection["methodology"]["source_sha256"] = reader.source_sha256
     projection.update(
         {
             "citation_occurrences": [
                 {"number": number, "evidence_id": evidence_id}
                 for number, evidence_id in reader.citation_occurrences
             ],
+            "citation_style": reader.citation_style,
+            "citation_links": list(reader.citation_links),
             "warnings": list(reader.warnings),
             "source_sha256": reader.source_sha256,
             "projection_sha256": reader.projection_sha256,
@@ -195,7 +340,7 @@ def reader_report_projection(reader: ReaderReport) -> dict[str, object]:
 def build_report_source_units(markdown: str) -> list[ReportSourceUnit]:
     """Locate exact paragraph and table-cell slices in the Markdown source."""
     parser = MarkdownIt("commonmark", {"html": False}).enable("table")
-    tokens = parser.parse(markdown)
+    tokens = parser.parse(_without_managed_markers(markdown))
     lines = markdown.splitlines(keepends=True)
     offsets = [0]
     for line in lines:
@@ -344,17 +489,49 @@ def _safe_href(value: str) -> bool:
     return scheme in {"http", "https", "mailto"}
 
 
-def render_report_html(markdown: str) -> RenderedReport:
+def _without_managed_markers(markdown: str) -> str:
+    """Hide host block delimiters while preserving source line and byte positions."""
+    for marker in (METHOD_BEGIN, METHOD_END):
+        markdown = markdown.replace(marker, " " * len(marker))
+    return markdown
+
+
+def render_report_html(
+    markdown: str, *, bibliography_span: tuple[int, int] | None = None
+) -> RenderedReport:
     """Render Markdown with raw HTML disabled and unsafe links removed."""
     parser = MarkdownIt(
         "commonmark",
         {"html": False, "linkify": False, "typographer": False},
     ).enable("table")
-    tokens = parser.parse(markdown or "")
+    tokens = parser.parse(_without_managed_markers(markdown or ""))
     headings: list[ReportHeading] = []
     anchor_counts: dict[str, int] = {}
+    source_ordinal = 0
+    offsets = [0]
+    for line in markdown.splitlines(keepends=True):
+        offsets.append(offsets[-1] + len(line))
 
     for index, token in enumerate(tokens):
+        if token.type == "inline" and token.map is not None and index > 0:
+            parent = tokens[index - 1]
+            if parent.type in {"paragraph_open", "td_open", "th_open"}:
+                # Citation projections preserve block order, even as citation lengths change.
+                offset = offsets[token.map[0]]
+                if (
+                    bibliography_span is None
+                    or not bibliography_span[0] <= offset < bibliography_span[1]
+                ):
+                    target = parent
+                    # Tight-list paragraphs are hidden by MarkdownIt; bind their LI instead.
+                    if (
+                        parent.hidden
+                        and index >= 2
+                        and tokens[index - 2].type == "list_item_open"
+                    ):
+                        target = tokens[index - 2]
+                    target.attrSet("data-source-unit-ordinal", str(source_ordinal))
+                    source_ordinal += 1
         if token.type == "heading_open" and index + 1 < len(tokens):
             inline = tokens[index + 1]
             text = inline.content if inline.type == "inline" else ""
@@ -381,17 +558,36 @@ def render_report_html(markdown: str) -> RenderedReport:
     return RenderedReport(html=html, headings=tuple(headings))
 
 
-def render_report_projection(markdown: str) -> dict[str, object]:
-    """Serialize one rendered report into the stable browser API contract."""
-    rendered = render_report_html(markdown)
+def render_report_projection(
+    markdown: str, *, bibliography_span: tuple[int, int] | None = None
+) -> dict[str, object]:
+    """Expose a safe, source-bound appendix without hiding it from evaluation."""
+    rendered = render_report_html(markdown, bibliography_span=bibliography_span)
+    appendix = appendix_span(markdown)
+    anchor = next(
+        (
+            h.anchor
+            for h in rendered.headings
+            if appendix and h.text == appendix["section"] and h.level == 2
+        ),
+        None,
+    )
+    methodology = None
+    # Only frozen host blocks are displayed; never infer records from global run state.
+    if markdown.count(METHOD_BEGIN) == 1 and markdown.count(METHOD_END) == 1:
+        start = markdown.find(METHOD_BEGIN)
+        end = markdown.find(METHOD_END, start) + len(METHOD_END)
+        if end > start:
+            methodology = {
+                "html": render_report_html(markdown[start:end]).html,
+                "source_sha256": hashlib.sha256(markdown.encode()).hexdigest(),
+            }
     return {
         "html": rendered.html,
         "headings": [
-            {
-                "level": heading.level,
-                "text": heading.text,
-                "anchor": heading.anchor,
-            }
-            for heading in rendered.headings
+            {"level": h.level, "text": h.text, "anchor": h.anchor}
+            for h in rendered.headings
         ],
+        "appendix_anchor": anchor,
+        "methodology": methodology,
     }

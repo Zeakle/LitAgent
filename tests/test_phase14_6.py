@@ -101,6 +101,25 @@ def test_flow_demo_projection_accepts_legacy_minimal_archive() -> None:
     assert view["evidence"] == []
 
 
+def test_flow_demo_projection_handles_invalid_numeric_diagnostics() -> None:
+    artifact = load_bundled_samples()["sample-ready"]
+    artifact["events"].append(
+        {
+            "event": "ranking",
+            "data": {"scores": [float("nan"), float("inf"), -float("inf"), 0.5]},
+        }
+    )
+    view = project_flow_demo_view(artifact, source="archive")
+
+    json.dumps(view, allow_nan=False)
+    assert view["timeline"][-1]["data"]["scores"] == [None, None, None, 0.5]
+    assert view["display_warnings"] == [
+        {"code": "nonfinite_numeric_values", "count": 3}
+    ]
+    assert artifact["events"][-1]["data"]["scores"][1] == float("inf")
+    assert view["delivery"] == artifact["report"]["delivery"]
+
+
 def test_demo_context_and_sample_view_work_without_external_services(
     monkeypatch,
 ) -> None:

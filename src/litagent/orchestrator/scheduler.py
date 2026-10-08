@@ -374,5 +374,17 @@ class Scheduler:
             dep_task = graph.get_task(dep_id)
             if dep_task and dep_task.status == TaskStatus.DONE:
                 upstream[dep_id] = dep_task.result
+        if (
+            task.agent_type in {"synthesis", "adversarial_review"}
+            and task.input_data.get("review_structure", "legacy") != "legacy"
+        ):
+            task.input_data["methodology_results"] = {
+                **graph.get_results(),
+                "__search_queries__": {
+                    key: value.input_data.get("query")
+                    for key, value in graph.tasks.items()
+                    if value.agent_type == "search"
+                },
+            }
         if upstream:
             task.input_data["upstream_results"] = upstream

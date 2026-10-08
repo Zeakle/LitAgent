@@ -164,7 +164,10 @@ async def test_jev_auditor_maps_group_and_member_choices(monkeypatch):
             JevAuditConfig(enabled=True),
             artifact={"run_id": "product-1"},
             reference_judge={
-                "claim_assessments": [{"claim_id": "claim_0", "supported": True}]
+                "inventory_snapshot": _snapshot().model_dump(mode="json"),
+                "claim_assessments": [
+                    {"claim_id": "claim_0", "supported": True, "source_faithful": True}
+                ],
             },
         )
     finally:

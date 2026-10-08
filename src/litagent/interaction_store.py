@@ -58,6 +58,7 @@ class SqliteReviewRepository:
                     created_at REAL NOT NULL,
                     updated_at REAL NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS interactive_presentation (run_id TEXT PRIMARY KEY, citation_style TEXT NOT NULL);
                 CREATE INDEX IF NOT EXISTS interactive_runs_status
                     ON interactive_runs(status);
                 CREATE TABLE IF NOT EXISTS interactive_events (
@@ -96,6 +97,35 @@ class SqliteReviewRepository:
         connection = sqlite3.connect(self.database_path, timeout=10)
         connection.row_factory = sqlite3.Row
         return connection
+
+    async def set_citation_style(self, run_id: str, style: str) -> None:
+        """Persist presentation preferences separately from generation options."""
+        from litagent.citation_formats import STYLES
+
+        if style not in STYLES:
+            raise ValueError("unsupported_citation_style")
+
+        def save():
+            with self._connect() as connection:
+                connection.execute(
+                    "INSERT OR REPLACE INTO interactive_presentation VALUES (?, ?)",
+                    (run_id, style),
+                )
+
+        await asyncio.to_thread(save)
+
+    async def get_citation_style(self, run_id: str) -> str:
+        """Return a saved preference or the backward-compatible numbered default."""
+
+        def read():
+            with self._connect() as connection:
+                row = connection.execute(
+                    "SELECT citation_style FROM interactive_presentation WHERE run_id=?",
+                    (run_id,),
+                ).fetchone()
+                return row[0] if row else "numbered"
+
+        return await asyncio.to_thread(read)
 
     async def create_run(
         self, run_id: str, query: str, options: RunOptions

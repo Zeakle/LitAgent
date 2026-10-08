@@ -30,6 +30,13 @@ from litagent.logging import get_logger
 from litagent.orchestrator.scheduler import Worker
 from litagent.orchestrator.task_graph import SubTask
 from litagent.rag.claims_index import ClaimsIndex, TrustedClaim
+from litagent.review_structure import (
+    EVIDENCE_ATTRIBUTION_INSTRUCTION,
+    check_report_language,
+    find_summary_citation_dumps,
+    methodology_instruction,
+    structure_instruction,
+)
 from litagent.skills.manager import SkillManager
 from litagent.workbench import ReportLanguage, language_instruction
 
@@ -69,9 +76,10 @@ evidence-compliance standards.
 2. Strengths (what is done well)
 3. Weaknesses (what needs improvement)
 4. Specific issues (list each with section reference)
-5. Missing coverage — ONLY describe evidence present in the <evidence_ledger> that the
-   draft did not use. Do NOT suggest new papers, classic methods, authors, years, or
-   topics absent from the provided evidence.
+5. Missing coverage — report a requested core question, method or comparison omitted
+   despite supporting material in the <evidence_ledger>. An unused selected ID alone
+   is NOT missing coverage. The <evidence_plan> lists allowed sources, not required
+   citations. Do NOT suggest new papers, authors, years or absent topics.
 6. Evidence compliance assessment (see below)
 
 EVIDENCE COMPLIANCE:
@@ -80,6 +88,10 @@ EVIDENCE COMPLIANCE:
 - An [E:<id>] reference that does not appear in the ledger is a MAJOR issue.
 - A factual claim with no [E:<id>] marker is a MAJOR issue (known-gap/transition
   sentences excluded).
+- Read the actual markers on the claim's own clause. Distinguish missing citations
+  from insufficient semantic support. When citations are already present, use
+  action=verify and explain the unsupported entity, predicate or condition;
+  never request duplicate binding or claim that a visible marker is absent.
 - Your own knowledge of papers, methods, or results MUST NOT be used to suggest
   additions or judge completeness.
 
@@ -100,7 +112,7 @@ Respond in JSON format:
         "passed": true|false,
         "unsupported_claims": [
             {"section": "...", "claim": "...", "reason": "...", \
-"action": "delete|downgrade|bind"}
+"action": "delete|downgrade|bind|verify"}
         ],
         "unknown_evidence_ids": ["..."]
     },
@@ -184,6 +196,8 @@ class ReviewerWorker(Worker):
 
     async def execute(self, task: SubTask) -> Any:
         """Review an upstream draft and enforce its evidence contract."""
+        review_structure = task.input_data.get("review_structure", "legacy")
+        review_methodology = task.input_data.get("review_methodology", {})
         query = str(task.input_data.get("query") or "")
         report_language: ReportLanguage = task.input_data.get("report_language", "en")
         upstream = task.input_data.get("upstream_results", {})
@@ -218,8 +232,15 @@ class ReviewerWorker(Worker):
             role=REVIEWER_ROLE,
             instructions=(
                 REVIEWER_INSTRUCTIONS
+                + EVIDENCE_ATTRIBUTION_INSTRUCTION
                 + "\n\nREPORT LANGUAGE REQUIREMENT:\n"
                 + language_instruction(report_language)
+                + structure_instruction(review_structure, report_language)
+                + (
+                    methodology_instruction(review_methodology)
+                    if review_structure in {"method_transparent_v1", "academic_v2"}
+                    else ""
+                )
             ),
             skills=skills_text,
         )
@@ -231,6 +252,7 @@ class ReviewerWorker(Worker):
             query=query,
             evidence_context_missing=evidence_missing,
             report_language=report_language,
+            review_methodology=review_methodology,
         )
 
         if evidence_missing:
@@ -251,6 +273,8 @@ class ReviewerWorker(Worker):
         evidence_selection: EvidenceSelection | Mapping[str, Any],
         query: str = "",
         report_language: ReportLanguage = "en",
+        review_structure: str = "legacy",
+        review_methodology: Mapping | None = None,
     ) -> dict[str, Any]:
         """Review a revision against the original evidence selection."""
 
@@ -265,11 +289,18 @@ class ReviewerWorker(Worker):
             role=REVIEWER_ROLE,
             instructions=(
                 REVIEWER_INSTRUCTIONS
+                + EVIDENCE_ATTRIBUTION_INSTRUCTION
                 + "\n\nThis is a REVISION. Check if previous issues were addressed. "
                 "Be fair: if issues are fixed, raise the score. "
                 "You have the SAME evidence plan and ledger as the first review."
                 "\n\nREPORT LANGUAGE REQUIREMENT:\n"
                 + language_instruction(report_language)
+                + structure_instruction(review_structure, report_language)
+                + (
+                    methodology_instruction(review_methodology)
+                    if review_structure in {"method_transparent_v1", "academic_v2"}
+                    else ""
+                )
             ),
         )
 
@@ -280,6 +311,7 @@ class ReviewerWorker(Worker):
             previous_review=previous_review,
             query=query,
             report_language=report_language,
+            review_methodology=review_methodology,
         )
 
     async def _request_review_with_compact_retry(
@@ -292,6 +324,7 @@ class ReviewerWorker(Worker):
         query: str = "",
         evidence_context_missing: bool = False,
         report_language: ReportLanguage = "en",
+        review_methodology: Mapping | None = None,
     ) -> dict[str, Any]:
         """Retry one schema-invalid review with unchanged IDs and compact evidence."""
         review: dict[str, Any] | None = None
@@ -330,7 +363,11 @@ class ReviewerWorker(Worker):
                 evidence_context_missing=evidence_context_missing,
             )
             review = self._enforce_language_contract(
-                draft, review, report_language=report_language
+                draft,
+                review,
+                report_language=report_language,
+                review_methodology=review_methodology,
+                evidence=selection.selected_items if selection is not None else {},
             )
             compliance = review.get("evidence_compliance")
             schema_invalid = bool(review.get("parse_error")) or (
@@ -358,10 +395,14 @@ class ReviewerWorker(Worker):
         review: dict[str, Any],
         *,
         report_language: ReportLanguage,
+        review_methodology: Mapping | None = None,
+        evidence: Mapping | None = None,
     ) -> dict[str, Any]:
         """Fail obvious language mismatches without changing evidence judgments."""
-        # Identifiers and URLs are intentionally language-neutral. This heuristic
-        # only catches clear mismatches; the model remains the semantic signal.
+        host_check = check_report_language(
+            draft, report_language, review_methodology, evidence=evidence
+        )
+        # Whole-document counts remain diagnostic metadata, never compliance proof.
         prose = re.sub(r"\[E:[^\]]+\]|https?://\S+", " ", draft)
         cjk_count = len(re.findall(r"[\u3400-\u9fff]", prose))
         latin_count = len(re.findall(r"[A-Za-z]", prose))
@@ -370,15 +411,18 @@ class ReviewerWorker(Worker):
         reason_codes: list[str] = []
         if model_passed is False:
             reason_codes.append("reviewer_language_rejected")
-        if report_language == "zh-CN" and cjk_count == 0 and latin_count >= 40:
-            reason_codes.append("simplified_chinese_prose_missing")
-        if report_language == "en" and cjk_count >= 20 and cjk_count > latin_count:
-            reason_codes.append("english_prose_missing")
+        if host_check["status"] == "failed":
+            reason_codes.append(
+                "simplified_chinese_prose_missing"
+                if report_language == "zh-CN"
+                else "english_prose_missing"
+            )
 
         passed = not reason_codes
         review["language_compliance"] = {
             "passed": passed,
             "requested_language": report_language,
+            "host_check": host_check,
             "reason_codes": reason_codes,
             "model_declared_passed": (
                 model_passed if isinstance(model_passed, bool) else None
@@ -444,6 +488,11 @@ class ReviewerWorker(Worker):
             _ev_text = format_evidence_selection(
                 alias_evidence_selection(selection, aliases) if aliases else selection
             )
+            if (
+                self._budget.count_tokens(_ev_text)
+                > self._context_config.review_evidence_max_tokens
+            ):
+                raise ValueError("review_evidence_budget_exceeded")
 
             async def _ev_builder(state: dict) -> str:
                 """Return the preformatted evidence-selection context."""
@@ -545,14 +594,59 @@ class ReviewerWorker(Worker):
             unsupported = []
         elif any(not isinstance(item, Mapping) for item in unsupported):
             schema_invalid = True
+        else:
+            # Correct only an exactly located presence claim, never its semantic verdict.
+            from litagent.eval.scoped import build_source_fragments
+            from litagent.report_render import build_report_source_units
+
+            fragments = [
+                f
+                for unit in build_report_source_units(draft)
+                for f in build_source_fragments(unit)
+            ]
+            corrected = []
+            for item in unsupported:
+                item = dict(item)
+                claim = item.get("claim")
+                if (
+                    item.get("action") == "bind"
+                    and isinstance(claim, str)
+                    and claim.strip()
+                ):
+                    normalize = lambda text: " ".join(
+                        re.sub(r"\[E:[^\]]+\]|\*", "", text).split()
+                    )
+                    matches = [
+                        f
+                        for f in fragments
+                        if normalize(claim)
+                        and normalize(claim) in normalize(f["source_quote"])
+                    ]
+                    if (
+                        len(matches) == 1
+                        and matches[0]["citation_aliases"]
+                        and set(matches[0]["citation_aliases"]).issubset(valid_ids)
+                    ):
+                        item.update(
+                            citation_presence="present",
+                            evidence_ids=matches[0]["citation_aliases"],
+                            original_reason=item.get("reason"),
+                            action="verify",
+                            reason="Existing citations are present; verify their semantic support instead of adding duplicate citations. Original review: "
+                            + str(item.get("reason", "")),
+                        )
+                corrected.append(item)
+            unsupported = corrected
 
         model_passed = compliance.get("passed", False)
         if not isinstance(model_passed, bool):
             schema_invalid = True
             model_passed = False
 
+        placement_issues = find_summary_citation_dumps(draft, sorted(valid_ids))
         passed = (
             model_passed
+            and not placement_issues
             and not all_unknown
             and not unsupported
             and not malformed_from_draft
@@ -567,6 +661,7 @@ class ReviewerWorker(Worker):
             "unsupported_claims": unsupported,
             "unknown_evidence_ids": all_unknown,
             "malformed_evidence_refs": malformed_from_draft,
+            "citation_placement_issues": placement_issues,
         }
         if schema_invalid:
             review["evidence_compliance"]["_schema_invalid"] = True

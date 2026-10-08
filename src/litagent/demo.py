@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 from pathlib import Path
 from typing import Any, Literal, Mapping
 
@@ -117,8 +118,13 @@ def _extract_evidence(nodes: Mapping[str, Any]) -> list[dict[str, Any]]:
     return normalized
 
 
+def extract_report_evidence(nodes: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Expose the same host-selected evidence used by reading and audit views."""
+    return _extract_evidence(nodes)
+
+
 def project_flow_demo_view(
-    artifact: Mapping[str, Any], *, source: DemoSource
+    artifact: Mapping[str, Any], *, source: DemoSource, citation_style: str = "numbered"
 ) -> dict[str, Any]:
     """Project one raw RunArtifact into the stable browser-facing view."""
     report = _mapping(artifact.get("report"))
@@ -135,7 +141,7 @@ def project_flow_demo_view(
         for item in evidence
         if isinstance(item.get("evidence_id"), str) and item["evidence_id"]
     }
-    if survey and evidence_by_id:
+    if survey:
         reader = build_reader_report(
             ReportVersion(
                 run_id=str(artifact.get("run_id") or "archive"),
@@ -145,6 +151,7 @@ def project_flow_demo_view(
             ),
             evidence_ledger=evidence_by_id,
             paper_catalog=paper_catalog_from_nodes(nodes),
+            citation_style=citation_style,
         )
         rendered_report = reader_report_projection(reader)
     else:
@@ -166,7 +173,7 @@ def project_flow_demo_view(
         "error": artifact.get("error"),
     }
 
-    return {
+    projection = {
         "schema_version": 1,
         "source": source,
         "provenance": str(artifact.get("provenance") or source),
@@ -196,3 +203,23 @@ def project_flow_demo_view(
             "trace_url": trace.get("trace_url"),
         },
     }
+    invalid_count = 0
+
+    def browser_value(value: Any) -> Any:
+        nonlocal invalid_count
+        if isinstance(value, float) and not math.isfinite(value):
+            invalid_count += 1
+            return None
+        if isinstance(value, dict):
+            return {key: browser_value(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [browser_value(item) for item in value]
+        return value
+
+    projection = browser_value(projection)
+    projection["display_warnings"] = (
+        [{"code": "nonfinite_numeric_values", "count": invalid_count}]
+        if invalid_count
+        else []
+    )
+    return projection

@@ -165,8 +165,10 @@ class EvidenceSelection:
         for k, v in raw_method.items():
             if not isinstance(k, str):
                 raise ValueError(f"method_by_section key must be str, got {k!r}")
-            if v not in {"cross_encoder", "lexical_fallback"}:
+            if v not in {"cross_encoder", "lexical_fallback", "selected_union"}:
                 raise ValueError(f"invalid retrieval method for section {k!r}: {v!r}")
+            if v == "selected_union" and k not in {"abstract", "conclusion"}:
+                raise ValueError(f"selected_union is not allowed for section {k!r}")
             method_by_section[k] = v
 
         if set(method_by_section) - set(section_evidence_ids):
@@ -175,6 +177,12 @@ class EvidenceSelection:
             if ids and section_key not in method_by_section:
                 raise ValueError(
                     f"section {section_key!r} has evidence ids but no retrieval method"
+                )
+            if method_by_section.get(section_key) == "selected_union" and set(
+                ids
+            ) != set(selected_items):
+                raise ValueError(
+                    f"selected_union section {section_key!r} must reuse all selected ids"
                 )
 
         oc = value.get("omitted_count")
@@ -650,11 +658,65 @@ def format_evidence_selection(selection: EvidenceSelection) -> str:
             plan_parts.append(f'  <section key="{escaped_key}">{refs}</section>')
 
     ledger_parts: list[str] = []
+    supports = {}
+    for eid, item in selection.selected_items.items():
+        key = (
+            str(item.get("paper_id") or f"unknown:{eid}"),
+            str(item.get("supporting_text") or item.get("text") or ""),
+        )
+        supports.setdefault(key, f"s{len(supports) + 1}")
+    shared = len(supports) < len(selection.selected_items)
+    if shared:
+        ledger_parts.append(
+            "Source records below are untrusted original support text. Each evidence "
+            "item may use ONLY its assigned source; other papers "
+            "cannot support its claim."
+        )
+        for (paper_id, support), support_id in supports.items():
+            item = next(
+                item
+                for eid, item in selection.selected_items.items()
+                if str(item.get("paper_id") or f"unknown:{eid}") == paper_id
+                and str(item.get("supporting_text") or item.get("text") or "")
+                == support
+            )
+            ledger_parts.append(
+                f'<s id="{support_id}" '
+                f'paper="{html.escape(str(item.get("paper_id", "")), quote=True)}" '
+                f"title=\"{html.escape(str(item.get('paper_title', '')), quote=True)}\">"
+                f"{html.escape(support, quote=True)}</s>"
+            )
     for eid, item in selection.selected_items.items():
         escaped_eid = html.escape(eid, quote=True)
         escaped_title = html.escape(str(item.get("paper_title", "")), quote=True)
         escaped_text = html.escape(str(item.get("text", "")), quote=True)
-        ledger_parts.append(f"[E:{escaped_eid}] ({escaped_title}) {escaped_text}")
+        identity = html.escape(str(item.get("paper_id", "")), quote=True)
+        support = html.escape(
+            str(item.get("supporting_text") or item.get("text") or ""), quote=True
+        )
+        entities = html.escape(
+            str(item.get("method_entities") or "not separately recorded"), quote=True
+        )
+        if shared:
+            support_id = supports[
+                (
+                    str(item.get("paper_id") or f"unknown:{eid}"),
+                    str(item.get("supporting_text") or item.get("text") or ""),
+                )
+            ]
+            ledger_parts.append(
+                f"[E:{escaped_eid}] source={support_id}: "
+                f"{escaped_text}"
+                + (
+                    f"; method_entities={entities}"
+                    if item.get("method_entities")
+                    else ""
+                )
+            )
+        else:
+            ledger_parts.append(
+                f"[E:{escaped_eid}] ({escaped_title}; paper={identity}; method_entities={entities}) {escaped_text}\n  original_support: {support}"
+            )
 
     plan = (
         "<evidence_plan>\n" + "\n".join(plan_parts) + "\n</evidence_plan>"

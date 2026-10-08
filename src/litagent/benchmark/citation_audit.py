@@ -152,6 +152,8 @@ class CitationAuditResult(BaseModel):
     run_id: str
     status: Literal["completed", "partial", "failed", "cancelled"]
     source_run_id: str
+    source_report_revision: int | None = Field(default=None, ge=1)
+    source_report_sha256: str | None = None
     source_benchmark_id: str | None = None
     case_id: str | None = None
     profile_id: str | None = None
@@ -544,6 +546,13 @@ def derive_citation_audit_summary(
         for evidence_id in item.unavailable_evidence_ids
     }
     summary: dict[str, Any] = {
+        "planned_claims": len(result.inputs),
+        "audited_claims": sum(item.kind == "group" for item in result.decisions),
+        "claim_completion_rate": (
+            sum(item.kind == "group" for item in result.decisions) / len(result.inputs)
+            if result.inputs
+            else None
+        ),
         "planned_questions": planned,
         "valid_questions": valid,
         "local_error_questions": local_errors,
@@ -565,7 +574,16 @@ def derive_citation_audit_summary(
             if isinstance(item, Mapping) and item.get("claim_id")
         }
         groups = [item for item in result.decisions if item.kind == "group"]
-        comparable = [item for item in groups if item.claim_id in judge_items]
+        snapshot = reference_judge.get("inventory_snapshot") or {}
+        comparable = [
+            item
+            for item in groups
+            if item.claim_id in judge_items
+            and not item.uncertain
+            and judge_items[item.claim_id].get("source_faithful") is True
+            and snapshot.get("inventory_sha256") == result.inventory_sha256
+            and snapshot.get("ledger_sha256") == result.ledger_sha256
+        ]
         if comparable:
             matches = sum(
                 (item.choice == "supported")
@@ -954,14 +972,13 @@ class JevCitationAuditor:
                     reason_codes.append("jev_request_budget_exhausted")
                     break
                 estimates = [
-                    math.ceil(
-                        len(
-                            json.dumps(_request_payload(batch, config.model)).encode(
-                                "utf-8"
-                            )
+                    # UTF-8 bytes bound token counts conservatively for CJK too.
+                    len(
+                        json.dumps(_request_payload(batch, config.model)).encode(
+                            "utf-8"
                         )
-                        / 4
                     )
+                    + 64
                     for _, batch in wave
                 ]
                 if input_tokens_used + sum(estimates) > config.max_input_tokens:

@@ -21,6 +21,7 @@ from litagent.observability.citations import (
 from litagent.observability.context import reset_task_id, set_task_id
 from litagent.orchestrator.scheduler import Worker
 from litagent.orchestrator.task_graph import SubTask
+from litagent.review_structure import assemble_methodology
 from litagent.workbench import ReportLanguage
 
 logger = get_logger("agents.adversarial")
@@ -104,8 +105,9 @@ class AdversarialReviewWorker(Worker):
         draft = synthesis_result.get("draft")
         if not isinstance(draft, str) or not draft.strip():
             raise ValueError("synthesis returned an empty draft")
-        draft = draft.strip()
         report_language: ReportLanguage = task.input_data.get("report_language", "en")
+        review_structure = task.input_data.get("review_structure", "legacy")
+        review_methodology = synthesis_result.get("review_methodology", {})
         degradation_reasons = [
             str(item)
             for item in synthesis_result.get("degradation_reasons", [])
@@ -113,28 +115,35 @@ class AdversarialReviewWorker(Worker):
         ]
 
         selection_raw = synthesis_result.get("evidence_selection")
-        evidence_selection: EvidenceSelection | None = None
-        evidence_selection_valid = True
-
-        if isinstance(selection_raw, Mapping):
-            try:
+        try:
+            async with self._sub_span(task.task_id, "evidence_selection", 1):
+                if not isinstance(selection_raw, Mapping):
+                    raise ValueError(
+                        "synthesis evidence_selection is missing or not a mapping"
+                    )
                 evidence_selection = EvidenceSelection.from_dict(selection_raw)
-            except (ValueError, TypeError) as e:
-                logger.warning(f"Malformed evidence_selection from synthesis: {e}")
-                evidence_selection_valid = False
-        else:
-            evidence_selection_valid = False
+        except (ValueError, TypeError) as e:
+            logger.warning("Stopping review: malformed evidence_selection: %s", e)
+            error = {"reason_code": "evidence_selection_invalid", "message": str(e)}
+            # A broken host contract must not become an empty ledger for the LLM.
+            return {
+                "report_language": report_language,
+                "review_structure": review_structure,
+                "review_methodology": review_methodology,
+                "final_draft": draft,
+                "rounds": [],
+                "total_rounds": 0,
+                "final_score": 0,
+                "accepted": False,
+                "evidence_selection": {"valid": False, "error": error},
+                "degradation_reasons": list(
+                    dict.fromkeys([*degradation_reasons, error["reason_code"]])
+                ),
+            }
 
-        if evidence_selection is None:
-            # Preserve the review contract while marking missing selection invalid.
-            evidence_selection = EvidenceSelection(
-                candidate_count=0,
-                selected_items={},
-                section_evidence_ids={},
-                method_by_section={},
-                omitted_count=0,
-                estimated_tokens=0,
-            )
+        draft = assemble_methodology(
+            draft.strip(), review_structure, report_language, review_methodology
+        )
 
         logger.info(
             "Adversarial start: draft=%d chars selection_items=%d/%d",
@@ -158,6 +167,8 @@ class AdversarialReviewWorker(Worker):
                             input_data={
                                 "query": task.input_data.get("query", ""),
                                 "report_language": report_language,
+                                "review_structure": review_structure,
+                                "review_methodology": review_methodology,
                                 "upstream_results": {
                                     "synthesis": {
                                         "draft": draft,
@@ -175,6 +186,11 @@ class AdversarialReviewWorker(Worker):
                         }
                         if report_language != "en":
                             review_kwargs["report_language"] = report_language
+                        if review_structure != "legacy":
+                            review_kwargs.update(
+                                review_structure=review_structure,
+                                review_methodology=review_methodology,
+                            )
                         review = await self._reviewer.review_revision(
                             draft,
                             rounds[-1]["review"],
@@ -223,6 +239,11 @@ class AdversarialReviewWorker(Worker):
                         revise_kwargs["query"] = task.input_data.get("query", "")
                         if report_language != "en":
                             revise_kwargs["report_language"] = report_language
+                        if review_structure != "legacy":
+                            revise_kwargs.update(
+                                review_structure=review_structure,
+                                review_methodology=review_methodology,
+                            )
                         messages = self._synthesis.revise(
                             draft,
                             review_text,
@@ -271,6 +292,12 @@ class AdversarialReviewWorker(Worker):
                             stage="revision",
                             round_num=round_num + 1,
                         ).text
+                        candidate = assemble_methodology(
+                            candidate,
+                            review_structure,
+                            report_language,
+                            review_methodology,
+                        )
                         candidate_hash = hashlib.sha256(
                             candidate.encode("utf-8")
                         ).hexdigest()
@@ -313,7 +340,7 @@ class AdversarialReviewWorker(Worker):
         last_review = rounds[-1]["review"] if rounds else {}
 
         sel_summary = {
-            "valid": evidence_selection_valid,
+            "valid": True,
             "candidate_count": evidence_selection.candidate_count,
             "selected_count": len(evidence_selection.selected_items),
             "section_evidence_ids": evidence_selection.section_evidence_ids,
@@ -323,6 +350,9 @@ class AdversarialReviewWorker(Worker):
         }
 
         return {
+            "report_language": report_language,
+            "review_structure": review_structure,
+            "review_methodology": review_methodology,
             "final_draft": draft,
             "rounds": rounds,
             "total_rounds": len(rounds),
@@ -380,6 +410,19 @@ class AdversarialReviewWorker(Worker):
                     "Malformed evidence markers (rewrite every ID as its own "
                     "[E:<id>] marker):\n"
                     + "\n".join(f"- {marker}" for marker in malformed)
+                )
+            placement = compliance.get("citation_placement_issues", [])
+            if isinstance(placement, list) and placement:
+                parts.append(
+                    "Citation placement: the allowed evidence pool is not a mandatory "
+                    "citation list. Remove inventory dumping from summaries; cite only "
+                    "direct support next to each scientific assertion. Do not relocate "
+                    "unrelated references or delete core supported facts.\n"
+                    + "\n".join(
+                        f"- {item.get('section', '?')}: {item.get('reason_code', '')}"
+                        for item in placement
+                        if isinstance(item, Mapping)
+                    )
                 )
             unsupported = compliance.get("unsupported_claims", [])
             if isinstance(unsupported, list) and unsupported:

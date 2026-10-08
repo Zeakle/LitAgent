@@ -17,6 +17,7 @@ class CostBudget:
         self._used_tokens = 0
         self._call_count = 0
         self._warned = False
+        self._reserved_tokens = 0
 
     def record(self, usage: dict) -> None:
         """Add one provider usage record to the budget."""
@@ -80,7 +81,19 @@ class CostBudget:
 
     def remaining(self) -> int:
         """Return the non-negative remaining token allowance."""
-        return max(0, self._max_tokens - self._used_tokens)
+        return max(0, self._max_tokens - self._used_tokens - self._reserved_tokens)
+
+    def reserve(self, tokens: int) -> None:
+        """Reserve a request upper bound before yielding to concurrent callers."""
+        if tokens < 0 or tokens > self.remaining():
+            raise ValueError("evaluation_run_budget_exceeded")
+        self._reserved_tokens += tokens
+
+    def release(self, tokens: int) -> None:
+        """Release a completed request's reservation without changing actual usage."""
+        if tokens < 0 or tokens > self._reserved_tokens:
+            raise ValueError("invalid_budget_reservation")
+        self._reserved_tokens -= tokens
 
     @property
     def used(self) -> int:

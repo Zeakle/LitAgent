@@ -6,6 +6,7 @@ import re
 from enum import Enum
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
 import yaml
 from dotenv import load_dotenv
@@ -53,7 +54,7 @@ class ContextConfig(BaseModel):
     evidence_top_k_per_section: int = Field(default=12, ge=1, le=30)
     evidence_max_items: int = Field(default=60, ge=5, le=150)
     evidence_per_paper_cap: int = Field(default=4, ge=1, le=10)
-    review_evidence_max_tokens: int = Field(default=10000, ge=1000, le=64000)
+    review_evidence_max_tokens: int = Field(default=16000, ge=1000, le=64000)
     review_draft_max_tokens: int = Field(default=14000, ge=1000, le=64000)
     review_feedback_max_tokens: int = Field(default=2000, ge=200, le=16000)
 
@@ -350,12 +351,28 @@ class RAGConfig(BaseModel):
 class EvalConfig(BaseModel):
     """Configure evaluator and evidence-rewrite limits."""
 
+    context_tokens: int = Field(default=131072, ge=32768)
+
     max_tokens: int = Field(default=16384, gt=0)
     thinking_mode: Literal["provider_default", "enabled", "disabled"] = "disabled"
     timeout_seconds: float = Field(default=180.0, gt=0, le=600)
-    faithfulness_max_evidence_items: int = Field(default=40, ge=1, le=100)
-    faithfulness_max_context_chars: int = Field(default=24000, ge=1000, le=80000)
+    faithfulness_max_evidence_items: int = Field(default=120, ge=1, le=500)
+    faithfulness_max_context_chars: int = Field(default=80000, ge=1000, le=80000)
     rewrite: EvidenceRewriteConfig = Field(default_factory=EvidenceRewriteConfig)
+
+
+class ReportAuditConfig(BaseModel):
+    """Configure bounded, manually triggered independent report audits."""
+
+    enabled: bool = True
+    judge_base_url: str | None = Field(default=None, pattern=r"^https?://")
+    judge_model: str | None = Field(default=None, min_length=1)
+    judge_api_key_env: str | None = Field(default=None, pattern=r"^[A-Z][A-Z0-9_]*$")
+    judge_response_format: Literal["json_schema", "json_object"] = "json_object"
+    judge_thinking_mode: Literal["provider_default", "enabled", "disabled"] = "disabled"
+    judge_context_tokens: int = Field(default=131072, ge=32768)
+    judge_input_tokens: int = Field(default=200000, ge=32768)
+    jev_enabled: bool = True
 
 
 class AppConfig(BaseModel):
@@ -378,10 +395,20 @@ class AppConfig(BaseModel):
     observability: ObservabilityConfig = ObservabilityConfig()
     eval: EvalConfig = EvalConfig()
     planner: PlannerConfig = PlannerConfig()
+    report_audit: ReportAuditConfig = ReportAuditConfig()
 
     @model_validator(mode="after")
     def _validate_cross_component_limits(self):
         """Validate limits shared across configuration components."""
+        if (
+            self.report_audit.judge_base_url
+            and urlsplit(self.report_audit.judge_base_url).netloc
+            != urlsplit(self.llm.base_url).netloc
+            and self.report_audit.judge_api_key_env is None
+        ):
+            raise ValueError(
+                "a separate Judge provider requires explicit judge_api_key_env"
+            )
         if self.relevance.max_papers > self.extractor.max_papers:
             raise ValueError("relevance.max_papers must be <= extractor.max_papers")
         invalid_names = [

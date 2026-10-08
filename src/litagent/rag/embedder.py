@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import threading
 from collections.abc import Callable, Sequence
 from typing import Any
@@ -27,7 +28,7 @@ class LocalEmbedder(Embedder):
         self,
         model_name: str = _DEFAULT_MODEL,
         *,
-        model_factory: Callable[[str], Any] = SentenceTransformer,
+        model_factory: Callable[[str], Any] | None = None,
     ) -> None:
         """Initialize the local embedder."""
         self._model_name = model_name
@@ -38,7 +39,11 @@ class LocalEmbedder(Embedder):
         """Load the local embedding model on first use."""
         if self._model is None:
             logger.info("loading sentence-transformer model: %s", self._model_name)
-            self._model = self._model_factory(self._model_name)
+            if self._model_factory is not None:
+                self._model = self._model_factory(self._model_name)
+            else:
+                device = os.getenv("LITAGENT_LOCAL_MODEL_DEVICE") or None
+                self._model = SentenceTransformer(self._model_name, device=device)
         return self._model
 
     def embed(self, texts: str | list[str]) -> list[float] | list[list[float]]:
@@ -68,7 +73,7 @@ class LocalEmbedder(Embedder):
     @property
     def dim(self) -> int:
         """Return the embedding dimension."""
-        return int(self._ensure_model().get_embedding_dimension())
+        return int(self._ensure_model().get_sentence_embedding_dimension())
 
 
 class Specter2Embedder:

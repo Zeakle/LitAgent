@@ -105,7 +105,11 @@ class SearchWorker(Worker):
                 reason = "provider_timeout"
             else:
                 status = SearchSourceStatus.FAILED
-                reason = "provider_error"
+                reason = (
+                    result.error_code
+                    if str(result.error_code).startswith("http_status_")
+                    else "provider_error"
+                )
 
             return [], SearchSourceOutcome(
                 task_id=task_id,

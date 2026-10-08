@@ -9,7 +9,20 @@ from typing import Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
+ReviewStructure = Literal[
+    "legacy", "academic_v1", "method_transparent_v1", "academic_v2"
+]
+CitationStyle = Literal[
+    "evidence",
+    "numbered",
+    "ieee",
+    "apa7",
+    "gbt7714_2025_numeric",
+    "gbt7714_2025_author_date",
+]
+
 ReportLanguage = Literal["en", "zh-CN"]
+AutoAuditMode = Literal["off", "judge", "judge_jev"]
 ReviewStage = Literal["paper_selection", "final_report"]
 ReviewAction = Literal["confirm", "approve", "revise", "reject", "cancel"]
 HumanReviewStatus = Literal["not_requested", "pending", "approved", "rejected"]
@@ -41,10 +54,20 @@ class RunOptions(Contract):
 
     report_language: ReportLanguage = "en"
     human_review: bool = False
+    review_structure: ReviewStructure = "legacy"
+    auto_audit_mode: AutoAuditMode = "off"
+    auto_audit_max_versions: int = Field(default=1, ge=1, le=3, strict=True)
 
     def fingerprint(self) -> str:
         """Bind generation and review choices to a stable run identity."""
-        value = json.dumps(self.model_dump(mode="json"), sort_keys=True)
+        payload = self.model_dump(mode="json")
+        if self.review_structure == "legacy":
+            payload.pop("review_structure")
+        if self.auto_audit_mode == "off":
+            # Inactive policy fields must not invalidate legacy run identities.
+            payload.pop("auto_audit_mode")
+            payload.pop("auto_audit_max_versions")
+        value = json.dumps(payload, sort_keys=True)
         return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
@@ -202,6 +225,9 @@ class ExportResult(Contract):
     media_type: Literal[
         "text/markdown; charset=utf-8",
         "application/pdf",
+        "application/x-bibtex; charset=utf-8",
+        "application/x-research-info-systems; charset=utf-8",
+        "application/vnd.citationstyles.csl+json; charset=utf-8",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ]
     content: bytes
@@ -217,7 +243,7 @@ class ReportExporter(Protocol):
         *,
         format: Literal["md", "pdf", "docx"],
         publishable: bool,
-        citation_style: Literal["evidence", "numbered"] = "evidence",
+        citation_style: CitationStyle = "evidence",
     ) -> ExportResult:
         """Render exact content without LLM calls or remote asset retrieval.
 

@@ -3,7 +3,7 @@
 import asyncio
 import json
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -560,6 +560,97 @@ class FakeEvidenceSelector:
     async def select(self, query, ledger, sections=None, *, max_tokens):
         self.select_call_count += 1
         return self._selection
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("profile", ["legacy", "academic_v1", "method_transparent_v1"])
+@pytest.mark.parametrize(
+    "fault", ["missing", "not_mapping", "missing_method", "unknown_id", "bad_method"]
+)
+async def test_invalid_selection_preserves_draft_without_review_or_revision(
+    profile, fault
+):
+    """Reject the host contract without turning its evidence into an empty ledger."""
+    draft = "\n# Preserved\n\nOriginal claim [E:p1:claim:0].\n"
+    payload = {"draft": draft, "degradation_reasons": ["provider_empty"]}
+    selection = _EVIDENCE_SELECTION.to_dict()
+    if fault == "not_mapping":
+        selection = []
+    elif fault == "missing_method":
+        selection["method_by_section"].pop("methods")
+    elif fault == "unknown_id":
+        selection["section_evidence_ids"]["methods"] = ["unknown:claim:0"]
+    elif fault == "bad_method":
+        selection["method_by_section"]["methods"] = "invented"
+    if fault != "missing":
+        payload["evidence_selection"] = selection
+    synthesis = MagicMock()
+    synthesis.execute = AsyncMock(return_value=payload)
+    reviewer = MagicMock()
+    reviewer.execute = AsyncMock()
+    reviewer.review_revision = AsyncMock()
+    llm = MagicMock()
+    llm.chat = AsyncMock()
+    events = []
+    worker = AdversarialReviewWorker(
+        llm,
+        synthesis,
+        reviewer,
+        trace_hook=lambda event, data: events.append((event, data)),
+    )
+    task = _make_task_with_data()
+    task.input_data["review_structure"] = profile
+
+    result = await worker.execute(task)
+
+    assert result["final_draft"] == draft
+    assert result["rounds"] == [] and result["total_rounds"] == 0
+    assert result["accepted"] is False and result["final_score"] == 0
+    assert result["review_structure"] == profile
+    assert result["evidence_selection"]["valid"] is False
+    assert "selected_count" not in result["evidence_selection"]
+    error = result["evidence_selection"]["error"]
+    assert error["reason_code"] == "evidence_selection_invalid" and error["message"]
+    assert result["degradation_reasons"] == [
+        "provider_empty",
+        "evidence_selection_invalid",
+    ]
+    reviewer.execute.assert_not_awaited()
+    reviewer.review_revision.assert_not_awaited()
+    synthesis.revise.assert_not_called()
+    llm.chat.assert_not_awaited()
+    validation_end = next(
+        data
+        for event, data in events
+        if event == "subspan.end" and data["task_id"].endswith(":evidence_selection:r1")
+    )
+    assert validation_end["error"] == error["message"]
+    assert validation_end["error_type"] == "ValueError"
+
+
+@pytest.mark.asyncio
+async def test_valid_empty_selection_is_not_a_contract_failure():
+    """Allow an explicitly validated empty selection to follow the review path."""
+    from litagent.context.evidence_selector import EvidenceSelection
+
+    empty = EvidenceSelection(0, {}, {}, {}, 0, 0)
+    synthesis = MagicMock()
+    synthesis.execute = AsyncMock(
+        return_value={
+            "draft": "No evidence was retrieved.",
+            "evidence_selection": empty.to_dict(),
+        }
+    )
+    reviewer = MagicMock()
+    reviewer.execute = AsyncMock(return_value={"score": 0, "verdict": "reject"})
+    worker = AdversarialReviewWorker(MagicMock(), synthesis, reviewer, max_rounds=1)
+
+    result = await worker.execute(_make_task_with_data())
+
+    reviewer.execute.assert_awaited_once()
+    assert result["total_rounds"] == 1 and result["evidence_selection"]["valid"] is True
+    assert result["evidence_selection"]["selected_count"] == 0
+    assert "evidence_selection_invalid" not in result["degradation_reasons"]
 
 
 class TestAdversarialEvidenceGate:

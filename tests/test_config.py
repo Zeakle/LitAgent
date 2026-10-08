@@ -59,7 +59,7 @@ def test_code_defaults_match_default_yaml_token_caps():
     assert (
         cfg.context.review_evidence_max_tokens
         == (context.review_evidence_max_tokens)
-        == 10_000
+        == 16_000
     )
     assert (
         cfg.context.review_draft_max_tokens

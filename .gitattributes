@@ -1,0 +1,3 @@
+# Preserve the pinned upstream bytes and provenance hashes of vendored files.
+src/litagent/csl/citeproc.js -whitespace linguist-vendored
+src/litagent/csl/CPAL -whitespace

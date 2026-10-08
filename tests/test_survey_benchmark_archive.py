@@ -11,11 +11,41 @@ from litagent.benchmark.survey_archive import SurveyBenchmarkArchive
 
 
 def _archive(tmp_path):
-    source = Path(
-        "artifacts/benchmarks/survey/interview-metrics-6run-20260918/"
-        "survey-pilot-b582f9d4ba01468f9306fc4f0c9a21f1.json"
-    )
-    result = json.loads(source.read_text(encoding="utf-8"))
+    """Build a synthetic archive without depending on private live artifacts."""
+    result = {
+        "benchmark_type": "survey",
+        "run_id": "archive-test",
+        "status": "succeeded",
+        "stage": "pilot",
+        "dataset_id": "fixture",
+        "dataset_version": "1",
+        "dataset_fingerprint": "fixture",
+        "judgment_status": "owner_approved_ai_assisted",
+        "annotation_version": "1",
+        "manifest_fingerprint": "fixture",
+        "git_sha": "fixture",
+        "git_dirty": False,
+        "generation_model": "fixture",
+        "judge_model": "fixture",
+        "self_judged": True,
+        "formal_eligible": False,
+        "prompt_source_fingerprint": "fixture",
+        "judge_prompt_fingerprint": "fixture",
+        "config_fingerprint": "fixture",
+        "profile_fingerprints": {},
+        "case_aggregates": [],
+        "profile_summaries": [],
+        "observations": [
+            {
+                "run_id": "fixture-observation",
+                "case_id": "few-shot-metric-space",
+                "domain": "few_shot",
+                "profile_id": "external-only",
+                "repetition": 1,
+                "status": "completed",
+            }
+        ],
+    }
     project = tmp_path / "project"
     root = project / "artifacts/benchmarks/survey"
     runs = project / "artifacts/runs"

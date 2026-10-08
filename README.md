@@ -58,6 +58,89 @@ delivery gates. Interactive control state is stored locally in SQLite, while
 large checkpoints and complete replay artifacts remain JSON files under
 `artifacts/`.
 
+The new-run dialog defaults to `academic_v2`, **Academic review · search appendix**,
+and retains both v1 structures. Seven academic body sections are followed by
+references and a collapsed search appendix. The evidence page reads the same
+frozen version's records; Markdown/PDF/Word include the complete appendix, and
+evaluation still covers the entire report. Structure changes require a new run. Citation
+styles (IEEE, APA 7, GB/T 7714-2025 numeric or author-date) can be switched on an
+existing report without model calls, changing its source SHA, scores, or approval.
+Simple numbering and raw evidence remain available. Markdown/PDF/Word share the
+same citation projection; BibTeX/RIS/CSL JSON contain only that revision's cited
+papers. Missing metadata and unparsed names are disclosed rather than inferred.
+
+The report page provides a version-bound **Independent audit**: Judge is the default,
+with optional Jev citation verification. Results are separate from report scores,
+approval, and source SHA. Ordinary reports without human topic labels have no
+topic-coverage score. Configure `report_audit` on the server; Judge inherits the
+generation credentials unless an explicit key environment variable is set. A
+different Judge host requires its own explicitly configured credential variable.
+Jev requires `TYPESAFE_API_KEY` and uses `jev-1.13.0`. Finished or interrupted
+inputs are reused by default; rerunning requires an explicit new attempt. Restart
+does not replay requests. Integration is verified offline; live verification is
+separate, and Jev confidence is not accuracy.
+
+New runs can optionally schedule an audit after final Evaluation passes: Off
+(default), Judge, or Judge + Jev. The exact report version is saved first; results
+can arrive before final human approval. The run-wide budget defaults to one
+version and permits 1–3. Failed, cancelled, or interrupted reservations consume
+a slot and never retry automatically. Revisions must pass Evaluation and have
+remaining budget; historical reports are not automatically audited. Manual
+audits remain available.
+
+New runs use `survey-evaluation-v2`: at most two model calls extract assertions
+from every source unit and validate classification and support. Scientific claims
+use only their actual citations; runtime procedures use trusted records, and
+organizational claims use the report. Limits are 120 evidence items / 80,000
+characters. Missing materials, overflow or incomplete responses remain unverified.
+The faithfulness threshold remains 0.8; serious entity, numerical or experiment
+attribution errors independently block delivery. Method-transparent disclosures
+are assembled from host records before review, evaluation and version freezing.
+
+The version/SHA-bound Quality page shows recorded thresholds, assertion counts,
+structure/method checks and source diagnostics. Judge/Jev share the report page's
+loading and attempt selection; they remain independent artifacts outside delivery
+gates, without a combined score. Historical records retain their evaluation scope
+and display unavailable statistics honestly. Offline acceptance on 2026-10-03:
+1327 tests passed, with bilingual desktop / 390px and keyboard checks. Improved
+live pass rates still require a controlled comparison with identical inputs,
+model, budget and evaluation version; historical 0.62 is not a v2 baseline.
+
+Frozen-input preflight exposed duplicated abstracts exceeding context allocations.
+Exact original support is now shared within the same paper, retaining separate
+evidence bindings and rejecting incomplete materials. The review evidence layer
+is 16,000 tokens within the unchanged 32,768 context and unchanged run budget.
+The first live arm on 2026-10-04 used 5 requests / 62,798 tokens, then stopped
+with invalid extraction aliases and citation excerpts. It remains unverified;
+the second arm was not submitted. The extraction contract now specifies bare
+aliases, verbatim cited excerpts and host allowlists. New comparison archives
+retain frozen sources for evidence navigation, and incomplete evaluations stop
+the next arm. Offline regression: 1354 passed, including 19 new tests.
+The subsequent pair-002 arm used 7 requests / 90,422 tokens. Aliases were valid,
+but one stitched, non-contiguous quote stopped verification before assessment.
+Its candidate arm was not submitted; no quality gain is established. Historical
+results remain unchanged. The extraction protocol now uses host-generated continuous
+fragment IDs and shared materials with per-claim citation allowlists. Latest offline
+regression at that stage: 1376 passed; oversized requests remain unverified. This repair made zero
+paid calls; live quality improvement remains unverified.
+
+The latest offline regression on 2026-10-07 passed 1618 tests. The
+`host-support-passages-v2` contract lets the model select host-owned source IDs;
+the host reconstructs text and positions and checks actual citation ownership,
+source-explicit abbreviations, quantities and required support aspects. Conservative
+relation checks preserve unverified results where support is missing. Reviewer
+feedback distinguishes existing citations from semantic support without raising
+scores. Historical reports and failed attempts remain unchanged. Live run-004
+failed independent protocol/semantic acceptance; run-005 is preflight-only, with
+no new paid calls. These offline checks do not establish a higher live pass rate.
+
+Academic styles require a local `node` executable on PATH. The processor,
+CSL styles, locales, provenance hashes, and licenses ship under
+[`src/litagent/csl/`](./src/litagent/csl/); formatting does not fetch templates.
+Word contains formatted text, not Zotero fields. A Chinese font is required by
+the Word viewer (Arial Unicode MS on macOS; Microsoft YaHei on Windows).
+Method-transparent reporting is not a claim of complete PRISMA compliance.
+
 ![LitAgent flow replay desktop view](./docs/images/flow-demo-desktop.png)
 
 ### Live survey

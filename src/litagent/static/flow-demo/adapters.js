@@ -68,10 +68,12 @@ export function chooseDefaultSection(view) {
 
 export function adaptArchiveView(raw, identity) {
   return {
+    displayWarnings: raw?.display_warnings || [],
     identity: { ...identity, status: raw?.summary?.status || identity.status },
     summary: raw?.summary || {},
     report: raw?.report || null,
     renderedReport: raw?.rendered_report || { html: "", headings: [] },
+    reportSha: raw?.rendered_report?.source_sha256 || null,
     graph: raw?.dag || { tasks: {}, dependencies: {}, nodes: {} },
     events: Array.isArray(raw?.timeline) ? raw.timeline : [],
     evidence: Array.isArray(raw?.evidence) ? raw.evidence : [],
@@ -85,7 +87,7 @@ export function adaptArchiveView(raw, identity) {
     capabilities: {
       canCancel: false,
       canReview: false,
-      canExport: false,
+      canExport: identity.source === "archive" && Boolean(raw?.report?.survey),
       canDownloadArtifact: identity.source === "archive",
       hasTrace: Boolean(raw?.trace?.trace_url),
     },
@@ -99,6 +101,7 @@ export function adaptInteractiveView(raw, identity) {
     summary: raw?.summary || {},
     report: raw?.report || null,
     renderedReport: raw?.rendered_report || { html: "", headings: [] },
+    reportSha: raw?.rendered_report?.source_sha256 || null,
     graph: raw?.graph || { tasks: {}, dependencies: {}, nodes: {} },
     events: Array.isArray(raw?.timeline) ? raw.timeline : [],
     evidence: Array.isArray(raw?.evidence) ? raw.evidence : [],

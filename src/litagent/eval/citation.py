@@ -62,7 +62,9 @@ class CitationEvaluator(Evaluator):
     async def evaluate(self, survey: str, context: dict[str, Any]) -> EvalResult:
         """Score cited papers against titles in the evaluation context."""
         ledger = context.get(CTX_EVIDENCE)
-        if isinstance(ledger, dict) and ledger:
+        if isinstance(ledger, dict) and (
+            ledger or context.get("evaluation_version") == "survey-evaluation-v2"
+        ):
             refs = extract_evidence_refs_ordered(survey)
             malformed = find_malformed_evidence_refs(survey)
             unknown = [evidence_id for evidence_id in refs if evidence_id not in ledger]
@@ -84,6 +86,9 @@ class CitationEvaluator(Evaluator):
                 result.passed = False
                 result.details["reason_codes"] = ["malformed_evidence_refs"]
             return result
+
+        if context.get("evaluation_version") == "survey-evaluation-v2":
+            return EvalResult.skip(self.metric_name, "evidence_ledger_unavailable")
 
         papers = context.get(CTX_PAPERS, []) or []
         source_titles = [p.get("title", "") for p in papers if p.get("title")]

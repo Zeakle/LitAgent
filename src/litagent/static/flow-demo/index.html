@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
   <title>LitAgent Research Workbench</title>
-  <link rel="stylesheet" href="/static/flow-demo/styles.css?v=15.10.3">
+  <link rel="stylesheet" href="/static/flow-demo/styles.css?v=15.10.12">
 </head>
 <body>
   <div class="app-shell">
@@ -28,7 +28,8 @@
           <button id="download-artifact" class="quiet-button" type="button" hidden data-i18n="download">下载 Artifact</button>
           <button id="cancel-run" class="danger-button" type="button" hidden data-i18n="cancel">取消运行</button>
           <label class="version-control" hidden><span class="sr-only">Report version</span><select id="version-select" aria-label="Report version"></select></label>
-          <div id="export-menu" class="export-menu" hidden><button class="quiet-button" type="button" data-i18n="export">导出</button><div class="export-options"><label class="export-style-label" for="export-style" data-i18n="citationStyle">引用格式</label><select id="export-style"><option value="numbered" data-i18n="numberedCitations">编号引用</option><option value="evidence" data-i18n="evidenceCitations">原始证据</option></select><button type="button" data-format="md">Markdown</button><button type="button" data-format="pdf">PDF</button><button type="button" data-format="docx">Word</button></div></div>
+          <label id="citation-control" class="citation-control" hidden><span data-i18n="citationStyle">引用与参考文献样式</span><select id="export-style"><option value="ieee">IEEE</option><option value="apa7">APA 7</option><option value="gbt7714_2025_numeric">GB/T 7714-2025 · [1]</option><option value="gbt7714_2025_author_date" data-i18n="gbtAuthorDate">GB/T 7714-2025 · 著者—出版年</option><option value="numbered" data-i18n="numberedCitations">简单编号</option><option value="evidence" data-i18n="evidenceCitations">原始证据</option></select></label>
+          <div id="export-menu" class="export-menu" hidden><button class="quiet-button" type="button" data-i18n="export">导出</button><div class="export-options"><span class="export-group" data-i18n="reportFiles">报告文件</span><button type="button" data-format="md">Markdown</button><button type="button" data-format="pdf">PDF</button><button type="button" data-format="docx">Word</button><span class="export-group" data-i18n="bibliographyFiles">文献数据</span><button type="button" data-bibliography="bibtex">BibTeX</button><button type="button" data-bibliography="ris">RIS</button><button type="button" data-bibliography="csl_json">CSL JSON</button></div></div>
         </div>
       </header>
 
@@ -40,6 +41,7 @@
         <span><small data-i18n="elapsed">耗时</small><strong id="summary-elapsed">—</strong></span>
         <span><small>Run ID</small><strong id="summary-run-id">—</strong></span>
       </section>
+      <p id="format-warning" class="format-warning" role="status" hidden></p>
       <div id="notice" class="notice" role="status" hidden></div>
 
       <nav class="section-tabs" aria-label="Workbench sections">
@@ -58,7 +60,7 @@
         </section>
         <section id="section-report" class="workbench-section report-section">
           <aside class="report-outline-pane"><h2 data-i18n="outline">目录</h2><nav id="report-outline" class="report-outline" aria-label="Report outline"></nav></aside>
-          <article id="report-document" class="report-document" tabindex="-1"></article>
+          <div><article id="report-document" class="report-document" tabindex="-1"></article><section id="audit-panel" class="audit-panel" hidden><header><h2 id="audit-title">独立核验</h2><button id="audit-start" type="button" disabled>核验当前版本</button></header><p id="audit-scope"></p><p id="audit-capabilities" class="audit-binding"></p><div id="audit-results" aria-live="polite"></div></section><small class="citation-attribution"><a href="https://citationstyles.org/" target="_blank" rel="noopener">citeproc-js implements the Citation Style Language</a> · © Frank Bennett</small></div>
         </section>
 
         <section id="section-execution" class="workbench-section execution-section" hidden>
@@ -88,7 +90,7 @@
         </section>
 
         <section id="section-review" class="workbench-section review-section" hidden><header class="section-header"><div><span class="section-eyebrow">HUMAN-IN-THE-LOOP</span><h2 data-i18n="review">人工审核</h2></div><span id="review-stage"></span></header><div id="review-content" class="review-content"></div></section>
-        <section id="section-evidence" class="workbench-section evidence-section" hidden><header class="section-header"><div><span class="section-eyebrow">LEDGER</span><h2 data-i18n="evidence">证据</h2></div><output id="evidence-count">0</output></header><div id="evidence-list" class="evidence-list"></div></section>
+        <section id="section-evidence" class="workbench-section evidence-section" hidden><header class="section-header"><div><span class="section-eyebrow">LEDGER</span><h2 data-i18n="evidence">证据</h2></div><output id="evidence-count">0</output></header><section id="search-records" class="search-records" aria-live="polite"></section><div id="evidence-list" class="evidence-list"></div></section>
         <section id="section-quality" class="workbench-section quality-section" hidden><header class="section-header"><div><span class="section-eyebrow">EVALUATION</span><h2 data-i18n="quality">质量</h2></div></header><div id="quality-content" class="quality-content"></div></section>
       </div>
     </main>
@@ -98,14 +100,26 @@
 
   <dialog id="new-run-dialog" class="new-run-dialog">
     <form method="dialog" id="new-run-form">
-      <header><div><span class="section-eyebrow">NEW SURVEY</span><h2 data-i18n="newResearch">新建研究</h2></div><button class="icon-command" value="cancel" aria-label="Close">×</button></header>
+      <header><div><span class="section-eyebrow">NEW SURVEY</span><h2 data-i18n="newResearch">新建研究</h2></div><button id="dismiss-new-run" class="icon-command" type="button" aria-label="Close" data-i18n-label="close">×</button></header>
       <label><span data-i18n="question">研究问题</span><textarea id="query-input" rows="5" maxlength="4000" required data-i18n-placeholder="queryPlaceholder"></textarea></label>
+      <div class="form-row"><label><span data-i18n="reviewStructure">综述结构</span><select id="review-structure"><option value="academic_v2" selected data-i18n="academicStructureV2">学术综述 · 检索记录附录（推荐）</option><option value="academic_v1" data-i18n="academicStructure">通用学术综述</option><option value="method_transparent_v1" data-i18n="methodStructure">方法透明综述</option></select></label><label><span data-i18n="citationStyle">引用与参考文献样式</span><select id="new-citation-style"><option value="ieee">IEEE</option><option value="apa7">APA 7</option><option value="gbt7714_2025_numeric">GB/T 7714-2025 · [1]</option><option value="gbt7714_2025_author_date" data-i18n="gbtAuthorDate">GB/T 7714-2025 · 著者—出版年</option><option value="numbered" data-i18n="numberedCitations">简单编号</option><option value="evidence" data-i18n="evidenceCitations">原始证据</option></select></label></div>
+      <p class="form-help" data-i18n="formatHelp">结构影响生成；引用样式可在生成后切换。方法透明结构不代表完整 PRISMA 合规。</p>
+      <div class="form-row"><label><span data-i18n="autoAuditMode">Evaluation 通过后的自动核验</span><select id="auto-audit-mode"><option value="off" selected data-i18n="autoAuditOff">关闭</option><option value="judge" data-i18n="autoAuditJudge">自动 Judge</option><option value="judge_jev" data-i18n="autoAuditJudgeJev">自动 Judge + Jev</option></select></label><label><span data-i18n="autoAuditMaxVersions">最多自动核验版本数</span><select id="auto-audit-max-versions" disabled><option value="1" selected>1</option><option value="2">2</option><option value="3">3</option></select></label></div>
+      <p id="auto-audit-budget-note" class="form-help" aria-live="polite"></p>
+      <p class="form-help" data-i18n="autoAuditRules">仅核验已保存且 Evaluation 通过的版本；结果独立保存，不覆盖评分或批准。失败及重启中断不会自动重发。</p>
+      <p id="auto-audit-capabilities" class="form-note" aria-live="polite" hidden></p>
       <div class="form-row"><label><span data-i18n="language">报告语言</span><select id="report-language"><option value="zh-CN">简体中文</option><option value="en">English</option></select></label><label class="toggle-field"><input id="human-review" type="checkbox" checked><span data-i18n="humanReview">人工审核</span></label></div>
       <p id="live-warning" class="form-note"></p>
-      <footer><button class="quiet-button" value="cancel" type="button" id="close-new-run">取消</button><button class="primary-command" value="default" type="submit" data-i18n="start">开始运行</button></footer>
+      <footer><button class="quiet-button" value="cancel" type="button" id="close-new-run" data-i18n="cancelDialog">取消</button><button class="primary-command" value="default" type="submit" data-i18n="start">开始运行</button></footer>
     </form>
   </dialog>
   <div id="sidebar-scrim" class="sidebar-scrim" hidden></div>
-  <script type="module" src="/static/flow-demo/app.js?v=15.10.3"></script>
+  <dialog id="audit-dialog" class="new-run-dialog">
+    <h2 id="audit-dialog-title">独立核验</h2><p id="audit-dialog-target" class="audit-binding"></p>
+    <p>Judge</p><label><input id="audit-jev" type="checkbox"><span id="audit-jev-label"></span></label><p id="audit-jev-reason"></p>
+    <label><input id="audit-new-attempt" type="checkbox"><span id="audit-new-label"></span></label>
+    <div class="audit-actions"><button id="audit-close" type="button">关闭</button><button id="audit-submit" type="button">开始核验</button></div>
+  </dialog>
+  <script type="module" src="/static/flow-demo/app.js?v=15.10.12"></script>
 </body>
 </html>

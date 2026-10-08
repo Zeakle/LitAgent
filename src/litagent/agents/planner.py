@@ -56,7 +56,9 @@ methodological facets of the SAME topic).
 Do NOT drift to unrelated topics. Keep each sub-query concise \
 (a search-engine query, not a sentence).
 
-Respond ONLY with JSON: {"sub_queries": ["...", "..."]}"""
+Provide one broad short query and focused queries covering explicitly named methods.
+Do not return the full long user request as a search query. Do not invent paper IDs.
+Respond ONLY with JSON: {"sub_queries": ["...", "..."], "named_methods": ["literal method name from the user request"]}"""
 
 
 class SurveyPlanner:
@@ -112,6 +114,7 @@ class SurveyPlanner:
         if result.risk == InjectionRisk.HIGH:
             raise SafetyError(f"Query rejected: injection detected {result.matched}")
 
+        self._named_methods = []
         graph = TaskGraph()
 
         intent = classify_query_intent(query)
@@ -236,7 +239,10 @@ class SurveyPlanner:
                 task_id="adversarial_review",
                 description="Adversarial synthesis + review loop",
                 agent_type="adversarial_review",
-                input_data={"query": query},
+                input_data={
+                    "query": query,
+                    "requested_methods": getattr(self, "_named_methods", []),
+                },
                 timeout_ms=self._adversarial_timeout_ms,
                 max_retries=0,
             ),
@@ -248,6 +254,7 @@ class SurveyPlanner:
     async def _decompose(self, query: str) -> list[str]:
         """Decompose a survey query into focused subqueries."""
         fallback = [query]
+        self._named_methods = []
         if not self._llm or not self._config.decompose_enabled:
             return fallback
 
@@ -268,7 +275,18 @@ class SurveyPlanner:
                 logger.warning("Decompose: empty content, degrade to single query")
                 return fallback
 
-            raw = json.loads(content).get("sub_queries")
+            parsed = json.loads(content)
+            raw = parsed.get("sub_queries")
+            names = parsed.get("named_methods")
+            self._named_methods = list(
+                dict.fromkeys(
+                    x.strip()
+                    for x in (names if isinstance(names, list) else [])
+                    if isinstance(x, str)
+                    and x.strip()
+                    and x.strip().casefold() in query.casefold()
+                )
+            )[:12]
             if not isinstance(raw, list):
                 logger.warning("Decompose: 'sub_queries' not a list, degrade")
                 return fallback
@@ -276,13 +294,13 @@ class SurveyPlanner:
             subs = [s.strip() for s in raw if isinstance(s, str) and s.strip()]
 
             merged, seen = [], set()
-            for q in [query, *subs]:
+            for q in subs:
                 k = q.lower()
                 if k not in seen:
                     seen.add(k)
                     merged.append(q)
 
-            clamped = merged[: self._config.max_sub_queries]
+            clamped = merged[: self._config.max_sub_queries] or fallback
             logger.info(f"Decompose: {query!r} -> {len(clamped)} sub-queries")
             return clamped
         except Exception as e:

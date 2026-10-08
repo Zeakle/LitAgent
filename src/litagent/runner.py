@@ -33,7 +33,7 @@ from litagent.agents.search import SearchWorker
 from litagent.agents.synthesis import SynthesisWorker
 from litagent.config import AppConfig
 from litagent.context.budget import BudgetManager
-from litagent.context.evidence_selector import EvidenceSelector
+from litagent.context.evidence_selector import EvidenceSelection, EvidenceSelector
 from litagent.contracts import build_config_summary, normalize_survey_result
 from litagent.eval.base import (
     CTX_CLAIMS,
@@ -48,6 +48,7 @@ from litagent.eval.base import (
 from litagent.eval.citation import CitationEvaluator
 from litagent.eval.consistency import ConsistencyEvaluator
 from litagent.eval.ragas_eval import RagasFaithfulnessEvaluator
+from litagent.eval.scoped import check_request_budget
 from litagent.evidence import (
     build_citation_aliases,
     collect_ledger,
@@ -93,6 +94,11 @@ from litagent.rag.interfaces import Reranker
 from litagent.rag.reranker import CrossEncoderReranker
 from litagent.rag.retriever import HybridRetriever
 from litagent.rag.vector_store import QdrantVectorStore
+from litagent.review_structure import (
+    assemble_methodology,
+    build_methodology,
+    check_methodology,
+)
 from litagent.safety.budget import CostBudget
 from litagent.safety.injection import InjectionDetector
 from litagent.skills.manager import SkillManager
@@ -366,8 +372,12 @@ class LitAgent:
     @staticmethod
     def _apply_run_options_to_graph(graph: TaskGraph, options: RunOptions) -> None:
         """Attach immutable generation choices to every scheduler task."""
+        started_at = time.time()
         for task in graph.tasks.values():
             task.input_data["report_language"] = options.report_language
+            if options.review_structure != "legacy":
+                task.input_data.setdefault("search_started_at", started_at)
+                task.input_data["review_structure"] = options.review_structure
 
     def _resume_identity(self, run_id: str, options: RunOptions) -> ResumeIdentity:
         """Bind interactive checkpoints to behavior and configuration."""
@@ -820,6 +830,12 @@ class LitAgent:
         metadata["degradation_reason_codes"] = degradation_codes
         metadata["report_language"] = options.report_language
         metadata["run_options_fingerprint"] = options.fingerprint()
+        metadata["review_structure"] = options.review_structure
+        metadata["review_methodology"] = (
+            adversarial_result.get("review_methodology", {})
+            if isinstance(adversarial_result, Mapping)
+            else {}
+        )
 
         initial_evaluation = await _await_with_cancellation(
             self._evaluate(
@@ -1082,6 +1098,14 @@ class LitAgent:
             metadata["total_rounds"] = adv_result.get("total_rounds", 0)
             metadata["final_score"] = adv_result.get("final_score", 0.0)
             metadata["accepted"] = adv_result.get("accepted", False)
+            selection = adv_result.get("evidence_selection")
+            if isinstance(selection, Mapping) and selection.get("valid") is False:
+                error = selection.get("error")
+                metadata["evidence_selection_error"] = dict(
+                    error
+                    if isinstance(error, Mapping)
+                    else {"reason_code": "evidence_selection_invalid"}
+                )
             return {
                 "survey": adv_result["final_draft"],
                 "metadata": metadata,
@@ -1291,6 +1315,15 @@ class LitAgent:
             budget=self._budget_manager,
             skill_manager=self._skill_manager,
             agent_config=cfg.agent,
+            methodology_provider=lambda task: build_methodology(
+                str(task.input_data.get("query", "")),
+                task.input_data.get("methodology_results", {}),
+                cfg.rag.content_mode,
+                source_outcomes=self._summarize_search_outcomes(
+                    self._search.get_source_outcomes() if self._search else ()
+                )[0],
+                started_at=task.input_data.get("search_started_at"),
+            ),
             evidence_selector=self._evidence_selector,
             context_config=cfg.context,
             trace_hook=self._trace_hook,
@@ -1698,16 +1731,57 @@ class LitAgent:
         output: dict[str, Any] = {}
 
         try:
+            adversarial_result = results.get("adversarial_review")
+            selection = (
+                adversarial_result.get("evidence_selection")
+                if isinstance(adversarial_result, Mapping)
+                else None
+            )
+            if isinstance(selection, Mapping) and selection.get("valid") is False:
+                # Retain the diagnostic draft without spending on invalid inputs.
+                output = {
+                    evaluator.metric_name: {
+                        "score": 0.0,
+                        "passed": True,
+                        "skipped": True,
+                        "details": {"skipped_reason": "evidence_selection_invalid"},
+                    }
+                    for evaluator in self._evaluators
+                }
+                return output
             context = self._build_eval_context(
                 query=query,
                 survey=survey,
                 results=results,
             )
+            scoped = next(
+                (
+                    ev
+                    for ev in self._evaluators
+                    if isinstance(ev, RagasFaithfulnessEvaluator)
+                ),
+                None,
+            )
+            shared = (
+                asyncio.create_task(scoped.evaluate(survey, context))
+                if scoped
+                else None
+            )
+
+            async def run_metric(evaluator):
+                """Share the two-stage scientific inventory with consistency checking."""
+                if evaluator is scoped:
+                    return await shared
+                metric_context = context
+                if isinstance(evaluator, ConsistencyEvaluator):
+                    metric_context = {
+                        **context,
+                        "scoped_faithfulness_result": await shared if shared else None,
+                    }
+                return await evaluator.evaluate(survey, metric_context)
+
             evaluated = await asyncio.gather(
-                *[
-                    evaluator.evaluate(survey, context)
-                    for evaluator in self._evaluators
-                ],
+                *[run_metric(evaluator) for evaluator in self._evaluators],
                 return_exceptions=True,
             )
 
@@ -1727,7 +1801,16 @@ class LitAgent:
                     "score": result.score,
                     "passed": result.passed,
                     "skipped": result.skipped,
-                    "details": result.details,
+                    "details": {
+                        **result.details,
+                        **(
+                            {"threshold": evaluator._threshold}
+                            if context.get("evaluation_version")
+                            == "survey-evaluation-v2"
+                            and hasattr(evaluator, "_threshold")
+                            else {}
+                        ),
+                    },
                 }
             return output
         finally:
@@ -1804,7 +1887,47 @@ class LitAgent:
             if isinstance(claim, str) and claim.strip()
         ]
 
+        from litagent.audit_context import SurveyAuditContext, check_structure
+        from litagent.eval.scoped import EVALUATION_VERSION
+        from litagent.review_structure import check_report_language
+
+        structure = (
+            (adversarial or {}).get("review_structure", "legacy")
+            if isinstance(adversarial, Mapping)
+            else "legacy"
+        )
+        methodology = (
+            (adversarial or {}).get("review_methodology", {})
+            if isinstance(adversarial, Mapping)
+            else {}
+        )
+        language = (
+            (adversarial or {}).get("report_language", "en")
+            if isinstance(adversarial, Mapping)
+            else "en"
+        )
+        audit_context = SurveyAuditContext(
+            query=query,
+            report_language=language,
+            review_structure=structure,
+            review_methodology=methodology,
+        )
         return {
+            "evaluation_version": EVALUATION_VERSION,
+            "review_structure": structure,
+            "report_language": language,
+            "language_checks": check_report_language(
+                survey, language, methodology, evidence=ledger
+            ),
+            "review_methodology": methodology,
+            "structure_checks": check_structure(
+                survey,
+                audit_context,
+                selected_evidence_ids=[i["evidence_id"] for i in selected],
+            ),
+            "method_checks": check_methodology(
+                survey, structure, language, methodology
+            ),
             CTX_QUERY: query,
             CTX_PAPERS: extractions,
             CTX_CLAIMS: claims,
@@ -1837,6 +1960,43 @@ class LitAgent:
                     return True
         return False
 
+    @staticmethod
+    def _rewrite_material_packet(
+        items: Sequence[Mapping[str, Any]], *, candidate_count: int | None = None
+    ) -> dict[str, Any]:
+        """Send complete repair sources without host locators or repeated text."""
+        evidence, supports, source_keys = [], {}, {}
+        for item in items:
+            eid = str(item["evidence_id"])
+            paper_id = str(item.get("paper_id") or "")
+            # Missing identity cannot authorize sharing across unrelated items.
+            support = str(item.get("supporting_text") or item.get("text") or "")
+            key = (paper_id or f"unknown:{eid}", support)
+            sid = source_keys.setdefault(key, f"s{len(source_keys) + 1}")
+            supports[sid] = {"paper_id": paper_id, "text": support}
+            value = {
+                "evidence_id": eid,
+                "paper_id": paper_id,
+                "paper_title": item.get("paper_title") or "",
+                "text": item.get("text") or "",
+                "original_support_ref": sid,
+            }
+            if item.get("method_entities"):
+                value["method_entities"] = item["method_entities"]
+            evidence.append(value)
+        total = len(items) if candidate_count is None else candidate_count
+        return {
+            "material_contract": "repair-original-supports-v1",
+            "coverage": {
+                "candidate_items": total,
+                "supplied_items": len(items),
+                "omitted_items": max(0, total - len(items)),
+                "instruction": "Only supplied items may justify repair; omitted items are unavailable.",
+            },
+            "evidence": evidence,
+            "original_supports": supports,
+        }
+
     def _build_rewrite_evidence(
         self,
         *,
@@ -1863,32 +2023,68 @@ class LitAgent:
                     ordered_ids.append(evidence_id)
 
         if has_uncited_claim:
+            # Distribute the bounded repair pool across diagnostic subjects rather
+            # than spending it on the evidence selector's unrelated prefix.
+            repair_queries = [
+                set(
+                    re.findall(
+                        r"[a-z0-9]+",
+                        f"{d.get('claim_text', '')} {d.get('source_quote', '')}".lower(),
+                    )
+                )
+                for d in diagnostics
+                if d.get("reason_code") == "uncited_claim"
+            ]
+            candidates = [
+                eid
+                for eid in selected_evidence_ids
+                if isinstance(evidence_ledger.get(eid), Mapping)
+            ]
+            ranked = [
+                sorted(
+                    candidates,
+                    key=lambda eid: -EvidenceSelector._lexical_score(
+                        tokens, evidence_ledger[eid]
+                    ),
+                )
+                for tokens in repair_queries
+                if tokens
+            ]
+            for rank in range(len(candidates)):
+                for query_order in ranked:
+                    eid = query_order[rank]
+                    if eid not in seen:
+                        seen.add(eid)
+                        ordered_ids.append(eid)
             for evidence_id in selected_evidence_ids:
                 if evidence_id not in seen:
                     seen.add(evidence_id)
                     ordered_ids.append(evidence_id)
 
         selected: list[dict[str, Any]] = []
-        used_chars = 0
         for evidence_id in ordered_ids:
             raw = evidence_ledger.get(evidence_id)
             if not isinstance(raw, Mapping):
                 continue
             item = dict(raw)
-            rendered_size = (
-                len(str(item.get("evidence_id") or ""))
-                + len(str(item.get("paper_title") or ""))
-                + len(str(item.get("text") or ""))
-                + 16
-            )
-            if rendered_size > max_chars:
+            if item.get("evidence_id") != evidence_id or not item.get("text"):
                 continue
             if len(selected) >= max_items:
                 break
-            if used_chars + rendered_size > max_chars:
-                break
+            packet = self._rewrite_material_packet(
+                [
+                    {**entry, "evidence_id": f"e{index + 1}"}
+                    for index, entry in enumerate([*selected, item])
+                ],
+                candidate_count=len(ordered_ids),
+            )
+            rendered_size = len(
+                json.dumps(packet, ensure_ascii=False, separators=(",", ":"))
+            )
+            # Skip the entire oversized source, never truncate supporting text.
+            if rendered_size > max_chars:
+                continue
             selected.append(item)
-            used_chars += rendered_size
         return selected
 
     async def _attempt_evidence_rewrite(
@@ -1977,21 +2173,53 @@ class LitAgent:
             )
         )
         alias_by_id = aliases.evidence_id_to_alias
-        model_items = [
-            {
-                **{key: value for key, value in item.items() if key != "paper_id"},
-                "evidence_id": alias_by_id[item["evidence_id"]],
-            }
-            for item in rewrite_items
-        ]
+        candidate_ids = {
+            eid
+            for item in diagnostics
+            if isinstance(item, Mapping)
+            for eid in item.get("evidence_ids", [])
+            if isinstance(eid, str)
+        }
+        if any(item.get("reason_code") == "uncited_claim" for item in diagnostics):
+            candidate_ids.update(selected_ids)
+        model_items = self._rewrite_material_packet(
+            [
+                {**item, "evidence_id": alias_by_id[item["evidence_id"]]}
+                for item in rewrite_items
+            ],
+            candidate_count=len(candidate_ids),
+        )
+        diagnostic_keys = (
+            "claim_id",
+            "kind",
+            "claim_text",
+            "source_unit_id",
+            "source_fragment_id",
+            "source_quote",
+            "source_start",
+            "source_end",
+            "section",
+            "reason_code",
+            "explanation",
+            "alignment_status",
+            "citation_scope",
+        )
         model_diagnostics = [
             {
-                **item,
+                **{key: item[key] for key in diagnostic_keys if key in item},
                 "evidence_ids": [
                     alias_by_id[eid]
                     for eid in item.get("evidence_ids", [])
                     if eid in alias_by_id
                 ],
+                "source_offsets_context": "frozen_original_before_aliasing",
+                "repair_instruction": (
+                    "Verify complete original support, then attach its citation directly "
+                    "to this assertion if entailed; otherwise state the specific evidence gap."
+                    if item.get("reason_code") == "uncited_claim"
+                    else "Repair the diagnosed fact/attribution against its original support "
+                    "or trusted run record; adding a citation alone is insufficient."
+                ),
             }
             for item in diagnostics
             if isinstance(item, Mapping)
@@ -2022,28 +2250,62 @@ class LitAgent:
         candidate: str | None = None
         llm_error_type: str | None = None
         reason_code = "llm_call_failed"
+        reservation = 0
+        budget_reserved = False
+        request_budget = getattr(self._llm, "_cost_budget", None)
+        if not isinstance(request_budget, CostBudget):
+            request_budget = None
 
         try:
             chat_kwargs: dict[str, Any] = {
                 "max_tokens": self._config.eval.max_tokens,
+                "transport_max_attempts": 1,
             }
             if self._config.eval.thinking_mode != "provider_default":
                 chat_kwargs["extra_body"] = {
                     "thinking": {"type": self._config.eval.thinking_mode}
                 }
             async with asyncio.timeout(self._config.eval.timeout_seconds):
-                response = await self._llm.chat(
-                    self._synthesis.rewrite_with_evidence(
-                        original_survey,
-                        json.dumps(model_items, ensure_ascii=False),
-                        json.dumps(model_diagnostics, ensure_ascii=False, indent=2),
-                        query=query,
-                        aliases=aliases,
-                        report_language=report_language,
-                    )
-                    + [{"role": "user", "content": json.dumps(model_policy)}],
-                    **chat_kwargs,
+                messages = self._synthesis.rewrite_with_evidence(
+                    original_survey,
+                    json.dumps(model_items, ensure_ascii=False, separators=(",", ":")),
+                    json.dumps(model_diagnostics, ensure_ascii=False, indent=2),
+                    query=query,
+                    aliases=aliases,
+                    report_language=report_language,
+                    **(
+                        {
+                            "review_structure": report_data.get("metadata", {}).get(
+                                "review_structure"
+                            ),
+                            "review_methodology": report_data.get("metadata", {}).get(
+                                "review_methodology", {}
+                            ),
+                        }
+                        if report_data.get("metadata", {}).get(
+                            "review_structure", "legacy"
+                        )
+                        != "legacy"
+                        else {}
+                    ),
+                ) + [{"role": "user", "content": json.dumps(model_policy)}]
+                reservation = check_request_budget(
+                    self._llm,
+                    messages,
+                    self._config.eval.max_tokens,
+                    self._config.eval.context_tokens,
                 )
+                if request_budget is not None:
+                    request_budget.reserve(reservation)
+                    budget_reserved = True
+                response = await self._llm.chat(messages, **chat_kwargs)
+                if request_budget is not None and not response.usage.get(
+                    "usage_available", bool(response.usage)
+                ):
+                    request_budget.record(
+                        {"prompt_tokens": reservation, "completion_tokens": 0}
+                    )
+                    raise ValueError("rewrite_usage_incomplete")
             candidate = (response.content or "").strip()
         except asyncio.CancelledError:
             reason_code = "cancelled"
@@ -2052,10 +2314,20 @@ class LitAgent:
         except TimeoutError:
             reason_code = "llm_timeout"
             llm_error_type = "TimeoutError"
+        except ValueError as exc:
+            known_errors = {
+                "evaluation_context_budget_exceeded": "rewrite_context_budget_exceeded",
+                "evaluation_run_budget_exceeded": "rewrite_run_budget_exceeded",
+                "rewrite_usage_incomplete": "rewrite_usage_incomplete",
+            }
+            reason_code = known_errors.get(str(exc), "llm_call_failed")
+            llm_error_type = "ValueError"
         except Exception as exc:
             reason_code = "llm_call_failed"
             llm_error_type = type(exc).__name__
         finally:
+            if budget_reserved:
+                request_budget.release(reservation)
             reset_task_id(token)
 
         if candidate is None:
@@ -2091,6 +2363,12 @@ class LitAgent:
             parent_task_id="evidence_rewrite",
             stage="evidence_rewrite",
         ).text
+        candidate = assemble_methodology(
+            candidate,
+            report_data.get("metadata", {}).get("review_structure", "legacy"),
+            report_language,
+            report_data.get("metadata", {}).get("review_methodology", {}),
+        )
         validation = self._validate_rewrite_candidate(
             original=original_survey,
             candidate=candidate,
@@ -2218,6 +2496,7 @@ class LitAgent:
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         """Generate one feedback revision and commit it only after every gate."""
         original = str(report_data.get("survey") or "")
+        metadata = report_data.get("metadata") or {}
         eval_context = self._build_eval_context(
             query=query, survey=original, results=results
         )
@@ -2262,6 +2541,19 @@ class LitAgent:
             selection,
             query=query,
             report_language=report_language,
+            **(
+                {
+                    "review_structure": report_data.get("metadata", {}).get(
+                        "review_structure"
+                    ),
+                    "review_methodology": report_data.get("metadata", {}).get(
+                        "review_methodology", {}
+                    ),
+                }
+                if report_data.get("metadata", {}).get("review_structure", "legacy")
+                != "legacy"
+                else {}
+            ),
         )
         self._emit(
             "subspan.start",
@@ -2321,6 +2613,12 @@ class LitAgent:
             parent_task_id="human_revision",
             stage="human_revision",
         ).text
+        candidate = assemble_methodology(
+            candidate,
+            report_data.get("metadata", {}).get("review_structure", "legacy"),
+            report_language,
+            report_data.get("metadata", {}).get("review_methodology", {}),
+        )
         original_refs = extract_evidence_refs(original)
         validation = self._validate_rewrite_candidate(
             original=original,
@@ -2343,6 +2641,14 @@ class LitAgent:
             selection,
             query=query,
             report_language=report_language,
+            **(
+                {
+                    "review_structure": metadata.get("review_structure", "legacy"),
+                    "review_methodology": metadata.get("review_methodology"),
+                }
+                if metadata.get("review_structure", "legacy") != "legacy"
+                else {}
+            ),
         )
         if not self._adversarial._review_passes(review):
             return report_data, finish_revision(
@@ -2403,6 +2709,27 @@ class LitAgent:
             elif not ev.get("passed", False):
                 failed.append(metric)
 
+        details = evaluation.get("faithfulness", {}).get("details", {})
+        if details.get("evaluation_version") == "survey-evaluation-v2":
+            for name in ("structure_checks", "method_checks"):
+                check = details.get(name, {})
+                if check.get("status") == "failed":
+                    failed.append(name)
+                elif check.get("status") not in {"passed", "not_applicable"}:
+                    unverified.append(name)
+            language = details.get("language_checks", {})
+            if language.get("contract") == "report-prose-language-v1":
+                if language.get("status") == "failed":
+                    failed.append("language_checks")
+                elif language.get("status") != "passed":
+                    unverified.append("language_checks")
+            for name in (
+                "critical_attribution_errors",
+                "method_assertion_errors",
+                "organization_errors",
+            ):
+                if details.get(name):
+                    failed.append(name)
         if failed:
             return {
                 "status": "failed",

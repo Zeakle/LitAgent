@@ -7,9 +7,10 @@ import hashlib
 import json
 import os
 import uuid
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import Any
 
+from litagent.citation_formats import format_capabilities
 from litagent.config import AppConfig
 from litagent.contracts import build_config_summary
 from litagent.demo import project_flow_demo_view
@@ -60,6 +61,9 @@ class InteractiveRunService:
         ) = None,
         semaphore: asyncio.Semaphore | None = None,
         archive_repository: ArchiveRepository | None = None,
+        auto_audit_submitter: (
+            Callable[[str, int, RunOptions], Awaitable[None]] | None
+        ) = None,
     ) -> None:
         """Save dependencies without starting background work."""
         self._config = config
@@ -73,6 +77,7 @@ class InteractiveRunService:
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._recorders: dict[str, RunRecorder] = {}
         self._exporter = LocalReportExporter()
+        self._auto_audit_submitter = auto_audit_submitter
 
     async def initialize(self) -> None:
         """Initialize storage, mark abandoned active calls, and resume queued work."""
@@ -90,12 +95,16 @@ class InteractiveRunService:
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
 
-    async def start(self, query: str, options: RunOptions) -> str:
+    async def start(
+        self, query: str, options: RunOptions, citation_style: str = "numbered"
+    ) -> str:
         """Create and asynchronously start one human-reviewed run."""
         if not options.human_review:
             raise ValueError("interactive_service_requires_human_review")
         run_id = uuid.uuid4().hex[:16]
         await self._repository.create_run(run_id, query, options)
+        if citation_style != "numbered":
+            await self._repository.set_citation_style(run_id, citation_style)
         self._schedule(run_id)
         return run_id
 
@@ -138,8 +147,13 @@ class InteractiveRunService:
             "updated_at": row["updated_at"],
         }
 
-    async def get_view(self, run_id: str) -> dict[str, Any]:
+    async def get_view(
+        self, run_id: str, citation_style: str | None = None
+    ) -> dict[str, Any]:
         """Return one complete browser projection from durable server state."""
+        citation_style = citation_style or await self._repository.get_citation_style(
+            run_id
+        )
         row = await self._repository.get_run(run_id)
         state = await self.get(run_id)
         report = dict(state.get("result") or {}) or None
@@ -226,14 +240,15 @@ class InteractiveRunService:
         }
         survey_text = str((report or {}).get("survey") or "")
         rendered_report = render_report_projection(survey_text)
-        if survey_text and evidence:
+        if survey_text:
             report_version = ReportVersion(
                 run_id=run_id,
                 revision=max((item["revision"] for item in versions), default=1),
                 report_language=metadata.get("report_language", "en"),
                 survey=survey_text,
             )
-            reader = build_reader_report(
+            reader = await asyncio.to_thread(
+                build_reader_report,
                 report_version,
                 evidence_ledger={
                     item["evidence_id"]: item
@@ -241,6 +256,7 @@ class InteractiveRunService:
                     if isinstance(item, dict) and item.get("evidence_id")
                 },
                 paper_catalog=paper_catalog_from_nodes(graph["nodes"]),
+                citation_style=citation_style,
             )
             rendered_report = reader_report_projection(reader)
         return {
@@ -250,6 +266,8 @@ class InteractiveRunService:
             "graph": graph,
             "timeline": timeline,
             "report": report,
+            "format_capabilities": format_capabilities(),
+            "citation_style": citation_style,
             "rendered_report": rendered_report,
             "evidence": evidence,
             "evaluation": evaluation,
@@ -261,10 +279,13 @@ class InteractiveRunService:
             "capabilities": capabilities,
         }
 
-    async def get_version(self, run_id: str, revision: int) -> dict[str, Any]:
+    async def get_version(
+        self, run_id: str, revision: int, citation_style: str = "numbered"
+    ) -> dict[str, Any]:
         """Return one immutable report revision with its verified content hash."""
         if revision < 1:
             raise ValueError("invalid_report_revision")
+        await self._repository.get_run(run_id)
         report = await self._repository.get_report_version(run_id, revision)
         survey = report.get("survey")
         if not isinstance(survey, str) or not survey:
@@ -283,8 +304,8 @@ class InteractiveRunService:
             else None
         )
         rendered_report = render_report_projection(survey)
-        if archive_view is not None and archive_view.get("evidence"):
-            evidence = archive_view["evidence"]
+        if survey:
+            evidence = (archive_view or {}).get("evidence") or []
             version = ReportVersion(
                 run_id=run_id,
                 revision=revision,
@@ -293,7 +314,8 @@ class InteractiveRunService:
                 ),
                 survey=survey,
             )
-            reader = build_reader_report(
+            reader = await asyncio.to_thread(
+                build_reader_report,
                 version,
                 evidence_ledger={
                     item["evidence_id"]: item
@@ -303,6 +325,7 @@ class InteractiveRunService:
                 paper_catalog=paper_catalog_from_nodes(
                     (archive or {}).get("nodes") or {}
                 ),
+                citation_style=citation_style,
             )
             rendered_report = reader_report_projection(reader)
         return {
@@ -381,7 +404,7 @@ class InteractiveRunService:
             human_status=human_status,
         )
         reader = None
-        if citation_style == "numbered":
+        if citation_style != "evidence":
             archive = self._archive_repository.get(run_id)
             archive_view = (
                 project_flow_demo_view(archive, source="archive")
@@ -391,7 +414,8 @@ class InteractiveRunService:
             evidence = (archive_view or {}).get("evidence") or []
             if not evidence:
                 raise ValueError("reader_projection_unavailable")
-            reader = build_reader_report(
+            reader = await asyncio.to_thread(
+                build_reader_report,
                 version,
                 evidence_ledger={
                     item["evidence_id"]: item
@@ -401,6 +425,7 @@ class InteractiveRunService:
                 paper_catalog=paper_catalog_from_nodes(
                     (archive or {}).get("nodes") or {}
                 ),
+                citation_style=citation_style,
             )
         return await self._exporter.export(
             version,
@@ -413,6 +438,22 @@ class InteractiveRunService:
     async def versions(self, run_id: str) -> list[dict[str, Any]]:
         """Return immutable report-version summaries newest-first."""
         return await self._repository.list_report_versions(run_id)
+
+    async def get_audit_artifact(self, run_id: str) -> dict[str, Any]:
+        """Read host evidence before final approval, including after a restart."""
+        row = await self._repository.get_run(run_id)
+        recorder = self._recorders.get(run_id)
+        if recorder is not None:
+            return recorder.snapshot()
+        archived = self._archive_repository.get(run_id)
+        if archived is not None:
+            return archived
+        # Pending final reviews have no terminal RunArtifact yet. Replaying local
+        # events into an in-memory recorder recovers evidence without API calls.
+        recorder = RunRecorder(run_id, str(row["query"]), self._archive_repository)
+        for item in await self._repository.list_events(run_id):
+            recorder(item["event"], item["data"])
+        return recorder.snapshot()
 
     async def list(self) -> list[dict[str, Any]]:
         """Return compact durable runs in newest-first order."""
@@ -564,15 +605,55 @@ class InteractiveRunService:
                     "revision": result.review.revision,
                 },
             )
+            if result.review.stage == "final_report":
+                await self._submit_saved_audit(
+                    run_id, result.checkpoint.report_revision
+                )
             return
         if result.report and result.report.get("survey"):
             revision = int(
                 (result.report.get("metadata") or {}).get("report_revision", 1)
             )
-            await self._repository.save_report_version(run_id, revision, result.report)
+            try:
+                saved = await self._repository.get_report_version(run_id, revision)
+            except KeyError:
+                await self._repository.save_report_version(
+                    run_id, revision, result.report
+                )
+            else:
+                # Approval changes mutable run state, not the frozen version.
+                if saved.get("survey") != result.report["survey"]:
+                    raise ValueError("report_revision_conflict")
         recorder = self._recorders.get(run_id)
         if recorder is not None and result.status in {"completed", "rejected"}:
             recorder.finalize(report=result.report, terminal_status="completed")
         await self._repository.mark_terminal(
             run_id, result.status, result=result.report
         )
+
+    async def _submit_saved_audit(self, run_id: str, revision: int) -> None:
+        """Submit a persisted review version without changing Survey outcome."""
+        if self._auto_audit_submitter is None:
+            return
+        row = await self._repository.get_run(run_id)
+        options = RunOptions.model_validate_json(row["options_json"])
+        if options.auto_audit_mode == "off":
+            return
+        try:
+            await self._auto_audit_submitter(run_id, revision, options)
+        except asyncio.CancelledError:
+            # The report and pending review are already committed. Cancellation
+            # belongs to audit submission, not the completed Survey segment.
+            return
+        except Exception as exc:
+            self._repository.event_hook(run_id)(
+                "automatic_audit.submission_failed",
+                {
+                    "run_id": run_id,
+                    "revision": revision,
+                    "error_type": type(exc).__name__,
+                },
+            )
+            logger.warning(
+                "Automatic audit submission failed for %s r%s", run_id, revision
+            )

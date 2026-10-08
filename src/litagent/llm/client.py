@@ -92,12 +92,18 @@ class OpenAICompatibleClient(BaseLLMClient):
         """Retry transient provider failures with one lifecycle per attempt."""
         from openai import APIConnectionError, APIStatusError
 
-        for attempt in range(self._transport_max_attempts):
+        attempts = kwargs.pop("transport_max_attempts", self._transport_max_attempts)
+        if (
+            not isinstance(attempts, int)
+            or not 1 <= attempts <= self._transport_max_attempts
+        ):
+            raise ValueError("invalid_transport_max_attempts")
+        for attempt in range(attempts):
             try:
                 return await self._chat_attempt(messages, **kwargs)
             except (APIConnectionError, APIStatusError) as exc:
                 status = getattr(exc, "status_code", None)
-                if attempt == self._transport_max_attempts - 1 or (
+                if attempt == attempts - 1 or (
                     status is not None
                     and status not in {408, 409, 429}
                     and status < 500

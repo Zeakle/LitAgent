@@ -256,6 +256,58 @@ class RagasFaithfulnessEvaluator(Evaluator):
         if not survey.strip():
             return EvalResult.skip(self.metric_name, "survey is empty")
 
+        if context.get("evaluation_version") == "survey-evaluation-v2":
+            from litagent.eval.scoped import (
+                CLASSIFICATION_CONTRACT,
+                EVALUATION_VERSION,
+                EXTRACTION_CONTRACT,
+                SUPPORT_CONTRACT,
+                evaluate_scoped,
+            )
+
+            base = {
+                "evaluation_version": EVALUATION_VERSION,
+                "extraction_contract": EXTRACTION_CONTRACT,
+                "classification_contract": CLASSIFICATION_CONTRACT,
+                "support_contract": SUPPORT_CONTRACT,
+                "threshold": self._threshold,
+                "structure_checks": context.get("structure_checks", {}),
+                "method_checks": context.get("method_checks", {}),
+                "language_checks": context.get("language_checks", {}),
+            }
+            try:
+                details = await evaluate_scoped(
+                    llm=self._llm, survey=survey, context=context, config=self._cfg.eval
+                )
+                score = details.pop("score")
+                details["threshold"] = self._threshold
+                if score is None:
+                    result = EvalResult.skip(
+                        self.metric_name,
+                        details.get("unverified_reason")
+                        or "evaluation_no_scientific_assertions",
+                    )
+                    result.details.update(details)
+                    return result
+                return self._make_result(score, details)
+            except asyncio.CancelledError:
+                raise
+            except TimeoutError:
+                reason = "evaluation_timeout"
+            except (ValueError, TypeError, json.JSONDecodeError) as exc:
+                reason = (
+                    str(exc)
+                    if str(exc).startswith("evaluation_")
+                    else "evaluation_contract_invalid"
+                )
+            except Exception as exc:
+                reason = f"evaluation_provider_error:{type(exc).__name__}"
+            result = EvalResult.skip(self.metric_name, reason)
+            result.details.update(
+                base, coverage={"complete": False}, unverified_count=None
+            )
+            return result
+
         resolved = self._resolve_contexts(context)
         if not resolved.texts:
             return EvalResult.skip(

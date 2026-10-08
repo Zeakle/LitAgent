@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+import os
 from typing import Any
 
 from sentence_transformers import CrossEncoder
@@ -36,7 +38,14 @@ class CrossEncoderReranker(Reranker):
     ) -> None:
         """Initialize the cross-encoder reranker."""
         self.model_name = model_name
-        self._model = model or CrossEncoder(model_name)
+        self._model = model or CrossEncoder(
+            model_name, device=os.getenv("LITAGENT_LOCAL_MODEL_DEVICE") or None
+        )
+        if (
+            model is None
+            and os.getenv("LITAGENT_LOCAL_RERANKER_PRECISION") == "float64"
+        ):
+            self._model.model.double()
         self._max_paper_chars = max_paper_chars
 
     def rerank(self, query: str, docs: list[ScoredDoc]) -> list[ScoredDoc]:
@@ -46,6 +55,8 @@ class CrossEncoderReranker(Reranker):
         scores = self._model.predict(
             [(query, item.doc.page_content[:1000]) for item in docs]
         )
+        if any(not math.isfinite(float(score)) for score in scores):
+            raise ValueError("cross_encoder_nonfinite_scores")
         rescored = [
             ScoredDoc(doc=item.doc, score=float(score))
             for item, score in zip(docs, scores, strict=True)
@@ -72,6 +83,8 @@ class CrossEncoderReranker(Reranker):
                 for paper in papers
             ]
         )
+        if any(not math.isfinite(float(score)) for score in scores):
+            raise ValueError("cross_encoder_nonfinite_scores")
         rescored = [
             paper.model_copy(update={"score": float(score)})
             for paper, score in zip(papers, scores, strict=True)

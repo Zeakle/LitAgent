@@ -152,7 +152,8 @@ class TestFormatEvidenceSelection:
         assert '<section key="introduction">[E:p0:claim:0]</section>' in out
         assert '<section key="methods">[E:p0:claim:1]</section>' in out
         assert "[E:p0:claim:0]" in out
-        assert "(T0)" in out
+        assert "(T0; paper=" in out
+        assert "original_support: text0" in out
         assert "text0" in out
 
         assert 'key="taxonomy"' not in out
@@ -782,3 +783,60 @@ class TestEvidenceSelectorSelect:
         )
         sel = await selector.select("test", _simple_ledger(), max_tokens=5000)
         assert sel.candidate_count > 0
+
+
+@pytest.mark.parametrize("section", ["abstract", "conclusion"])
+def test_selected_union_roundtrip_preserves_original_ranking_provenance(section):
+    """Summary sections reuse a complete selection without claiming a new search."""
+    items = _make_ledger(2)
+    ids = list(items)
+    selected = EvidenceSelection(
+        candidate_count=2,
+        selected_items=items,
+        section_evidence_ids={"methods": ids[:1], "experiments": ids[1:], section: ids},
+        method_by_section={
+            "methods": "cross_encoder",
+            "experiments": "lexical_fallback",
+            section: "selected_union",
+        },
+        omitted_count=0,
+        estimated_tokens=30,
+    )
+    restored = EvidenceSelection.from_dict(selected.to_dict())
+    assert restored.to_dict() == selected.to_dict()
+    assert restored.selected_items == items
+
+
+@pytest.mark.parametrize("section", ["methods", "experiments", "invented"])
+def test_selected_union_rejects_reuse_outside_summary_sections(section):
+    """A union origin must not waive the ranking contract of core sections."""
+    items = _make_ledger(1)
+    selected = EvidenceSelection(
+        candidate_count=1,
+        selected_items=items,
+        section_evidence_ids={section: list(items)},
+        method_by_section={section: "selected_union"},
+        omitted_count=0,
+        estimated_tokens=10,
+    )
+    with pytest.raises(ValueError, match="selected_union is not allowed"):
+        EvidenceSelection.from_dict(selected.to_dict())
+
+
+@pytest.mark.parametrize("section", ["abstract", "conclusion"])
+def test_selected_union_rejects_incomplete_union_and_missing_origin(section):
+    """Keep source and complete-set validation strict for reused evidence."""
+    items = _make_ledger(2)
+    selected = EvidenceSelection(
+        candidate_count=2,
+        selected_items=items,
+        section_evidence_ids={section: list(items)[:1]},
+        method_by_section={section: "selected_union"},
+        omitted_count=0,
+        estimated_tokens=10,
+    )
+    with pytest.raises(ValueError, match="must reuse all selected ids"):
+        EvidenceSelection.from_dict(selected.to_dict())
+    selected.method_by_section = {}
+    with pytest.raises(ValueError, match="no retrieval method"):
+        EvidenceSelection.from_dict(selected.to_dict())
