@@ -1,0 +1,46 @@
+{
+  "fixture_version": 1,
+  "purpose": "Report-source fidelity is independent of paper support; not human scientific gold",
+  "source_run_id": "front-jev-host-source-vit-002",
+  "source_artifact_sha256": "56c7ba990f0f562b43eb959f75a1745cd36457f8aa5504900c1cfc59885926b3",
+  "report_sha256": "ecf06636f56c2a877a40f5fbe2305d9872cfde8dd3ccd7ef33582b36265cf8c0",
+  "claim": {
+    "claim_id": "claim_12",
+    "kind": "scientific",
+    "claim_text": "部分数据高效训练方法在非自然图像（如医学图像）上的性能表现缺乏足够的实验证据支撑，相关研究仍存在空白",
+    "source_unit_id": "unit:5:1361",
+    "source_fragment_id": "unit:5:1361:fragment:1",
+    "source_quote": "部分数据高效训练方法在非自然图像（如医学图像）上的性能表现缺乏足够的实验证据支撑，相关研究仍存在空白。",
+    "source_start": 1484,
+    "source_end": 1535,
+    "evidence_ids": []
+  },
+  "raw_decision": {
+    "claim_id": "claim_12",
+    "correct_kind": "scientific",
+    "atomic": true,
+    "classification_valid": true,
+    "source_faithful": false,
+    "status": "unsupported",
+    "reason_code": "uncited_claim",
+    "explanation": "The assertion has no assigned evidence citations, so no supporting material is available.",
+    "support_basis": [],
+    "aspect_checks": [
+      {
+        "aspect": "predicate",
+        "supported": false,
+        "support_ids": [],
+        "explanation": "The predicate is not supported due to missing citations."
+      },
+      {
+        "aspect": "conditions",
+        "supported": false,
+        "support_ids": [],
+        "explanation": "The conditions are not supported due to missing citations."
+      }
+    ]
+  },
+  "citation_absent": true,
+  "raw_result_must_not_be_reclassified_into_supported": true,
+  "raw_model_flag_must_not_be_automatically_changed": true
+}

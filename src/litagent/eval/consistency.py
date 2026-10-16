@@ -66,7 +66,10 @@ class ConsistencyEvaluator(Evaluator):
         if not survey or not survey.strip():
             return EvalResult.skip(self.metric_name, "empty_survey")
 
-        if context.get("evaluation_version") == "survey-evaluation-v2":
+        if context.get("evaluation_version") in {
+            "survey-evaluation-v2",
+            "survey-evaluation-v3",
+        }:
             shared = context.get("scoped_faithfulness_result")
             if shared is None or shared.skipped:
                 return EvalResult.skip(
@@ -76,7 +79,7 @@ class ConsistencyEvaluator(Evaluator):
             return self._make_result(
                 max(0.0, 1.0 - len(conflicts) * self._penalty),
                 {
-                    "evaluation_version": "survey-evaluation-v2",
+                    "evaluation_version": context["evaluation_version"],
                     "threshold": self._threshold,
                     "conflict_count": len(conflicts),
                     "conflicts": conflicts,

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from litagent.benchmark.citation_audit import CitationAuditResult
+from litagent.benchmark.quality_suite import QualitySuiteResult
 from litagent.benchmark.survey_models import SurveyBenchmarkResult
 from litagent.logging import get_logger
 
@@ -80,18 +81,26 @@ class SurveyBenchmarkArchive:
         if not self.root.exists():
             return results, duplicates
         for path in self.root.rglob("*.json"):
-            if set(path.relative_to(self.root).parts) & {"checkpoints", "corrected"}:
+            if set(path.relative_to(self.root).parts) & {
+                "checkpoints",
+                "corrected",
+                "quality-private",
+                "presentation",
+            }:
                 continue
             if not path.resolve().is_relative_to(self.root):
                 continue
             try:
                 payload = json.loads(path.read_text(encoding="utf-8"))
-                if (
-                    not isinstance(payload, dict)
-                    or payload.get("benchmark_type") != "survey"
-                ):
+                if not isinstance(payload, dict) or payload.get(
+                    "benchmark_type"
+                ) not in {"survey", "survey_quality"}:
                     continue
-                result = SurveyBenchmarkResult.model_validate(payload)
+                result = (
+                    QualitySuiteResult
+                    if payload["benchmark_type"] == "survey_quality"
+                    else SurveyBenchmarkResult
+                ).model_validate(payload)
             except (OSError, ValueError) as exc:
                 logger.warning(
                     "Skipping invalid Survey benchmark %s (%s)",
@@ -109,17 +118,31 @@ class SurveyBenchmarkArchive:
         """Return summaries, excluding ambiguous archive identities."""
         results, duplicates = self._index()
         return [
-            {
-                "benchmark_id": result.run_id,
-                "stage": result.stage,
-                "status": result.status,
-                "dataset_id": result.dataset_id,
-                "dataset_version": result.dataset_version,
-                "observation_count": len(result.observations),
-                "profile_count": len(result.profile_summaries),
-                "formal_eligible": result.formal_eligible,
-                "self_judged": result.self_judged,
-            }
+            (
+                {
+                    "benchmark_id": result.run_id,
+                    "stage": "quality",
+                    "status": result.status,
+                    "dataset_id": result.dataset_id,
+                    "dataset_version": result.dataset_version,
+                    "observation_count": len(result.observations),
+                    "profile_count": 1,
+                    "formal_eligible": False,
+                    "self_judged": result.self_judged,
+                }
+                if isinstance(result, QualitySuiteResult)
+                else {
+                    "benchmark_id": result.run_id,
+                    "stage": result.stage,
+                    "status": result.status,
+                    "dataset_id": result.dataset_id,
+                    "dataset_version": result.dataset_version,
+                    "observation_count": len(result.observations),
+                    "profile_count": len(result.profile_summaries),
+                    "formal_eligible": result.formal_eligible,
+                    "self_judged": result.self_judged,
+                }
+            )
             for result in results.values()
             if result.run_id not in duplicates
         ]
@@ -136,6 +159,8 @@ class SurveyBenchmarkArchive:
     def corrected_diagnostic(self, benchmark_id: str) -> dict[str, Any] | None:
         """Use a derived summary only when its source SHA matches the archive."""
         self.get(benchmark_id)
+        if isinstance(self.get(benchmark_id), QualitySuiteResult):
+            return None
         if re.fullmatch(r"[A-Za-z0-9_-]+", benchmark_id) is None:
             return None
         source_paths = [
@@ -169,9 +194,64 @@ class SurveyBenchmarkArchive:
             return None
         return diagnostic
 
+    def automatic_audit(self, run_id: str, revision: int) -> dict | None:
+        """Read a quality suite's sidecar without initializing or interrupting its executor."""
+        results, duplicates = self._index()
+        matches = [
+            (result, item)
+            for result in results.values()
+            if isinstance(result, QualitySuiteResult)
+            and result.run_id not in duplicates
+            for item in result.observations
+            if item.get("run_id") == run_id
+        ]
+        if len(matches) != 1 or revision != 1:
+            return None
+        result, item = matches[0]
+        audit_id = item.get("audit_id")
+        if not audit_id or re.fullmatch(r"audit-[0-9a-f]{32}", audit_id) is None:
+            return None
+        path = (
+            self.root
+            / "quality-private"
+            / result.run_id
+            / "audits"
+            / audit_id
+            / "result.json"
+        ).resolve()
+        if not path.is_relative_to(self.root):
+            raise ValueError("quality_audit_path_invalid")
+        audit = json.loads(path.read_text(encoding="utf-8"))
+        if (
+            audit.get("source_run_id") != run_id
+            or audit.get("source_report_revision") != revision
+            or audit.get("source_report_sha256") != item.get("report_sha256")
+        ):
+            raise ValueError("quality_audit_binding_invalid")
+        return audit
+
     def observation(self, benchmark_id: str, observation_id: str) -> dict[str, Any]:
         """Open a recorded run only after root containment and SHA verification."""
         result = self.get(benchmark_id)
+        if isinstance(result, QualitySuiteResult):
+            matches = [
+                o for o in result.observations if o.get("run_id") == observation_id
+            ]
+            if len(matches) != 1:
+                raise KeyError(observation_id)
+            item = matches[0]
+            path = Path(item.get("artifact_path", "")).resolve()
+            if not path.is_relative_to(self.runs_root):
+                raise ValueError("observation_artifact_outside_runs_root")
+            content = path.read_bytes()
+            if "sha256:" + hashlib.sha256(content).hexdigest() != item.get(
+                "artifact_sha256"
+            ):
+                raise ValueError("observation_artifact_sha_mismatch")
+            artifact = json.loads(content)
+            if artifact.get("run_id") != observation_id:
+                raise ValueError("observation_artifact_identity_mismatch")
+            return {"observation": item, "artifact": artifact, "citation_audits": []}
         matches = [
             item for item in result.observations if item.run_id == observation_id
         ]

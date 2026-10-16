@@ -495,11 +495,17 @@ class ReportAuditService:
         context = SurveyAuditContext.model_validate(snapshot["context"])
         snapshot["context"] = context.model_dump(mode="json")
         jev = JevAuditConfig(enabled=include_jev)
+        if snapshot.get("frozen_inventory"):
+            from litagent.eval.automatic import frozen_judge_fingerprint
+
+            prompt_fingerprint = frozen_judge_fingerprint()
+        else:
+            prompt_fingerprint = judge_prompt_fingerprint()
         binding = digest(
             {
                 "snapshot": snapshot,
                 "judge": judge.fingerprint,
-                "prompt": judge_prompt_fingerprint(),
+                "prompt": prompt_fingerprint,
                 "jev": jev.fingerprint,
                 "limits": self.capabilities()["limits"],
             }
@@ -537,7 +543,7 @@ class ReportAuditService:
                     "methodology_sha256": digest(context.review_methodology),
                     "binding": binding,
                     "judge_config_fingerprint": judge.fingerprint,
-                    "judge_prompt_fingerprint": judge_prompt_fingerprint(),
+                    "judge_prompt_fingerprint": prompt_fingerprint,
                     "jev_config_fingerprint": jev.fingerprint,
                     "status": "queued",
                     "include_jev": include_jev,
@@ -573,6 +579,13 @@ class ReportAuditService:
             self._tasks[audit_id] = task
             task.add_done_callback(lambda done: self._tasks.pop(audit_id, None))
             return result
+
+    async def wait(self, audit_id: str) -> dict:
+        """Await an existing task without resubmitting an interrupted request."""
+        task = self._tasks.get(audit_id)
+        if task is not None:
+            await asyncio.shield(task)
+        return self._read(audit_id)
 
     def _save(self, result: dict) -> None:
         """Commit payload before its index status so interrupted writes fail closed."""
@@ -621,7 +634,12 @@ class ReportAuditService:
                         trace_seed=audit_id,
                     )
                     hook = RedactingTraceHook(
-                        tracer, payload_mode=self.config.observability.payload_mode
+                        tracer,
+                        payload_mode=(
+                            "metadata_only"
+                            if snapshot.get("frozen_inventory")
+                            else self.config.observability.payload_mode
+                        ),
                     )
                 if hook:
                     original_hook = hook
@@ -709,12 +727,17 @@ class ReportAuditService:
                     before_call=reserve,
                     context_max_tokens=self.config.report_audit.judge_context_tokens,
                     input_budget_tokens=self.config.report_audit.judge_input_tokens,
+                    frozen_inventory=snapshot.get("frozen_inventory"),
+                    total_budget_tokens=100000,
                 )
                 result.update(
                     judge=judge.model_dump(mode="json"),
                     judge_usage=usage.model_dump(mode="json"),
                     method_inventory=state.get("method_inventory", []),
                     method_assessments=state.get("method_assessments", []),
+                    judge_full_report_check=state.get(
+                        "automatic_full_report_check", {}
+                    ),
                 )
                 result["judge_actual_models"] = sorted(
                     {

@@ -359,6 +359,10 @@ class EvalConfig(BaseModel):
     faithfulness_max_evidence_items: int = Field(default=120, ge=1, le=500)
     faithfulness_max_context_chars: int = Field(default=80000, ge=1000, le=80000)
     rewrite: EvidenceRewriteConfig = Field(default_factory=EvidenceRewriteConfig)
+    strict_batch_size: int = Field(default=16, ge=1, le=16)
+    strict_max_batches: int = Field(default=8, ge=1, le=8)
+    strict_max_claims: int = Field(default=128, ge=1, le=128)
+    strict_context_margin: float = Field(default=0.1, ge=0.1, lt=0.5)
 
 
 class ReportAuditConfig(BaseModel):

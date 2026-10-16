@@ -128,6 +128,86 @@ def test_revision_messages_exclude_canonical_host_disclosures(
     assert "<run_methodology>" in messages[0]["content"]
 
 
+def assert_host_owned_method_prompt(system):
+    """Reject the former conflicting delegation at the real message boundary."""
+    assert "HOST-OWNED METHODOLOGY" in system
+    assert "leave its content empty" in system
+    assert "The host alone renders" in system
+    assert "not text to reproduce" in system
+    assert "retain their direct evidence citations" in system
+    for obsolete in (
+        "Disclose every recorded search query",
+        "State the recorded run search start time",
+        "Report the recorded search, deduplication",
+        "Disclose unknown information as not recorded",
+    ):
+        assert obsolete not in system
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("language", ["en", "zh-CN"])
+async def test_initial_generation_reserves_method_disclosures_for_host(
+    language, recorded_methodology, selected_evidence
+):
+    """Generate academic prose once, then assemble only canonical host records."""
+    body = authored_body("method_transparent_v1", language)
+    llm = ScriptedLLM(body)
+    selector = AsyncMock()
+    selector.select.return_value = selected_evidence
+    worker = SynthesisWorker(llm, evidence_selector=selector)
+    result = await worker.execute(
+        SubTask(
+            task_id="synthesis",
+            agent_type="synthesis",
+            description="Verify method ownership",
+            input_data={
+                "query": "ViT and DeiT",
+                "report_language": language,
+                "review_structure": "method_transparent_v1",
+                "review_methodology": recorded_methodology,
+            },
+        )
+    )
+    assert len(llm.messages) == 1
+    assert_host_owned_method_prompt(llm.messages[0][0]["content"])
+    assert result["draft"].count("A supported finding [E:a].") == body.count(
+        "A supported finding [E:a]."
+    )
+    assert result["draft"].count(METHOD_BEGIN) == 1
+    assert render_methodology(result["review_methodology"], language) in result["draft"]
+    assert "[E:a]" in result["draft"]
+
+
+@pytest.mark.parametrize("language", ["en", "zh-CN"])
+@pytest.mark.parametrize("builder", ["revise", "rewrite_with_evidence"])
+def test_revision_system_prompt_never_delegates_host_disclosures(
+    language, builder, recorded_methodology, selected_evidence
+):
+    """Both repair paths retain evidence and scope without rewriting disclosures."""
+    draft = assemble_methodology(
+        authored_body("method_transparent_v1", language),
+        "method_transparent_v1",
+        language,
+        recorded_methodology,
+    )
+    worker = SynthesisWorker(None)
+    kwargs = {
+        "review_structure": "method_transparent_v1",
+        "report_language": language,
+        "review_methodology": recorded_methodology,
+    }
+    if builder == "revise":
+        messages = worker.revise(
+            draft, "Clarify conditions", selected_evidence, **kwargs
+        )
+    else:
+        messages = worker.rewrite_with_evidence(draft, "ledger", "diagnostic", **kwargs)
+    assert_host_owned_method_prompt(messages[0]["content"])
+    assert "<run_methodology>" in messages[0]["content"]
+    assert METHOD_BEGIN not in messages[1]["content"]
+    assert "A supported finding" in messages[1]["content"]
+
+
 @pytest.mark.parametrize("profile", ["academic_v2", "method_transparent_v1"])
 @pytest.mark.parametrize("language", ["en", "zh-CN"])
 def test_canonical_assembly_is_unique_idempotent_and_method_verified(

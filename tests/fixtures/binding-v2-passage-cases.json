@@ -1,0 +1,120 @@
+{
+  "origin": "saved_public_paper_sources_and_report_assertions",
+  "cases": [
+    {
+      "claim": {
+        "claim_id": "claim_9",
+        "claim_text": "Deep K-tuplet Network采用episode-training策略，利用样本间关系学习通用表示，在miniImageNet基准上优于其他度量学习方法",
+        "evidence_ids": [
+          "arxiv:1907.03123:abstract:claim:95da84fc25be"
+        ]
+      },
+      "source": {
+        "arxiv:1907.03123:abstract:claim:95da84fc25be": {
+          "evidence_id": "arxiv:1907.03123:abstract:claim:95da84fc25be",
+          "paper_id": "arxiv:1907.03123",
+          "paper_title": "Revisiting Metric Learning for Few-Shot Image Classification",
+          "text": "When evaluated on Caltech-101, CUB-200, Stanford Dogs and Cars datasets using the model trained with miniImageNet, the proposed method significantly outperforms prior methods, demonstrating superior generalization to unseen classes",
+          "source_locator": "paper=arxiv:1907.03123;chunk=abstract;section=abstract;page=;block=",
+          "confidence": 0.9,
+          "claim_text": "When evaluated on Caltech-101, CUB-200, Stanford Dogs and Cars datasets using the model trained with miniImageNet, the proposed method significantly outperforms prior methods, demonstrating superior generalization to unseen classes",
+          "supporting_text": "The goal of few-shot learning is to recognize new visual concepts with just a few amount of labeled samples in each class. Recent effective metric-based few-shot approaches employ neural networks to learn a feature similarity comparison between query and support examples. However, the importance of feature embedding, i.e., exploring the relationship among training samples, is neglected. In this work, we present a simple yet powerful baseline for few-shot classification by emphasizing the importance of feature embedding. Specifically, we revisit the classical triplet network from deep metric learning, and extend it into a deep K-tuplet network for few-shot learning, utilizing the relationship among the input samples to learn a general representation learning via episode-training. Once trained, our network is able to extract discriminative features for unseen novel categories and can be seamlessly incorporated with a non-linear distance metric function to facilitate the few-shot classification. Our result on the miniImageNet benchmark outperforms other metric-based few-shot classification methods. More importantly, when evaluated on completely different datasets (Caltech-101, CUB-200, Stanford Dogs and Cars) using the model trained with miniImageNet, our method significantly outperforms prior methods, demonstrating its superior capability to generalize to unseen classes.",
+          "content_scope": "abstract",
+          "chunk_key": "abstract",
+          "section": "abstract",
+          "page": null,
+          "block_index": null,
+          "bbox": null,
+          "source_spans": [],
+          "content_hash": "bbc803aec14ff7d89ee221236ec27f7e6938a8484773b680cc121ed4002bc5fd",
+          "raw_content_hash": "bbc803aec14ff7d89ee221236ec27f7e6938a8484773b680cc121ed4002bc5fd",
+          "evidence_version": "v2",
+          "fact_fields": {
+            "method": "proposed deep K-tuplet network",
+            "conditions": "model trained with miniImageNet",
+            "dataset": "Caltech-101, CUB-200, Stanford Dogs, Cars",
+            "value": "significantly outperforms prior methods",
+            "qualifiers": "superior capability to generalize to unseen classes"
+          }
+        }
+      },
+      "expected_guard": "passed",
+      "human_gold": null
+    },
+    {
+      "claim": {
+        "claim_id": "claim_10",
+        "claim_text": "Meta-Metric-Learner结合优化式与度量式元学习的优势，可处理灵活的类别数量，在多种少样本设置中表现出优越性能",
+        "evidence_ids": [
+          "arxiv:1904.03014:abstract:claim:28100a279d78"
+        ]
+      },
+      "source": {
+        "arxiv:1904.03014:abstract:claim:28100a279d78": {
+          "evidence_id": "arxiv:1904.03014:abstract:claim:28100a279d78",
+          "paper_id": "arxiv:1904.03014",
+          "paper_title": "A Hybrid Approach with Optimization and Metric-based Meta-Learner for Few-Shot Learning",
+          "text": "The Meta-Metric-Learner model consists of two components: a task-specific metric-based learner as a base model, and a meta-learner that learns and specifies the base model",
+          "source_locator": "paper=arxiv:1904.03014;chunk=abstract;section=abstract;page=;block=",
+          "confidence": 0.95,
+          "claim_text": "The Meta-Metric-Learner model consists of two components: a task-specific metric-based learner as a base model, and a meta-learner that learns and specifies the base model",
+          "supporting_text": "Few-shot learning aims to learn classifiers for new classes with only a few training examples per class. Most existing few-shot learning approaches belong to either metric-based meta-learning or optimization-based meta-learning category, both of which have achieved successes in the simplified \"$k$-shot $N$-way\" image classification settings. Specifically, the optimization-based approaches train a meta-learner to predict the parameters of the task-specific classifiers. The task-specific classifiers are required to be homogeneous-structured to ease the parameter prediction, so the meta-learning approaches could only handle few-shot learning problems where the tasks share a uniform number of classes. The metric-based approaches learn one task-invariant metric for all the tasks. Even though the metric-learning approaches allow different numbers of classes, they require the tasks all coming from a similar domain such that there exists a uniform metric that could work across tasks. In this work, we propose a hybrid meta-learning model called Meta-Metric-Learner which combines the merits of both optimization- and metric-based approaches. Our meta-metric-learning approach consists of two components, a task-specific metric-based learner as a base model, and a meta-learner that learns and specifies the base model. Thus our model is able to handle flexible numbers of classes as well as generate more generalized metrics for classification across tasks. We test our approach in the standard \"$k$-shot $N$-way\" few-shot learning setting following previous works and a new realistic few-shot setting with flexible class numbers in both single-source form and multi-source forms. Experiments show that our approach can obtain superior performance in all settings.",
+          "content_scope": "abstract",
+          "chunk_key": "abstract",
+          "section": "abstract",
+          "page": null,
+          "block_index": null,
+          "bbox": null,
+          "source_spans": [],
+          "content_hash": "b9dc1b3b589c20bff47892a0820fab4334ad1c65c1b9067ae5ee21ec10e69691",
+          "raw_content_hash": "b9dc1b3b589c20bff47892a0820fab4334ad1c65c1b9067ae5ee21ec10e69691",
+          "evidence_version": "v2",
+          "fact_fields": {
+            "method": "Meta-Metric-Learner",
+            "conditions": "two components: task-specific metric-based learner (base model) and meta-learner that learns and specifies the base model"
+          }
+        }
+      },
+      "expected_guard": "passed",
+      "human_gold": null
+    },
+    {
+      "claim": {
+        "claim_id": "claim_13",
+        "claim_text": "Siamese Transformer Network（STN）在四个流行的少样本分类基准上，相比现有基线方法表现出更优性能",
+        "evidence_ids": [
+          "arxiv:1904.03014:abstract:claim:82e0bbe3c0f5"
+        ]
+      },
+      "source": {
+        "arxiv:1904.03014:abstract:claim:82e0bbe3c0f5": {
+          "evidence_id": "arxiv:1904.03014:abstract:claim:82e0bbe3c0f5",
+          "paper_id": "arxiv:1904.03014",
+          "paper_title": "A Hybrid Approach with Optimization and Metric-based Meta-Learner for Few-Shot Learning",
+          "text": "The Meta-Metric-Learner approach obtains superior performance in all tested settings",
+          "source_locator": "paper=arxiv:1904.03014;chunk=abstract;section=abstract;page=;block=",
+          "confidence": 0.95,
+          "claim_text": "The Meta-Metric-Learner approach obtains superior performance in all tested settings",
+          "supporting_text": "Few-shot learning aims to learn classifiers for new classes with only a few training examples per class. Most existing few-shot learning approaches belong to either metric-based meta-learning or optimization-based meta-learning category, both of which have achieved successes in the simplified \"$k$-shot $N$-way\" image classification settings. Specifically, the optimization-based approaches train a meta-learner to predict the parameters of the task-specific classifiers. The task-specific classifiers are required to be homogeneous-structured to ease the parameter prediction, so the meta-learning approaches could only handle few-shot learning problems where the tasks share a uniform number of classes. The metric-based approaches learn one task-invariant metric for all the tasks. Even though the metric-learning approaches allow different numbers of classes, they require the tasks all coming from a similar domain such that there exists a uniform metric that could work across tasks. In this work, we propose a hybrid meta-learning model called Meta-Metric-Learner which combines the merits of both optimization- and metric-based approaches. Our meta-metric-learning approach consists of two components, a task-specific metric-based learner as a base model, and a meta-learner that learns and specifies the base model. Thus our model is able to handle flexible numbers of classes as well as generate more generalized metrics for classification across tasks. We test our approach in the standard \"$k$-shot $N$-way\" few-shot learning setting following previous works and a new realistic few-shot setting with flexible class numbers in both single-source form and multi-source forms. Experiments show that our approach can obtain superior performance in all settings.",
+          "content_scope": "abstract",
+          "chunk_key": "abstract",
+          "section": "abstract",
+          "page": null,
+          "block_index": null,
+          "bbox": null,
+          "source_spans": [],
+          "content_hash": "b9dc1b3b589c20bff47892a0820fab4334ad1c65c1b9067ae5ee21ec10e69691",
+          "raw_content_hash": "b9dc1b3b589c20bff47892a0820fab4334ad1c65c1b9067ae5ee21ec10e69691",
+          "evidence_version": "v2",
+          "fact_fields": {
+            "method": "Meta-Metric-Learner",
+            "conditions": "all tested settings (standard \"k-shot N-way\", new realistic flexible class number, single-source, multi-source)",
+            "value": "superior"
+          }
+        }
+      },
+      "expected_guard": "unverified",
+      "human_gold": null
+    }
+  ]
+}

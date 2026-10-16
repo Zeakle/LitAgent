@@ -284,6 +284,19 @@ class SqliteReviewRepository:
                 raise ValueError("review_not_pending")
             request = ReviewRequest.model_validate_json(row["review_json"])
             validate_decision(request, decision)
+            options = RunOptions.model_validate_json(row["options_json"])
+            if decision.action == "approve" and options.quality_policy == "strict_v1":
+                content = Path(row["checkpoint_path"]).read_bytes()
+                if hashlib.sha256(content).hexdigest() != row["checkpoint_sha256"]:
+                    raise ValueError("checkpoint_sha_mismatch")
+                checkpoint = json.loads(content)
+                automatic = (
+                    (checkpoint.get("report_data") or {})
+                    .get("metadata", {})
+                    .get("automatic_delivery", {})
+                )
+                if not automatic.get("publishable"):
+                    raise ValueError("strict_automatic_acceptance_required")
             status = {
                 "cancel": "cancelled",
                 "reject": "rejected",

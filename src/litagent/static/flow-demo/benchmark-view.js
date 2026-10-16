@@ -7,6 +7,11 @@ const el = (tag, text = "", className = "") => {
 
 const value = (item, digits = 2) => item == null ? "—" : typeof item === "number" ? Number(item).toFixed(digits) : String(item);
 const percent = (item) => item == null ? "—" : `${(Number(item) * 100).toFixed(1)}%`;
+const auditGate = (observation, key, t) => {
+  const gate=observation?.gates?.[key === "jev" && observation?.gates?.extraction_jev ? "extraction_jev" : key];
+  if(gate === "disabled")return t("verificationDisabled");
+  return key !== "evaluation" && observation?.costs?.[key]?.requests === 0 ? t("notRun") : gate || t("notRun");
+};
 
 function metricTable(headers, rows) {
   const scroll = el("div", "", "benchmark-table-wrap");
@@ -128,9 +133,55 @@ export function renderBenchmarkList(target, results, selectedId, onSelect, t) {
   }
 }
 
+function renderAutomaticBenchmark(target, result, onObservation, t) {
+  target.append(el("h3", result.run_id), el("p", t("automaticBenchmarkDisclosure")));
+  for (const phase of ["pilot", "formal"]) {
+    const counts = result.counts?.[phase] || {};
+    const section = el("section", "", "quality-section");
+    section.append(el("h4", `${t(phase === "pilot" ? "qualityPilot" : "qualityFormal")} · ${result.status}`));
+    section.append(metricTable([t("planned"), t("ran"), t("fullyVerified"), t("autoDelivered"), t("blockedDelivery"), t("notRun")], [[counts.planned, counts.run, counts.complete_verification, counts.automatic_passed, counts.blocked, counts.not_run]]));
+    if (Number.isInteger(counts.pending)) section.append(el("p", `${t("pendingResult")}: ${counts.pending} · ${t("terminalResult")}: ${counts.terminal}`));
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 600 55"); svg.setAttribute("role", "img"); svg.setAttribute("aria-label", `${t("autoDelivered")}: ${counts.automatic_passed || 0} / ${counts.planned || 0}`);
+    const title = document.createElementNS(svg.namespaceURI, "title"); title.textContent = svg.getAttribute("aria-label"); svg.append(title);
+    for (const [width, color] of [[600, "#dce3ec"], [600 * (counts.pass_rate_planned || 0), "#287a60"]]) { const rect = document.createElementNS(svg.namespaceURI, "rect"); rect.setAttribute("x", "0"); rect.setAttribute("y", "10"); rect.setAttribute("height", "20"); rect.setAttribute("width", String(width)); rect.setAttribute("fill", color); svg.append(rect); }
+    section.append(svg);
+    section.append(el("p", `${t("plannedPassRate")}: ${percent(counts.pass_rate_planned)} · ${t("actualRunDenominator")}: ${counts.run || 0}`));
+    target.append(section);
+  }
+  target.append(el("p", `${t("qualityGoal")}: ${result.counts?.goal_met ? t("qualityGoalMet") : t("qualityGoalUnmet")}`));
+  const matrix = el("section", "", "quality-section"); matrix.append(el("h4", t("qualityMatrix")));
+  for (const planned of result.planned || []) {
+    const observation = result.observations.find(o => o.phase === planned.phase && o.case_id === planned.case_id);
+    const row = el("div", "", "quality-matrix-row");
+    row.append(el("strong", `${planned.phase} · ${planned.domain} · ${planned.case_id}`));
+    if (observation?.gates?.extraction_jev) row.append(el("p", t("extractionStageHelp")));
+    row.append(el("p", ["evaluation", "judge", "jev"].map(k => `${k}: ${auditGate(observation, k, t)}`).join(" · ")));
+    const button = el("button", observation?.status || t("notRun")); button.disabled = !observation?.artifact_path;
+    button.addEventListener("click", () => onObservation(observation.run_id)); row.append(button);
+    if (observation?.failure_codes?.length) row.append(el("p", observation.failure_codes.join(", ")));
+    matrix.append(row);
+  }
+  target.append(matrix, el("h4", t("serviceUsage")), el("p", t("incompleteUsageNote")));
+  target.append(metricTable([t("case"), "Survey tokens / calls", "Judge tokens / calls", "Jev input tokens / calls", t("usageComplete")], (result.observations || []).map(o => [o.case_id, ...["survey", "judge", "jev"].map(k => `${o.costs?.[k]?.tokens ?? "—"} / ${o.costs?.[k]?.requests ?? "—"}`), ["survey", "judge", "jev"].map(k => `${k}: ${o.costs?.[k]?.usage_complete ?? "—"}`).join(" · ")])));
+  if(result.budgets?.historical_before) {
+    target.append(el("h4",t("historicalUsage")),el("p",t("incompleteUsageNote")));
+    const history=result.budgets.historical_before.services || {};
+    target.append(metricTable([t("status"),t("historicalUsage"),t("currentCampaignUsage"),t("usageComplete")],["survey","judge","jev"].map(k=>[k,String(history[k]?.charged ?? "—"),String(result.budgets?.[k]?.charged ?? "—"),String(history[k]?.usage_complete ?? "—")])));
+  }
+  const exports = el("nav", "", "benchmark-trace-links");
+  for (const format of ["json", "csv", "md", "html"]) { const link = el("a", format.toUpperCase()); link.href = `/workbench/benchmarks/${encodeURIComponent(result.run_id)}/export/${format}`; if (format !== "html") link.download = `benchmark.${format}`; else {link.target = "_blank"; link.rel = "noopener";} exports.append(link); }
+  target.append(exports);
+  target.append(el("p", (result.stop_reasons || []).join(", ")));
+  const pane = el("div", "", "benchmark-observation-detail");
+  pane.id = "benchmark-observation-detail";
+  target.append(pane);
+}
+
 export function renderBenchmarkDetail(target, result, onObservation, t) {
   target.replaceChildren();
   if (!result) return target.append(el("p", t("selectBenchmark"), "benchmark-empty"));
+  if (result.benchmark_type === "survey_quality") return renderAutomaticBenchmark(target, result, onObservation, t);
   target.append(el("h3", result.run_id));
   const badges = el("div", "", "benchmark-flags");
   for (const label of [result.stage, result.status, result.judgment_status, result.self_judged ? "self_judged" : "independent_judge", result.formal_eligible ? "formal_eligible" : "pilot_or_ineligible"]) badges.append(el("span", label));
@@ -177,6 +228,20 @@ export function renderBenchmarkDetail(target, result, onObservation, t) {
 export function renderBenchmarkObservation(target, payload, t) {
   target.replaceChildren();
   const { observation, artifact } = payload;
+  if (observation.acceptance) {
+    const report = artifact.report || {};
+    target.append(el("h4", observation.case_id), el("p", `${observation.status} · SHA: ${observation.report_sha256 || "—"}`));
+    target.append(el("p", (observation.failure_codes || []).join(", ")));
+    if (observation.gates?.extraction_jev) target.append(el("p", t("extractionStageHelp")));
+    target.append(metricTable([t("status"), "Evaluation", "Judge", observation.gates?.extraction_jev ? t("extractionJev") : "Jev"], [[observation.status, ...["evaluation", "judge", "jev"].map(k => auditGate(observation, k, t))]]));
+    target.append(metricTable([t("status"), "Tokens", t("usageComplete")], ["survey", "judge", "jev"].map(k => [k, `${observation.costs?.[k]?.tokens ?? "—"} / ${observation.costs?.[k]?.requests ?? "—"} calls`, String(observation.costs?.[k]?.usage_complete ?? "—")])));
+    const reportLink = el("a", t("openReport"));
+    reportLink.href = `/flow-demo?run=${encodeURIComponent(`archive:${observation.run_id}`)}&view=quality`;
+    target.append(reportLink, el("pre", report.survey || t("noReport"), "benchmark-raw-report"));
+    const diagnostics = report.evaluation?.faithfulness?.details?.diagnostics || [];
+    for (const issue of diagnostics) target.append(el("pre", `${issue.source_unit_id || "—"}\n${issue.source_quote || issue.claim_text || "—"}\n${issue.reason_code || issue.reason || "—"}`, "benchmark-raw-data"));
+    return;
+  }
   target.append(el("h4", `${observation.case_id} · ${observation.profile_id}`));
   const summary = el("dl", "", "benchmark-observation-metrics");
   const metrics = payload.corrected_observation?.metrics || observation.metrics || {};

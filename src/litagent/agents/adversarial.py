@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 from collections.abc import Mapping
 from contextlib import asynccontextmanager
 from typing import Any
@@ -21,11 +22,13 @@ from litagent.observability.citations import (
 from litagent.observability.context import reset_task_id, set_task_id
 from litagent.orchestrator.scheduler import Worker
 from litagent.orchestrator.task_graph import SubTask
+from litagent.quality import GroundedRequestBudgetError
 from litagent.review_structure import (
     assemble_methodology,
     validate_authored_methodology,
 )
-from litagent.workbench import ReportLanguage
+from litagent.safety.budget import CostBudget
+from litagent.workbench import ReportLanguage, is_strict_policy
 
 logger = get_logger("agents.adversarial")
 
@@ -111,6 +114,35 @@ class AdversarialReviewWorker(Worker):
         report_language: ReportLanguage = task.input_data.get("report_language", "en")
         review_structure = task.input_data.get("review_structure", "legacy")
         review_methodology = synthesis_result.get("review_methodology", {})
+        strict = is_strict_policy(task.input_data.get("quality_policy"))
+        strict_metadata = (
+            {
+                k: synthesis_result.get(k)
+                for k in (
+                    "verification",
+                    "body_quality",
+                    "analysis_plan",
+                    "quality_policy",
+                    "fact_cards",
+                    "evidence_snapshot_sha256",
+                    "coverage_requirements",
+                    "coverage_matrix",
+                    "extraction_verification",
+                    "writing_bindings",
+                    "targeted_repair_state",
+                )
+                if k
+                not in {
+                    "targeted_repair_state",
+                    "verification",
+                    "body_quality",
+                    "analysis_plan",
+                }
+                or k in synthesis_result
+            }
+            if strict
+            else {}
+        )
         degradation_reasons = [
             str(item)
             for item in synthesis_result.get("degradation_reasons", [])
@@ -170,11 +202,20 @@ class AdversarialReviewWorker(Worker):
                             input_data={
                                 "query": task.input_data.get("query", ""),
                                 "report_language": report_language,
+                                "body_quality": task.input_data.get(
+                                    "body_quality", "legacy"
+                                ),
+                                "quality_policy": task.input_data.get(
+                                    "quality_policy", "legacy"
+                                ),
                                 "review_structure": review_structure,
                                 "review_methodology": review_methodology,
                                 "upstream_results": {
                                     "synthesis": {
                                         "draft": draft,
+                                        "coverage_requirements": synthesis_result.get(
+                                            "coverage_requirements"
+                                        ),
                                         "evidence_selection": (
                                             evidence_selection.to_dict()
                                         ),
@@ -187,6 +228,16 @@ class AdversarialReviewWorker(Worker):
                         review_kwargs: dict[str, Any] = {
                             "query": task.input_data.get("query", "")
                         }
+                        if strict:
+                            review_kwargs["quality_policy"] = task.input_data[
+                                "quality_policy"
+                            ]
+                            review_kwargs["body_quality"] = task.input_data.get(
+                                "body_quality", "legacy"
+                            )
+                            review_kwargs["coverage_requirements"] = (
+                                synthesis_result.get("coverage_requirements")
+                            )
                         if report_language != "en":
                             review_kwargs["report_language"] = report_language
                         if review_structure != "legacy":
@@ -236,9 +287,27 @@ class AdversarialReviewWorker(Worker):
                     break
 
                 if round_num < self._max_rounds:
-                    review_text = self._format_review_for_revision(review)
+                    if strict:
+                        if not review.get("bound_feedback"):
+                            break
+                        review_text = json.dumps(
+                            review["bound_feedback"], ensure_ascii=False
+                        )
+                    else:
+                        review_text = self._format_review_for_revision(review)
                     try:
                         revise_kwargs: dict[str, Any] = {}
+                        if strict:
+                            revise_kwargs.update(
+                                quality_policy=task.input_data["quality_policy"],
+                                body_quality=task.input_data.get(
+                                    "body_quality", "legacy"
+                                ),
+                                fact_cards=synthesis_result.get("fact_cards", {}),
+                                coverage_requirements=synthesis_result.get(
+                                    "coverage_requirements"
+                                ),
+                            )
                         revise_kwargs["query"] = task.input_data.get("query", "")
                         if report_language != "en":
                             revise_kwargs["report_language"] = report_language
@@ -254,6 +323,13 @@ class AdversarialReviewWorker(Worker):
                             **revise_kwargs,
                         )
                     except (ValueError, TypeError) as e:
+                        if task.input_data.get("quality_policy") in {
+                            "strict_auto_v1",
+                            "strict_auto_v2",
+                        }:
+                            budget = getattr(self._llm, "_cost_budget", None)
+                            if isinstance(budget, CostBudget):
+                                budget.stop_after_worker_failure()
                         logger.warning(f"revise rejected malformed selection: {e}")
                         break
 
@@ -262,13 +338,67 @@ class AdversarialReviewWorker(Worker):
                             task.task_id, "synthesis", round_num + 1
                         ):
                             kwargs: dict[str, Any] = {}
+                            if strict:
+                                from litagent.quality import (
+                                    check_grounded_request_budget,
+                                    prepare_grounded_request,
+                                )
+
+                                messages, response_format = prepare_grounded_request(
+                                    messages
+                                )
+                                kwargs.update(
+                                    max_tokens=20000,
+                                    response_format=response_format,
+                                    transport_max_attempts=1,
+                                )
+                                check_grounded_request_budget(
+                                    self._llm,
+                                    messages,
+                                    response_format,
+                                    trace_hook=self._trace_hook,
+                                    parent_task_id=task.task_id,
+                                    stage="revision",
+                                )
                             if self._thinking_mode != "provider_default":
                                 kwargs["extra_body"] = {
                                     "thinking": {"type": self._thinking_mode}
                                 }
-                            resp = await self._llm.chat(messages, **kwargs)
+                            if strict:
+                                resp = await asyncio.wait_for(
+                                    self._llm.chat(messages, **kwargs), 180
+                                )
+                            else:
+                                resp = await self._llm.chat(messages, **kwargs)
 
                         new_draft = (resp.content or "").strip()
+                        if strict:
+                            from litagent.quality import render_grounded_report_traced
+
+                            revision_bindings = {}
+                            new_draft = render_grounded_report_traced(
+                                new_draft,
+                                synthesis_result["fact_cards"],
+                                review_structure,
+                                report_language,
+                                evidence_selection=evidence_selection,
+                                trace_hook=self._trace_hook,
+                                parent_task_id=task.task_id,
+                                stage="revision",
+                                require_native=True,
+                                require_source_quotes=True,
+                                require_full_sources=task.input_data.get(
+                                    "quality_policy"
+                                )
+                                == "strict_auto_v2",
+                                analysis_mode=task.input_data.get("body_quality")
+                                == "analysis_v1",
+                                require_scope_notices=task.input_data.get(
+                                    "quality_policy"
+                                )
+                                == "strict_auto_v2",
+                                bindings=revision_bindings,
+                            )
                         if not new_draft:
                             logger.warning(
                                 "Revision LLM returned empty content, "
@@ -324,7 +454,27 @@ class AdversarialReviewWorker(Worker):
                             break
                         seen_drafts.add(candidate_hash)
                         draft = candidate
+                        if strict:
+                            revision_bindings["report_sha256"] = candidate_hash
+                            strict_metadata["writing_bindings"] = revision_bindings
                     except Exception as e:
+                        if (
+                            strict
+                            and reviewed_draft is not None
+                            and isinstance(e, GroundedRequestBudgetError)
+                            and e.permits_evaluation(
+                                getattr(self._llm, "_cost_budget", None)
+                            )
+                        ):
+                            degradation_reasons.append("writing_phase_budget_exhausted")
+                            break
+                        if task.input_data.get("quality_policy") in {
+                            "strict_auto_v1",
+                            "strict_auto_v2",
+                        }:
+                            budget = getattr(self._llm, "_cost_budget", None)
+                            if isinstance(budget, CostBudget):
+                                budget.stop_after_worker_failure()
                         logger.warning(
                             f"Revision LLM call failed: {e}, keeping current draft"
                         )
@@ -332,10 +482,26 @@ class AdversarialReviewWorker(Worker):
                         break
                     logger.info(f"Revision {round_num}: {len(draft)} chars")
         except Exception as e:
+            preserve = (
+                strict
+                and reviewed_draft is not None
+                and isinstance(e, GroundedRequestBudgetError)
+                and e.permits_evaluation(getattr(self._llm, "_cost_budget", None))
+            )
+            if preserve:
+                degradation_reasons.append("writing_phase_budget_exhausted")
+            elif task.input_data.get("quality_policy") in {
+                "strict_auto_v1",
+                "strict_auto_v2",
+            }:
+                budget = getattr(self._llm, "_cost_budget", None)
+                if isinstance(budget, CostBudget):
+                    budget.stop_after_worker_failure()
             logger.warning(
                 f"Adversarial loop aborted ({e}), returning current draft as fallback"
             )
-            degradation_reasons.append("adversarial_loop_degraded")
+            if not preserve:
+                degradation_reasons.append("adversarial_loop_degraded")
 
         if reviewed_draft is not None and draft != reviewed_draft:
             draft = reviewed_draft
@@ -354,6 +520,7 @@ class AdversarialReviewWorker(Worker):
         }
 
         return {
+            **strict_metadata,
             "report_language": report_language,
             "review_structure": review_structure,
             "review_methodology": review_methodology,

@@ -15,6 +15,10 @@ from litagent.safety.budget import CostBudget
 logger = get_logger("orchestrator.scheduler")
 
 
+class _WorkerDeadlineExceeded(TimeoutError):
+    """Identify a scheduler deadline without reclassifying inner timeouts."""
+
+
 @dataclass(frozen=True)
 class SchedulerOutcome:
     """Return an explicit completion or safe-boundary pause result."""
@@ -158,7 +162,9 @@ class Scheduler:
                     f"Cost budget exceeded ({self._cost_budget.used} tokens), "
                     f"stopping dispatch, returning partial results"
                 )
-                self._finalize_incomplete(graph, "cost_budget_exceeded")
+                self._finalize_incomplete(
+                    graph, self._cost_budget.stop_reason or "cost_budget_exceeded"
+                )
                 return graph.get_results()
 
             if cancellation and cancellation.is_cancelled:
@@ -207,12 +213,16 @@ class Scheduler:
 
             if cancellation and cancellation.is_cancelled:
                 return
+            if self._cost_budget and self._cost_budget.stop_reason:
+                return
 
             worker = self._workers.get(task.agent_type)
             if not worker:
                 graph.mark_failed(
                     task.task_id, f"No worker for type '{task.agent_type}'"
                 )
+                if self._cost_budget:
+                    self._cost_budget.stop_after_worker_failure()
                 return
 
             self._inject_upstream_results(graph, task)
@@ -239,6 +249,7 @@ class Scheduler:
             try:
                 last_error = None
                 last_error_type = "WorkerError"
+                last_reason_code = "worker_execution_failed"
                 for attempt in range(task.max_retries + 1):
                     try:
 
@@ -277,12 +288,22 @@ class Scheduler:
                         if cancellation and cancellation.is_cancelled:
                             return
                         raise
-                    except asyncio.TimeoutError:
+                    except _WorkerDeadlineExceeded:
                         last_error = f"Timeout after {task.timeout_ms}ms"
                         last_error_type = "TimeoutError"
+                        last_reason_code = "worker_timeout"
+                    except asyncio.TimeoutError as e:
+                        last_error = str(e) or "Worker operation timed out"
+                        last_error_type = "TimeoutError"
+                        last_reason_code = "worker_inner_timeout"
                     except Exception as e:
                         last_error = str(e)
                         last_error_type = type(e).__name__
+                        last_reason_code = (
+                            "worker_output_invalid"
+                            if last_error_type == "ValidationError"
+                            else "worker_execution_failed"
+                        )
 
                     if attempt < task.max_retries:
                         wait = 2**attempt
@@ -294,15 +315,7 @@ class Scheduler:
                                 "name": task.agent_type,
                                 "attempt": attempt + 2,
                                 "max_attempts": task.max_retries + 1,
-                                "reason_code": (
-                                    "worker_timeout"
-                                    if last_error_type == "TimeoutError"
-                                    else (
-                                        "worker_output_invalid"
-                                        if last_error_type == "ValidationError"
-                                        else "worker_execution_failed"
-                                    )
-                                ),
+                                "reason_code": last_reason_code,
                                 "error_type": last_error_type,
                                 "backoff_ms": wait * 1000,
                             },
@@ -321,12 +334,16 @@ class Scheduler:
                             raise
 
                 graph.mark_failed(task.task_id, last_error or "Unknown error")
+                if self._cost_budget:
+                    self._cost_budget.stop_after_worker_failure()
                 self._emit(
                     "worker.failed",
                     {
                         "task_id": task.task_id,
                         "agent_type": task.agent_type,
                         "error": last_error or "Unknown Error",
+                        "error_type": last_error_type,
+                        "reason_code": last_reason_code,
                     },
                 )
             finally:
@@ -342,7 +359,14 @@ class Scheduler:
         """Wait for work while allowing cooperative cancellation to preempt it."""
         work = asyncio.create_task(awaitable)
         if cancellation is None:
-            return await asyncio.wait_for(work, timeout=timeout)
+            deadline = asyncio.timeout(timeout)
+            try:
+                async with deadline:
+                    return await work
+            except TimeoutError as exc:
+                if deadline.expired():
+                    raise _WorkerDeadlineExceeded from exc
+                raise
 
         cancel_waiter = asyncio.create_task(cancellation.wait())
         try:
@@ -360,7 +384,12 @@ class Scheduler:
 
             work.cancel()
             await asyncio.gather(work, return_exceptions=True)
-            raise asyncio.TimeoutError
+            raise _WorkerDeadlineExceeded
+        except asyncio.CancelledError:
+            # Parent cancellation must also stop the independently owned worker.
+            work.cancel()
+            await asyncio.gather(work, return_exceptions=True)
+            raise
         finally:
             cancel_waiter.cancel()
             await asyncio.gather(cancel_waiter, return_exceptions=True)

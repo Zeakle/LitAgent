@@ -17,7 +17,7 @@ from typing import Any, Literal
 from fastapi import FastAPI, Header, HTTPException, Request, Response
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from litagent.benchmark.survey_archive import SurveyBenchmarkArchive
 from litagent.citation_formats import (
@@ -59,6 +59,8 @@ from litagent.workbench import (
     ReportVersion,
     ReviewStructure,
     RunOptions,
+    VerificationOptions,
+    verification_enabled,
 )
 
 logger = get_logger("api")
@@ -86,6 +88,11 @@ class SurveyRequest(BaseModel):
     report_language: Literal["en", "zh-CN"] = "en"
     human_review: bool = False
     review_structure: ReviewStructure = "legacy"
+    quality_policy: Literal[
+        "legacy", "strict_v1", "strict_auto_v1", "strict_auto_v2"
+    ] = "legacy"
+    body_quality: Literal["legacy", "analysis_v1"] = "legacy"
+    verification: VerificationOptions | None = None
     citation_style: CitationStyle = "numbered"
     auto_audit_mode: AutoAuditMode = "off"
     auto_audit_max_versions: int = Field(default=1, ge=1, le=3, strict=True)
@@ -98,6 +105,20 @@ class SurveyRequest(BaseModel):
         if not value:
             raise ValueError("query must not be blank")
         return value
+
+    @model_validator(mode="after")
+    def automatic_defaults(self):
+        """Apply new automatic defaults without changing legacy request defaults."""
+        if self.body_quality != "legacy" and self.quality_policy != "strict_auto_v2":
+            raise ValueError("body_analysis_requires_strict_auto_v2")
+        if self.verification is not None and self.quality_policy != "strict_auto_v2":
+            raise ValueError("optional_verification_requires_strict_auto_v2")
+        if self.quality_policy in {"strict_auto_v1", "strict_auto_v2"}:
+            if "report_language" not in self.model_fields_set:
+                self.report_language = "zh-CN"
+            if "citation_style" not in self.model_fields_set:
+                self.citation_style = "ieee"
+        return self
 
 
 class SurveyStatus(BaseModel):
@@ -333,7 +354,15 @@ def _build_survey_trace_hook(config: AppConfig, entry: SurveyTaskEntry):
         )
         entry.tracer = tracer
         hooks.append(
-            RedactingTraceHook(tracer, payload_mode=config.observability.payload_mode)
+            RedactingTraceHook(
+                tracer,
+                payload_mode=(
+                    "metadata_only"
+                    if entry.options.quality_policy
+                    in {"strict_auto_v1", "strict_auto_v2"}
+                    else config.observability.payload_mode
+                ),
+            )
         )
     return CompositeTraceHook(*hooks)
 
@@ -355,7 +384,11 @@ def _new_entry(
     """Create and register one task entry before scheduling its coroutine."""
     task_id = task_id or uuid.uuid4().hex[:12]
     recorder = RunRecorder(task_id, query, app.state.flow_repository)
-    recorder.set_config_summary(build_config_summary(_runtime_config()))
+    recorder.set_config_summary(
+        build_config_summary(
+            _runtime_config(), (options or RunOptions()).quality_policy
+        )
+    )
     entry = SurveyTaskEntry(
         task_id=task_id,
         query=query,
@@ -384,7 +417,16 @@ async def _run_survey(entry: SurveyTaskEntry) -> None:
                 entry.status = "running"
                 entry.progress = "planning"
                 trace_hook = _build_survey_trace_hook(config, entry)
-                async with LitAgent(config, trace_hook=trace_hook) as agent:
+                async with LitAgent(
+                    config,
+                    trace_hook=trace_hook,
+                    audit_service=await _report_audit_service(),
+                ) as agent:
+                    if entry.options.quality_policy in {
+                        "strict_auto_v1",
+                        "strict_auto_v2",
+                    }:
+                        agent._session_id = entry.task_id
                     result = await agent.run(
                         entry.query,
                         cancellation=entry.cancellation,
@@ -436,7 +478,11 @@ async def _run_survey(entry: SurveyTaskEntry) -> None:
         except Exception:
             logger.exception("Failed to finalize survey %s", entry.task_id)
         logger.exception("Survey %s failed", entry.task_id)
-    if entry.status == "completed" and entry.options.auto_audit_mode != "off":
+    if (
+        entry.status == "completed"
+        and entry.options.auto_audit_mode != "off"
+        and entry.options.quality_policy not in {"strict_auto_v1", "strict_auto_v2"}
+    ):
         # Keep audit submission outside the Survey failure handler: cancellation
         # after finalization must not rewrite the successfully saved artifact.
         try:
@@ -485,18 +531,26 @@ async def create_survey(
     options = RunOptions(
         report_language=req.report_language,
         human_review=req.human_review,
+        quality_policy=req.quality_policy,
+        verification=req.verification,
+        body_quality=req.body_quality,
         review_structure=req.review_structure,
         auto_audit_mode=req.auto_audit_mode,
         auto_audit_max_versions=req.auto_audit_max_versions,
     )
-    if req.auto_audit_mode != "off":
+    judge_enabled = options.auto_audit_mode != "off"
+    jev_enabled = options.auto_audit_mode == "judge_jev" or (
+        options.quality_policy == "strict_auto_v2"
+        and verification_enabled(options.model_dump(), "jev")
+    )
+    if judge_enabled or jev_enabled:
         _require_operation_token(request, x_litagent_operation_token)
         capabilities = (await _report_audit_service()).capabilities()
-        if not capabilities["judge_available"]:
+        if judge_enabled and not capabilities["judge_available"]:
             raise HTTPException(409, capabilities["judge_reason"])
-        if req.auto_audit_mode == "judge_jev" and not capabilities["jev_available"]:
+        if jev_enabled and not capabilities["jev_available"]:
             raise HTTPException(409, capabilities["jev_reason"])
-    if req.human_review:
+    if options.human_review:
         _require_operation_token(request, x_litagent_operation_token)
         service = await _interactive_service()
         run_id = await service.start(
@@ -694,6 +748,24 @@ async def get_workbench_context():
         "format_capabilities": format_capabilities(),
         "review_structures": ["academic_v2", "academic_v1", "method_transparent_v1"],
         "human_review_stages": ["paper_selection", "final_report"],
+        "quality_policies": ["strict_auto_v2", "strict_auto_v1", "strict_v1", "legacy"],
+        "default_quality_policy": "strict_auto_v2",
+        "automatic_acceptance": {
+            "actor": "system",
+            "gates": ["extraction_jev", "evaluation", "judge"],
+            "required_gates": ["evaluation"],
+            "default_body_quality": "analysis_v1",
+            "optional_gates": ["judge", "extraction_jev"],
+            "default_verification": VerificationOptions().model_dump(mode="json"),
+            "omitted_verification": "historical_mandatory_gates",
+            "jev_stage": "extraction",
+            "survey_tokens": 500000,
+            "survey_requests": 64,
+            "judge_tokens": 100000,
+            "judge_requests": 2,
+            "jev_input_tokens": 200000,
+            "jev_requests": 20,
+        },
         "auto_audit_capabilities": audit_service.capabilities(),
     }
 
@@ -723,6 +795,32 @@ async def get_survey_benchmark(benchmark_id: str):
     payload = result.model_dump(mode="json")
     payload["corrected_diagnostic"] = archive.corrected_diagnostic(benchmark_id)
     return payload
+
+
+@app.get("/workbench/benchmarks/{benchmark_id}/export/{format_name}")
+async def export_quality_benchmark(benchmark_id: str, format_name: str):
+    """Serve only the sanitized presentation bundle of a validated quality suite."""
+    archive = _benchmark_archive()
+    try:
+        result = archive.get(benchmark_id)
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(404, "benchmark_not_found") from exc
+    if result.stage != "quality" or format_name not in {"json", "csv", "md", "html"}:
+        raise HTTPException(400, "benchmark_export_invalid")
+    path = (
+        archive.root / "presentation" / result.run_id / f"benchmark.{format_name}"
+    ).resolve()
+    if not path.is_relative_to(archive.root) or not path.is_file():
+        raise HTTPException(404, "benchmark_export_unavailable")
+    return FileResponse(
+        path,
+        media_type={
+            "json": "application/json",
+            "csv": "text/csv",
+            "md": "text/markdown",
+            "html": "text/html",
+        }[format_name],
+    )
 
 
 @app.get("/workbench/benchmarks/{benchmark_id}/observations/{observation_id}")
@@ -1013,6 +1111,9 @@ async def list_report_audits(task_id: str, revision: int):
     """Expose capabilities and attempts for exactly one available report version."""
     snapshot = await _report_audit_snapshot(task_id, revision)
     result = await (await _report_audit_service()).list(task_id, revision)
+    quality_audit = _benchmark_archive().automatic_audit(task_id, revision)
+    if quality_audit:
+        result["audits"] = [quality_audit, *result["audits"]]
     result["capabilities"].update(
         (await _report_audit_service()).model_comparison(snapshot)
     )
@@ -1039,6 +1140,16 @@ async def start_report_audit(
     snapshot = await _report_audit_snapshot(task_id, revision)
     if snapshot["source_report_sha256"] != body.report_sha256:
         raise HTTPException(status_code=409, detail="report_sha_mismatch")
+    if snapshot.get("report", {}).get("metadata", {}).get("quality_policy") in {
+        "strict_auto_v1",
+        "strict_auto_v2",
+    }:
+        existing = await list_report_audits(task_id, revision)
+        if existing["audits"] and not body.new_attempt:
+            return {**existing["audits"][0], "reused": True}
+        raise HTTPException(
+            status_code=409, detail="strict_automatic_no_additional_attempts"
+        )
     try:
         return await (await _report_audit_service()).submit(
             snapshot, include_jev=body.include_jev, new_attempt=body.new_attempt
@@ -1051,6 +1162,9 @@ async def start_report_audit(
 async def get_report_audit(task_id: str, revision: int, audit_id: str):
     """Read one immutable-version audit; never fall back to another revision."""
     try:
+        quality_audit = _benchmark_archive().automatic_audit(task_id, revision)
+        if quality_audit and quality_audit["audit_id"] == audit_id:
+            return quality_audit
         return await (await _report_audit_service()).get(task_id, revision, audit_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="audit_not_found") from exc

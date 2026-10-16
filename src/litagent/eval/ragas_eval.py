@@ -256,7 +256,10 @@ class RagasFaithfulnessEvaluator(Evaluator):
         if not survey.strip():
             return EvalResult.skip(self.metric_name, "survey is empty")
 
-        if context.get("evaluation_version") == "survey-evaluation-v2":
+        if context.get("evaluation_version") in {
+            "survey-evaluation-v2",
+            "survey-evaluation-v3",
+        }:
             from litagent.eval.scoped import (
                 CLASSIFICATION_CONTRACT,
                 EVALUATION_VERSION,
@@ -267,7 +270,8 @@ class RagasFaithfulnessEvaluator(Evaluator):
             )
 
             base = {
-                "evaluation_version": EVALUATION_VERSION,
+                "evaluation_version": context["evaluation_version"],
+                "quality_policy": context.get("quality_policy", "legacy"),
                 "extraction_contract": EXTRACTION_CONTRACT,
                 "classification_contract": CLASSIFICATION_CONTRACT,
                 "support_contract": SUPPORT_CONTRACT,

@@ -113,3 +113,33 @@ def _run_node(script: str, target: str, *, modules: bool = False) -> None:
     args.extend(["-e", script, str(Path(target).resolve())])
     result = subprocess.run(args, capture_output=True, text=True, timeout=15)
     assert result.returncode == 0, result.stderr
+
+
+def test_optional_switches_submit_all_four_combinations_and_preserve_legacy():
+    """The real preference module sends independent choices without paid requests."""
+    script = r"""
+const fs = require('node:fs');
+(async()=>{
+ class E {constructor(){this.events={};this.value='';this.checked=false;this.options=[];}addEventListener(k,fn){this.events[k]=fn;}}
+ const elements=new Map();const $=id=>{if(!elements.has(id))elements.set(id,new E());return elements.get(id);};
+ global.document={querySelector:$};
+ $('#quality-policy').value='strict_auto_v2';$('#auto-audit-mode').options=['off','judge','judge_jev'].map(value=>({value}));
+ let caps={judge_available:false,jev_available:false};
+ const {bindAutomaticAuditPreferences}=await import('data:text/javascript;base64,'+fs.readFileSync(process.argv[1]).toString('base64'));
+ const prefs=bindAutomaticAuditPreferences({capabilities:()=>caps,t:x=>x});
+ const off=prefs.options();if(off.verification.judge||off.verification.jev||off.auto_audit_mode!=='off')throw Error('default requires a reviewer');
+ if(!$('#verification-judge').disabled||!$('#verification-jev').disabled)throw Error('unavailable reviewer selectable');
+ for(const judge of [false,true])for(const jev of [false,true]){
+  caps={judge_available:judge,jev_available:jev};$('#verification-judge').checked=judge;$('#verification-jev').checked=jev;prefs.render();
+  const selected=prefs.options();if(selected.verification.judge!==judge||selected.verification.jev!==jev)throw Error('coupled switches');
+  if(selected.verification.version!=='optional-verification-v1'||selected.auto_audit_mode!==(judge?'judge':'off'))throw Error('wrong contract');
+  if($('#optional-verification').hidden||!$('#legacy-audit-preferences').hidden)throw Error('wrong controls');
+ }
+ caps={judge_available:false,jev_available:true};$('#verification-judge').checked=true;
+ let rejected=false;try{prefs.options();}catch{rejected=true;}if(!rejected)throw Error('missing enabled capability ignored');
+ $('#quality-policy').value='strict_auto_v1';caps={judge_available:true,jev_available:true};prefs.render();
+ const old=prefs.options();if(old.verification||old.auto_audit_mode!=='judge_jev')throw Error('old policy reinterpreted');
+ $('#quality-policy').value='legacy';$('#auto-audit-mode').value='off';prefs.render();if(prefs.options().verification)throw Error('old request changed');
+})().catch(error=>{console.error(error);process.exit(1)});
+"""
+    _run_node(script, "src/litagent/static/flow-demo/audit-controls.js")

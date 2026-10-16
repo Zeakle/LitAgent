@@ -682,8 +682,25 @@ class SurveyBenchmarkJudge:
         before_call: Callable[[], bool] | None = None,
         context_max_tokens: int = 131072,
         input_budget_tokens: int = 200000,
+        frozen_inventory: dict | None = None,
+        total_budget_tokens: int = 100000,
     ) -> tuple[SurveyJudgeMetrics, JudgeUsage]:
         """Audit topics, support, and contradictions in two structured calls."""
+        if frozen_inventory is not None:
+            from litagent.eval.automatic import evaluate_frozen_judge
+
+            return await evaluate_frozen_judge(
+                self,
+                case=case,
+                survey=survey,
+                ledger=ledger,
+                frozen_inventory=frozen_inventory,
+                checkpoint=checkpoint,
+                save_checkpoint=save_checkpoint,
+                before_call=before_call,
+                context_max_tokens=context_max_tokens,
+                total_budget_tokens=total_budget_tokens,
+            )
         report_context = isinstance(case, SurveyAuditContext)
         state = checkpoint if checkpoint is not None else {}
         binding = hashlib.sha256(

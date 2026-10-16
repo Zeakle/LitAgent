@@ -24,6 +24,7 @@ logger = get_logger("context.evidence_selector")
 _WORD_RE = re.compile(r"[a-z0-9]+")
 _SOURCE_INDEX = "_evidence_selector_source_index"
 _EVIDENCE_ID_RE = re.compile(r"^[A-Za-z0-9._:/-]+$")
+SHARED_SCOPE_CONTRACT = "strict-shared-selected-sources-v1"
 
 
 @dataclass(frozen=True)
@@ -294,6 +295,7 @@ class EvidenceSelector:
         sections: tuple[SectionSpec, ...] = DEFAULT_SECTIONS,
         *,
         max_tokens: int,
+        reuse_selected: bool = False,
     ) -> EvidenceSelection:
         """Rank and round-robin pack ledger items within the token budget."""
         if max_tokens <= 0:
@@ -325,7 +327,9 @@ class EvidenceSelector:
         )
 
         try:
-            result = await self._select_inner(query, ledger, sections, max_tokens, keys)
+            result = await self._select_inner(
+                query, ledger, sections, max_tokens, keys, reuse_selected
+            )
         except asyncio.CancelledError:
             elapsed = int((time.perf_counter() - t0) * 1000)
             self._emit(
@@ -379,6 +383,7 @@ class EvidenceSelector:
         sections: tuple[SectionSpec, ...],
         max_tokens: int,
         section_keys: list[str],
+        reuse_selected: bool = False,
     ) -> EvidenceSelection:
 
         # Reject malformed ledger entries before ranking.
@@ -529,9 +534,11 @@ class EvidenceSelector:
             for rank, eid in enumerate(ids, 1)
         }
 
-        while len(selected) < self._max_items and len(exhausted) < len(sections):
+        while len(exhausted) < len(sections) and (
+            reuse_selected or len(selected) < self._max_items
+        ):
             for section in sections:
-                if len(selected) >= self._max_items:
+                if not reuse_selected and len(selected) >= self._max_items:
                     break
                 if section.key in exhausted:
                     continue
@@ -552,7 +559,8 @@ class EvidenceSelector:
                         exhausted.add(section.key)
                         break
 
-                    if eid in selected:
+                    reused = eid in selected
+                    if reused and not reuse_selected:
                         decisions[(section.key, eid)][
                             "reason_code"
                         ] = "duplicate_selected"
@@ -560,7 +568,15 @@ class EvidenceSelector:
 
                     item = item_by_id[eid]
                     paper_id = item.get("paper_id") or eid.split(":")[0]
-                    if paper_counts.get(paper_id, 0) >= self._per_paper_cap:
+                    if not reused and len(selected) >= self._max_items:
+                        decisions[(section.key, eid)][
+                            "reason_code"
+                        ] = "global_item_limit"
+                        continue
+                    if (
+                        not reused
+                        and paper_counts.get(paper_id, 0) >= self._per_paper_cap
+                    ):
                         decisions[(section.key, eid)]["reason_code"] = "paper_limit"
                         continue
 
@@ -583,11 +599,14 @@ class EvidenceSelector:
                         decisions[(section.key, eid)]["reason_code"] = "token_budget"
                         continue
 
-                    selected[eid] = item
+                    if not reused:
+                        selected[eid] = item
+                        paper_counts[paper_id] = paper_counts.get(paper_id, 0) + 1
                     section_eids[section.key].append(eid)
-                    paper_counts[paper_id] = paper_counts.get(paper_id, 0) + 1
                     estimated_tokens = new_tokens
-                    decisions[(section.key, eid)]["reason_code"] = "selected"
+                    decisions[(section.key, eid)]["reason_code"] = (
+                        "reused_selected" if reused else "selected"
+                    )
                     break
 
         omitted = len(valid_items) - len(selected)

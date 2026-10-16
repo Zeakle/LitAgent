@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import Any
 
 from litagent.agents.extraction_strategy import ExtractionStrategy
@@ -12,6 +12,7 @@ from litagent.logging import get_logger
 from litagent.orchestrator.scheduler import Worker
 from litagent.orchestrator.task_graph import SubTask
 from litagent.safety.injection import InjectionDetector, InjectionRisk
+from litagent.workbench import is_strict_policy
 
 logger = get_logger("agents.extractor")
 
@@ -25,6 +26,8 @@ class ExtractorWorker(Worker):
         max_concurrent: int = 5,
         detector: InjectionDetector = None,
         max_papers: int = 50,
+        fulltext_loader=None,
+        failure_callback: Callable[[], None] | None = None,
     ):
         """Initialize the extractor worker."""
         if max_papers <= 0:
@@ -34,6 +37,8 @@ class ExtractorWorker(Worker):
         self._sem = asyncio.Semaphore(max_concurrent)
         self._detector = detector
         self._max_papers = max_papers
+        self._fulltext_loader = fulltext_loader
+        self._failure_callback = failure_callback
 
     @property
     def agent_type(self) -> str:
@@ -44,6 +49,15 @@ class ExtractorWorker(Worker):
         """Extract, enrich, and index papers from upstream ranking results."""
         upstream = task.input_data.get("upstream_results", {})
         papers = self._get_papers_from_upstream(upstream)
+        strict = is_strict_policy(task.input_data.get("quality_policy"))
+        if strict:
+            if self._fulltext_loader is None:
+                raise ValueError("strict_fulltext_loader_unavailable")
+            papers = await self._fulltext_loader.enrich(
+                papers, task.input_data.get("coverage_requirements", [])
+            )
+            for paper in papers:
+                paper["quality_policy"] = task.input_data["quality_policy"]
 
         if self._detector:
             safe = []
@@ -83,6 +97,11 @@ class ExtractorWorker(Worker):
                 raise r
 
             if isinstance(r, BaseException):
+                if task.input_data.get("quality_policy") in {
+                    "strict_auto_v1",
+                    "strict_auto_v2",
+                }:
+                    raise r
                 logger.warning(
                     f"Extraction fully failed for paper="
                     f"{paper.get('paper_id', '?')} "
@@ -106,6 +125,17 @@ class ExtractorWorker(Worker):
             )
 
             r["evidence_items"] = build_evidence_items(r)
+            if strict:
+                r["fulltext_acquisition"] = paper.get("fulltext_acquisition")
+                r["quality_policy"] = task.input_data["quality_policy"]
+                fields = {
+                    (c.get("source_chunk_key"), c.get("text")): c.get("fact_fields", {})
+                    for c in r.get("claim_records", [])
+                }
+                for item in r["evidence_items"]:
+                    item["fact_fields"] = fields.get(
+                        (item.get("chunk_key"), item.get("text")), {}
+                    )
             extractions.append(r)
 
         # No global Claims write here: extraction output is run-scoped and
@@ -133,4 +163,14 @@ class ExtractorWorker(Worker):
     async def _extract_one(self, paper: dict) -> dict:
         """Extract one paper under the configured concurrency limit."""
         async with self._sem:
-            return await self._strategy.extract(paper)
+            try:
+                return await self._strategy.extract(paper)
+            except Exception:
+                # Stop queued transports immediately, before gather settles other
+                # in-flight responses. Known responses still retain their usage.
+                if (
+                    paper.get("quality_policy") in {"strict_auto_v1", "strict_auto_v2"}
+                    and self._failure_callback is not None
+                ):
+                    self._failure_callback()
+                raise

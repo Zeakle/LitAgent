@@ -271,9 +271,10 @@ async def test_recorded_methods_reach_all_real_generation_and_review_prompts(lan
             "content_mode",
         ):
             assert key in system.split("<run_methodology>\n")[0]
-        assert "including empty returns and failures" in system
-        assert "Missing queries, time, counts or outcomes" in system
-        assert "uncited scientific claims in this section or elsewhere" in system
+        assert "The host alone renders" in system
+        assert "Do not infer or fill missing records" in system
+        assert "retain their direct evidence citations" in system
+        assert "Disclose every recorded search query" not in system
 
 
 @pytest.mark.asyncio

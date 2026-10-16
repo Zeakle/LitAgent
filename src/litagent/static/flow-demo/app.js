@@ -1,16 +1,16 @@
-import { bindAuditControls, bindAutomaticAuditPreferences } from "./audit-controls.js?v=15.10.10";
+import { bindAuditControls, bindAutomaticAuditPreferences } from "./audit-controls.js?v=15.10.6.88.1-body-analysis";
 import { bindFormatControls } from "./format-controls.js?v=15.10.10";
 import { createApiClient, openEventStream } from "./api-client.js";
-import { renderBenchmarkDetail, renderBenchmarkList, renderBenchmarkObservation } from "./benchmark-view.js?v=15.10.4";
-import { adaptArchiveView, adaptInteractiveView, chooseDefaultSection, normalizeRunList } from "./adapters.js?v=15.10.10";
+import { renderBenchmarkDetail, renderBenchmarkList, renderBenchmarkObservation } from "./benchmark-view.js?v=15.10.6.88.1-body-analysis";
+import { adaptArchiveView, adaptInteractiveView, chooseDefaultSection, normalizeRunList } from "./adapters.js?v=15.10.6.88.1-body-analysis";
 import { evidenceMap, renderEvidenceList } from "./evidence-view.js";
 import { createExecutionWorkspace } from "./execution-workspace.js";
 import { renderExecutionInspector } from "./execution-inspector.js";
 import { renderHistory } from "./history-view.js";
-import { applyTranslations, translator } from "./i18n.js?v=15.10.10";
-import { renderQuality, locateReportDiagnostic } from "./quality-view.js?v=15.10.12";
+import { applyTranslations, translator } from "./i18n.js?v=15.10.6.88.1-body-analysis";
+import { renderQuality, locateReportDiagnostic } from "./quality-view.js?v=15.10.6.88.1-body-analysis";
 import { renderOutline, renderReportDocument, renderSearchRecords } from "./report-view.js?v=15.10.10";
-import { renderReview } from "./review-view.js";
+import { renderReview } from "./review-view.js?v=15.10.5-strict";
 import { createWorkbenchStore } from "./state.js";
 
 const $ = (selector) => document.querySelector(selector);
@@ -183,7 +183,7 @@ function renderQualityContent() {
   const state = store.get(); const view = state.view;
   const revision = Number(view?.displayRevision || view?.versions?.[0]?.revision || 1);
   const snapshot = independentAuditState?.target && view?.identity && independentAuditState.target.runId === view.identity.runId && independentAuditState.target.revision === revision ? independentAuditState : null;
-  renderQuality($("#quality-content"), view?.runtimeEvaluation || {}, view?.quality, view?.delivery, setInspector, t, { locale: state.locale, revision: view?.report ? revision : null, sha: snapshot?.data?.source_report_sha256 || view?.reportSha, audits: snapshot });
+  renderQuality($("#quality-content"), view?.runtimeEvaluation || {}, view?.quality, view?.delivery, setInspector, t, { locale: state.locale, revision: view?.report?.survey ? revision : null, sha: snapshot?.data?.source_report_sha256 || view?.reportSha, audits: snapshot, qualityPolicy: view?.report?.metadata?.quality_policy, verification: view?.report?.metadata?.verification, bodyDiagnostics: view?.report?.metadata?.body_diagnostics, analysisPlan: view?.report?.metadata?.analysis_plan, pipelineVerification: view?.pipelineVerification, extractionVerification: view?.report?.metadata?.extraction_verification, automaticAcceptance: view?.report?.metadata?.automatic_acceptance, evaluationHistory: view?.report?.metadata?.evaluation_history, targetedRepairState: view?.report?.metadata?.targeted_repair_state || (view?.report?.survey ? null : view?.targetedRepairState) });
 }
 
 function renderBenchmarkState() {
@@ -305,15 +305,15 @@ async function submitReview(action, values, form) {
 async function startRun(event) {
   event.preventDefault(); if (!context?.live_enabled) return setNotice(t("offline"), "error");
   const query = $("#query-input").value.trim(); if (!query) return;
-  const humanReview = $("#human-review").checked;
+  const qualityPolicy = $("#quality-policy").value;
+  const humanReview = qualityPolicy === "strict_v1" || (!["strict_auto_v1", "strict_auto_v2"].includes(qualityPolicy) && $("#human-review").checked);
   try {
-    const created = await api.json("/survey", { method: "POST", mutate: true, body: { query, report_language: $("#report-language").value, human_review: humanReview, review_structure: $("#review-structure").value, citation_style: $("#new-citation-style").value, ...automaticAuditPreferences.options() } });
+    const created = await api.json("/survey", { method: "POST", mutate: true, body: { query, quality_policy: qualityPolicy, report_language: $("#report-language").value, human_review: humanReview, review_structure: $("#review-structure").value, citation_style: $("#new-citation-style").value, ...automaticAuditPreferences.options() } });
     citationPreferences.set(created.task_id, $("#new-citation-style").value);
     $("#new-run-dialog").close();
     if (humanReview) { await loadRunList(`interactive:${created.task_id}`); } else { await refreshLegacy(created.task_id, query); }
   } catch (error) { setNotice(`${t("operationFailed")}: ${error.message}`, "error"); }
 }
-
 async function initialize() {
   context = await api.json("/workbench/context"); $("#runtime-mode").textContent = context.mode;
   automaticAuditPreferences.render();
@@ -325,7 +325,6 @@ async function initialize() {
   const params = new URLSearchParams(location.search); await loadRunList(params.get("run"));
   if (params.get("view") === "benchmark") setSection("benchmark", false);
 }
-
 store.subscribe(render);
 document.querySelectorAll("[data-section]").forEach((tab) => tab.addEventListener("click", () => setSection(tab.dataset.section)));
 $("#run-search").addEventListener("input", render);
@@ -335,6 +334,12 @@ $("#open-new-run").addEventListener("click", () => $("#new-run-dialog").showModa
 $("#close-new-run").addEventListener("click", () => $("#new-run-dialog").close());
 $("#dismiss-new-run").addEventListener("click", () => $("#new-run-dialog").close());
 $("#new-run-form").addEventListener("submit", startRun);
+$("#quality-policy").addEventListener("change", () => {
+  const strict = $("#quality-policy").value === "strict_v1";
+  $("#human-review").disabled = strict || ["strict_auto_v1", "strict_auto_v2"].includes($("#quality-policy").value);
+  $("#human-review").checked = strict;
+  automaticAuditPreferences.render();
+});
 $("#locale-toggle").addEventListener("click", () => { const next = store.get().locale === "zh-CN" ? "en" : "zh-CN"; localStorage.setItem("litagent-locale", next); store.update({ locale: next }); });
 $("#cancel-run").addEventListener("click", async () => { const view = store.get().view; if (!view) return; await api.request(`/survey/${encodeURIComponent(view.identity.runId)}`, { method: "DELETE", mutate: true }); await refreshInteractive(view.identity.runId); });
 $("#download-artifact").addEventListener("click", () => { const view = store.get().view; if (view) location.href = `/flow-demo/runs/${encodeURIComponent(view.identity.runId)}/download`; });

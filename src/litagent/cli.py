@@ -52,13 +52,16 @@ def _add_benchmark_commands(subparsers) -> None:
 
     survey = benchmark_sub.add_parser("survey")
     survey.add_argument(
-        "--stage", choices=["pilot", "ablation", "baseline"], required=True
+        "--stage", choices=["pilot", "ablation", "baseline", "quality"], required=True
     )
     survey.add_argument("--dataset", required=True)
     survey.add_argument("--profiles", required=True)
     survey.add_argument("--case-id", action="append", default=[])
     survey.add_argument("--profile-id", action="append", default=[])
     survey.add_argument("--judge-config", required=True)
+    survey.add_argument("--suite-id", default="quality-auto-20261009")
+    survey.add_argument("--continuation-of", default=None)
+    survey.add_argument("--resume-unrun", action="store_true")
     survey.add_argument("--reuse-ablation", default=None)
     survey.add_argument("--judge-only", action="store_true")
     survey.add_argument("--reuse-surveys", default=None)
@@ -304,6 +307,36 @@ async def _cmd_benchmark(args: argparse.Namespace) -> None:
             raise SystemExit("survey benchmark requires explicit --live")
         dataset = load_survey_dataset(Path(args.dataset))
         profiles = load_survey_profiles(Path(args.profiles))
+        if args.stage == "quality":
+            from litagent.benchmark.quality_suite import QualitySuiteRunner
+
+            if (
+                args.case_id
+                or args.profile_id
+                or args.judge_only
+                or args.reuse_surveys
+                or args.reuse_ablation
+            ):
+                raise SystemExit(
+                    "quality stage uses a fixed 3+15 matrix and external-fulltext"
+                )
+            if args.max_product_tokens is not None or args.max_judge_tokens is not None:
+                raise SystemExit("quality stage uses fixed per-service token budgets")
+            profile = next(p for p in profiles if p.profile_id == "external-fulltext")
+            result = await QualitySuiteRunner(
+                config,
+                dataset,
+                profile,
+                root=Path(args.output_root),
+                run_archive=ArchiveRepository(Path(args.run_artifact_root)),
+                suite_id=args.suite_id,
+                prior_suite_id=args.continuation_of,
+                resume_unrun=args.resume_unrun,
+            ).run(dry_run=args.dry_run, max_new_observations=args.max_observations)
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return
+        if args.continuation_of or args.resume_unrun:
+            raise SystemExit("--continuation-of is supported only by quality stage")
         judge_config = load_survey_judge_config(Path(args.judge_config))
         budget_values = (
             args.max_observations,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
 import re
@@ -31,6 +32,7 @@ from litagent.agents.relevance_gate import RelevanceGateWorker
 from litagent.agents.reviewer import ReviewerWorker
 from litagent.agents.search import SearchWorker
 from litagent.agents.synthesis import SynthesisWorker
+from litagent.body_quality import analysis_repair_diagnostics, bound_repair_diagnostics
 from litagent.config import AppConfig
 from litagent.context.budget import BudgetManager
 from litagent.context.evidence_selector import EvidenceSelection, EvidenceSelector
@@ -114,7 +116,9 @@ from litagent.workbench import (
     ReviewRequest,
     RunOptions,
     can_publish,
+    is_strict_policy,
     validate_decision,
+    verification_enabled,
 )
 
 logger = get_logger("runner")
@@ -149,6 +153,7 @@ class RewriteOutcome:
     candidate_evaluation: Mapping[str, Any] | None
     candidate_quality: Mapping[str, Any] | None
     reason_code: str
+    candidate_bindings: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -323,6 +328,7 @@ class LitAgent:
         *,
         run_policy: RunPolicy | None = None,
         external_inputs: ExternalInputReplay | None = None,
+        audit_service=None,
     ) -> None:
         """Initialize the LitAgent runtime and optional integrations."""
         self._config = config
@@ -331,8 +337,10 @@ class LitAgent:
         self._trace_hook = trace_hook
         self._run_policy = run_policy or RunPolicy()
         self._external_inputs = external_inputs
+        self._audit_service = audit_service
 
         self._cost_budget: CostBudget | None = None
+        self._targeted_repair_state_path: Path | None = None
         self._llm: BaseLLMClient | None = None
         self._registry = None
         self._executor: ToolExecutor | None = None
@@ -376,6 +384,24 @@ class LitAgent:
         started_at = time.time()
         for task in graph.tasks.values():
             task.input_data["report_language"] = options.report_language
+            if options.body_quality != "legacy":
+                task.input_data["body_quality"] = options.body_quality
+            if options.verification is not None:
+                task.input_data["verification"] = options.verification.model_dump(
+                    mode="json"
+                )
+            if is_strict_policy(options.quality_policy):
+                task.input_data["quality_policy"] = options.quality_policy
+                task.max_retries = 0
+                from litagent.quality import coverage_requirements
+
+                planning = graph.tasks.get("adversarial_review")
+                if planning is not None:
+                    task.input_data["coverage_requirements"] = coverage_requirements(
+                        planning.input_data.get("query", ""),
+                        planning.input_data.get("requested_methods", []),
+                        planning.input_data.get("coverage_constraints", []),
+                    )
             if options.review_structure != "legacy":
                 task.input_data.setdefault("search_started_at", started_at)
                 task.input_data["review_structure"] = options.review_structure
@@ -404,6 +430,17 @@ class LitAgent:
             raise ValueError("interactive_run_requires_human_review")
         if not self._wired:
             await self._wire()
+        if checkpoint is None:
+            if is_strict_policy(options.quality_policy):
+                self._cost_budget.configure_strict()
+                self._config_summary = build_config_summary(
+                    self._config, options.quality_policy
+                )
+        elif is_strict_policy(options.quality_policy):
+            self._cost_budget.configure_strict()
+            self._config_summary = build_config_summary(
+                self._config, options.quality_policy
+            )
 
         if checkpoint is None:
             if decision is not None:
@@ -663,7 +700,21 @@ class LitAgent:
                 review=next_request,
             )
 
+        if is_strict_policy(options.quality_policy) and not automatic_delivery.get(
+            "publishable"
+        ):
+            raise ValueError("strict_automatic_acceptance_required")
         metadata["human_review"] = {"status": "approved"}
+        if is_strict_policy(options.quality_policy):
+            from litagent.quality import digest
+
+            metadata["human_review"].update(
+                report_sha256=hashlib.sha256(
+                    report_data["survey"].encode()
+                ).hexdigest(),
+                evidence_snapshot_sha256=metadata.get("evidence_snapshot_sha256"),
+                evaluation_sha256=digest(report_data.get("evaluation", {})),
+            )
         publishable = can_publish(
             bool(automatic_delivery.get("publishable")), options, "approved"
         )
@@ -702,6 +753,14 @@ class LitAgent:
             await self._wire()
         if cancellation and cancellation.is_cancelled:
             return self._build_cancelled_report(query)
+        if is_strict_policy(options.quality_policy):
+            self._cost_budget.configure_strict(
+                halt_on_unknown_usage=options.quality_policy
+                in {"strict_auto_v1", "strict_auto_v2"}
+            )
+            self._config_summary = build_config_summary(
+                self._config, options.quality_policy
+            )
 
         self._emit(
             "survey.start",
@@ -753,12 +812,21 @@ class LitAgent:
                 degradation_codes=degradation_codes,
                 cancellation=cancellation,
             )
+            if options.quality_policy in {"strict_auto_v1", "strict_auto_v2"}:
+                await self._automatic_review(report_data, query, results, cancellation)
             return await self._finalize_report(
                 query=query,
                 report_data=report_data,
                 results=results,
                 degradation_codes=degradation_codes,
                 cancellation=cancellation,
+                allow_trusted_writes=(
+                    options.quality_policy not in {"strict_auto_v1", "strict_auto_v2"}
+                    or report_data.get("metadata", {})
+                    .get("automatic_acceptance", {})
+                    .get("publishable")
+                    is True
+                ),
             )
 
         except _RunCancelled:
@@ -823,6 +891,9 @@ class LitAgent:
                 isinstance(results.get("adversarial_review"), dict)
                 and results["adversarial_review"].get("final_draft")
             ),
+            budget_stop_reason=(
+                self._cost_budget.stop_reason if self._cost_budget else None
+            ),
         )
         report_data["partial"] = execution["partial"]
         metadata = report_data.setdefault("metadata", {})
@@ -832,11 +903,60 @@ class LitAgent:
         metadata["report_language"] = options.report_language
         metadata["run_options_fingerprint"] = options.fingerprint()
         metadata["review_structure"] = options.review_structure
+        metadata["quality_policy"] = options.quality_policy
+        if options.body_quality != "legacy":
+            metadata["body_quality"] = options.body_quality
+        if options.verification is not None:
+            metadata["verification"] = options.verification.model_dump(mode="json")
+        if options.quality_policy == "strict_auto_v2" and verification_enabled(
+            metadata, "jev"
+        ):
+            receipt_path = (
+                Path("artifacts/extraction-verification")
+                / self._session_id
+                / "receipt.json"
+            )
+            if receipt_path.exists():
+                metadata["extraction_verification"] = json.loads(
+                    receipt_path.read_text(encoding="utf-8")
+                )
+        if is_strict_policy(options.quality_policy) and isinstance(
+            adversarial_result, Mapping
+        ):
+            for name in (
+                "analysis_plan",
+                "fact_cards",
+                "evidence_snapshot_sha256",
+                "coverage_requirements",
+                "coverage_matrix",
+                "extraction_verification",
+                "writing_bindings",
+                "targeted_repair_state",
+            ):
+                if (
+                    name == "targeted_repair_state"
+                    and options.quality_policy != "strict_auto_v2"
+                ):
+                    continue
+                if name != "extraction_verification" or adversarial_result.get(name):
+                    metadata[name] = adversarial_result.get(name)
         metadata["review_methodology"] = (
             adversarial_result.get("review_methodology", {})
             if isinstance(adversarial_result, Mapping)
             else {}
         )
+        if options.quality_policy == "strict_auto_v2":
+            from litagent.quality import load_targeted_repairs, targeted_repair_state
+
+            state = targeted_repair_state(
+                metadata.get("targeted_repair_state"), self._session_id
+            )
+            checkpoint_state = load_targeted_repairs(
+                self._targeted_repair_path(), self._session_id
+            )
+            if checkpoint_state["attempts"] and checkpoint_state != state:
+                raise ValueError("strict_targeted_repair_checkpoint_conflict")
+            metadata["targeted_repair_state"] = state
 
         initial_evaluation = await _await_with_cancellation(
             self._evaluate(
@@ -851,31 +971,225 @@ class LitAgent:
         report_data.update(
             {"evaluation": initial_evaluation, "quality": initial_quality}
         )
-        if initial_quality["status"] == "failed":
-            rewrite = await _await_with_cancellation(
-                self._attempt_evidence_rewrite(
-                    query=query,
-                    report_data=report_data,
-                    results=results,
-                    initial_evaluation=initial_evaluation,
-                    initial_quality=initial_quality,
-                    report_language=options.report_language,
-                ),
-                cancellation,
-            )
-            metadata["evidence_rewrite"] = {
-                "attempted": rewrite.attempted,
-                "committed": rewrite.committed,
-                "reason_code": rewrite.reason_code,
-                "validation_reason_codes": (
-                    list(rewrite.validation.reason_codes) if rewrite.validation else []
-                ),
-                "candidate_quality": rewrite.candidate_quality,
+        if initial_quality["status"] == "failed" or (
+            is_strict_policy(options.quality_policy)
+            and self._completed_bound_repair(initial_evaluation, report_data["survey"])
+        ):
+            strict = is_strict_policy(options.quality_policy)
+            working = {**report_data, "metadata": dict(metadata)}
+            attempts = []
+            seen = {report_data["survey"]}
+            repair_limit = 2 if strict else 1
+            if options.quality_policy == "strict_auto_v2":
+                repair_limit -= len(metadata["targeted_repair_state"]["attempts"])
+            for attempt in range(repair_limit):
+                rewrite = await _await_with_cancellation(
+                    self._attempt_evidence_rewrite(
+                        query=query,
+                        report_data=working,
+                        results=results,
+                        initial_evaluation=working["evaluation"],
+                        initial_quality=working["quality"],
+                        report_language=options.report_language,
+                    ),
+                    cancellation,
+                )
+                outcome = {
+                    "attempted": rewrite.attempted,
+                    "committed": rewrite.committed,
+                    "reason_code": rewrite.reason_code,
+                    "validation_reason_codes": (
+                        list(rewrite.validation.reason_codes)
+                        if rewrite.validation
+                        else []
+                    ),
+                    "candidate_quality": rewrite.candidate_quality,
+                }
+                if strict:
+                    outcome.update(
+                        candidate=rewrite.candidate,
+                        candidate_evaluation=rewrite.candidate_evaluation,
+                    )
+                    attempts.append(outcome)
+                metadata["evidence_rewrite"] = outcome
+                if rewrite.committed:
+                    report_data.update(
+                        {k: working[k] for k in ("survey", "evaluation", "quality")}
+                    )
+                    if rewrite.candidate_bindings:
+                        metadata["writing_bindings"] = rewrite.candidate_bindings
+                    break
+                if strict and rewrite.reason_code == "strict_repair_duplicate_content":
+                    outcome["local_diagnostics"] = working["metadata"].get(
+                        "local_repair_diagnostics"
+                    )
+                    if rewrite.candidate in seen:
+                        break
+                    seen.add(rewrite.candidate)
+                    # Keep the original version and its assessment for the remaining slot.
+                    continue
+                if (
+                    not strict
+                    or rewrite.reason_code != "quality_still_failed"
+                    or not rewrite.candidate
+                    or not rewrite.candidate_evaluation
+                    or rewrite.candidate in seen
+                    or (
+                        rewrite.candidate_quality.get("status") != "failed"
+                        and not self._completed_bound_repair(
+                            rewrite.candidate_evaluation, rewrite.candidate
+                        )
+                    )
+                ):
+                    break
+                seen.add(rewrite.candidate)
+                # Failed intermediate drafts remain audit records, never report versions.
+                working.update(
+                    survey=rewrite.candidate,
+                    evaluation=rewrite.candidate_evaluation,
+                    quality=rewrite.candidate_quality,
+                )
+                if rewrite.candidate_bindings:
+                    working["metadata"]["writing_bindings"] = rewrite.candidate_bindings
+            if strict:
+                metadata["evidence_rewrite_attempts"] = attempts
+        if (metadata.get("writing_bindings") or {}).get("scope_notice_contract"):
+            metadata["evaluation_history"] = {
+                "version": "version-bound-evaluation-history-v1",
+                "source_report_sha256": hashlib.sha256(
+                    report_data["survey"].encode()
+                ).hexdigest(),
+                "initial_evaluation": initial_evaluation,
+                "attempts": metadata.get("evidence_rewrite_attempts", []),
+                "final_evaluation": report_data["evaluation"],
             }
         report_data["delivery"] = derive_delivery(
             report_data["partial"], report_data["quality"], degradation_codes
         )
         return report_data, degradation_codes
+
+    async def _automatic_review(
+        self, report: dict, query: str, results: Mapping, cancellation
+    ) -> None:
+        """Freeze a final version and enforce Evaluation plus enabled audit gates."""
+        from litagent.eval.automatic import (
+            automatic_acceptance,
+            freeze_automatic_inputs,
+        )
+        from litagent.report_audit import ReportAuditService, atomic_json
+
+        report.setdefault("metadata", {})["query"] = query
+        report["delivery"] = {
+            "status": "blocked",
+            "publishable": False,
+            "reason_codes": ["automatic_review_pending"],
+        }
+        owned = False
+        service = None
+        snapshot = {
+            "source_run_id": self._session_id,
+            "source_report_revision": 1,
+            "source_report_sha256": hashlib.sha256(
+                report.get("survey", "").encode()
+            ).hexdigest(),
+            # Failed preflight still binds the real evidence and trusted run record.
+            "report": report,
+            "context": {
+                "review_methodology": report["metadata"].get("review_methodology", {})
+            },
+        }
+        audit = None
+        submitted = None
+        try:
+            context = None
+            if report["metadata"].get("quality_policy") == "strict_auto_v2":
+                # Retain genuine evidence even if evaluation blocks auditor dispatch.
+                context = self._build_eval_context(
+                    query=query, survey=report.get("survey") or "", results=results
+                )
+                snapshot["ledger"] = context[CTX_EVIDENCE]
+            if report.get("partial"):
+                raise ValueError("automatic_report_partial")
+            if report.get("quality", {}).get("status") != "passed":
+                raise ValueError("automatic_evaluation_not_passed")
+            if context is None:
+                context = self._build_eval_context(
+                    query=query, survey=report["survey"], results=results
+                )
+            snapshot = freeze_automatic_inputs(
+                report, context[CTX_EVIDENCE], run_id=self._session_id
+            )
+            snapshot["generation_provider"] = {
+                "model": self._config.llm.model,
+                "origin": self._config.llm.base_url,
+            }
+            if verification_enabled(report["metadata"], "judge"):
+                owned = self._audit_service is None
+                service = self._audit_service or ReportAuditService(self._config)
+                submitted = await service.submit(
+                    snapshot,
+                    include_jev=report["metadata"].get("quality_policy")
+                    != "strict_auto_v2",
+                )
+                try:
+                    audit = await _await_with_cancellation(
+                        service.wait(submitted["audit_id"]), cancellation
+                    )
+                except asyncio.CancelledError:
+                    await service.cancel(self._session_id, 1, submitted["audit_id"])
+                    raise
+                if not audit:
+                    audit = {
+                        "audit_id": submitted["audit_id"],
+                        "status": "result_unavailable",
+                    }
+            acceptance = automatic_acceptance(
+                snapshot, report.get("evaluation", {}), audit
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            reason = (
+                str(exc)
+                if str(exc).startswith("automatic_")
+                else f"automatic_error:{type(exc).__name__}"
+            )
+            if not audit and submitted:
+                audit = {
+                    "audit_id": submitted["audit_id"],
+                    "status": "result_unavailable",
+                }
+            acceptance = automatic_acceptance(
+                snapshot, report.get("evaluation", {}), audit
+            )
+            acceptance["failure_codes"].append(reason)
+            acceptance.update(status="failed", publishable=False)
+        finally:
+            if owned and service is not None:
+                await service.shutdown()
+        if report["metadata"].get("body_quality") == "analysis_v1":
+            from litagent.body_quality import body_diagnostics
+
+            report["metadata"]["body_diagnostics"] = body_diagnostics(
+                report.get("survey", "")
+            )
+        report["metadata"]["automatic_acceptance"] = acceptance
+        report["delivery"] = {
+            "status": "ready" if acceptance["publishable"] else "blocked",
+            "publishable": acceptance["publishable"],
+            "reason_codes": acceptance["failure_codes"],
+        }
+        if not acceptance["publishable"]:
+            report["quality"] = {
+                **report.get("quality", {}),
+                "status": "failed",
+                "automatic_failure_codes": acceptance["failure_codes"],
+            }
+        atomic_json(
+            Path("artifacts/automatic-acceptance") / f"{self._session_id}.json",
+            acceptance,
+        )
+        self._emit("automatic_acceptance", acceptance)
 
     async def _finalize_report(
         self,
@@ -951,6 +1265,7 @@ class LitAgent:
         budget_exceeded: bool,
         final_output_present: bool,
         run_cancelled: bool = False,
+        budget_stop_reason: str | None = None,
     ) -> dict[str, Any]:
         """Derive the final execution status from graph outcomes."""
         summary = (
@@ -968,7 +1283,7 @@ class LitAgent:
         if run_cancelled:
             reason_codes.append("run_cancelled")
         if budget_exceeded:
-            reason_codes.append("cost_budget_exceeded")
+            reason_codes.append(budget_stop_reason or "cost_budget_exceeded")
         if summary["failed_task_ids"]:
             reason_codes.append("task_failed")
         if summary["cancelled_task_ids"]:
@@ -1014,6 +1329,9 @@ class LitAgent:
             ),
             final_output_present=final_output_present,
             run_cancelled=True,
+            budget_stop_reason=(
+                self._cost_budget.stop_reason if self._cost_budget else None
+            ),
         )
         payload["partial"] = True
         payload.setdefault("evaluation", {})
@@ -1291,11 +1609,15 @@ class LitAgent:
         )
         workers.append(self._relevance_gate)
 
+        from litagent.rag.targeted_fulltext import TargetedFulltext
+
         self._extractor = ExtractorWorker(
             strategy=self._extraction_strategy,
             max_concurrent=cfg.extractor.max_concurrent,
             detector=InjectionDetector(),
             max_papers=cfg.extractor.max_papers,
+            fulltext_loader=TargetedFulltext(cfg.rag),
+            failure_callback=self._cost_budget.stop_after_worker_failure,
         )
         workers.append(self._extractor)
 
@@ -1309,6 +1631,8 @@ class LitAgent:
             per_paper_cap=cfg.context.evidence_per_paper_cap,
             trace_hook=self._trace_hook,
         )
+
+        from litagent.extraction_verification import ExtractionVerifier
 
         self._synthesis = SynthesisWorker(
             llm=self._llm,
@@ -1328,6 +1652,10 @@ class LitAgent:
             evidence_selector=self._evidence_selector,
             context_config=cfg.context,
             trace_hook=self._trace_hook,
+            thinking_mode=cfg.adversarial.thinking_mode,
+            extraction_verifier=ExtractionVerifier(trace_hook=self._trace_hook),
+            run_id_provider=lambda: self._session_id,
+            repair_state_path_provider=self._targeted_repair_path,
         )
         workers.append(self._synthesis)
 
@@ -1342,6 +1670,7 @@ class LitAgent:
             context_config=cfg.context,
             trusted_claim_recall_top_k=cfg.rag.trusted_claim_recall_top_k,
             trusted_claim_context_max_chars=cfg.rag.trusted_claim_context_max_chars,
+            trace_hook=self._trace_hook,
         )
         workers.append(self._reviewer)
 
@@ -1755,6 +2084,79 @@ class LitAgent:
                 survey=survey,
                 results=results,
             )
+            if is_strict_policy(context.get("quality_policy")):
+                from litagent.quality import digest
+
+                identity = digest([self._session_id, survey, phase])
+                path = Path("artifacts/evaluations") / identity / "progress.json"
+                if path.exists():
+                    previous = json.loads(path.read_text(encoding="utf-8"))
+                    if previous.get("started"):
+                        raise ValueError("evaluation_attempt_requires_explicit_new_run")
+
+                def save_progress(progress):
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    temporary = path.with_suffix(".tmp")
+                    temporary.write_text(
+                        json.dumps(
+                            {
+                                "identity": identity,
+                                "started": True,
+                                "report_sha256": hashlib.sha256(
+                                    survey.encode()
+                                ).hexdigest(),
+                                "phase": phase,
+                                "evaluation_version": "survey-evaluation-v3",
+                                **(
+                                    {"body_analysis_contract": "body-analysis-v1"}
+                                    if context.get("body_quality") == "analysis_v1"
+                                    else {}
+                                ),
+                                "evidence_snapshot_sha256": context.get(
+                                    "evidence_snapshot_sha256"
+                                ),
+                                "coverage_requirements_sha256": digest(
+                                    context.get("coverage_requirements", [])
+                                ),
+                                "config_sha256": digest(
+                                    build_config_summary(
+                                        self._config, context["quality_policy"]
+                                    )
+                                ),
+                                "budget": self._cost_budget.snapshot(),
+                                "progress": progress,
+                            },
+                            ensure_ascii=False,
+                        ),
+                        encoding="utf-8",
+                    )
+                    os.replace(temporary, path)
+                    self._emit(
+                        "evaluation.batch",
+                        {
+                            "task_id": task_id,
+                            "identity": identity,
+                            "phase": phase,
+                            "processed_assertions": progress.get(
+                                "processed_assertions"
+                            ),
+                            "batch_states": [
+                                {
+                                    k: b.get(k)
+                                    for k in (
+                                        "index",
+                                        "input_sha256",
+                                        "status",
+                                        "usage",
+                                    )
+                                }
+                                for b in progress.get("batches", [])
+                            ],
+                            "budget": self._cost_budget.snapshot(),
+                        },
+                    )
+
+                context["evaluation_checkpoint"] = save_progress
             scoped = next(
                 (
                     ev
@@ -1914,7 +2316,28 @@ class LitAgent:
             review_methodology=methodology,
         )
         return {
-            "evaluation_version": EVALUATION_VERSION,
+            "evaluation_version": (
+                "survey-evaluation-v3"
+                if is_strict_policy((adversarial or {}).get("quality_policy"))
+                else EVALUATION_VERSION
+            ),
+            "quality_policy": (adversarial or {}).get("quality_policy", "legacy"),
+            "body_quality": (adversarial or {}).get("body_quality", "legacy"),
+            "scope_notice_contract": (
+                ((adversarial or {}).get("writing_bindings") or {}).get(
+                    "scope_notice_contract"
+                )
+                if isinstance(adversarial, Mapping)
+                else None
+            ),
+            "writing_bindings": (adversarial or {}).get("writing_bindings", {}),
+            "fact_cards": (adversarial or {}).get("fact_cards", {}),
+            "evidence_snapshot_sha256": (adversarial or {}).get(
+                "evidence_snapshot_sha256"
+            ),
+            "coverage_requirements": (adversarial or {}).get(
+                "coverage_requirements", []
+            ),
             "review_structure": structure,
             "report_language": language,
             "language_checks": check_report_language(
@@ -1943,8 +2366,43 @@ class LitAgent:
     def _passed_metric_regressed(
         initial: Mapping[str, Any],
         candidate: Mapping[str, Any],
+        *,
+        original_survey: str | None = None,
+        candidate_survey: str | None = None,
     ) -> bool:
         """Reject rewrites that degrade previously passing metrics."""
+        old = initial.get("faithfulness", {}).get("details", {})
+        new = candidate.get("faithfulness", {}).get("details", {})
+        if old.get("evaluation_version") == "survey-evaluation-v3":
+            preserved = {
+                (c.get("claim_text"), tuple(c.get("evidence_ids", [])))
+                for c in new.get("assertions", [])
+                if c.get("status") == "supported"
+            }
+            missing_claim = any(
+                (c.get("claim_text"), tuple(c.get("evidence_ids", []))) not in preserved
+                for c in old.get("assertions", [])
+                if c.get("kind") == "scientific" and c.get("status") == "supported"
+            )
+            if missing_claim and not (
+                original_survey is not None
+                and candidate_survey is not None
+                and LitAgent._supported_source_preserved(
+                    old, new, original_survey, candidate_survey
+                )
+            ):
+                return True
+            covered = {
+                c["requirement_id"]
+                for c in new.get("core_coverage", [])
+                if c.get("answered")
+            }
+            if any(
+                c["requirement_id"] not in covered
+                for c in old.get("core_coverage", [])
+                if c.get("answered")
+            ):
+                return True
         for metric, initial_result in initial.items():
             if not isinstance(initial_result, Mapping):
                 continue
@@ -1960,6 +2418,89 @@ class LitAgent:
                 ):
                     return True
         return False
+
+    @staticmethod
+    def _supported_source_preserved(old, new, original: str, candidate: str) -> bool:
+        """Permit re-atomization only after full new verification of identical sources."""
+        from collections import Counter
+
+        from litagent.eval.scoped import build_source_fragments
+        from litagent.quality import strict_acceptance
+        from litagent.report_render import build_report_source_units
+
+        if (
+            new.get("evaluation_version") != "survey-evaluation-v3"
+            or old.get("source_report_sha256")
+            != hashlib.sha256(original.encode()).hexdigest()
+            or new.get("source_report_sha256")
+            != hashlib.sha256(candidate.encode()).hexdigest()
+            or not is_strict_policy(new.get("quality_policy"))
+            or (
+                strict_acceptance(new)["status"] != "passed"
+                and not LitAgent._completed_bound_repair(
+                    {"faithfulness": {"details": new}}, candidate
+                )
+            )
+        ):
+            return False
+        units = build_report_source_units(candidate)
+        coverage = new.get("coverage", {})
+        if coverage.get("source_units") != len(units) or coverage.get(
+            "processed_units"
+        ) != len(units):
+            return False
+        actual = {
+            f["source_fragment_id"]: (unit, f)
+            for unit in units
+            for f in build_source_fragments(unit)
+        }
+        groups = {}
+        for claim in new.get("assertions", []):
+            groups.setdefault(claim.get("source_fragment_id"), []).append(claim)
+        available = Counter()
+        for fid, claims in groups.items():
+            pair = actual.get(fid)
+            if not pair:
+                return False
+            unit, fragment = pair
+            if any(
+                c.get("source_unit_id") != unit.unit_id
+                or c.get("source_start") != unit.start + fragment["start"]
+                or c.get("source_end") != unit.start + fragment["end"]
+                or c.get("source_quote") != fragment["source_quote"]
+                or c.get("evidence_ids") != fragment["citation_aliases"]
+                for c in claims
+            ):
+                return False
+            if all(
+                c.get("kind") == "scientific" and c.get("status") == "supported"
+                for c in claims
+            ):
+                available[
+                    (fragment["source_quote"], tuple(fragment["citation_aliases"]))
+                ] += 1
+        protected = {}
+        for claim in old.get("assertions", []):
+            if claim.get("kind") != "scientific" or claim.get("status") != "supported":
+                continue
+            start, end = claim.get("source_start"), claim.get("source_end")
+            if (
+                type(start) is not int
+                or type(end) is not int
+                or not 0 <= start < end <= len(original)
+                or original[start:end] != claim.get("source_quote")
+                or extract_evidence_refs_ordered(original[start:end])
+                != claim.get("evidence_ids")
+            ):
+                return False
+            protected[(start, end)] = (
+                claim["source_quote"],
+                tuple(claim["evidence_ids"]),
+            )
+        required = Counter(protected.values())
+        return bool(required) and all(
+            available[key] >= count for key, count in required.items()
+        )
 
     @staticmethod
     def _rewrite_material_packet(
@@ -2088,6 +2629,193 @@ class LitAgent:
             selected.append(item)
         return selected
 
+    @staticmethod
+    def _completed_bound_repair(evaluation: Mapping, survey: str) -> bool:
+        """Authorize repair from complete, source-bound diagnostics without a pass."""
+        from litagent.eval.scoped import build_source_fragments
+        from litagent.report_render import build_report_source_units
+
+        details = evaluation.get("faithfulness", {}).get("details", {})
+        stages = details.get("stages", {})
+        assertions = details.get("assertions", [])
+        diagnostics = bound_repair_diagnostics(details)
+        batches = stages.get("batches", [])
+        coverage = details.get("coverage", {})
+        if not (
+            details.get("evaluation_version") == "survey-evaluation-v3"
+            and details.get("source_report_sha256")
+            == hashlib.sha256(survey.encode()).hexdigest()
+            and is_strict_policy(details.get("quality_policy"))
+            and assertions
+            and diagnostics
+            and len(assertions)
+            == stages.get("expected_assertions")
+            == stages.get("processed_assertions")
+            and batches
+            and len(batches) == stages.get("expected_batches")
+            and all(b.get("status") == "completed" for b in batches)
+            and stages.get("global_check") == "completed"
+            and any(
+                c.get("phase") == "inventory" and c.get("status") == "response_received"
+                for c in stages.get("requests", [])
+            )
+            and type(coverage.get("source_units")) is int
+            and coverage["source_units"] > 0
+            and type(coverage.get("model_source_units")) is int
+            and 0 < coverage["model_source_units"] <= coverage["source_units"]
+            and coverage.get("source_units") == coverage.get("processed_units")
+            and coverage.get("model_source_units")
+            == coverage.get("model_processed_units")
+        ):
+            return False
+        if coverage["source_units"] != len(build_report_source_units(survey)):
+            return False
+        ids = [a.get("claim_id") for a in assertions]
+        batch_ids = [i for b in batches for i in b.get("claim_ids", [])]
+        if None in ids or len(set(ids)) != len(ids) or batch_ids != ids:
+            return False
+        fragments = {
+            f["source_fragment_id"]: (unit, f)
+            for unit in build_report_source_units(survey)
+            for f in build_source_fragments(unit)
+        }
+        by_id = {a["claim_id"]: a for a in assertions}
+        for item in [*assertions, *diagnostics]:
+            pair = fragments.get(item.get("source_fragment_id"))
+            if not pair:
+                return False
+            unit, fragment = pair
+            if (
+                item.get("source_unit_id") != unit.unit_id
+                or item.get("source_quote") != fragment["source_quote"]
+                or item.get("source_start") != unit.start + fragment["start"]
+                or item.get("source_end") != unit.start + fragment["end"]
+                or item.get("evidence_ids") != fragment["citation_aliases"]
+            ):
+                return False
+        for diagnostic in diagnostics:
+            claim = by_id.get(diagnostic.get("claim_id"))
+            if (
+                not claim
+                or (
+                    claim.get("status") == "supported"
+                    and diagnostic not in analysis_repair_diagnostics(details)
+                )
+                or diagnostic.get("diagnostic_source") != "survey-evaluation-v3"
+                or diagnostic.get("alignment_status") != "exact"
+                or diagnostic.get("citation_scope") != "exact"
+            ):
+                return False
+        return True
+
+    @staticmethod
+    def _removable_strict_references(evaluation: Mapping, survey: str) -> set[str]:
+        """Permit replacement only when every occurrence is fully diagnosed."""
+        if not LitAgent._completed_bound_repair(evaluation, survey):
+            return set()
+        details = evaluation["faithfulness"]["details"]
+        diagnosed = {d["claim_id"] for d in details["unsupported_claims"]}
+        groups: dict[str, list] = {}
+        for claim in details["assertions"]:
+            groups.setdefault(claim["source_fragment_id"], []).append(claim)
+        ranges = [
+            (claims[0]["source_start"], claims[0]["source_end"])
+            for claims in groups.values()
+            if all(
+                c["kind"] == "scientific"
+                and c["status"] in {"unsupported", "unverifiable"}
+                and c["claim_id"] in diagnosed
+                for c in claims
+            )
+        ]
+        occurrences: dict[str, list] = {}
+        for match in re.finditer(r"\[E:([^\]\s]+)\]", survey):
+            occurrences.setdefault(match[1], []).append((match.start(), match.end()))
+        return {
+            eid
+            for eid, positions in occurrences.items()
+            if all(
+                any(left <= start and end <= right for left, right in ranges)
+                for start, end in positions
+            )
+        }
+
+    @staticmethod
+    def _strict_repair_targets(
+        evaluation: Mapping, survey: str, structure: str, language: str
+    ) -> list[dict]:
+        """Lock supported, mixed and undiagnosed fragments before targeted repair."""
+        from litagent.quality import _checked_repair_targets
+        from litagent.review_structure import structure_sections, top_level_sections
+
+        if not LitAgent._completed_bound_repair(evaluation, survey):
+            return []
+        details = evaluation["faithfulness"]["details"]
+        diagnosed = {d["claim_id"] for d in bound_repair_diagnostics(details)}
+        analysis_ids = {d["claim_id"] for d in analysis_repair_diagnostics(details)}
+        groups: dict[str, list] = {}
+        for claim in details["assertions"]:
+            groups.setdefault(claim["source_fragment_id"], []).append(claim)
+        templates = {
+            title: key for key, title in structure_sections(structure, language)
+        }
+        sections = top_level_sections(survey)
+        targets = []
+        for fid, claims in groups.items():
+            if not all(
+                c["kind"] == "scientific"
+                and (
+                    c["status"] in {"unsupported", "unverifiable"}
+                    or c["claim_id"] in analysis_ids
+                )
+                and c["claim_id"] in diagnosed
+                for c in claims
+            ):
+                continue
+            claim = claims[0]
+            owners = [
+                s
+                for s in sections
+                if s["content_start"]
+                <= claim["source_start"]
+                < claim["source_end"]
+                <= s["end"]
+            ]
+            if len(owners) != 1 or templates.get(owners[0]["section"]) in {
+                None,
+                "run_methodology",
+            }:
+                continue
+            prefix = re.match(r"(?:[-+*]|\d+[.)])[ \t]+", claim["source_quote"])
+            targets.append(
+                {
+                    **{
+                        k: claim[k]
+                        for k in (
+                            "source_unit_id",
+                            "source_fragment_id",
+                            "source_start",
+                            "source_end",
+                            "source_quote",
+                        )
+                    },
+                    "source_report_sha256": details["source_report_sha256"],
+                    "section_key": templates[owners[0]["section"]],
+                    "source_prefix": prefix[0] if prefix else "",
+                }
+            )
+        if not targets:
+            return []
+        return _checked_repair_targets(survey, targets, structure, language)
+
+    def _targeted_repair_path(self) -> Path:
+        """Resolve one private per-run counter, including isolated benchmark overrides."""
+        if self._targeted_repair_state_path is not None:
+            return self._targeted_repair_state_path
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", self._session_id):
+            raise ValueError("strict_targeted_repair_run_invalid")
+        return Path("artifacts/targeted-repairs") / f"{self._session_id}.json"
+
     async def _attempt_evidence_rewrite(
         self,
         *,
@@ -2111,10 +2839,8 @@ class LitAgent:
                 "empty_original_survey",
             )
 
-        diagnostics = (
-            initial_evaluation.get("faithfulness", {})
-            .get("details", {})
-            .get("unsupported_claims")
+        diagnostics = bound_repair_diagnostics(
+            initial_evaluation.get("faithfulness", {}).get("details", {})
         )
         if not isinstance(diagnostics, list) or not diagnostics:
             return RewriteOutcome(
@@ -2147,6 +2873,25 @@ class LitAgent:
             max_chars=rewrite_cfg.max_chars,
         )
         original_refs = extract_evidence_refs(original_survey)
+        strict = is_strict_policy(report_data.get("metadata", {}).get("quality_policy"))
+        repair_targets = []
+        if strict:
+            repair_targets = self._strict_repair_targets(
+                initial_evaluation,
+                original_survey,
+                report_data["metadata"].get("review_structure", "legacy"),
+                report_language,
+            )
+            if not repair_targets:
+                return RewriteOutcome(
+                    False,
+                    False,
+                    None,
+                    None,
+                    None,
+                    None,
+                    "strict_repair_no_editable_fragment",
+                )
         # Only a uniquely located citation occurrence can be removed.
         removable_refs = {
             eid
@@ -2160,6 +2905,10 @@ class LitAgent:
             and f"[E:{eid}]" in diagnostic["source_quote"]
             and original_survey.count(f"[E:{eid}]") == 1
         }
+        if strict:
+            removable_refs = self._removable_strict_references(
+                initial_evaluation, original_survey
+            )
         reference_policy = {
             "must_preserve_evidence_ids": sorted(original_refs - removable_refs),
             "allowed_removed_evidence_ids": sorted(removable_refs),
@@ -2192,6 +2941,8 @@ class LitAgent:
         )
         diagnostic_keys = (
             "claim_id",
+            "diagnostic_type",
+            "preserve_supported_claim",
             "kind",
             "claim_text",
             "source_unit_id",
@@ -2236,6 +2987,23 @@ class LitAgent:
                 for eid in reference_policy["allowed_removed_evidence_ids"]
             ],
         }
+        strict = is_strict_policy(report_data.get("metadata", {}).get("quality_policy"))
+        if strict:
+            model_policy = reference_policy
+            for diagnostic, original in zip(model_diagnostics, diagnostics):
+                diagnostic["evidence_ids"] = original.get("evidence_ids", [])
+
+        local_feedback = report_data.get("metadata", {}).get("local_repair_diagnostics")
+        if (
+            local_feedback
+            and local_feedback.get("source_report_sha256")
+            == hashlib.sha256(original_survey.encode()).hexdigest()
+        ):
+            for diagnostic in model_diagnostics:
+                diagnostic["previous_local_repair_failure"] = local_feedback
+                diagnostic["local_repair_instruction"] = (
+                    "Do not repeat protected original claims. Repair only the diagnosed original span using its actual sources; all other prose remains protected."
+                )
 
         # Ask the model to repair the unsupported evidence claims.
         self._emit(
@@ -2253,6 +3021,8 @@ class LitAgent:
         reason_code = "llm_call_failed"
         reservation = 0
         budget_reserved = False
+        repair_entry = None
+        repair_state = None
         request_budget = getattr(self._llm, "_cost_budget", None)
         if not isinstance(request_budget, CostBudget):
             request_budget = None
@@ -2276,6 +3046,27 @@ class LitAgent:
                     report_language=report_language,
                     **(
                         {
+                            "quality_policy": report_data["metadata"]["quality_policy"],
+                            "body_quality": report_data["metadata"].get(
+                                "body_quality", "legacy"
+                            ),
+                            "fact_cards": report_data.get("metadata", {}).get(
+                                "fact_cards", {}
+                            ),
+                            "coverage_requirements": report_data.get(
+                                "metadata", {}
+                            ).get("coverage_requirements"),
+                            "evidence_selection": results.get(
+                                "adversarial_review", {}
+                            ).get("evidence_selection"),
+                        }
+                        if is_strict_policy(
+                            report_data.get("metadata", {}).get("quality_policy")
+                        )
+                        else {}
+                    ),
+                    **(
+                        {
                             "review_structure": report_data.get("metadata", {}).get(
                                 "review_structure"
                             ),
@@ -2290,16 +3081,93 @@ class LitAgent:
                         else {}
                     ),
                 ) + [{"role": "user", "content": json.dumps(model_policy)}]
-                reservation = check_request_budget(
-                    self._llm,
-                    messages,
-                    self._config.eval.max_tokens,
-                    self._config.eval.context_tokens,
-                )
+                if is_strict_policy(
+                    report_data.get("metadata", {}).get("quality_policy")
+                ):
+                    from litagent.quality import (
+                        check_grounded_request_budget,
+                        prepare_fragment_repair_request,
+                    )
+
+                    messages, response_format = prepare_fragment_repair_request(
+                        messages,
+                        repair_targets,
+                        body_bindings=report_data["metadata"].get("writing_bindings"),
+                    )
+                    chat_kwargs["response_format"] = response_format
+                    reservation = check_grounded_request_budget(
+                        self._llm,
+                        messages,
+                        response_format,
+                        trace_hook=self._trace_hook,
+                        parent_task_id="evidence_rewrite",
+                        stage="repair",
+                        max_tokens=self._config.eval.max_tokens,
+                        context_tokens=int(
+                            self._config.eval.context_tokens
+                            * (1 - self._config.eval.strict_context_margin)
+                        ),
+                    )
+                else:
+                    reservation = check_request_budget(
+                        self._llm,
+                        messages,
+                        self._config.eval.max_tokens,
+                        self._config.eval.context_tokens,
+                        response_format=chat_kwargs.get("response_format"),
+                    )
                 if request_budget is not None:
                     request_budget.reserve(reservation)
                     budget_reserved = True
+                if (
+                    report_data.get("metadata", {}).get("quality_policy")
+                    == "strict_auto_v2"
+                ):
+                    from litagent.quality import (
+                        begin_targeted_repair,
+                        digest,
+                        emit_targeted_repair,
+                        load_targeted_repairs,
+                        save_targeted_repairs,
+                        targeted_repair_state,
+                    )
+
+                    repair_state = targeted_repair_state(
+                        report_data["metadata"].get("targeted_repair_state"),
+                        self._session_id,
+                    )
+                    stored = load_targeted_repairs(
+                        self._targeted_repair_path(), self._session_id
+                    )
+                    if stored["attempts"] and stored != repair_state:
+                        raise ValueError("strict_targeted_repair_checkpoint_conflict")
+                    report_data["metadata"]["targeted_repair_state"] = repair_state
+                    repair_entry = begin_targeted_repair(
+                        repair_state,
+                        "evaluation",
+                        digest([messages, chat_kwargs.get("response_format")]),
+                    )
+                    save_targeted_repairs(self._targeted_repair_path(), repair_state)
+                    emit_targeted_repair(
+                        self._trace_hook, repair_state, "evidence_rewrite"
+                    )
                 response = await self._llm.chat(messages, **chat_kwargs)
+                if repair_entry is not None:
+                    repair_entry.update(
+                        usage=dict(response.usage),
+                        response_sha256=hashlib.sha256(
+                            response.content.encode()
+                        ).hexdigest(),
+                    )
+                    save_targeted_repairs(
+                        self._targeted_repair_path(),
+                        repair_state,
+                        **{
+                            f"evaluation_response_{repair_entry['index']}": response.content
+                        },
+                    )
+                    if not response.usage.get("usage_available", bool(response.usage)):
+                        raise ValueError("rewrite_usage_incomplete")
                 if request_budget is not None and not response.usage.get(
                     "usage_available", bool(response.usage)
                 ):
@@ -2308,6 +3176,26 @@ class LitAgent:
                     )
                     raise ValueError("rewrite_usage_incomplete")
             candidate = (response.content or "").strip()
+            candidate_bindings = {}
+            if is_strict_policy(report_data.get("metadata", {}).get("quality_policy")):
+                from litagent.quality import apply_fragment_repairs
+
+                candidate = apply_fragment_repairs(
+                    candidate,
+                    original_survey,
+                    repair_targets,
+                    report_data["metadata"]["fact_cards"],
+                    report_data["metadata"]["review_structure"],
+                    report_language,
+                    evidence_selection=results.get("adversarial_review", {}).get(
+                        "evidence_selection"
+                    ),
+                    require_source_quotes=True,
+                    require_full_sources=report_data["metadata"].get("quality_policy")
+                    == "strict_auto_v2",
+                    body_bindings=report_data["metadata"].get("writing_bindings"),
+                    bindings=candidate_bindings,
+                )
         except asyncio.CancelledError:
             reason_code = "cancelled"
             llm_error_type = "CancelledError"
@@ -2322,14 +3210,40 @@ class LitAgent:
                 "rewrite_usage_incomplete": "rewrite_usage_incomplete",
             }
             reason_code = known_errors.get(str(exc), "llm_call_failed")
+            if str(exc).startswith(
+                ("strict_repair_", "strict_writing_", "strict_targeted_repair_")
+            ):
+                reason_code = str(exc)
             llm_error_type = "ValueError"
+            candidate = None
         except Exception as exc:
             reason_code = "llm_call_failed"
             llm_error_type = type(exc).__name__
+            candidate = None
         finally:
-            if budget_reserved:
-                request_budget.release(reservation)
-            reset_task_id(token)
+            try:
+                if repair_entry is not None:
+                    repair_entry.update(
+                        status=(
+                            "completed"
+                            if candidate is not None and llm_error_type is None
+                            else (
+                                "cancelled"
+                                if llm_error_type == "CancelledError"
+                                else "failed"
+                            )
+                        )
+                    )
+                    save_targeted_repairs(self._targeted_repair_path(), repair_state)
+                    emit_targeted_repair(
+                        self._trace_hook, repair_state, "evidence_rewrite"
+                    )
+            finally:
+                try:
+                    if budget_reserved:
+                        request_budget.release(reservation)
+                finally:
+                    reset_task_id(token)
 
         if candidate is None:
             self._emit(
@@ -2350,40 +3264,51 @@ class LitAgent:
             )
 
         # Validate the candidate before running evaluators again.
-        candidate = decode_citations_traced(
-            candidate,
-            aliases,
-            trace_hook=self._trace_hook,
-            parent_task_id="evidence_rewrite",
-            stage="evidence_rewrite",
-        ).text
-        candidate = normalize_citations_traced(
-            candidate,
-            {item["evidence_id"] for item in rewrite_items if item.get("evidence_id")},
-            trace_hook=self._trace_hook,
-            parent_task_id="evidence_rewrite",
-            stage="evidence_rewrite",
-        ).text
-        try:
-            validate_authored_methodology(
+        if not strict:
+            candidate = decode_citations_traced(
+                candidate,
+                aliases,
+                trace_hook=self._trace_hook,
+                parent_task_id="evidence_rewrite",
+                stage="evidence_rewrite",
+            ).text
+            candidate = normalize_citations_traced(
+                candidate,
+                {
+                    item["evidence_id"]
+                    for item in rewrite_items
+                    if item.get("evidence_id")
+                },
+                trace_hook=self._trace_hook,
+                parent_task_id="evidence_rewrite",
+                stage="evidence_rewrite",
+            ).text
+            try:
+                validate_authored_methodology(
+                    candidate,
+                    report_data.get("metadata", {}).get("review_structure", "legacy"),
+                )
+            except ValueError as exc:
+                self._emit(
+                    "subspan.end",
+                    {
+                        "task_id": "evidence_rewrite",
+                        "output": {"accepted": False, "reason": str(exc)},
+                    },
+                )
+                return RewriteOutcome(
+                    True, False, candidate, None, None, None, str(exc)
+                )
+            candidate = assemble_methodology(
                 candidate,
                 report_data.get("metadata", {}).get("review_structure", "legacy"),
+                report_language,
+                report_data.get("metadata", {}).get("review_methodology", {}),
             )
-        except ValueError as exc:
-            self._emit(
-                "subspan.end",
-                {
-                    "task_id": "evidence_rewrite",
-                    "output": {"accepted": False, "reason": str(exc)},
-                },
-            )
-            return RewriteOutcome(True, False, candidate, None, None, None, str(exc))
-        candidate = assemble_methodology(
-            candidate,
-            report_data.get("metadata", {}).get("review_structure", "legacy"),
-            report_language,
-            report_data.get("metadata", {}).get("review_methodology", {}),
-        )
+            if candidate_bindings:
+                candidate_bindings["report_sha256"] = hashlib.sha256(
+                    candidate.encode()
+                ).hexdigest()
         validation = self._validate_rewrite_candidate(
             original=original_survey,
             candidate=candidate,
@@ -2419,17 +3344,65 @@ class LitAgent:
                 "validation_failed",
             )
 
+        if (report_data.get("metadata", {}).get("writing_bindings") or {}).get(
+            "scope_notice_contract"
+        ):
+            from litagent.quality import validate_repair_content
+
+            local_check = validate_repair_content(
+                original_survey, candidate, repair_targets
+            )
+            if local_check["status"] != "passed":
+                report_data["metadata"]["local_repair_diagnostics"] = local_check
+                self._emit(
+                    "subspan.end",
+                    {
+                        "task_id": "evidence_rewrite",
+                        "output": {
+                            "accepted": False,
+                            "reason": local_check["reason_code"],
+                            "local_diagnostics": local_check,
+                        },
+                    },
+                )
+                return RewriteOutcome(
+                    True,
+                    False,
+                    candidate,
+                    validation,
+                    None,
+                    None,
+                    local_check["reason_code"],
+                )
+            report_data["metadata"].pop("local_repair_diagnostics", None)
+        candidate_results = results
+        if candidate_bindings:
+            candidate_results = {
+                **results,
+                "adversarial_review": {
+                    **results.get("adversarial_review", {}),
+                    "writing_bindings": candidate_bindings,
+                },
+            }
         # Re-evaluate the validated candidate as a separate trace phase.
         candidate_evaluation = await self._evaluate(
             query=query,
             survey=candidate,
-            results=results,
+            results=candidate_results,
             phase="post_rewrite",
             parent_task_id="evidence_rewrite",
         )
         candidate_quality = self._derive_quality(candidate_evaluation)
 
-        if self._passed_metric_regressed(initial_evaluation, candidate_evaluation):
+        if self._passed_metric_regressed(
+            initial_evaluation,
+            candidate_evaluation,
+            **(
+                {"original_survey": original_survey, "candidate_survey": candidate}
+                if strict
+                else {}
+            ),
+        ):
             self._emit(
                 "subspan.end",
                 {
@@ -2471,12 +3444,15 @@ class LitAgent:
                 candidate_evaluation,
                 candidate_quality,
                 "quality_still_failed",
+                candidate_bindings=candidate_bindings or None,
             )
 
         # Commit the survey, evaluation, and quality fields together.
         report_data["survey"] = candidate
         report_data["evaluation"] = candidate_evaluation
         report_data["quality"] = candidate_quality
+        if candidate_bindings:
+            report_data["metadata"]["writing_bindings"] = candidate_bindings
 
         self._emit(
             "subspan.end",
@@ -2498,6 +3474,7 @@ class LitAgent:
             candidate_evaluation,
             candidate_quality,
             "committed",
+            candidate_bindings=candidate_bindings or None,
         )
 
     async def _attempt_human_revision(
@@ -2558,6 +3535,15 @@ class LitAgent:
             report_language=report_language,
             **(
                 {
+                    "quality_policy": metadata["quality_policy"],
+                    "fact_cards": metadata.get("fact_cards", {}),
+                    "coverage_requirements": metadata.get("coverage_requirements"),
+                }
+                if is_strict_policy(metadata.get("quality_policy"))
+                else {}
+            ),
+            **(
+                {
                     "review_structure": report_data.get("metadata", {}).get(
                         "review_structure"
                     ),
@@ -2591,6 +3577,27 @@ class LitAgent:
         token = set_task_id("human_revision")
         try:
             kwargs: dict[str, Any] = {"max_tokens": self._config.eval.max_tokens}
+            if is_strict_policy(metadata.get("quality_policy")):
+                from litagent.quality import (
+                    check_grounded_request_budget,
+                    prepare_grounded_request,
+                )
+
+                messages, response_format = prepare_grounded_request(messages)
+                kwargs.update(response_format=response_format, transport_max_attempts=1)
+                check_grounded_request_budget(
+                    self._llm,
+                    messages,
+                    response_format,
+                    trace_hook=self._trace_hook,
+                    parent_task_id="human_revision",
+                    stage="human_revision",
+                    max_tokens=self._config.eval.max_tokens,
+                    context_tokens=int(
+                        self._config.eval.context_tokens
+                        * (1 - self._config.eval.strict_context_margin)
+                    ),
+                )
             if self._config.eval.thinking_mode != "provider_default":
                 kwargs["extra_body"] = {
                     "thinking": {"type": self._config.eval.thinking_mode}
@@ -2598,6 +3605,27 @@ class LitAgent:
             async with asyncio.timeout(self._config.eval.timeout_seconds):
                 response = await self._llm.chat(messages, **kwargs)
             candidate = (response.content or "").strip()
+            if is_strict_policy(metadata.get("quality_policy")):
+                from litagent.quality import render_grounded_report_traced
+
+                candidate_bindings = {}
+                candidate = render_grounded_report_traced(
+                    candidate,
+                    metadata.get("fact_cards", {}),
+                    metadata.get("review_structure", "academic_v2"),
+                    report_language,
+                    evidence_selection=selection,
+                    require_native=True,
+                    require_source_quotes=True,
+                    require_full_sources=metadata.get("quality_policy")
+                    == "strict_auto_v2",
+                    analysis_mode=metadata.get("body_quality") == "analysis_v1",
+                    require_scope_notices=metadata.get("quality_policy")
+                    == "strict_auto_v2",
+                    bindings=candidate_bindings,
+                    trace_hook=self._trace_hook,
+                    parent_task_id="human_revision",
+                )
         except asyncio.CancelledError:
             finish_revision(
                 {"committed": False, "reason_code": "human_revision_cancelled"}
@@ -2659,21 +3687,46 @@ class LitAgent:
                 }
             )
 
-        review = await self._reviewer.review_revision(
-            candidate,
-            {},
-            selection,
-            query=query,
-            report_language=report_language,
-            **(
+        review_token = set_task_id("human_revision")
+        try:
+            review = await self._reviewer.review_revision(
+                candidate,
+                {},
+                selection,
+                query=query,
+                report_language=report_language,
+                **(
+                    {
+                        "quality_policy": metadata["quality_policy"],
+                        "coverage_requirements": metadata.get("coverage_requirements"),
+                    }
+                    if is_strict_policy(metadata.get("quality_policy"))
+                    else {}
+                ),
+                **(
+                    {
+                        "review_structure": metadata.get("review_structure", "legacy"),
+                        "review_methodology": metadata.get("review_methodology"),
+                    }
+                    if metadata.get("review_structure", "legacy") != "legacy"
+                    else {}
+                ),
+            )
+        except asyncio.CancelledError:
+            finish_revision(
+                {"committed": False, "reason_code": "human_revision_cancelled"}
+            )
+            raise
+        except Exception as exc:
+            return report_data, finish_revision(
                 {
-                    "review_structure": metadata.get("review_structure", "legacy"),
-                    "review_methodology": metadata.get("review_methodology"),
+                    "committed": False,
+                    "reason_code": "human_revision_review_failed",
+                    "error_type": type(exc).__name__,
                 }
-                if metadata.get("review_structure", "legacy") != "legacy"
-                else {}
-            ),
-        )
+            )
+        finally:
+            reset_task_id(review_token)
         if not self._adversarial._review_passes(review):
             return report_data, finish_revision(
                 {
@@ -2705,6 +3758,12 @@ class LitAgent:
         updated["survey"] = candidate
         updated["evaluation"] = evaluation
         updated["quality"] = quality
+        if metadata.get("quality_policy") == "strict_auto_v2":
+            updated["metadata"] = dict(updated.get("metadata", {}))
+            candidate_bindings["report_sha256"] = hashlib.sha256(
+                candidate.encode()
+            ).hexdigest()
+            updated["metadata"]["writing_bindings"] = candidate_bindings
         updated["delivery"] = derive_delivery(
             bool(updated.get("partial")),
             quality,
@@ -2734,7 +3793,10 @@ class LitAgent:
                 failed.append(metric)
 
         details = evaluation.get("faithfulness", {}).get("details", {})
-        if details.get("evaluation_version") == "survey-evaluation-v2":
+        if details.get("evaluation_version") in {
+            "survey-evaluation-v2",
+            "survey-evaluation-v3",
+        }:
             for name in ("structure_checks", "method_checks"):
                 check = details.get(name, {})
                 if check.get("status") == "failed":
@@ -2754,6 +3816,17 @@ class LitAgent:
             ):
                 if details.get(name):
                     failed.append(name)
+            if details.get("evaluation_version") == "survey-evaluation-v3":
+                from litagent.quality import strict_acceptance
+
+                check = strict_acceptance(details)
+                details["strict_acceptance"] = check
+                if check["status"] != "passed":
+                    (
+                        unverified
+                        if evaluation.get("faithfulness", {}).get("skipped")
+                        else failed
+                    ).append("strict_acceptance")
         if failed:
             return {
                 "status": "failed",

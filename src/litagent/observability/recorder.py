@@ -60,13 +60,18 @@ class RedactingTraceHook:
 
     _ALLOWED_FIELDS = {
         "operation_id",
+        "session_id",
         "task_id",
         "agent_type",
         "model",
         "elapsed_ms",
         "usage",
-        "error",
+        "usage_available",
         "status",
+        "quality_status",
+        "delivery_status",
+        "accepted",
+        "rounds",
         "attempt",
         "max_attempts",
         "backoff_ms",
@@ -87,6 +92,22 @@ class RedactingTraceHook:
         "layer",
         "source",
         "count",
+        "identity",
+        "input_sha256",
+        "phase",
+        "budget",
+        "batch_states",
+        "processed_assertions",
+        "quality_policy",
+        "finish_reason",
+        "max_tokens",
+        "candidate_sha256",
+        "contract_version",
+        "diagnostic_count",
+        "run_id",
+        "binding",
+        "accepted_count",
+        "rejected_count",
     }
 
     def __init__(self, sink: Any, payload_mode: str = "full_redacted") -> None:
@@ -102,6 +123,13 @@ class RedactingTraceHook:
                 for key, value in data.items()
                 if key in self._ALLOWED_FIELDS
             }
+            if data.get("error"):
+                # Preserve failure state without sending provider/source error text.
+                payload["error"] = (
+                    payload.get("reason_code")
+                    or payload.get("error_type")
+                    or "operation_failed"
+                )
         else:
             payload = _redact_trace_value(data)
         self._sink(event, payload)
@@ -235,6 +263,13 @@ class RunRecorder:
     def set_citation_style(self, style: str) -> None:
         """Save the initial display preference without changing report content."""
         self._artifact["citation_style"] = style
+
+    def set_extraction_verification(self, receipt: dict, pipeline: dict) -> None:
+        """Keep paid pre-writing diagnostics even when no report was generated."""
+        if receipt.get("source_run_id") != self._artifact["run_id"]:
+            raise ArtifactContractError("extraction_run_binding_invalid")
+        self._artifact["extraction_verification"] = _snapshot(receipt)
+        self._artifact["pipeline_verification"] = _snapshot(pipeline)
 
     def set_config_summary(self, summary: dict[str, Any]) -> None:
         """Store one canonical config summary and expose its fingerprint."""
@@ -384,6 +419,19 @@ class RunRecorder:
 
     def _apply_event(self, event: str, data: dict[str, Any], at: str) -> None:
         """Apply one event to the in-memory run artifact."""
+        if event == "targeted_repair.state":
+            self._artifact["targeted_repair_state"] = _snapshot(data["state"])
+            node = self._artifact["nodes"].get(f"worker:{data.get('task_id', '')}")
+            if node is not None:
+                node["metadata"]["targeted_repair_state"] = _snapshot(data["state"])
+            return
+        if event == "writing.validation.failed":
+            node = self._artifact["nodes"].get(f"worker:{data.get('task_id', '')}")
+            if node is not None:
+                node["metadata"].setdefault("writing_validation_failures", []).append(
+                    data
+                )
+            return
         node_key, lifecycle = _node_identity(event, data)
         if node_key is None:
             return

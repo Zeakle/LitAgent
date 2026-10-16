@@ -8,10 +8,12 @@ from abc import ABC, abstractmethod
 from typing import Any, Mapping
 
 from litagent.context.templates import wrap_xml
-from litagent.llm.client import BaseLLMClient
+from litagent.llm.client import BaseLLMClient, LLMResponse
 from litagent.logging import get_logger
+from litagent.safety.budget import STRICT_EXTRACTION_OUTPUT_TOKENS
 from litagent.skills.manager import SkillManager
 from litagent.tools.executor import ToolExecutor
+from litagent.workbench import is_strict_policy
 
 logger = get_logger("agents.extraction_strategy")
 
@@ -28,18 +30,67 @@ def build_extraction_context(
 
     raw_chunks = paper.get("chunks") if isinstance(paper, Mapping) else None
     chunks = [chunk for chunk in (raw_chunks or []) if isinstance(chunk, Mapping)]
+    strict = is_strict_policy(paper.get("quality_policy"))
+
+    def priority(chunk):
+        """Prefer recorded scientific sections without assigning semantic trust."""
+        section = str(chunk.get("section") or "unknown").casefold()
+        if section == "abstract" or chunk.get("content_scope") == "abstract":
+            return 0
+        if section in {
+            "introduction",
+            "background",
+            "method",
+            "methods",
+            "methodology",
+            "results",
+            "experiments",
+            "discussion",
+            "conclusion",
+            "conclusions",
+        }:
+            return 1
+        return 2 if len(str(chunk.get("text") or "")) >= 160 else 3
+
+    if strict:
+        chunks = [
+            chunk
+            for chunk in chunks
+            if str(chunk.get("section") or "").casefold()
+            not in {
+                "title",
+                "authors",
+                "author",
+                "affiliation",
+                "affiliations",
+                "references",
+                "bibliography",
+                "acknowledgments",
+                "acknowledgements",
+            }
+        ]
     ranked = sorted(
         enumerate(chunks),
         key=lambda pair: (
-            0 if pair[1].get("content_scope") == "selected_fulltext" else 1,
+            (
+                priority(pair[1])
+                if strict
+                else (0 if pair[1].get("content_scope") == "selected_fulltext" else 1)
+            ),
             pair[0],
         ),
     )
-    selected = [chunk for _, chunk in ranked[:max_chunks] if chunk.get("text")]
+    selected = [
+        chunk
+        for _, chunk in (ranked if strict else ranked[:max_chunks])
+        if chunk.get("text")
+    ]
     title = str(paper.get("title") or "")[:500]
     lines = [f"Title: {title}"[:max_chars]]
     keys: list[str] = []
     for chunk in selected:
+        if len(keys) >= max_chunks:
+            break
         key = str(chunk.get("chunk_key") or "")
         if not key:
             continue
@@ -49,8 +100,15 @@ def build_extraction_context(
         used = len("\n\n".join(lines))
         available = max_chars - used - 2 - len(prefix)
         if available <= 0:
+            if strict:
+                continue
             break
-        text = str(chunk["text"])[: min(2_800, available)]
+        text = str(chunk["text"])
+        if strict:
+            if len(text) > available:
+                continue
+        else:
+            text = text[: min(2_800, available)]
         lines.append(f"{prefix}{text}")
         keys.append(key)
 
@@ -62,6 +120,18 @@ def build_extraction_context(
             lines.append(f"{prefix}{str(paper['abstract'])[: min(2_800, available)]}")
 
     return "\n\n".join(lines), keys
+
+
+def _decode_source_chunk_key(value: Any, selected_keys: list[str]) -> str:
+    """Resolve only an unambiguous, exact host ID or its display wrapper."""
+    if not isinstance(value, str):
+        raise ValueError("source_key_type")
+    matches = {
+        key for key in selected_keys if value in (key, f"CHUNK:{key}", f"[CHUNK:{key}]")
+    }
+    if len(matches) != 1:
+        raise ValueError("source_key_ambiguous" if matches else "source_key_unknown")
+    return matches.pop()
 
 
 def _normalize_claim_records(
@@ -96,6 +166,24 @@ def _normalize_claim_records(
                 "confidence": confidence,
             }
         )
+        fields = item.get("fact_fields")
+        if isinstance(fields, Mapping):
+            records[-1]["fact_fields"] = {
+                key: value.strip()
+                for key, value in fields.items()
+                if key
+                in {
+                    "method",
+                    "conditions",
+                    "dataset",
+                    "metric",
+                    "value",
+                    "unit",
+                    "qualifiers",
+                }
+                and isinstance(value, str)
+                and value.strip()
+            }
     return records
 
 
@@ -182,6 +270,48 @@ You may add domain-specific fields from the chosen skill \
 (e.g. model_architecture, backbone, training_strategy).
 Do not create a claim when no supplied chunk directly supports it."""
 
+_FACT_FIELD_INSTRUCTION = """\nFor strict fact-card-v1 also include fact_fields per
+claim_record: method, conditions, dataset, metric, value, unit, qualifiers.
+Copy each populated field verbatim from its actual source chunk. Missing or ambiguous
+fields are null. EVERY fact_fields value must be a single string or null, never an
+array, number, boolean or object. When a finding spans several methods or datasets,
+copy one continuous source phrase into the field or leave it null; do not build a
+list of inferred names. For example: {"method": "Prototypical Networks",
+"conditions": null, "dataset": "miniImageNet", "metric": null, "value": null,
+"unit": null, "qualifiers": null}.
+Do not guess aliases, settings, causality or paper identity. These
+are unverified semantic extractions, not scientific judgments."""
+
+
+def _parse_extraction_response(
+    response: LLMResponse, *, max_tokens: int, strict: bool
+) -> dict:
+    """Reject incomplete structured responses without salvaging partial evidence."""
+    reason = response.finish_reason
+    if strict and reason == "length":
+        raise ValueError("strict_extraction_output_truncated")
+    if strict and reason not in {None, "stop"}:
+        raise ValueError("strict_extraction_output_incomplete")
+    completion = response.usage.get("completion_tokens")
+    at_limit = type(completion) is int and completion >= max_tokens
+    try:
+        data = json.loads(response.content)
+    except json.JSONDecodeError as exc:
+        if not strict:
+            raise
+        # Historical responses lack a provider reason. Label inference explicitly.
+        code = (
+            "strict_extraction_output_truncated_inferred"
+            if reason is None and at_limit
+            else "strict_extraction_json_invalid"
+        )
+        raise ValueError(code) from exc
+    if strict and reason is None and at_limit:
+        raise ValueError("strict_extraction_completion_unverified")
+    if not isinstance(data, dict):
+        raise ValueError("LLM extraction output must be a JSON object")
+    return data
+
 
 class LLMStrategy(ExtractionStrategy):
     """Extract structured paper fields with an LLM and skill metadata."""
@@ -207,33 +337,131 @@ class LLMStrategy(ExtractionStrategy):
     async def extract(self, paper: dict) -> dict:
         """Return normalized structured fields from an LLM JSON response."""
         context, selected_keys = build_extraction_context(paper)
+        automatic = paper.get("quality_policy") in {"strict_auto_v1", "strict_auto_v2"}
+        strict = is_strict_policy(paper.get("quality_policy"))
+        required = _REQUIRED_KEYS_INSTRUCTION
+        if automatic:
+            required = required.replace(
+                "source_chunk_key MUST exactly match a supplied CHUNK marker.",
+                "source_chunk_key MUST be one of the bare host IDs listed below."
+                " The display marker [CHUNK:ID] is a wrapper; copy ID only,"
+                " without CHUNK: or brackets. If no IDs are supplied, return"
+                " an empty claim_records list.",
+            )
+            required += "\nAllowed source_chunk_key IDs: " + json.dumps(
+                selected_keys, ensure_ascii=False
+            )
+            if selected_keys:
+                required += "\nExample source_chunk_key: " + json.dumps(
+                    selected_keys[0], ensure_ascii=False
+                )
         system = (
             "You are an academic paper extractor.\n"
             f"""{self._skill_manager.to_metadata_text_for(
                 'extracting structured fields from a paper',
                 top_k=2,
             )}\n\n"""
-            f"{_REQUIRED_KEYS_INSTRUCTION}"
+            f"{required}" + (_FACT_FIELD_INSTRUCTION if strict else "")
         )
 
         kwargs: dict[str, Any] = {
             "response_format": {"type": "json_object"},
-            "max_tokens": self._max_tokens,
+            "max_tokens": (
+                STRICT_EXTRACTION_OUTPUT_TOKENS if strict else self._max_tokens
+            ),
         }
         if self._thinking_mode != "provider_default":
             kwargs["extra_body"] = {"thinking": {"type": self._thinking_mode}}
 
-        resp = await self._llm.chat(
-            [
-                {"role": "system", "content": system},
-                {"role": "user", "content": wrap_xml("paper", context)},
-            ],
-            **kwargs,
-        )
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": wrap_xml("paper", context)},
+        ]
+        if strict:
+            from litagent.eval.scoped import check_request_budget
 
-        data = json.loads(resp.content)
-        if not isinstance(data, dict):
-            raise ValueError("LLM extraction output must be a JSON object")
+            check_request_budget(
+                self._llm, messages, kwargs["max_tokens"], int(131072 * 0.9)
+            )
+            kwargs["transport_max_attempts"] = 1
+        resp = await self._llm.chat(messages, **kwargs)
+
+        data = _parse_extraction_response(
+            resp, max_tokens=kwargs["max_tokens"], strict=strict
+        )
+        if automatic:
+            if (
+                not isinstance(data.get("claim_records"), list)
+                or not isinstance(data.get("metrics"), dict)
+                or any(
+                    not isinstance(data.get(key), list)
+                    or any(not isinstance(value, str) for value in data[key])
+                    for key in ("methods", "datasets")
+                )
+            ):
+                raise ValueError("extraction_contract_invalid")
+            seen = set()
+            normalizations = []
+            for index, record in enumerate(data["claim_records"]):
+                if (
+                    not isinstance(record, dict)
+                    or not isinstance(record.get("text"), str)
+                    or not record["text"].strip()
+                    or (
+                        record.get("confidence") is not None
+                        and (
+                            type(record["confidence"]) not in (int, float)
+                            or not 0 <= record["confidence"] <= 1
+                        )
+                    )
+                ):
+                    raise ValueError("extraction_contract_invalid")
+                raw_key = record.get("source_chunk_key")
+                try:
+                    key = _decode_source_chunk_key(raw_key, selected_keys)
+                except ValueError as exc:
+                    raise ValueError(
+                        f"extraction_contract_invalid:{exc}:record:{index}"
+                    ) from exc
+                if key != raw_key:
+                    normalizations.append(
+                        {
+                            "record_index": index,
+                            "raw_source_chunk_key": raw_key,
+                            "source_chunk_key": key,
+                        }
+                    )
+                # Canonicalize before duplicate checking and evidence construction;
+                # display aliases must not create a second source or fact card.
+                record["source_chunk_key"] = key
+                identity = (record["source_chunk_key"], record["text"].strip())
+                fields = record.get("fact_fields")
+                if identity in seen:
+                    raise ValueError("extraction_contract_invalid:duplicate_record")
+                if fields is not None:
+                    if not isinstance(fields, dict):
+                        raise ValueError("extraction_contract_invalid:fact_fields_type")
+                    for key, value in fields.items():
+                        if value is not None and not isinstance(value, str):
+                            field = (
+                                key
+                                if key
+                                in {
+                                    "method",
+                                    "conditions",
+                                    "dataset",
+                                    "metric",
+                                    "value",
+                                    "unit",
+                                    "qualifiers",
+                                }
+                                else "unknown"
+                            )
+                            raise ValueError(
+                                f"extraction_contract_invalid:fact_field_type:{field}"
+                            )
+                seen.add(identity)
+            data["source_key_normalizations"] = normalizations
         claim_records = _normalize_claim_records(
             data.get("claim_records"),
             allowed_chunk_keys=set(selected_keys),
@@ -266,6 +494,12 @@ class ResilientExtractionStrategy(ExtractionStrategy):
     async def extract(self, paper: dict) -> dict:
         """Extract one paper and degrade to rules on timeout or LLM failure."""
         paper_id = paper.get("paper_id", "?")
+        if paper.get("quality_policy") in {"strict_auto_v1", "strict_auto_v2"}:
+            # The client owns a 180s bounded transport. Do not cancel a valid
+            # in-flight request earlier merely to substitute a regex result.
+            result = await asyncio.wait_for(self._llm.extract(paper), timeout=185)
+            result["extraction_mode"] = "llm"
+            return result
         try:
             result = await asyncio.wait_for(
                 self._llm.extract(paper), timeout=self._timeout_seconds

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import html
 import json
 from collections.abc import Callable, Mapping
@@ -47,7 +48,12 @@ from litagent.review_structure import (
 )
 from litagent.skills.manager import SkillManager
 from litagent.tools.worker_tools import make_load_skill_tool
-from litagent.workbench import ReportLanguage, language_instruction
+from litagent.workbench import (
+    ReportLanguage,
+    is_strict_policy,
+    language_instruction,
+    verification_enabled,
+)
 
 logger = get_logger("agents.synthesis")
 
@@ -196,6 +202,10 @@ class SynthesisWorker(Worker):
         evidence_selector: EvidenceSelector | None = None,
         context_config: ContextConfig | None = None,
         trace_hook: Callable[[str, dict], None] | None = None,
+        thinking_mode: str = "provider_default",
+        extraction_verifier=None,
+        run_id_provider=None,
+        repair_state_path_provider=None,
     ):
         """Initialize the synthesis worker."""
         self._methodology_provider = methodology_provider
@@ -210,6 +220,12 @@ class SynthesisWorker(Worker):
         self._agent_config = agent_config or AgentConfig()
         self._evidence_selector = evidence_selector
         self._trace_hook = trace_hook
+        self._extraction_verifier = extraction_verifier
+        self._run_id_provider = run_id_provider
+        self._repair_state_path_provider = repair_state_path_provider
+        if thinking_mode not in {"provider_default", "enabled", "disabled"}:
+            raise ValueError("unsupported thinking_mode")
+        self._thinking_mode = thinking_mode
 
         self._tools: list = []
         if skill_manager:
@@ -222,6 +238,25 @@ class SynthesisWorker(Worker):
 
     async def execute(self, task: SubTask) -> Any:
         """Select evidence and generate a scoped survey draft."""
+        repair_state = None
+        if (
+            task.input_data.get("quality_policy") == "strict_auto_v2"
+            and self._run_id_provider
+        ):
+            from litagent.quality import load_targeted_repairs, targeted_repair_state
+
+            run_id = self._run_id_provider()
+            repair_state = targeted_repair_state(
+                task.input_data.get("targeted_repair_state"), run_id
+            )
+            if self._repair_state_path_provider:
+                persisted = load_targeted_repairs(
+                    self._repair_state_path_provider(), run_id
+                )
+                if persisted["attempts"]:
+                    raise ValueError("strict_targeted_repair_restart_no_replay")
+            if repair_state["attempts"]:
+                raise ValueError("strict_targeted_repair_restart_no_replay")
         upstream = task.input_data.get("upstream_results", {})
         extractions = self._get_extractions(upstream)
         graph_data = self._get_graph_data(upstream)
@@ -245,6 +280,11 @@ class SynthesisWorker(Worker):
                     query,
                     ledger,
                     max_tokens=self._context_config.synthesis_evidence_max_tokens,
+                    **(
+                        {"reuse_selected": True}
+                        if is_strict_policy(task.input_data.get("quality_policy"))
+                        else {}
+                    ),
                 )
             except asyncio.CancelledError:
                 raise
@@ -283,6 +323,18 @@ class SynthesisWorker(Worker):
             )
             degradation_reasons.append("evidence_selector_unavailable")
 
+        extraction_verification = None
+        if task.input_data.get(
+            "quality_policy"
+        ) == "strict_auto_v2" and verification_enabled(task.input_data, "jev"):
+            if self._extraction_verifier is None or self._run_id_provider is None:
+                raise ValueError("extraction_verifier_unavailable")
+            selection, extraction_verification = await self._extraction_verifier.verify(
+                selection, run_id=self._run_id_provider()
+            )
+            if not selection.selected_items:
+                raise ValueError("extraction_no_supported_candidates")
+
         review_methodology = dict(review_methodology or {})
         review_methodology["evidence_counts"] = {
             "candidate": selection.candidate_count,
@@ -302,6 +354,165 @@ class SynthesisWorker(Worker):
             selection.method_by_section["abstract"] = "selected_union"
             selection.method_by_section["conclusion"] = "selected_union"
         aliases = build_citation_aliases(list(selection.selected_items))
+        if is_strict_policy(task.input_data.get("quality_policy")):
+            from litagent.quality import (
+                GroundedWritingError,
+                build_fact_cards,
+                check_grounded_request_budget,
+                coverage_matrix,
+                coverage_requirements,
+                digest,
+                grounded_messages,
+                prepare_grounded_request,
+                render_grounded_report_traced,
+            )
+
+            cards = build_fact_cards(selection.selected_items)
+            if not cards:
+                raise ValueError("strict_fact_cards_unavailable")
+            acquisitions = {
+                p["paper_id"]: p["fulltext_acquisition"]
+                for p in extractions
+                if p.get("fulltext_acquisition")
+            }
+            review_methodology["fulltext_acquisition"] = acquisitions
+            if acquisitions:
+                has_fulltext = any(
+                    card.get("content_scope") == "selected_fulltext"
+                    for card in cards.values()
+                )
+                review_methodology["content_mode"] = (
+                    "abstract_and_selected_fulltext"
+                    if has_fulltext
+                    else "abstract_only"
+                )
+                review_methodology["full_text_review"] = (
+                    "selected blocks only; complete document review not performed"
+                    if has_fulltext
+                    else "not performed; no selected fulltext evidence available"
+                )
+            requirements = task.input_data.get(
+                "coverage_requirements"
+            ) or coverage_requirements(
+                query, task.input_data.get("requested_methods", [])
+            )
+            messages = grounded_messages(
+                cards,
+                review_structure,
+                report_language,
+                query,
+                coverage=requirements,
+                evidence_selection=selection,
+                use_full_sources=task.input_data.get("quality_policy")
+                == "strict_auto_v2",
+                analysis_mode=task.input_data.get("body_quality") == "analysis_v1",
+                use_scope_notices=task.input_data.get("quality_policy")
+                == "strict_auto_v2",
+            )
+            messages, response_format = prepare_grounded_request(messages)
+            check_grounded_request_budget(
+                self._llm,
+                messages,
+                response_format,
+                trace_hook=self._trace_hook,
+                parent_task_id=task.task_id,
+                stage="synthesis",
+            )
+            generation_options = {}
+            if self._thinking_mode != "provider_default":
+                generation_options["extra_body"] = {
+                    "thinking": {"type": self._thinking_mode}
+                }
+            response = await asyncio.wait_for(
+                self._llm.chat(
+                    messages,
+                    max_tokens=20000,
+                    response_format=response_format,
+                    transport_max_attempts=1,
+                    **generation_options,
+                ),
+                180,
+            )
+            writing_bindings = {}
+            try:
+                draft = render_grounded_report_traced(
+                    response.content,
+                    cards,
+                    review_structure,
+                    report_language,
+                    evidence_selection=selection,
+                    trace_hook=self._trace_hook,
+                    parent_task_id=task.task_id,
+                    stage="initial",
+                    require_native=True,
+                    require_source_quotes=True,
+                    require_full_sources=task.input_data.get("quality_policy")
+                    == "strict_auto_v2",
+                    analysis_mode=task.input_data.get("body_quality") == "analysis_v1",
+                    require_scope_notices=task.input_data.get("quality_policy")
+                    == "strict_auto_v2",
+                    bindings=writing_bindings,
+                )
+            except GroundedWritingError as failure:
+                if repair_state is None or not self._repair_state_path_provider:
+                    raise
+                draft, writing_bindings = await self._repair_native_initial(
+                    task,
+                    messages,
+                    response.content,
+                    failure,
+                    cards,
+                    selection,
+                    review_structure,
+                    report_language,
+                    repair_state,
+                    generation_options,
+                )
+            draft = assemble_methodology(
+                draft, review_structure, report_language, review_methodology
+            )
+
+            writing_bindings["report_sha256"] = hashlib.sha256(
+                draft.encode()
+            ).hexdigest()
+            return {
+                "draft": draft,
+                "evidence_selection": selection.to_dict(),
+                "review_structure": review_structure,
+                "review_methodology": review_methodology,
+                "quality_policy": task.input_data["quality_policy"],
+                **(
+                    {
+                        "body_quality": "analysis_v1",
+                        "analysis_plan": json.loads(messages[1]["content"])[
+                            "analysis_plan"
+                        ],
+                    }
+                    if task.input_data.get("body_quality") == "analysis_v1"
+                    else {}
+                ),
+                "fact_cards": cards,
+                "writing_bindings": writing_bindings,
+                **(
+                    {"targeted_repair_state": repair_state}
+                    if repair_state is not None
+                    else {}
+                ),
+                "extraction_verification": extraction_verification,
+                **(
+                    {"verification": task.input_data["verification"]}
+                    if task.input_data.get("verification") is not None
+                    else {}
+                ),
+                "evidence_snapshot_sha256": digest(cards),
+                "coverage_requirements": requirements,
+                "coverage_matrix": coverage_matrix(
+                    requirements,
+                    cards,
+                    task.input_data.get("methodology_results", upstream),
+                ),
+                "degradation_reasons": degradation_reasons,
+            }
         user_msg, used = await self._build_synthesis_context(
             query=query,
             aliases=aliases,
@@ -541,6 +752,127 @@ class SynthesisWorker(Worker):
         reasons.append(fallback_reason)
         return (compact or "").strip(), list(dict.fromkeys(reasons))
 
+    async def _repair_native_initial(
+        self,
+        task,
+        messages,
+        candidate,
+        failure,
+        cards,
+        selection,
+        structure,
+        language,
+        state,
+        generation_options,
+    ):
+        """Attempt one located repair before review, preserving the complete failed candidate."""
+        from litagent.quality import (
+            apply_native_repairs,
+            begin_targeted_repair,
+            check_grounded_request_budget,
+            digest,
+            emit_targeted_repair,
+            prepare_native_repair_request,
+            render_grounded_report_traced,
+            save_targeted_repairs,
+        )
+
+        try:
+            prepared, schema, binding = prepare_native_repair_request(
+                messages,
+                candidate,
+                failure.diagnostics,
+                cards=cards,
+                structure=structure,
+                language=language,
+                evidence_selection=selection,
+            )
+        except ValueError as exc:
+            if str(exc) == "strict_native_repair_not_eligible":
+                raise failure
+            raise
+        check_grounded_request_budget(
+            self._llm,
+            prepared,
+            schema,
+            trace_hook=self._trace_hook,
+            parent_task_id=task.task_id,
+            stage="native_initial_repair",
+        )
+        entry = begin_targeted_repair(
+            state, "native_initial", digest([prepared, schema])
+        )
+        task.input_data["targeted_repair_state"] = state
+        path = self._repair_state_path_provider()
+        save_targeted_repairs(
+            path,
+            state,
+            native_candidate=candidate,
+            native_binding=binding,
+            native_diagnostics=failure.diagnostics,
+        )
+        emit_targeted_repair(self._trace_hook, state, task.task_id)
+        try:
+            response = await asyncio.wait_for(
+                self._llm.chat(
+                    prepared,
+                    max_tokens=20000,
+                    response_format=schema,
+                    transport_max_attempts=1,
+                    **generation_options,
+                ),
+                180,
+            )
+            entry.update(
+                usage=dict(response.usage),
+                response_sha256=hashlib.sha256(response.content.encode()).hexdigest(),
+            )
+            save_targeted_repairs(path, state, native_response=response.content)
+            if not response.usage.get("usage_available", bool(response.usage)):
+                raise ValueError("strict_native_repair_usage_incomplete")
+            repaired, proof = apply_native_repairs(
+                candidate, response.content, binding, cards=cards
+            )
+            locations = {}
+            draft = render_grounded_report_traced(
+                repaired,
+                cards,
+                structure,
+                language,
+                evidence_selection=selection,
+                trace_hook=self._trace_hook,
+                parent_task_id=task.task_id,
+                stage="native_initial_repair",
+                analysis_mode=task.input_data.get("body_quality") == "analysis_v1",
+                require_native=True,
+                require_full_sources=True,
+                require_scope_notices=json.loads(messages[1]["content"]).get(
+                    "scope_notice_contract"
+                )
+                is not None,
+                bindings=locations,
+            )
+            entry.update(
+                status="completed",
+                repair_proof=proof,
+                repaired_candidate_sha256=hashlib.sha256(repaired.encode()).hexdigest(),
+            )
+            save_targeted_repairs(path, state, repaired_native_candidate=repaired)
+            return draft, locations
+        except BaseException as exc:
+            entry.update(
+                status=(
+                    "cancelled" if isinstance(exc, asyncio.CancelledError) else "failed"
+                ),
+                error_code=(
+                    str(exc) if isinstance(exc, ValueError) else type(exc).__name__
+                ),
+            )
+            raise
+        finally:
+            save_targeted_repairs(path, state)
+            emit_targeted_repair(self._trace_hook, state, task.task_id)
+
     def revise(
         self,
         draft: str,
@@ -551,11 +883,31 @@ class SynthesisWorker(Worker):
         report_language: ReportLanguage = "en",
         review_structure: str = "legacy",
         review_methodology: Mapping | None = None,
+        quality_policy: str = "legacy",
+        body_quality: str = "legacy",
+        fact_cards: Mapping | None = None,
+        coverage_requirements: list | None = None,
     ) -> list[dict[str, str]]:
         """Build revision messages against the original evidence selection."""
         draft = prepare_authored_body(
             draft, review_structure, report_language, review_methodology
         )
+        if is_strict_policy(quality_policy):
+            from litagent.quality import grounded_messages
+
+            return grounded_messages(
+                fact_cards or {},
+                review_structure,
+                report_language,
+                query,
+                draft=draft,
+                feedback=review_comments,
+                coverage=coverage_requirements,
+                evidence_selection=evidence_selection,
+                use_full_sources=quality_policy == "strict_auto_v2",
+                analysis_mode=body_quality == "analysis_v1",
+                use_scope_notices=quality_policy == "strict_auto_v2",
+            )
         if isinstance(evidence_selection, Mapping) and not isinstance(
             evidence_selection, EvidenceSelection
         ):
@@ -616,11 +968,32 @@ class SynthesisWorker(Worker):
         report_language: ReportLanguage = "en",
         review_structure: str = "legacy",
         review_methodology: Mapping | None = None,
+        quality_policy: str = "legacy",
+        body_quality: str = "legacy",
+        fact_cards: Mapping | None = None,
+        coverage_requirements: list | None = None,
+        evidence_selection: Mapping | None = None,
     ) -> list[dict]:
         """Build messages that rewrite unsupported claims against a ledger."""
         draft = prepare_authored_body(
             draft, review_structure, report_language, review_methodology
         )
+        if is_strict_policy(quality_policy):
+            from litagent.quality import grounded_messages
+
+            return grounded_messages(
+                fact_cards or {},
+                review_structure,
+                report_language,
+                query,
+                draft=draft,
+                feedback=diagnostics_text,
+                coverage=coverage_requirements,
+                evidence_selection=evidence_selection,
+                use_full_sources=quality_policy == "strict_auto_v2",
+                analysis_mode=body_quality == "analysis_v1",
+                use_scope_notices=quality_policy == "strict_auto_v2",
+            )
         system = build_system_prompt(
             role=SYNTHESIS_ROLE,
             instructions=(

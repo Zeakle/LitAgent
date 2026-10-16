@@ -143,6 +143,10 @@ eval:
   timeout_seconds: 180.0
   faithfulness_max_evidence_items: 120
   faithfulness_max_context_chars: 80000
+  strict_batch_size: 16
+  strict_max_batches: 8
+  strict_max_claims: 128
+  strict_context_margin: 0.1
   rewrite:
     max_items: 30
     max_chars: 15000

@@ -7,7 +7,9 @@ import hashlib
 import os
 import re
 from collections.abc import Collection
+from contextlib import AsyncExitStack, asynccontextmanager
 from pathlib import Path
+from urllib.parse import urljoin, urlsplit
 
 import httpx
 
@@ -144,6 +146,35 @@ class ArxivPDFAdapter:
                 "arxiv PDF response has an invalid content type",
             )
 
+    @asynccontextmanager
+    async def _allowlisted_stream(self, url):
+        """Validate every redirect before contacting the next destination."""
+        identity = re.sub(r"v\d+$", "", urlsplit(url).path.removesuffix(".pdf"))
+        async with AsyncExitStack() as stack:
+            for _ in range(5):
+                validate_arxiv_pdf_url(url)
+                current = re.sub(r"v\d+$", "", urlsplit(url).path.removesuffix(".pdf"))
+                if current != identity:
+                    raise ManifestValidationError(
+                        "source_identity_mismatch", "redirect changed the arXiv paper"
+                    )
+                response = await stack.enter_async_context(
+                    self._client.stream(
+                        "GET", url, timeout=self._timeout, follow_redirects=False
+                    )
+                )
+                if not response.is_redirect:
+                    yield response
+                    return
+                location = response.headers.get("location")
+                if not location:
+                    response.raise_for_status()
+                url = validate_arxiv_pdf_url(urljoin(url, location or ""))
+                await response.aclose()
+            raise ManifestValidationError(
+                "source_redirect_limit", "too many arxiv PDF redirects"
+            )
+
     def _declared_content_length(self, response: httpx.Response) -> int | None:
         """Parse a single consistent decimal Content-Length value."""
         raw_value = response.headers.get("content-length")
@@ -217,12 +248,7 @@ class ArxivPDFAdapter:
         total = 0
         prefix = b""
         try:
-            async with self._client.stream(
-                "GET",
-                url,
-                follow_redirects=True,
-                timeout=self._timeout,
-            ) as response:
+            async with self._allowlisted_stream(url) as response:
                 response.raise_for_status()
                 validate_arxiv_pdf_url(str(response.url))
                 self._validate_content_type(response)

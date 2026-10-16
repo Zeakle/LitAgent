@@ -376,6 +376,12 @@ class InteractiveRunService:
             projection["candidates"] = candidates
         else:
             projection["report"] = checkpoint.report_data
+            if checkpoint.options.quality_policy == "strict_v1" and not (
+                checkpoint.report_data or {}
+            ).get("metadata", {}).get("automatic_delivery", {}).get("publishable"):
+                projection["allowed_actions"] = [
+                    a for a in projection["allowed_actions"] if a != "approve"
+                ]
         return projection
 
     async def export(
@@ -484,10 +490,12 @@ class InteractiveRunService:
 
     async def _trace_hook(self, run_id: str, query: str):
         local = self._repository.event_hook(run_id)
+        row = await self._repository.get_run(run_id)
+        policy = RunOptions.model_validate_json(row["options_json"]).quality_policy
         recorder = self._recorders.get(run_id)
         if recorder is None:
             recorder = RunRecorder(run_id, query, self._archive_repository)
-            recorder.set_config_summary(build_config_summary(self._config))
+            recorder.set_config_summary(build_config_summary(self._config, policy))
             # Rebuild the local artifact after a safe-boundary process restart.
             for item in await self._repository.list_events(run_id):
                 recorder(item["event"], item["data"])
@@ -504,7 +512,11 @@ class InteractiveRunService:
             hooks.append(
                 RedactingTraceHook(
                     tracer,
-                    payload_mode=self._config.observability.payload_mode,
+                    payload_mode=(
+                        "metadata_only"
+                        if policy == "strict_v1"
+                        else self._config.observability.payload_mode
+                    ),
                 )
             )
         external = (
@@ -521,7 +533,11 @@ class InteractiveRunService:
                 except Exception:
                     logger.debug("External trace hook failed", exc_info=True)
 
-            hooks.append(safe_external)
+            hooks.append(
+                RedactingTraceHook(safe_external, payload_mode="metadata_only")
+                if policy == "strict_v1"
+                else safe_external
+            )
         return CompositeTraceHook(*hooks)
 
     async def _execute(self, run_id: str) -> None:

@@ -3,25 +3,51 @@ export function bindAutomaticAuditPreferences({ capabilities, t }) {
   const $ = selector => document.querySelector(selector);
   const mode = $("#auto-audit-mode");
   const budget = $("#auto-audit-max-versions");
+  const judge = $("#verification-judge");
+  const jev = $("#verification-jev");
+  const optional = () => $("#quality-policy").value === "strict_auto_v2";
   function render() {
     const caps = capabilities() || {};
+    const current = $("#quality-policy").value;
+    const automatic = ["strict_auto_v1", "strict_auto_v2"].includes(current);
+    if ($("#body-analysis-help")) $("#body-analysis-help").hidden = !optional();
+    if ($("#optional-verification")) $("#optional-verification").hidden = !optional();
+    if ($("#legacy-audit-preferences")) $("#legacy-audit-preferences").hidden = optional();
+    if (judge) judge.disabled = !caps.judge_available;
+    if (jev) jev.disabled = !caps.jev_available;
+    mode.disabled = automatic;
+    if (automatic) {
+      mode.value = optional() ? (judge?.checked ? "judge" : "off") : "judge_jev";
+      budget.value = "1";
+    }
     for (const option of mode.options) {
       option.disabled = option.value === "judge" ? !caps.judge_available
         : option.value === "judge_jev" ? !(caps.judge_available && caps.jev_available) : false;
     }
-    if ([...mode.options].find(option => option.value === mode.value)?.disabled) mode.value = "off";
-    budget.disabled = mode.value === "off";
+    if (!automatic && [...mode.options].find(option => option.value === mode.value)?.disabled) mode.value = "off";
+    budget.disabled = automatic || mode.value === "off";
     const limits = caps.limits || {};
-    $("#auto-audit-budget-note").textContent = mode.value === "off" ? t("autoAuditOffHelp") : `${t("autoAuditBudgetHelp")} ${budget.value} · ${t("autoAuditPerVersion")} Judge ${limits.judge_calls ?? 2} × ${limits.judge_max_output_tokens_per_call ?? 16384} output tokens / ${limits.judge_timeout_seconds ?? 180}s${mode.value === "judge_jev" ? ` · Jev ${limits.jev?.max_requests ?? 20} requests / ${limits.jev?.max_input_tokens ?? 200000} input tokens` : ""}`;
+    $("#auto-audit-budget-note").textContent = automatic
+      ? `${t(optional() ? "optionalVerificationHelp" : "strictAutoQuality")} · Survey 500,000 tokens / 64 calls${!optional() || judge?.checked ? " · Judge 100,000 tokens / 2 calls" : ""}${!optional() || jev?.checked ? " · Jev 200,000 input tokens / 20 calls" : ""}`
+      : mode.value === "off" ? t("autoAuditOffHelp") : `${t("autoAuditBudgetHelp")} ${budget.value} · ${t("autoAuditPerVersion")} Judge ${limits.judge_calls ?? 2} × ${limits.judge_max_output_tokens_per_call ?? 16384} output tokens / ${limits.judge_timeout_seconds ?? 180}s${mode.value === "judge_jev" ? ` · Jev ${limits.jev?.max_requests ?? 20} requests / ${limits.jev?.max_input_tokens ?? 200000} input tokens` : ""}`;
     const reasons = [];
     if (!caps.judge_available) reasons.push(`${t("autoAuditJudgeUnavailable")}: ${caps.judge_reason || t("autoAuditNotConfigured")}`);
-    else if (!caps.jev_available) reasons.push(`${t("autoAuditJevUnavailable")}: ${caps.jev_reason || t("autoAuditNotConfigured")}`);
+    if (!caps.jev_available) reasons.push(`${t("autoAuditJevUnavailable")}: ${caps.jev_reason || t("autoAuditNotConfigured")}`);
     $("#auto-audit-capabilities").textContent = reasons.join(" · ");
     $("#auto-audit-capabilities").hidden = !reasons.length;
+    if ($("#auto-audit-rules")) $("#auto-audit-rules").hidden = optional();
   }
   function options() {
-    const selected = mode.value;
     const caps = capabilities() || {};
+    if (optional()) {
+      if ((judge?.checked && !caps.judge_available) || (jev?.checked && !caps.jev_available)) throw new Error(t("autoAuditUnavailableSelection"));
+      return {
+        body_quality: "analysis_v1",
+        verification: { version: "optional-verification-v1", judge: !!judge?.checked, jev: !!jev?.checked },
+        auto_audit_mode: judge?.checked ? "judge" : "off", auto_audit_max_versions: 1,
+      };
+    }
+    const selected = mode.value;
     if (!["off", "judge", "judge_jev"].includes(selected)) throw new Error(t("autoAuditInvalidSelection"));
     if (selected !== "off" && (!caps.judge_available || (selected === "judge_jev" && !caps.jev_available))) throw new Error(t("autoAuditUnavailableSelection"));
     const maxVersions = selected === "off" ? 1 : Number(budget.value);
@@ -29,6 +55,7 @@ export function bindAutomaticAuditPreferences({ capabilities, t }) {
     return { auto_audit_mode: selected, auto_audit_max_versions: maxVersions };
   }
   mode.addEventListener("change", render); budget.addEventListener("change", render);
+  judge?.addEventListener("change", render); jev?.addEventListener("change", render);
   render();
   return { render, options };
 }
@@ -128,7 +155,7 @@ export function bindAuditControls({ store, api, setNotice, onEvidence, onSource,
     $("#audit-title").textContent = L("title"); $("#audit-start").textContent = L("start");
     $("#audit-scope").textContent = L("scope");
     const caps = data?.capabilities;
-    $("#audit-start").disabled = !caps?.judge_available || target?.source === "sample";
+    $("#audit-start").disabled = !caps?.judge_available || target?.source === "sample" || ["strict_auto_v1", "strict_auto_v2"].includes(store.get().view?.report?.metadata?.quality_policy);
     $("#audit-capabilities").textContent = caps ? `Judge: ${caps.judge_model}${caps.self_judged ? " · self_judged" : caps.self_judged == null ? ` · ${L("noComparison")}` : ""} · ${caps.judge_reason || ""} · Jev: ${caps.jev_model} ${caps.jev_reason || ""}` : "";
     const results = $("#audit-results"); results.replaceChildren();
     if (data?.automatic) {

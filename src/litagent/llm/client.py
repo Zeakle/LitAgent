@@ -14,7 +14,7 @@ from openai import AsyncOpenAI
 
 from litagent.logging import get_logger
 from litagent.observability.context import get_task_id
-from litagent.safety.budget import CostBudget
+from litagent.safety.budget import CostBudget, strict_request_reservation
 
 logger = get_logger("llm.client")
 
@@ -29,6 +29,7 @@ class LLMResponse:
     tool_calls: list[dict] = field(default_factory=list)
     # Reasoning providers may require this value when replaying tool-call turns.
     reasoning_content: str = ""
+    finish_reason: str | None = None
 
 
 class BaseLLMClient(ABC):
@@ -93,6 +94,39 @@ class OpenAICompatibleClient(BaseLLMClient):
         from openai import APIConnectionError, APIStatusError
 
         attempts = kwargs.pop("transport_max_attempts", self._transport_max_attempts)
+        strict = self._cost_budget is not None and self._cost_budget.strict
+        if strict:
+            attempts = 1
+            reservation = strict_request_reservation(
+                messages,
+                kwargs.get("max_tokens", self._max_tokens),
+                kwargs.get("response_format"),
+            )
+            if reservation > int(131072 * 0.9):
+                raise ValueError("strict_context_budget_exceeded")
+            # Scoped evaluation and repair already own their exact reservation.
+            caller_owns = (get_task_id() or "").startswith(
+                "evaluation"
+            ) or get_task_id() == "evidence_rewrite"
+            if not caller_owns:
+                self._cost_budget.reserve(reservation)
+            try:
+                self._cost_budget.begin_request()
+                try:
+                    result = await asyncio.wait_for(
+                        self._chat_attempt(messages, **kwargs), 180
+                    )
+                except BaseException:
+                    # Transport may have consumed tokens even when no response arrived.
+                    self._cost_budget.charge_unknown_usage(reservation)
+                    raise
+                if not result.usage.get("usage_available"):
+                    self._cost_budget.charge_unknown_usage(reservation)
+                    raise ValueError("strict_usage_incomplete")
+                return result
+            finally:
+                if not caller_owns:
+                    self._cost_budget.release(reservation)
         if (
             not isinstance(attempts, int)
             or not 1 <= attempts <= self._transport_max_attempts
@@ -142,6 +176,7 @@ class OpenAICompatibleClient(BaseLLMClient):
                 "messages": messages,
                 "max_tokens": max_tokens,
                 "temperature": temperature,
+                "response_format": kwargs.get("response_format"),
             },
         )
 
@@ -164,6 +199,9 @@ class OpenAICompatibleClient(BaseLLMClient):
 
             resp = await self._client.chat.completions.create(**create_kwargs)
             choice = resp.choices[0]
+            finish_reason = getattr(choice, "finish_reason", None)
+            if not isinstance(finish_reason, str):
+                finish_reason = None
             usage = {
                 "prompt_tokens": resp.usage.prompt_tokens if resp.usage else 0,
                 "completion_tokens": resp.usage.completion_tokens if resp.usage else 0,
@@ -194,6 +232,7 @@ class OpenAICompatibleClient(BaseLLMClient):
                 tool_calls=tool_calls,
                 reasoning_content=getattr(choice.message, "reasoning_content", "")
                 or "",
+                finish_reason=finish_reason,
             )
 
             self._emit(
@@ -211,6 +250,8 @@ class OpenAICompatibleClient(BaseLLMClient):
                     "elapsed_ms": int((time.perf_counter() - t0) * 1000),
                     "usage_available": resp.usage is not None,
                     "tool_calls": _tool_calls_for_trace(tool_calls),
+                    "finish_reason": finish_reason,
+                    "max_tokens": max_tokens,
                 },
             )
 

@@ -71,7 +71,10 @@ one original-paper title discovery query per known method. Use distinctive quote
 title terms, not an acronym that predominantly retrieves derivative papers. Omit
 unknown titles rather than guessing an identifier. These queries are hypotheses,
 not accepted source records, and share the same existing sub-query limit.
-Respond ONLY with JSON: {"sub_queries": ["...", "..."], "named_methods": ["literal method name from the user request"], "original_paper_queries": [{"method": "the same named method", "query": "quoted original-title terms"}]}"""
+Also return coverage_constraints: literal substrings from the user's question that
+specify core questions, comparison dimensions or required experimental conditions.
+Do not omit explicit requirements or invent new ones.
+Respond ONLY with JSON: {"sub_queries": ["...", "..."], "named_methods": ["literal method name from the user request"], "coverage_constraints": ["literal user requirement"], "original_paper_queries": [{"method": "the same named method", "query": "quoted original-title terms"}]}"""
 
 
 def _method_key(value: str) -> str:
@@ -142,6 +145,7 @@ class SurveyPlanner:
             raise SafetyError(f"Query rejected: injection detected {result.matched}")
 
         self._named_methods = []
+        self._coverage_constraints = []
         graph = TaskGraph()
 
         intent = classify_query_intent(query)
@@ -269,6 +273,7 @@ class SurveyPlanner:
                 input_data={
                     "query": query,
                     "requested_methods": getattr(self, "_named_methods", []),
+                    "coverage_constraints": getattr(self, "_coverage_constraints", []),
                 },
                 timeout_ms=self._adversarial_timeout_ms,
                 max_retries=0,
@@ -282,6 +287,7 @@ class SurveyPlanner:
         """Decompose a survey query into focused subqueries."""
         fallback = [query]
         self._named_methods = []
+        self._coverage_constraints = []
         if not self._llm or not self._config.decompose_enabled:
             return fallback
 
@@ -303,6 +309,18 @@ class SurveyPlanner:
                 return fallback
 
             parsed = json.loads(content)
+            constraints = parsed.get("coverage_constraints", [])
+            self._coverage_constraints = (
+                [
+                    v
+                    for v in constraints
+                    if isinstance(v, str)
+                    and v.strip()
+                    and v.casefold() in query.casefold()
+                ]
+                if isinstance(constraints, list)
+                else []
+            )
             raw = parsed.get("sub_queries")
             names = parsed.get("named_methods")
             self._named_methods = list(

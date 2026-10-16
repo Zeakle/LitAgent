@@ -11,6 +11,8 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel, ConfigDict, Field
 
 from litagent.config import AppConfig
+from litagent.quality import WRITING_VERSION
+from litagent.safety.budget import STRICT_EXTRACTION_OUTPUT_TOKENS
 
 CONFIG_SUMMARY_SCHEMA_VERSION = 1
 SURVEY_RESULT_SCHEMA_VERSION = 1
@@ -99,7 +101,9 @@ def _rag_summary(config: AppConfig) -> dict[str, Any] | None:
     return {field: serialized[field] for field in allowed}
 
 
-def build_config_summary(config: AppConfig) -> dict[str, Any]:
+def build_config_summary(
+    config: AppConfig, quality_policy: str = "legacy"
+) -> dict[str, Any]:
     """Build a deterministic, non-secret projection of effective settings."""
     effective: dict[str, Any] = {
         "agent": config.agent.model_dump(),
@@ -132,6 +136,129 @@ def build_config_summary(config: AppConfig) -> dict[str, Any]:
     rag = _rag_summary(config)
     if rag is not None:
         effective["rag"] = rag
+    strict_fields = {
+        k: v for k, v in effective["eval"].items() if k.startswith("strict_")
+    }
+    if quality_policy == "legacy":
+        for key in strict_fields:
+            effective["eval"].pop(key)
+    elif quality_policy in {"strict_v1", "strict_auto_v1", "strict_auto_v2"}:
+        from litagent.context.evidence_selector import SHARED_SCOPE_CONTRACT
+        from litagent.eval.batched import STRICT_DECISION_CONTRACT
+        from litagent.eval.scoped import (
+            STRICT_BINDING_CONTRACT,
+            STRICT_INVENTORY_CONTRACT,
+            STRICT_QUANTITY_CONTRACT,
+            STRICT_QUANTITY_ROLE_CONTRACT,
+            STRICT_SUPPORT_CONTRACT,
+        )
+        from litagent.quality import (
+            DOCUMENT_SUBJECT_CONTRACT,
+            FRAGMENT_REPAIR_CONTRACT,
+            REFERENCE_PRESERVATION_CONTRACT,
+            REPAIR_ENTRY_CONTRACT,
+            REQUEST_REFERENCE_CONTRACT,
+            WRITING_BUDGET_CONTRACT,
+            WRITING_QUOTE_CONTRACT,
+        )
+
+        effective["quality_policy"] = {
+            "policy": quality_policy,
+            "contracts": [
+                "fact-card-v1",
+                "survey-evaluation-v3",
+                STRICT_DECISION_CONTRACT,
+                "staged-budget-v1",
+                "original-support-only-v1",
+                STRICT_BINDING_CONTRACT,
+                STRICT_INVENTORY_CONTRACT,
+                STRICT_QUANTITY_CONTRACT,
+                STRICT_QUANTITY_ROLE_CONTRACT,
+                STRICT_SUPPORT_CONTRACT,
+                REPAIR_ENTRY_CONTRACT,
+                WRITING_BUDGET_CONTRACT,
+                WRITING_QUOTE_CONTRACT,
+                DOCUMENT_SUBJECT_CONTRACT,
+                REQUEST_REFERENCE_CONTRACT,
+                REFERENCE_PRESERVATION_CONTRACT,
+                FRAGMENT_REPAIR_CONTRACT,
+                WRITING_VERSION,
+                "source-selection-v1",
+                SHARED_SCOPE_CONTRACT,
+                "scientific-classification-v2",
+                "strict-extraction-output-v1",
+                "complete-review-materials-v2",
+                "grounded-request-encoding-v1",
+            ],
+            "request_limit": 64,
+            "stage_tokens": [
+                int(config.safety.max_cost_tokens * ratio) for ratio in (0.4, 0.2, 0.4)
+            ],
+            "strict_eval": strict_fields,
+        }
+        effective["extractor"][
+            "strict_max_output_tokens"
+        ] = STRICT_EXTRACTION_OUTPUT_TOKENS
+        if quality_policy in {"strict_auto_v1", "strict_auto_v2"}:
+            effective["extractor"]["automatic_transport_timeout_ms"] = 180000
+            effective["extractor"]["automatic_strategy_timeout_ms"] = 185000
+            effective["extractor"][
+                "automatic_source_key_protocol"
+            ] = "host-source-key-v1"
+            effective["quality_policy"]["contracts"].extend(
+                [
+                    "automatic-acceptance-v1",
+                    "failed-acceptance-binding-v1",
+                    "frozen-original-audit-v1",
+                    "automatic-stop-v1",
+                ]
+            )
+            effective["automatic_audit"] = {
+                "judge": {
+                    **config.report_audit.model_dump(),
+                    "judge_base_url": _safe_origin(config.report_audit.judge_base_url),
+                },
+                "judge_total_tokens": 100000,
+                "judge_requests": 2,
+                "jev_model": "jev-1.13.0",
+                "jev_input_tokens": 200000,
+                "jev_requests": 20,
+                "confidence_threshold": 0.9,
+            }
+        if quality_policy == "strict_auto_v2":
+            from litagent.eval.batched import (
+                GLOBAL_CONSISTENCY_CONTRACT,
+                SOURCE_FIDELITY_CONTRACT,
+            )
+            from litagent.eval.scoped import LOCAL_NUMERIC_CONTRACT
+            from litagent.extraction_verification import LEDGER_CONTRACT
+            from litagent.extraction_verification import VERSION as EXTRACTION_VERSION
+            from litagent.quality import (
+                NATIVE_REPAIR_CONTRACT,
+                TARGETED_REPAIR_CONTRACT,
+            )
+            from litagent.writing_passages import FULL_CONTRACT as CONTRACT
+            from litagent.writing_passages import FULL_VERSION as VERSION
+            from litagent.writing_passages import NOTICE_VERSION, SCOPE_NOTICE_CONTRACT
+
+            effective["quality_policy"]["contracts"].extend(
+                [
+                    EXTRACTION_VERSION,
+                    VERSION,
+                    CONTRACT,
+                    SOURCE_FIDELITY_CONTRACT,
+                    LEDGER_CONTRACT,
+                    LOCAL_NUMERIC_CONTRACT,
+                    GLOBAL_CONSISTENCY_CONTRACT,
+                    NATIVE_REPAIR_CONTRACT,
+                    TARGETED_REPAIR_CONTRACT,
+                    NOTICE_VERSION,
+                    SCOPE_NOTICE_CONTRACT,
+                ]
+            )
+            effective["automatic_audit"]["jev_stage"] = "extraction"
+    else:
+        raise ValueError("unsupported_quality_policy")
 
     identity = {"schema_version": CONFIG_SUMMARY_SCHEMA_VERSION, "effective": effective}
 
@@ -178,6 +305,51 @@ def normalize_survey_result(
 ) -> dict[str, Any]:
     """Validate and serialize the runner's sole final-report contract."""
     value = dict(payload)
+    metadata = dict(value.get("metadata", {}))
+    acceptance = metadata.get("automatic_acceptance")
+    if (
+        metadata.get("quality_policy") in {"strict_auto_v1", "strict_auto_v2"}
+        and acceptance
+    ):
+        from litagent.quality import digest
+
+        if (
+            acceptance.get("report_sha256")
+            != hashlib.sha256(value["survey"].encode()).hexdigest()
+            or acceptance.get("fact_cards_sha256")
+            != digest(metadata.get("fact_cards", {}))
+            or acceptance.get("evaluation_sha256")
+            != digest(value.get("evaluation", {}))
+            or acceptance.get("methodology_sha256")
+            != digest(metadata.get("review_methodology", {}))
+            or (
+                (
+                    metadata.get("verification") is not None
+                    or acceptance.get("version") == "automatic-acceptance-v4"
+                )
+                and acceptance.get("verification_sha256")
+                != digest(metadata.get("verification"))
+            )
+            or acceptance.get("body_quality", "legacy")
+            != metadata.get("body_quality", "legacy")
+            or (
+                metadata.get("quality_policy") == "strict_auto_v2"
+                and acceptance.get("extraction_verification_sha256")
+                != digest(metadata.get("extraction_verification", {}))
+            )
+        ):
+            metadata["automatic_acceptance"] = {
+                **acceptance,
+                "status": "invalidated",
+                "publishable": False,
+                "failure_codes": ["automatic_binding_changed"],
+            }
+            value["metadata"] = metadata
+            value["delivery"] = {
+                "status": "blocked",
+                "publishable": False,
+                "reason_codes": ["automatic_binding_changed"],
+            }
     value["schema_version"] = SURVEY_RESULT_SCHEMA_VERSION
     value["config_fingerprint"] = config_fingerprint
     return SurveyResult.model_validate(value).model_dump()

@@ -539,3 +539,151 @@ class TestClientEmitsLLMCall:
 
         src = Path(react_mod.__file__).read_text(encoding="utf-8")
         assert "'llm.call'" not in src and '"llm.call"' not in src
+
+
+class TestTraceUsageCompleteness:
+    """Keep unknown provider usage distinct from known zero usage."""
+
+    @pytest.mark.parametrize(
+        "payload,available,complete",
+        [
+            ({}, False, False),
+            (
+                {
+                    "usage_available": False,
+                    "prompt_tokens": 0,
+                    "completion_tokens": 0,
+                    "total_tokens": 0,
+                },
+                False,
+                False,
+            ),
+            (
+                {
+                    "usage_available": True,
+                    "prompt_tokens": 0,
+                    "completion_tokens": 0,
+                    "total_tokens": 0,
+                },
+                True,
+                True,
+            ),
+            (
+                {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+                True,
+                True,
+            ),
+            ({"usage_available": True, "prompt_tokens": 10}, True, False),
+            (
+                {"prompt_tokens": True, "completion_tokens": 5, "total_tokens": 6},
+                False,
+                False,
+            ),
+            (
+                {"prompt_tokens": -1, "completion_tokens": 5, "total_tokens": 4},
+                False,
+                False,
+            ),
+            (
+                {"prompt_tokens": "10", "completion_tokens": 5, "total_tokens": 15},
+                False,
+                False,
+            ),
+        ],
+    )
+    def test_complete_usage_validation(self, payload, available, complete):
+        from litagent.observability.recorder import RedactingTraceHook
+
+        tracer, log = _tracer_with_mock()
+        hook = RedactingTraceHook(tracer, payload_mode="metadata_only")
+        hook("llm.start", {"operation_id": "op", "messages": [{"content": "private"}]})
+        generation = tracer._operations["op"]
+        hook("llm.complete", {"operation_id": "op", "content": "private", **payload})
+        update = [data for action, data in log if action == "update"][-1]
+        assert update["metadata"]["usage_available"] is available
+        assert update["metadata"]["usage_complete"] is complete
+        assert ("usage_details" in update) is complete
+        if complete:
+            assert update["usage_details"]["total_tokens"] == payload["total_tokens"]
+        assert generation.ended
+        assert tracer._operations == {}
+        assert "private" not in repr(log)
+
+    @pytest.mark.parametrize("cancelled", [False, True])
+    @pytest.mark.asyncio
+    async def test_real_client_terminal_event_keeps_unknown_usage(self, cancelled):
+        from types import SimpleNamespace
+
+        from litagent.llm.client import OpenAICompatibleClient
+        from litagent.observability.recorder import RedactingTraceHook
+
+        tracer, log = _tracer_with_mock()
+        hook = RedactingTraceHook(tracer, payload_mode="metadata_only")
+        client = OpenAICompatibleClient(
+            base_url="http://localhost", api_key="test", model="m", trace_hook=hook
+        )
+        create = AsyncMock()
+        if cancelled:
+            create.side_effect = asyncio.CancelledError()
+        else:
+            create.return_value = SimpleNamespace(
+                usage=None,
+                model="m",
+                choices=[
+                    SimpleNamespace(
+                        finish_reason="stop",
+                        message=SimpleNamespace(
+                            content="private response", tool_calls=None
+                        ),
+                    )
+                ],
+            )
+        client._client = SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=create))
+        )
+        if cancelled:
+            with pytest.raises(asyncio.CancelledError):
+                await client.chat([{"role": "user", "content": "private source"}])
+        else:
+            response = await client.chat(
+                [{"role": "user", "content": "private source"}]
+            )
+            assert response.usage["usage_available"] is False
+        update = [data for action, data in log if action == "update"][-1]
+        assert update["metadata"]["usage_available"] is False
+        assert update["metadata"]["usage_complete"] is False
+        assert "usage_details" not in update
+        if cancelled:
+            assert update["metadata"]["error_type"] == "CancelledError"
+            assert update["level"] == "ERROR"
+        assert tracer._operations == {}
+        assert log[-1][0] == "end"
+        assert "private" not in repr(log)
+        assert create.await_count == 1
+
+    @pytest.mark.parametrize("reason", ["worker_inner_timeout", "worker_timeout"])
+    def test_worker_failure_retains_stable_reason(self, reason):
+        from litagent.observability.recorder import RedactingTraceHook
+
+        tracer, log = _tracer_with_mock()
+        hook = RedactingTraceHook(tracer, payload_mode="metadata_only")
+        hook("worker.start", {"task_id": "t", "agent_type": "extractor"})
+        span = tracer._spans["t"]
+        hook(
+            "worker.failed",
+            {
+                "task_id": "t",
+                "reason_code": reason,
+                "error_type": "TimeoutError",
+                "error": "private source",
+            },
+        )
+        update = [data for action, data in log if action == "update"][-1]
+        assert update["status_message"] == reason
+        assert update["metadata"] == {
+            "reason_code": reason,
+            "error_type": "TimeoutError",
+        }
+        assert span.ended
+        assert tracer._spans == {}
+        assert "private" not in repr(log)

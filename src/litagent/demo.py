@@ -134,6 +134,29 @@ def project_flow_demo_view(
     nodes = _mapping(artifact.get("nodes"))
     trace = _mapping(artifact.get("trace"))
     metadata = _mapping(report.get("metadata"))
+    receipt = metadata.get("extraction_verification") or artifact.get(
+        "extraction_verification"
+    )
+    pipeline = dict(artifact.get("pipeline_verification") or {})
+    if pipeline:
+        pipeline["writing_diagnostics"] = [
+            diagnostic
+            for event in artifact.get("events", [])
+            if event.get("event") == "writing.validation.failed"
+            for diagnostic in event.get("data", {}).get("diagnostics", [])
+        ]
+    if not report and receipt:
+        # A sidecar is evidence of a pre-writing attempt, never a verified report.
+        metadata = {
+            "quality_policy": pipeline.get("quality_policy"),
+            "extraction_verification": receipt,
+        }
+        quality = {"status": "unverified"}
+        delivery = {
+            "status": "blocked",
+            "publishable": False,
+            "reason_codes": [artifact.get("error") or "report_not_generated"],
+        }
     survey = str(report.get("survey") or "")
     evidence = _extract_evidence(nodes)
     evidence_by_id = {
@@ -196,6 +219,9 @@ def project_flow_demo_view(
         "evidence": evidence,
         "graph": _mapping(report.get("graph_data")),
         "evaluation": _mapping(report.get("evaluation")),
+        "pipeline_verification": pipeline,
+        "targeted_repair_state": metadata.get("targeted_repair_state")
+        or artifact.get("targeted_repair_state"),
         "quality": quality,
         "delivery": delivery,
         "trace": {

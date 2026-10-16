@@ -5,9 +5,9 @@ from __future__ import annotations
 import hashlib
 import json
 import time
-from typing import Literal, Protocol
+from typing import Literal, Mapping, Protocol
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 ReviewStructure = Literal[
     "legacy", "academic_v1", "method_transparent_v1", "academic_v2"
@@ -23,9 +23,15 @@ CitationStyle = Literal[
 
 ReportLanguage = Literal["en", "zh-CN"]
 AutoAuditMode = Literal["off", "judge", "judge_jev"]
+QualityPolicy = Literal["legacy", "strict_v1", "strict_auto_v1", "strict_auto_v2"]
 ReviewStage = Literal["paper_selection", "final_report"]
 ReviewAction = Literal["confirm", "approve", "revise", "reject", "cancel"]
 HumanReviewStatus = Literal["not_requested", "pending", "approved", "rejected"]
+
+
+def is_strict_policy(policy: str | None) -> bool:
+    """Share scientific safeguards without changing historical approval rules."""
+    return policy in {"strict_v1", "strict_auto_v1", "strict_auto_v2"}
 
 
 def language_instruction(language: ReportLanguage) -> str:
@@ -49,6 +55,22 @@ class Contract(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
+class VerificationOptions(Contract):
+    """Bind optional verification choices to new runs without changing old defaults."""
+
+    version: Literal["optional-verification-v1"] = "optional-verification-v1"
+    judge: bool = Field(default=False, strict=True)
+    jev: bool = Field(default=False, strict=True)
+
+
+def verification_enabled(value: Mapping, service: Literal["judge", "jev"]) -> bool:
+    """Preserve mandatory historical gates when the new contract is absent."""
+    selected = value.get("verification")
+    if selected is None:
+        return True
+    return getattr(VerificationOptions.model_validate(selected), service)
+
+
 class RunOptions(Contract):
     """Keep legacy defaults separate from UI defaults and UI locale."""
 
@@ -57,10 +79,104 @@ class RunOptions(Contract):
     review_structure: ReviewStructure = "legacy"
     auto_audit_mode: AutoAuditMode = "off"
     auto_audit_max_versions: int = Field(default=1, ge=1, le=3, strict=True)
+    quality_policy: QualityPolicy = "legacy"
+    verification: VerificationOptions | None = None
+    body_quality: Literal["legacy", "analysis_v1"] = "legacy"
+
+    @model_validator(mode="after")
+    def enforce_strict_review(self):
+        """Apply policy-owned defaults while honoring explicit optional reviewers."""
+        if self.body_quality != "legacy" and self.quality_policy != "strict_auto_v2":
+            raise ValueError("body_analysis_requires_strict_auto_v2")
+        if self.verification is not None and self.quality_policy != "strict_auto_v2":
+            raise ValueError("optional_verification_requires_strict_auto_v2")
+        if self.quality_policy == "strict_v1":
+            object.__setattr__(self, "human_review", True)
+            if self.review_structure == "legacy":
+                object.__setattr__(self, "review_structure", "academic_v2")
+        elif self.quality_policy in {"strict_auto_v1", "strict_auto_v2"}:
+            if "report_language" not in self.model_fields_set:
+                object.__setattr__(self, "report_language", "zh-CN")
+            object.__setattr__(self, "human_review", False)
+            object.__setattr__(
+                self,
+                "auto_audit_mode",
+                "judge" if self.quality_policy == "strict_auto_v2" else "judge_jev",
+            )
+            if self.verification is not None and not self.verification.judge:
+                object.__setattr__(self, "auto_audit_mode", "off")
+            object.__setattr__(self, "auto_audit_max_versions", 1)
+            if self.review_structure == "legacy":
+                object.__setattr__(self, "review_structure", "academic_v2")
+        return self
 
     def fingerprint(self) -> str:
         """Bind generation and review choices to a stable run identity."""
         payload = self.model_dump(mode="json")
+        if self.verification is None:
+            payload.pop("verification")
+        if self.body_quality == "legacy":
+            payload.pop("body_quality")
+        else:
+            from litagent.body_quality import ANALYSIS_CONTRACT, ANALYSIS_VERSION
+
+            payload["body_contracts"] = [
+                ANALYSIS_CONTRACT,
+                ANALYSIS_VERSION,
+                "host-global-completeness-v1",
+                "host-fragment-inventory-v2",
+            ]
+        if self.quality_policy == "legacy":
+            payload.pop("quality_policy")
+        else:
+            payload["strict_contracts"] = [
+                "fact-card-v1",
+                "survey-evaluation-v3",
+                "coverage-requirements-v1",
+                "staged-budget-v1",
+            ]
+            if self.quality_policy in {"strict_auto_v1", "strict_auto_v2"}:
+                payload["strict_contracts"].extend(
+                    [
+                        "automatic-acceptance-v1",
+                        "frozen-original-audit-v1",
+                        "automatic-stop-v1",
+                    ]
+                )
+                payload["automatic_limits"] = [100000, 2, 200000, 20, 0.9]
+                if self.quality_policy == "strict_auto_v2":
+                    from litagent.quality import (
+                        NATIVE_REPAIR_CONTRACT,
+                        TARGETED_REPAIR_CONTRACT,
+                    )
+
+                    payload["strict_contracts"].append("jev-extraction-verification-v1")
+                    from litagent.eval.batched import (
+                        GLOBAL_CONSISTENCY_CONTRACT,
+                        SOURCE_FIDELITY_CONTRACT,
+                    )
+                    from litagent.eval.scoped import LOCAL_NUMERIC_CONTRACT
+                    from litagent.extraction_verification import LEDGER_CONTRACT
+                    from litagent.writing_passages import (
+                        FULL_VERSION,
+                        NOTICE_VERSION,
+                        SCOPE_NOTICE_CONTRACT,
+                    )
+
+                    payload["strict_contracts"].extend(
+                        [
+                            FULL_VERSION,
+                            "host-writing-full-sources-v1",
+                            SOURCE_FIDELITY_CONTRACT,
+                            LEDGER_CONTRACT,
+                            LOCAL_NUMERIC_CONTRACT,
+                            GLOBAL_CONSISTENCY_CONTRACT,
+                            NATIVE_REPAIR_CONTRACT,
+                            TARGETED_REPAIR_CONTRACT,
+                            NOTICE_VERSION,
+                            SCOPE_NOTICE_CONTRACT,
+                        ]
+                    )
         if self.review_structure == "legacy":
             payload.pop("review_structure")
         if self.auto_audit_mode == "off":

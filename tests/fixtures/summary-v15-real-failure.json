@@ -1,0 +1,77 @@
+{
+  "source_run_id": "front-jev-passages-vit-001",
+  "candidate_sha256": "c0c903834ec2b6fc61be52217eea1e52d373433dccb13c1a83ca1b4f3baa9918",
+  "units": [
+    {
+      "section_key": "abstract",
+      "block_index": 0,
+      "sentence_index": 0,
+      "unit": {
+        "kind": "scientific",
+        "body_sentence_id": "methods.first_sentence",
+        "text": "本文围绕视觉Transformer的数据高效训练方法展开研究，梳理了参数高效适配、知识蒸馏等代表性方法的机制与贡献。"
+      }
+    },
+    {
+      "section_key": "abstract",
+      "block_index": 0,
+      "sentence_index": 1,
+      "unit": {
+        "kind": "scientific",
+        "body_sentence_id": "experiments.first_sentence",
+        "text": "实验结果显示，Hint-Aug方法在Pet数据集上使用50%更少训练数据时可提升2.22%的准确率，KAdaptation方法在精度与参数效率的权衡中表现最优。"
+      }
+    },
+    {
+      "section_key": "abstract",
+      "block_index": 0,
+      "sentence_index": 2,
+      "unit": {
+        "kind": "scientific",
+        "body_sentence_id": "open_problems.first_sentence",
+        "text": "现有针对Transformer的核心集选择方法在特定场景下的鲁棒性仍需验证，数据受限场景下结合先验知识提升数据效率仍是开放问题。"
+      }
+    },
+    {
+      "section_key": "conclusion",
+      "block_index": 0,
+      "sentence_index": 0,
+      "unit": {
+        "kind": "scientific",
+        "body_sentence_id": "introduction.first_sentence",
+        "text": "视觉Transformer的数据高效训练方法可缓解其对数据量和计算资源的高需求，推动其在资源受限场景下的应用。"
+      }
+    },
+    {
+      "section_key": "conclusion",
+      "block_index": 0,
+      "sentence_index": 1,
+      "unit": {
+        "kind": "scientific",
+        "body_sentence_id": "methods.first_sentence",
+        "text": "KAdaptation、数据自由知识蒸馏等方法在不同场景下展现出良好的数据效率，为视觉Transformer的部署提供了可行路径。"
+      }
+    },
+    {
+      "section_key": "conclusion",
+      "block_index": 0,
+      "sentence_index": 2,
+      "unit": {
+        "kind": "scientific",
+        "body_sentence_id": "experiments.first_sentence",
+        "text": "Hint-Aug等数据增强方法可在有限数据下提升视觉Transformer的性能，DeiT等数据高效变体在合理数据集上表现优异。"
+      }
+    },
+    {
+      "section_key": "conclusion",
+      "block_index": 0,
+      "sentence_index": 3,
+      "unit": {
+        "kind": "gap",
+        "body_sentence_id": "open_problems.additional_sentences.0",
+        "text": "工业级视觉Transformer数据高效方法的长期部署稳定性仍缺乏足够证据，相关研究存在证据缺口。"
+      }
+    }
+  ],
+  "scientific_validation": "not_run"
+}

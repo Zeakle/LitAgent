@@ -62,7 +62,28 @@ export function renderReview(container, request, draft, t, onSubmit, onDraftChan
     feedback.placeholder = t("feedback");
     feedback.addEventListener("input", () => onDraftChange?.({ ...draft, feedback: feedback.value }));
     form.append(issues, feedback);
-    if ((request.allowed_actions || []).includes("approve")) form.append(action(t("approve"), "approve", "primary-command"));
+    let approve = null;
+    if ((request.allowed_actions || []).includes("approve")) {
+      approve = action(t("approve"), "approve", "primary-command"); form.append(approve);
+    }
+    if (request.report?.metadata?.quality_policy === "strict_v1") {
+      if (request.report_sha256) {
+        const binding = document.createElement("p"); binding.className = "audit-binding";
+        binding.textContent = `r${request.report_revision ?? request.revision} · SHA ${request.report_sha256}`;
+        form.append(binding);
+      }
+      const checklist = document.createElement("fieldset");
+      const legend = document.createElement("legend"); legend.textContent = t("strictChecklist"); checklist.append(legend);
+      const inputs = [];
+      for (const key of ["checkCoverage", "checkNumbers", "checkComparison", "checkSummary", "checkProposals"]) {
+        const label = document.createElement("label"); const input = document.createElement("input"); input.type = "checkbox";
+        const text = document.createElement("span"); text.textContent = t(key); label.append(input, text); checklist.append(label); inputs.push(input);
+        input.addEventListener("change", () => { if (approve) approve.disabled = !inputs.every(i => i.checked); });
+      }
+      if (approve) approve.disabled = true;
+      else { const note = document.createElement("p"); note.textContent = t("automaticRequired"); checklist.append(note); }
+      form.append(checklist);
+    }
     if ((request.allowed_actions || []).includes("revise")) form.append(action(t("revise"), "revise"));
     if ((request.allowed_actions || []).includes("reject")) form.append(action(t("reject"), "reject", "danger-command"));
   }

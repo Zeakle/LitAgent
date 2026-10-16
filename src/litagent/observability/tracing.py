@@ -71,6 +71,82 @@ class LangFuseTracer:
             self._root.update_trace(session_id=data.get("session_id", ""))
             self._trace_url = self._client.get_trace_url(trace_id=self._trace_id)
 
+        elif event in {"writing.request.rejected", "evaluation.request.rejected"}:
+            span = self._spans.get(data.get("task_id", "")) or self._root
+            if span:
+                span.update(
+                    level="ERROR",
+                    metadata={
+                        (
+                            "evaluation_request"
+                            if event == "evaluation.request.rejected"
+                            else "writing_request"
+                        ): {
+                            key: data.get(key)
+                            for key in (
+                                "task_id",
+                                "phase",
+                                "contract_version",
+                                "input_sha256",
+                                "reason_code",
+                                "budget",
+                            )
+                            + (
+                                ("max_tokens", "status")
+                                if event == "evaluation.request.rejected"
+                                else ()
+                            )
+                        }
+                    },
+                )
+
+        elif event == "targeted_repair.state":
+            span = self._spans.get(data.get("task_id", "")) or self._root
+            if span:
+                span.update(
+                    metadata={
+                        "targeted_repair": {
+                            key: data.get(key)
+                            for key in (
+                                "phase",
+                                "count",
+                                "status",
+                                "input_sha256",
+                                "contract_version",
+                            )
+                        }
+                    }
+                )
+
+        elif event == "writing.validation.failed":
+            span = self._spans.get(data.get("task_id", "")) or self._root
+            if span:
+                span.update(
+                    level="ERROR",
+                    metadata={
+                        "writing_validation": {
+                            key: data.get(key)
+                            for key in (
+                                "task_id",
+                                "phase",
+                                "contract_version",
+                                "candidate_sha256",
+                                "reason_code",
+                                "diagnostic_count",
+                            )
+                        }
+                    },
+                )
+
+        elif event.startswith("extraction_verification."):
+            if self._root:
+                self._root.update(metadata={"extraction_verification": data})
+
+        elif event == "evaluation.batch":
+            span = self._spans.get(data.get("task_id", "")) or self._root
+            if span:
+                span.update(metadata={"evaluation_progress": data})
+
         elif event == "worker.input":
             self._worker_inputs[data.get("task_id", "")] = data.get("input", {})
 
@@ -120,7 +196,14 @@ class LangFuseTracer:
             span = self._spans.pop(tid, None)
             if span:
                 if event == "worker.failed":
-                    span.update(level="ERROR", status_message=data.get("error", ""))
+                    span.update(
+                        level="ERROR",
+                        status_message=data.get("error", ""),
+                        metadata={
+                            "reason_code": data.get("reason_code"),
+                            "error_type": data.get("error_type"),
+                        },
+                    )
                 elif event == "worker.cancelled":
                     span.update(
                         level="WARNING", status_message=data.get("error", "cancelled")
@@ -151,15 +234,30 @@ class LangFuseTracer:
                         "content": data.get("content", ""),
                         "tool_calls": data["tool_calls"],
                     }
-                gen.update(
-                    output=output,
-                    usage_details={
-                        "prompt_tokens": data.get("prompt_tokens", 0),
-                        "completion_tokens": data.get("completion_tokens", 0),
-                        "total_tokens": data.get("total_tokens", 0),
-                    },
-                    metadata={"elapsed_ms": data.get("elapsed_ms", 0)},
+                usage = {
+                    key: data.get(key)
+                    for key in ("prompt_tokens", "completion_tokens", "total_tokens")
+                }
+                valid_usage = all(
+                    type(value) is int and value >= 0 for value in usage.values()
                 )
+                # Older events have no availability flag but may have real usage.
+                available = data.get("usage_available", valid_usage) is True
+                complete = available and valid_usage
+                update = {
+                    "output": output,
+                    "metadata": {
+                        "elapsed_ms": data.get("elapsed_ms", 0),
+                        "finish_reason": data.get("finish_reason"),
+                        "max_tokens": data.get("max_tokens"),
+                        "usage_available": available,
+                        "usage_complete": complete,
+                    },
+                }
+                # Missing provider usage must not become a fabricated zero cost.
+                if complete:
+                    update["usage_details"] = usage
+                gen.update(**update)
                 gen.end()
 
         elif event == "llm.failed":
@@ -169,7 +267,13 @@ class LangFuseTracer:
                 gen.update(
                     level="ERROR",
                     status_message=data.get("error", ""),
-                    metadata={"elapsed_ms": data.get("elapsed_ms", 0)},
+                    metadata={
+                        "elapsed_ms": data.get("elapsed_ms", 0),
+                        "usage_available": False,
+                        "usage_complete": False,
+                        "error_type": data.get("error_type"),
+                        "reason_code": data.get("reason_code"),
+                    },
                 )
                 gen.end()
 
