@@ -76,8 +76,13 @@ mistaken for an up-to-date one.
 
 ## Evaluation and Delivery
 
-Runtime evaluation measures citation accuracy, internal consistency, and
-faithfulness. When evidence repair is attempted, the candidate report is kept
+Runtime Evaluation v3 measures citation ID validity (citation_accuracy), internal
+consistency and faithfulness, with complete unit/claim coverage and global checks.
+The new UI uses strict_auto_v2: scientific support must be 1.0 and core coverage,
+structure and consistency must pass. Optional Judge checks the final report; optional
+Jev checks extraction before writing. Both are off by default in the new UI; old
+API and checkpoint defaults retain their historical semantics. Stage routing uses
+Lite for planning/extraction/review/evaluation and Pro for writing and repairs. When evidence repair is attempted, the candidate report is kept
 isolated until structure validation, reference validation, and post-rewrite
 evaluation succeed. The commit replaces survey, evaluation, and quality as one
 state transition.
@@ -107,8 +112,8 @@ RAG, Memory, Claims, Evaluation, and rewrite operations. `RunRecorder` consumes
 the full local payload and pairs start/terminal events into execution nodes.
 
 LangFuse receives a recursively redacted event projection. Credentials and
-sensitive headers are removed while non-secret prompts, inputs, outputs, and
-token usage remain inspectable. The local artifact and remote trace are linked
+sensitive headers are removed while current controlled runs send metadata and usage only. Full prompts, selected
+paper text and responses remain local; legacy traces may use their recorded policy. The local artifact and remote trace are linked
 by an optional trace ID and URL.
 
 The `/flow-demo` UI reads a server-side `FlowDemoView` projection. It does not
@@ -134,3 +139,11 @@ Unavailable Memory, Claims, local RAG, or one external source is represented by
 stable reason codes and trace events. A fallback must preserve the public output
 shape. Complete failure of relevant sources, incomplete DAG execution, failed
 quality, and unverified quality remain distinct delivery outcomes.
+
+## Public presentation boundary
+
+`litagent demo --presentation` serves packaged fixtures and sanitized diagnostic
+records. It denies mutations before dispatch, never opens private archive/SQLite
+state, and does not initialize recovery, LLM clients or audit executors. The same
+reader/citation/export contracts apply. Execution completion, verification and
+publishability remain separate. See [release criteria](release.md).

@@ -1,326 +1,136 @@
 # LitAgent
 
 [![English](https://img.shields.io/badge/lang-English-1769aa.svg)](./README.md)
-[![Simplified Chinese](https://img.shields.io/badge/lang-简体中文-c5221f.svg)](./README.zh-CN.md)
+[![简体中文](https://img.shields.io/badge/lang-简体中文-c5221f.svg)](./README.zh-CN.md)
 
-LitAgent is an evidence-grounded literature survey system built around dynamic
-multi-agent orchestration, adversarial review, hybrid retrieval, and explicit
-quality-to-delivery policy.
+An evidence-grounded literature-review workbench with an asynchronous multi-agent
+DAG, hybrid retrieval, adversarial review, and version-bound evaluation.
 
-A research query is decomposed into a runtime DAG. Search and local recall feed
-a provenance-aware evidence ledger, synthesis is challenged by an adversarial
-review loop, and the final report is evaluated before it can be marked ready for
-delivery. Every run can be inspected through a local RunArtifact and optional
-LangFuse trace.
+**Engineering demonstration; live Survey remains experimental.** The retrieval
+benchmark is measured. A formal 15-case Survey baseline has not been established.
+An execution finishing does not mean its report passed quality checks.
 
-## Project Status
+## Start the public demonstration
 
-| Area | Status | Evidence |
-| --- | --- | --- |
-| Runtime DAG and adversarial survey flow | Implemented | [`runner.py`](./src/litagent/runner.py), [`test_phase14_4_e2e.py`](./tests/test_phase14_4_e2e.py) |
-| Persistent paper corpus and PDF ingestion | Implemented | [`rag/`](./src/litagent/rag), [`test_phase14_1.py`](./tests/test_phase14_1.py) |
-| Retrieval benchmark | Completed | [`RESULTS.md`](./benchmarks/rag/RESULTS.md) |
-| End-to-end Survey benchmark | Diagnostic pilots complete; formal baseline not established | [`2026-08-25 pilot`](./benchmarks/survey/results/pilot-2026-08-25.md), [`2026-09-08 post-repair pilot`](./benchmarks/survey/results/post-repair-pilot-2026-09-08.md), [`test_phase14_5.py`](./tests/test_phase14_5.py) |
-| Reproducible flow replay | Implemented | [`demo.py`](./src/litagent/demo.py), [`test_phase14_6.py`](./tests/test_phase14_6.py) |
-| Interactive research workbench | Implemented offline; live bilingual acceptance pending | [`interactive_service.py`](./src/litagent/interactive_service.py), [`test_interactive_runner.py`](./tests/test_interactive_runner.py) |
+Python 3.11 is required. Install dependencies with internet access, then run the
+presentation without API keys, Docker, model downloads, or runtime network calls:
 
-The complete evidence ledger for public capability claims is maintained in
-[`docs/design-truth.md`](./docs/design-truth.md).
-
-## Quick Start
-
-### Offline replay and research workbench
-
-The offline mode requires no API key, Docker service, model download, or network
-access. It opens a report-first research workbench with bundled ready, blocked,
-and partial artifacts. The same page can inspect a real run's DAG, events, node
-input/output, evidence, quality and delivery decisions, report versions, and exports.
-
-```powershell
-pip install -e ".[api]"
-litagent demo
+```sh
+python -m venv .venv
+# macOS / Linux
+source .venv/bin/activate
+# Windows PowerShell: .venv\Scripts\Activate.ps1
+python -m pip install -c requirements/release-constraints.txt -e ".[api]"
+litagent demo --presentation
 ```
 
-The browser opens at `http://127.0.0.1:8000/flow-demo`. To run without opening a
-browser:
+Open [the workbench](http://127.0.0.1:8000/flow-demo) or
+[the evidence overview](http://127.0.0.1:8000/presentation).
+Use `--no-browser --port 8001` when needed. `--presentation` and `--live` are
+mutually exclusive. Presentation mode loads only packaged public records, denies
+writes, and does not scan private archives or recover paid tasks.
 
-```powershell
-litagent demo --no-browser
+Three built-in `ready`, `blocked`, and `partial` samples are **synthetic contract
+fixtures**, not model-quality measurements. A separate real failure replay shows
+why delivery was blocked. [Demo and technical walkthrough](./docs/presentation-guide.md).
+
+For local private archives, the existing `litagent demo` command remains available.
+
+## What the system does
+
+```mermaid
+flowchart LR
+    Q[Research question] --> P[Planner / bounded DAG]
+    P --> S[External search + local RAG]
+    S --> E[Dedup / relevance / extraction]
+    E --> F[Fact cards / optional extraction Jev]
+    F --> W[Synthesis / Reviewer]
+    W --> V[Evaluation / bounded repair]
+    V --> D[Quality / delivery policy]
+    D --> UI[Versioned report / evidence / replay]
 ```
 
-Bundled samples are deterministic contract fixtures. They are not model-quality
-or benchmark evidence.
+- Sources, complete selected support text, and host-generated locators remain
+  distinct from model-extracted findings; a valid card is not a verified fact.
+- Evaluation verifies atomic claims against their actual citations. Candidate
+  rewrites stay isolated until complete re-evaluation succeeds.
+- Report versions, evidence, SHA, quality and delivery are bound together.
+  Incomplete, unsupported or interrupted outputs cannot silently become publishable.
+- Fixed request/token budgets, zero automatic retries for controlled trials,
+  durable checkpoints, and conservative unknown-usage accounting limit paid work.
+- Local artifacts retain detailed diagnostics; current controlled runs send only
+  redacted metadata and usage to optional LangFuse.
+- `academic_v2` has seven academic sections and a host-managed retrieval appendix.
+  IEEE, APA 7 and GB/T citation styles are deterministic local projections.
+  Markdown/PDF/Word and BibTeX/RIS/CSL JSON exports do not call an LLM.
 
-For live runs, the workbench accepts a custom query, selects `English` or
-`Simplified Chinese` as the report language, and can pause at paper selection
-and final-report review. Human approval never overrides automatic quality or
-delivery gates. Interactive control state is stored locally in SQLite, while
-large checkpoints and complete replay artifacts remain JSON files under
-`artifacts/`.
+[Architecture and ownership](./docs/system-overview.md) ·
+[Capability/evidence ledger](./docs/design-truth.md).
 
-The new-run dialog defaults to `academic_v2`, **Academic review · search appendix**,
-and retains both v1 structures. Seven academic body sections are followed by
-references and a collapsed search appendix. The evidence page reads the same
-frozen version's records; Markdown/PDF/Word include the complete appendix, and
-evaluation still covers the entire report. Structure changes require a new run. Citation
-styles (IEEE, APA 7, GB/T 7714-2025 numeric or author-date) can be switched on an
-existing report without model calls, changing its source SHA, scores, or approval.
-Simple numbering and raw evidence remain available. Markdown/PDF/Word share the
-same citation projection; BibTeX/RIS/CSL JSON contain only that revision's cited
-papers. Missing metadata and unparsed names are disclosed rather than inferred.
+## Measured results
 
-The report page provides a version-bound **Independent audit**: Judge is the default,
-with optional Jev citation verification. Results are separate from report scores,
-approval, and source SHA. Ordinary reports without human topic labels have no
-topic-coverage score. Configure `report_audit` on the server; Judge inherits the
-generation credentials unless an explicit key environment variable is set. A
-different Judge host requires its own explicitly configured credential variable.
-Jev requires `TYPESAFE_API_KEY` and uses `jev-1.13.0`. Finished or interrupted
-inputs are reused by default; rerunning requires an explicit new attempt. Restart
-does not replay requests. Integration is verified offline; live verification is
-separate, and Jev confidence is not accuracy.
+Retrieval: **25 papers, 15 queries, 3 repetitions per query**, source-reviewed
+judgments without independent human double review; not a general retrieval ranking.
 
-New runs can optionally schedule an audit after final Evaluation passes: Off
-(default), Judge, or Judge + Jev. The exact report version is saved first; results
-can arrive before final human approval. The run-wide budget defaults to one
-version and permits 1–3. Failed, cancelled, or interrupted reservations consume
-a slot and never retry automatically. Revisions must pass Evaluation and have
-remaining budget; historical reports are not automatically audited. Manual
-audits remain available.
+| Profile | Recall@5 | nDCG@10 | p50 ms |
+| --- | ---: | ---: | ---: |
+| MiniLM + RRF | 0.8867 | 0.8238 | 14 |
+| BM25 | 0.8778 | 0.8817 | 4 |
+| MiniLM dense | 0.7711 | 0.7440 | 10 |
+| RRF + reranker | 0.9089 | 0.9406 | 647 |
+| Fulltext section-aware | 0.9222 | 0.8426 | 61 |
 
-New runs use `survey-evaluation-v2`: at most two model calls extract assertions
-from every source unit and validate classification and support. Scientific claims
-use only their actual citations; runtime procedures use trusted records, and
-organizational claims use the report. Limits are 120 evidence items / 80,000
-characters. Missing materials, overflow or incomplete responses remain unverified.
-The faithfulness threshold remains 0.8; serious entity, numerical or experiment
-attribution errors independently block delivery. Method-transparent disclosures
-are assembled from host records before review, evaluation and version freezing.
+Reranking improves ranking metrics but adds substantial latency; it is not the
+default. Full-text profiles change indexed material and are separate from pure
+ranking comparisons. [Full results and limitations](./benchmarks/rag/RESULTS.md).
 
-The version/SHA-bound Quality page shows recorded thresholds, assertion counts,
-structure/method checks and source diagnostics. Judge/Jev share the report page's
-loading and attempt selection; they remain independent artifacts outside delivery
-gates, without a combined score. Historical records retain their evaluation scope
-and display unavailable statistics honestly. Offline acceptance on 2026-10-03:
-1327 tests passed, with bilingual desktop / 390px and keyboard checks. Improved
-live pass rates still require a controlled comparison with identical inputs,
-model, budget and evaluation version; historical 0.62 is not a v2 baseline.
+Survey: the latest published diagnostic ran **1/3 pilots**, used **27 requests /
+124,448 tokens**, and stopped on invalid Pro JSON **before Evaluation**. Formal
+cases: **0/15 run**. This is a technical failure, not a measured scientific score.
+An older single NeRF run passed an older, less strict policy; it is not success
+under the current policy or evidence of a quality improvement.
+[Survey methodology](./benchmarks/survey/README.md) ·
+[Packaged public records](./src/litagent/static/presentation/manifest.json).
 
-Frozen-input preflight exposed duplicated abstracts exceeding context allocations.
-Exact original support is now shared within the same paper, retaining separate
-evidence bindings and rejecting incomplete materials. The review evidence layer
-is 16,000 tokens within the unchanged 32,768 context and unchanged run budget.
-The first live arm on 2026-10-04 used 5 requests / 62,798 tokens, then stopped
-with invalid extraction aliases and citation excerpts. It remains unverified;
-the second arm was not submitted. The extraction contract now specifies bare
-aliases, verbatim cited excerpts and host allowlists. New comparison archives
-retain frozen sources for evidence navigation, and incomplete evaluations stop
-the next arm. Offline regression: 1354 passed, including 19 new tests.
-The subsequent pair-002 arm used 7 requests / 90,422 tokens. Aliases were valid,
-but one stitched, non-contiguous quote stopped verification before assessment.
-Its candidate arm was not submitted; no quality gain is established. Historical
-results remain unchanged. The extraction protocol now uses host-generated continuous
-fragment IDs and shared materials with per-claim citation allowlists. Latest offline
-regression at that stage: 1376 passed; oversized requests remain unverified. This repair made zero
-paid calls; live quality improvement remains unverified.
+## Optional live use
 
-The latest offline regression on 2026-10-07 passed 1618 tests. The
-`host-support-passages-v2` contract lets the model select host-owned source IDs;
-the host reconstructs text and positions and checks actual citation ownership,
-source-explicit abbreviations, quantities and required support aspects. Conservative
-relation checks preserve unverified results where support is missing. Reviewer
-feedback distinguishes existing citations from semantic support without raising
-scores. Historical reports and failed attempts remain unchanged. Live run-004
-failed independent protocol/semantic acceptance; run-005 is preflight-only, with
-no new paid calls. These offline checks do not establish a higher live pass rate.
-
-Academic styles require a local `node` executable on PATH. The processor,
-CSL styles, locales, provenance hashes, and licenses ship under
-[`src/litagent/csl/`](./src/litagent/csl/); formatting does not fetch templates.
-Word contains formatted text, not Zotero fields. A Chinese font is required by
-the Word viewer (Arial Unicode MS on macOS; Microsoft YaHei on Windows).
-Method-transparent reporting is not a claim of complete PRISMA compliance.
-
-![LitAgent flow replay desktop view](./docs/images/flow-demo-desktop.png)
-
-### Live survey
-
-Copy `.env.example` to `.env`, configure an OpenAI-compatible LLM key, and start
-the project infrastructure:
-
-```powershell
-pip install -e ".[dev]"
+```sh
+python -m pip install -c requirements/release-constraints.txt -e ".[dev]"
+# Copy .env.example to .env and set an OpenAI-compatible provider key.
 docker compose up -d
 litagent demo --live
 ```
 
-LangFuse is optional. When configured, the replay exposes a direct link to the
-run trace. Local artifacts remain under `artifacts/runs/` and are excluded from
-Git because they may contain prompts, paper excerpts, and model output.
+The current configuration routes extraction/planning/review/Evaluation to
+`doubao-seed-2-1-lite-260915`, and generation/repairs to
+`doubao-seed-2-1-pro-260915`. Model access and paid usage are your responsibility.
+The new UI uses `strict_auto_v2`, Chinese, `academic_v2`, and IEEE; legacy API
+requests retain legacy defaults.
 
-The workbench is a local, single-process control surface. It does not provide
-authentication, tenant isolation, or a distributed job queue and must not be
-bound to a public network without those controls.
+Mandatory Evaluation v3 checks full unit coverage, scientific support, structure,
+core coverage and global consistency. `citation_accuracy` means **citation ID
+validity**, not semantic correctness. Strict delivery requires scientific support
+1.0; the historical 0.8 base threshold remains a separate metric.
+Judge and pre-writing extraction Jev are independent optional switches, off in the
+new UI. Enabled checks must pass. Judge using a generation-family model is
+`self_judged`; Jev confidence is not accuracy. No independent human calibration
+has been completed. [Configuration example](./.env.example).
 
-## System Overview
+Academic styles require Node.js (validated locally with 24.14.0). PDF/Word Chinese
+rendering requires a CJK font; see the demo guide. There is no OCR, arbitrary-URL
+PDF crawling, or submission-format certification.
 
-```mermaid
-flowchart LR
-    Q["Research query"] --> P["Planner"]
-    P --> D["TaskGraph + Scheduler"]
-    D --> S["External search"]
-    D --> R["Local corpus recall"]
-    S --> G["Dedup + relevance gate"]
-    R --> G
-    G --> E["Extraction + Evidence Ledger"]
-    E --> Y["Synthesis"]
-    Y <--> V["Adversarial reviewer"]
-    V --> A["Evaluation + evidence rewrite"]
-    A --> L["Quality + delivery"]
-    L --> O["Report + RunArtifact + LangFuse"]
+## Verify
+
+```sh
+python -m pytest -v
+python -m black --check src tests
+python -m isort --check-only --profile black src tests
 ```
 
-The runtime is asynchronous. Search providers and local recall can execute in
-parallel, as can extraction and graph analysis after relevance filtering. The
-scheduler converges every task to a terminal state during failures, cancellation,
-or timeout so that an artifact never presents unfinished work as complete.
+Default tests exclude `integration` and `live`; they do not prove scientific
+accuracy. [Release checklist and known limitations](./docs/release.md).
 
-See [`docs/system-overview.md`](./docs/system-overview.md) for the public data-flow,
-trust, persistence, and degradation contracts.
+[2026-10-20 release validation / 收尾验收](./docs/release-status.md).
 
-## Query-to-Delivery Flow
-
-1. **Planner** decomposes the query into normalized sub-queries and a dependency DAG.
-2. **Search and Recall** combine external academic sources with the persistent local corpus.
-3. **Dedup and Relevance Gate** merge paper identities, rank candidates, and reject weak matches.
-4. **Extraction and Graph Analysis** produce evidence items, claims, locators, and paper structure.
-5. **Synthesis and Adversarial Review** generate and challenge a draft against the same run-scoped evidence selection.
-6. **Evaluation and Rewrite** score citations, internal consistency, and faithfulness; a repair candidate is committed only after validation and re-evaluation.
-7. **Quality and Delivery** map execution completeness and content quality to `ready`, `needs_review`, `blocked`, or `partial`.
-8. **Observability** persists the full local artifact and sends recursively redacted telemetry to LangFuse when enabled.
-
-## Verified Capabilities
-
-| Capability | Implementation boundary | Verification |
-| --- | --- | --- |
-| Dynamic DAG scheduling | Dependency-aware dispatch, retries, timeout, cancellation, skipped downstream tasks | [`test_orchestrator.py`](./tests/test_orchestrator.py), [`test_phase14_4_e2e.py`](./tests/test_phase14_4_e2e.py) |
-| Hybrid paper retrieval | Named dense vectors, BM25 sparse vectors, RRF, optional CrossEncoder reranking | [`retriever.py`](./src/litagent/rag/retriever.py), [`RESULTS.md`](./benchmarks/rag/RESULTS.md) |
-| Corpus ingestion | Manifest validation, local or allowlisted arXiv PDF, quality gate, section-aware chunking | [`ingest.py`](./src/litagent/rag/ingest.py), [`test_phase14_1.py`](./tests/test_phase14_1.py) |
-| Incremental indexing | Stable point IDs, embedding/payload hashes, stale deletion, resumable CorpusState | [`corpus.py`](./src/litagent/rag/corpus.py), [`test_phase14_3.py`](./tests/test_phase14_3.py) |
-| Evidence-constrained generation | Run-scoped evidence selection shared by synthesis and reviewer rounds | [`evidence.py`](./src/litagent/evidence.py), [`test_phase13_9.py`](./tests/test_phase13_9.py) |
-| Transactional evidence repair | Candidate validation, re-evaluation, atomic survey/evaluation/quality commit | [`runner.py`](./src/litagent/runner.py), [`test_phase13_9.py`](./tests/test_phase13_9.py) |
-| Trace and replay | Full local artifact, SSE progress, redacted LangFuse observations | [`recorder.py`](./src/litagent/observability/recorder.py), [`test_run_recorder.py`](./tests/test_run_recorder.py) |
-| Tool and MCP controls | Name/category allowlists, JSON Schema validation, capability mapping, fail-closed writes | [`executor.py`](./src/litagent/tools/executor.py), [`test_tools.py`](./tests/test_tools.py), [`test_mcp.py`](./tests/test_mcp.py) |
-
-## Retrieval Benchmark
-
-Phase 14.3 evaluated 25 papers, 15 source-reviewed queries, and three repetitions
-per query. The following values are frozen repository evidence, not estimates.
-
-| Profile | Recall@5 | MRR@10 | nDCG@10 | p50 latency |
-| --- | ---: | ---: | ---: | ---: |
-| MiniLM + RRF baseline | 0.8867 | 0.8056 | 0.8238 | 14 ms |
-| BM25 | 0.8778 | 0.9167 | 0.8817 | 4 ms |
-| RRF + CrossEncoder rerank | 0.9089 | 1.0000 | 0.9406 | 647 ms |
-| Selected-fulltext section-aware | 0.9222 | 0.8167 | 0.8426 | 61 ms |
-| SPECTER2 + RRF | 0.9089 | 0.9333 | 0.8942 | 32 ms |
-
-The production default remains abstract + MiniLM + RRF. Reranking improves
-quality but adds substantial latency. Section-aware full text is the preferred
-full-text strategy, but it does not become the default until the end-to-end
-Survey benchmark demonstrates a product-level gain.
-
-Full results and interpretation boundaries are in
-[`benchmarks/rag/RESULTS.md`](./benchmarks/rag/RESULTS.md).
-
-## Survey Benchmark
-
-The versioned Survey benchmark contains 15 computer-vision cases across
-few-shot learning, vision transformers, and NeRF, plus a 54-paper judged corpus.
-It compares:
-
-- external search only
-- external search plus abstract RAG
-- external search plus selected-fulltext RAG
-
-The implementation and deterministic tests are complete. A cost-bounded 9-run live
-pilot persisted all observations and Judges, verified 9 RunArtifact hashes, and
-verified input/output on all 18 Survey/Judge LangFuse traces. The result is still
-`partial`: no profile pair had identical external inputs, required-paper citation
-recall was zero, runtime faithfulness evaluation was skipped in every run, and one
-selected-fulltext Survey failed at synthesis. See the
-[`sanitized pilot result`](./benchmarks/survey/results/pilot-2026-08-25.md). The
-project therefore does not claim a winning profile or a full-text product gain.
-The failures exposed by that pilot now have tested repairs: benchmark
-profiles replay one frozen Planner/Search snapshot, paper flow is measured stage
-by stage, runtime evaluators use the configured provider, long-context generation
-has bounded compact fallback, and observation/token budgets stop paid work before
-the next run. A subsequent single-case
-[`post-repair live pilot`](./benchmarks/survey/results/post-repair-pilot-2026-09-08.md)
-completed with final runtime faithfulness 0.8958 and delivery `ready`, but it was
-self-judged and used a dirty worktree. It validates the repaired path, not a
-cross-profile gain or formal baseline.
-
-## Quality, Safety, and Failure Semantics
-
-- `ready`: execution is complete, quality passed, and the report is publishable.
-- `needs_review`: execution completed but quality is unverified or a critical degradation occurred.
-- `blocked`: execution completed, but quality failed; the draft is retained and not publishable.
-- `partial`: execution was incomplete because of failure, cancellation, timeout, or budget termination.
-
-Untrusted paper content passes through prompt-injection detection and provenance
-boundaries. Tool calls require registered names, allowed categories, and valid
-JSON arguments. Unknown MCP capabilities and write/destructive operations are
-denied by default. The API applies a global concurrency limit and cooperative
-cancellation token.
-
-Default tests reject unmarked network access. Integration and live tests use
-explicit markers and isolated storage identities.
-
-```powershell
-D:\miniconda3\envs\litagent\python.exe -m pytest tests -q -p no:cacheprovider --basetemp=.pytest-tmp-readme
-```
-
-## Repository Map
-
-```text
-src/litagent/
-  agents/          Planner and DAG workers
-  orchestrator/    Task graph, scheduler, retries, timeout and cancellation
-  rag/             Corpus ingestion, vector store, retrieval and claims
-  memory/          Working, episodic, semantic and procedural memory
-  eval/            Citation, consistency and faithfulness evaluation
-  observability/   LangFuse mapping, redaction, artifact and archive
-  benchmark/       Ingestion, retrieval and end-to-end Survey benchmarks
-  static/          Packaged flow replay UI and offline samples
-benchmarks/         Versioned datasets, profiles and reviewed summaries
-docs/               Public decisions, system overview and design truth
-tests/              Offline default, integration and live verification
-```
-
-## Persistence
-
-- **PostgreSQL** stores semantic/procedural memory and resumable corpus state.
-- **Qdrant** stores paper chunks, trusted claims, and episodic memory in separate collections.
-- **Redis** stores short-lived working memory with TTL semantics.
-- **RunArtifact JSON** stores complete local execution replay data.
-- **Manifest and raw assets** are the rebuild source for derived vector indexes.
-
-Docker Compose uses named PostgreSQL and Qdrant volumes. Working memory is
-intentionally temporary and is not presented as durable workflow recovery.
-
-## Limitations
-
-- PDF processing does not include OCR, formula understanding, table extraction, or image interpretation.
-- Benchmark corpora are deliberately small and domain-specific; results must not be generalized to arbitrary literature.
-- The independent LLM Judge complements deterministic metrics but does not replace domain-expert review.
-- The service is a local engineering system, not a multi-tenant hosted platform with authentication and billing.
-- Bundled offline samples validate replay contracts only and do not measure model quality.
-
-## Further Reading
-
-- [System overview](./docs/system-overview.md)
-- [Design truth and evidence matrix](./docs/design-truth.md)
-- [Qdrant and embedding ADR](./docs/adr/001-qdrant-and-embedding.md)
-- [RAG benchmark methodology](./benchmarks/rag/README.md)
-- [Survey benchmark methodology](./benchmarks/survey/README.md)
+[Screenshot / short screen-capture walkthrough](./docs/presentation-guide.md#保存的演示材料).

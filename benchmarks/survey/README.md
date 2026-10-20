@@ -1,3 +1,16 @@
+# Current release boundary (2026-10-20)
+
+The public engineering presentation ships a sanitized real diagnostic: one of
+three pilots ran, 27 requests / 124,448 known tokens, invalid Pro JSON, Evaluation
+not run, formal 0/15. Lite handles extraction/evaluation; Pro handles writing.
+Current new-UI Judge and extraction Jev are independent switches, both off.
+Old Judge/final-Jev and baseline commands below describe historical contracts;
+they are not the default release workflow or proof of current strict success.
+
+The release validation is at most one actual-input protocol request, followed only
+on success by three fixed-code Surveys. No formal 15-case run is automatically
+started as part of the engineering release. [Release boundary](../../docs/release.md).
+
 # Survey Benchmark
 
 ## Recovery and Cost Safety
