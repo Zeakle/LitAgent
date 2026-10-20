@@ -22,6 +22,7 @@ METRIC_INFLECTION_CONTRACT = "accuracy-inflection-v1"
 SUMMARY_ARRAY_WIRE_CONTRACT = "summary-array-items-v1"
 NATIVE_ARRAY_WIRE_CONTRACT = "native-array-wire-v1"
 NATIVE_SCHEMA_ENCODING_CONTRACT = "inline-local-schema-v1"
+NATIVE_PROMPT_COMPOSITION_CONTRACT = "native-array-prompt-composition-v1"
 UNIT_CITATION_SCOPE_INSTRUCTION = """
 SCIENTIFIC UNIT CITATION SCOPE unit-citation-scope-v1:
 The host renders references only at the end of each native unit. Do not join

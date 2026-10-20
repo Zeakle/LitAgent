@@ -2076,7 +2076,10 @@ def prepare_grounded_request(
     if packet.get("body_analysis_contract") == ANALYSIS_CONTRACT:
         from litagent.body_quality import ANALYSIS_INSTRUCTION
 
-        prepared[0]["content"] += ANALYSIS_INSTRUCTION
+        # The producer already supplies analysis duties. Keep the historical
+        # canonical prompt, but do not duplicate it in new array requests.
+        if not array_wire or ANALYSIS_INSTRUCTION not in prepared[0]["content"]:
+            prepared[0]["content"] += ANALYSIS_INSTRUCTION
         if packet.get("unit_citation_scope_contract"):
             from litagent.body_quality import UNIT_CITATION_SCOPE_INSTRUCTION
 
@@ -2101,7 +2104,10 @@ def prepare_grounded_request(
             "scientific verification."
         )
     if array_wire:
-        from litagent.body_quality import NATIVE_ARRAY_WIRE_CONTRACT
+        from litagent.body_quality import (
+            NATIVE_ARRAY_WIRE_CONTRACT,
+            NATIVE_PROMPT_COMPOSITION_CONTRACT,
+        )
         from litagent.native_wire import array_wire_schema
 
         if not (
@@ -2114,6 +2120,9 @@ def prepare_grounded_request(
             schema=array_wire_schema(canonical_schema),
         )
         packet["native_wire_contract"] = NATIVE_ARRAY_WIRE_CONTRACT
+        packet["native_prompt_composition_contract"] = (
+            NATIVE_PROMPT_COMPOSITION_CONTRACT
+        )
         prepared[1]["content"] = json.dumps(
             packet, ensure_ascii=False, separators=(",", ":")
         )
@@ -2121,6 +2130,11 @@ def prepare_grounded_request(
         # second shape. Unit fields and scientific requirements stay unchanged.
         prepared[0]["content"] = (
             prepared[0]["content"]
+            .replace(
+                "Use supplied section_keys in order.",
+                "Use generation_section_order for output; section_keys is the "
+                "host's final display order only.",
+            )
             .replace(
                 "Each section has first_block and additional_blocks.",
                 "Each section has a nonempty blocks array.",

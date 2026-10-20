@@ -3,6 +3,7 @@
 import copy
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -78,6 +79,32 @@ def test_frozen_identity_and_history_preserve_unknown_holds(campaign):
     assert history.read_bytes() == before
     with pytest.raises(FileExistsError):
         stage.prepare(root, cfg, history)
+
+
+@pytest.mark.asyncio
+async def test_cli_three_observation_limit_persists_without_entering_formal(
+    campaign, tmp_path, monkeypatch, capsys
+):
+    execute = AsyncMock(return_value=observation())
+    r = runner(campaign, tmp_path, execute)
+    monkeypatch.setattr(stage, "load_config", lambda: campaign[1])
+    monkeypatch.setattr(stage, "StageModelQualityRunner", lambda *a: r)
+    args = SimpleNamespace(
+        root=campaign[0], prepare=False, live=True, max_new_observations=3
+    )
+    await stage.execute(args)
+    result = json.loads(capsys.readouterr().out)
+    assert execute.await_count == 3
+    assert result["counts"]["pilot"]["run"] == 3
+    assert result["counts"]["formal"]["run"] == 0
+    assert result["counts"]["formal"]["not_run"] == 15
+    assert result["stop_reasons"] == ["quality_requested_observation_limit"]
+    assert json.loads(r.state_path.read_text())["max_new_observations"] == 3
+    await stage.execute(args)
+    assert execute.await_count == 3
+    args.max_new_observations = 4
+    with pytest.raises(ValueError, match="quality_observation_limit_conflict"):
+        await stage.execute(args)
 
 
 def test_changed_input_or_role_rejected_before_transport(campaign):

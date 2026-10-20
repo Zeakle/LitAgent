@@ -288,7 +288,10 @@ async def execute(args):
     if args.prepare:
         prepare(args.root, config, args.history)
     runner = StageModelQualityRunner(args.root, config)
-    result = await runner.run(dry_run=not args.live)
+    result = await runner.run(
+        dry_run=not args.live,
+        max_new_observations=args.max_new_observations,
+    )
     print(
         json.dumps(
             {
@@ -320,6 +323,7 @@ def main():
     )
     parser.add_argument("--prepare", action="store_true")
     parser.add_argument("--live", action="store_true")
+    parser.add_argument("--max-new-observations", type=int, choices=range(1, 19))
     asyncio.run(execute(parser.parse_args()))
 
 
