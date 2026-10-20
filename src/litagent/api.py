@@ -101,6 +101,7 @@ class SurveyRequest(BaseModel):
         "legacy", "strict_v1", "strict_auto_v1", "strict_auto_v2"
     ] = "legacy"
     body_quality: Literal["legacy", "analysis_v1"] = "legacy"
+    generation_strategy: Literal["single_v1", "body_summary_v1"] = "single_v1"
     verification: VerificationOptions | None = None
     citation_style: CitationStyle = "numbered"
     auto_audit_mode: AutoAuditMode = "off"
@@ -120,6 +121,11 @@ class SurveyRequest(BaseModel):
         """Apply new automatic defaults without changing legacy request defaults."""
         if self.body_quality != "legacy" and self.quality_policy != "strict_auto_v2":
             raise ValueError("body_analysis_requires_strict_auto_v2")
+        if (
+            self.generation_strategy != "single_v1"
+            and self.body_quality != "analysis_v1"
+        ):
+            raise ValueError("staged_generation_requires_body_analysis")
         if self.verification is not None and self.quality_policy != "strict_auto_v2":
             raise ValueError("optional_verification_requires_strict_auto_v2")
         if self.quality_policy in {"strict_auto_v1", "strict_auto_v2"}:
@@ -569,6 +575,7 @@ async def create_survey(
         quality_policy=req.quality_policy,
         verification=req.verification,
         body_quality=req.body_quality,
+        generation_strategy=req.generation_strategy,
         review_structure=req.review_structure,
         auto_audit_mode=req.auto_audit_mode,
         auto_audit_max_versions=req.auto_audit_max_versions,
@@ -806,6 +813,7 @@ async def get_workbench_context():
             "gates": ["extraction_jev", "evaluation", "judge"],
             "required_gates": ["evaluation"],
             "default_body_quality": "analysis_v1",
+            "default_generation_strategy": "body_summary_v1",
             "optional_gates": ["judge", "extraction_jev"],
             "default_verification": VerificationOptions().model_dump(mode="json"),
             "omitted_verification": "historical_mandatory_gates",

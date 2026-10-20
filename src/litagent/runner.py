@@ -389,6 +389,8 @@ class LitAgent:
             task.input_data["report_language"] = options.report_language
             if options.body_quality != "legacy":
                 task.input_data["body_quality"] = options.body_quality
+            if options.generation_strategy != "single_v1":
+                task.input_data["generation_strategy"] = options.generation_strategy
             if options.verification is not None:
                 task.input_data["verification"] = options.verification.model_dump(
                     mode="json"
@@ -910,6 +912,8 @@ class LitAgent:
         metadata["quality_policy"] = options.quality_policy
         if options.body_quality != "legacy":
             metadata["body_quality"] = options.body_quality
+        if options.generation_strategy != "single_v1":
+            metadata["generation_strategy"] = options.generation_strategy
         if options.verification is not None:
             metadata["verification"] = options.verification.model_dump(mode="json")
         if options.quality_policy == "strict_auto_v2" and verification_enabled(
@@ -3622,6 +3626,7 @@ class LitAgent:
                     "quality_policy": metadata["quality_policy"],
                     "fact_cards": metadata.get("fact_cards", {}),
                     "coverage_requirements": metadata.get("coverage_requirements"),
+                    "body_quality": metadata.get("body_quality", "legacy"),
                 }
                 if is_strict_policy(metadata.get("quality_policy"))
                 else {}
@@ -3660,6 +3665,7 @@ class LitAgent:
 
         token = set_task_id("human_revision")
         try:
+            staged = metadata.get("generation_strategy") == "body_summary_v1"
             kwargs: dict[str, Any] = {"max_tokens": self._config.eval.max_tokens}
             if is_strict_policy(metadata.get("quality_policy")):
                 from litagent.quality import (
@@ -3671,39 +3677,64 @@ class LitAgent:
                     messages, array_wire=metadata.get("body_quality") == "analysis_v1"
                 )
                 kwargs.update(response_format=response_format, transport_max_attempts=1)
-                check_grounded_request_budget(
-                    self._stage_llm("generation"),
-                    messages,
-                    response_format,
-                    trace_hook=self._trace_hook,
-                    parent_task_id="human_revision",
-                    stage="human_revision",
-                    max_tokens=self._config.eval.max_tokens,
-                    context_tokens=int(
-                        self._config.eval.context_tokens
-                        * (1 - self._config.eval.strict_context_margin)
-                    ),
-                )
+                if not staged:
+                    check_grounded_request_budget(
+                        self._stage_llm("generation"),
+                        messages,
+                        response_format,
+                        trace_hook=self._trace_hook,
+                        parent_task_id="human_revision",
+                        stage="human_revision",
+                        max_tokens=self._config.eval.max_tokens,
+                        context_tokens=int(
+                            self._config.eval.context_tokens
+                            * (1 - self._config.eval.strict_context_margin)
+                        ),
+                    )
             if self._config.eval.thinking_mode != "provider_default":
                 kwargs["extra_body"] = {
                     "thinking": {"type": self._config.eval.thinking_mode}
                 }
-            async with asyncio.timeout(self._config.eval.timeout_seconds):
-                response = await self._stage_llm("generation").chat(messages, **kwargs)
-            candidate = (response.content or "").strip()
+            if staged:
+                from litagent.staged_generation import generate_staged_report
+
+                candidate, wire_projection = await generate_staged_report(
+                    self._stage_llm("generation"),
+                    messages,
+                    response_format,
+                    cards=metadata.get("fact_cards", {}),
+                    structure=metadata.get("review_structure", "academic_v2"),
+                    language=report_language,
+                    selection=selection,
+                    checkpoint_path=self._targeted_repair_path(),
+                    trace_hook=self._trace_hook,
+                    parent_task_id="human_revision",
+                    stage="human_revision",
+                    max_tokens=self._config.eval.max_tokens,
+                    generation_options={
+                        k: v for k, v in kwargs.items() if k == "extra_body"
+                    },
+                )
+            else:
+                async with asyncio.timeout(self._config.eval.timeout_seconds):
+                    response = await self._stage_llm("generation").chat(
+                        messages, **kwargs
+                    )
+                candidate = (response.content or "").strip()
             if is_strict_policy(metadata.get("quality_policy")):
                 from litagent.quality import (
                     project_grounded_response,
                     render_grounded_report_traced,
                 )
 
-                candidate, wire_projection = project_grounded_response(
-                    candidate,
-                    response_format,
-                    trace_hook=self._trace_hook,
-                    parent_task_id="human_revision",
-                    stage="human_revision",
-                )
+                if not staged:
+                    candidate, wire_projection = project_grounded_response(
+                        candidate,
+                        response_format,
+                        trace_hook=self._trace_hook,
+                        parent_task_id="human_revision",
+                        stage="human_revision",
+                    )
 
                 candidate_bindings = {}
                 candidate = render_grounded_report_traced(

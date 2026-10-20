@@ -199,14 +199,14 @@ def array_from_native(document):
     return result
 
 
-def canonical_from_array(document, *, validate_references=True):
+def canonical_from_array(document, *, validate_references=True, body_only=False):
     """Restore exact indices and field values, recording only a format projection."""
     if isinstance(document, str):
         document = json.loads(document, object_pairs_hook=unique)
     closed(document, {"title", "sections"})
     if not isinstance(document["title"], str):
         raise ValueError("array_wire_shape_invalid")
-    closed(document["sections"], SECTIONS)
+    closed(document["sections"], BODY if body_only else SECTIONS)
     result, positions = {"title": document["title"], "sections": {}}, []
     for key, section in document["sections"].items():
         closed(section, {"blocks"})
@@ -251,7 +251,7 @@ def canonical_from_array(document, *, validate_references=True):
             "first_block": blocks[0],
             "additional_blocks": blocks[1:],
         }
-    for key in ("abstract", "conclusion"):
+    for key in (() if body_only else ("abstract", "conclusion")):
         for block in document["sections"][key]["blocks"]:
             for unit in block["sentences"]:
                 if not validate_references:

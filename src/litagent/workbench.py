@@ -82,12 +82,18 @@ class RunOptions(Contract):
     quality_policy: QualityPolicy = "legacy"
     verification: VerificationOptions | None = None
     body_quality: Literal["legacy", "analysis_v1"] = "legacy"
+    generation_strategy: Literal["single_v1", "body_summary_v1"] = "single_v1"
 
     @model_validator(mode="after")
     def enforce_strict_review(self):
         """Apply policy-owned defaults while honoring explicit optional reviewers."""
         if self.body_quality != "legacy" and self.quality_policy != "strict_auto_v2":
             raise ValueError("body_analysis_requires_strict_auto_v2")
+        if (
+            self.generation_strategy != "single_v1"
+            and self.body_quality != "analysis_v1"
+        ):
+            raise ValueError("staged_generation_requires_body_analysis")
         if self.verification is not None and self.quality_policy != "strict_auto_v2":
             raise ValueError("optional_verification_requires_strict_auto_v2")
         if self.quality_policy == "strict_v1":
@@ -113,6 +119,12 @@ class RunOptions(Contract):
     def fingerprint(self) -> str:
         """Bind generation and review choices to a stable run identity."""
         payload = self.model_dump(mode="json")
+        if self.generation_strategy == "single_v1":
+            payload.pop("generation_strategy")
+        else:
+            from litagent.staged_generation import CONTRACT as generation_contract
+
+            payload["generation_contract"] = generation_contract
         if self.verification is None:
             payload.pop("verification")
         if self.body_quality == "legacy":

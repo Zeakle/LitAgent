@@ -471,6 +471,26 @@ class SynthesisWorker(Worker):
                             ],
                         },
                     )
+            elif task.input_data.get("generation_strategy") == "body_summary_v1":
+                from litagent.staged_generation import generate_staged_report
+
+                candidate, wire_projection = await generate_staged_report(
+                    self._llm,
+                    messages,
+                    response_format,
+                    cards=cards,
+                    structure=review_structure,
+                    language=report_language,
+                    selection=selection,
+                    checkpoint_path=(
+                        self._repair_state_path_provider()
+                        if self._repair_state_path_provider
+                        else None
+                    ),
+                    trace_hook=self._trace_hook,
+                    parent_task_id=task.task_id,
+                    generation_options=generation_options,
+                )
             else:
                 check_grounded_request_budget(
                     self._llm,
@@ -579,6 +599,11 @@ class SynthesisWorker(Worker):
                 "review_structure": review_structure,
                 "review_methodology": review_methodology,
                 "quality_policy": task.input_data["quality_policy"],
+                **(
+                    {"generation_strategy": task.input_data["generation_strategy"]}
+                    if task.input_data.get("generation_strategy")
+                    else {}
+                ),
                 **(
                     {
                         "body_quality": "analysis_v1",

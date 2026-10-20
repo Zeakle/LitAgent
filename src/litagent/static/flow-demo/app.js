@@ -24,7 +24,7 @@ let inspectorTrigger = null;
 const benchmarkState = { results: [], selectedId: null, detail: null, observation: null, loaded: false };
 const api = createApiClient(() => context?.operation_token);
 const executionWorkspace = createExecutionWorkspace({ store, t, onInspect: setInspector });
-const automaticAuditPreferences = bindAutomaticAuditPreferences({ capabilities: () => context?.auto_audit_capabilities, t });
+const automaticAuditPreferences = bindAutomaticAuditPreferences({ capabilities: () => ({...context?.auto_audit_capabilities, default_generation_strategy:context?.automatic_acceptance?.default_generation_strategy}), t });
 function t(key) { return translator(store.get().locale)(key); }
 function setNotice(message = "", kind = "info") {
   const element = $("#notice");

@@ -43,6 +43,7 @@ export function bindAutomaticAuditPreferences({ capabilities, t }) {
       if ((judge?.checked && !caps.judge_available) || (jev?.checked && !caps.jev_available)) throw new Error(t("autoAuditUnavailableSelection"));
       return {
         body_quality: "analysis_v1",
+        ...(caps.default_generation_strategy === "body_summary_v1" ? {generation_strategy:"body_summary_v1"} : {}),
         verification: { version: "optional-verification-v1", judge: !!judge?.checked, jev: !!jev?.checked },
         auto_audit_mode: judge?.checked ? "judge" : "off", auto_audit_max_versions: 1,
       };

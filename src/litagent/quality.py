@@ -447,23 +447,24 @@ def targeted_repair_state(value, run_id: str, *, allow_inflight: bool = False) -
 
 def native_task_identity(value: Mapping) -> str:
     """Bind a received draft to its question, evidence preparation and disclosures."""
-    return digest(
-        {
-            key: value.get(key)
-            for key in (
-                "query",
-                "quality_policy",
-                "body_quality",
-                "review_structure",
-                "report_language",
-                "verification",
-                "coverage_requirements",
-                "requested_methods",
-                "search_started_at",
-                "methodology_results",
-            )
-        }
-    )
+    identity = {
+        key: value.get(key)
+        for key in (
+            "query",
+            "quality_policy",
+            "body_quality",
+            "review_structure",
+            "report_language",
+            "verification",
+            "coverage_requirements",
+            "requested_methods",
+            "search_started_at",
+            "methodology_results",
+        )
+    }
+    if value.get("generation_strategy", "single_v1") != "single_v1":
+        identity["generation_strategy"] = value["generation_strategy"]
+    return digest(identity)
 
 
 def validate_received_native(value, task_input: Mapping, run_id: str) -> dict:

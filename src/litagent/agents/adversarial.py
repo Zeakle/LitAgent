@@ -354,39 +354,79 @@ class AdversarialReviewWorker(Worker):
                                     response_format=response_format,
                                     transport_max_attempts=1,
                                 )
-                                check_grounded_request_budget(
-                                    self._llm,
-                                    messages,
-                                    response_format,
-                                    trace_hook=self._trace_hook,
-                                    parent_task_id=task.task_id,
-                                    stage="revision",
-                                )
+                                if (
+                                    task.input_data.get("generation_strategy")
+                                    != "body_summary_v1"
+                                ):
+                                    check_grounded_request_budget(
+                                        self._llm,
+                                        messages,
+                                        response_format,
+                                        trace_hook=self._trace_hook,
+                                        parent_task_id=task.task_id,
+                                        stage="revision",
+                                    )
                             if self._thinking_mode != "provider_default":
                                 kwargs["extra_body"] = {
                                     "thinking": {"type": self._thinking_mode}
                                 }
-                            if strict:
+                            staged = (
+                                strict
+                                and task.input_data.get("generation_strategy")
+                                == "body_summary_v1"
+                            )
+                            if staged:
+                                from litagent.staged_generation import (
+                                    generate_staged_report,
+                                )
+
+                                new_draft, wire_projection = (
+                                    await generate_staged_report(
+                                        self._llm,
+                                        messages,
+                                        response_format,
+                                        cards=synthesis_result["fact_cards"],
+                                        structure=review_structure,
+                                        language=report_language,
+                                        selection=evidence_selection,
+                                        checkpoint_path=(
+                                            self._synthesis._repair_state_path_provider()
+                                            if self._synthesis._repair_state_path_provider
+                                            else None
+                                        ),
+                                        trace_hook=self._trace_hook,
+                                        parent_task_id=task.task_id,
+                                        stage=f"revision:{round_num+1}",
+                                        generation_options={
+                                            k: v
+                                            for k, v in kwargs.items()
+                                            if k == "extra_body"
+                                        },
+                                    )
+                                )
+                            elif strict:
                                 resp = await asyncio.wait_for(
                                     self._llm.chat(messages, **kwargs), 180
                                 )
                             else:
                                 resp = await self._llm.chat(messages, **kwargs)
 
-                        new_draft = (resp.content or "").strip()
+                        if not staged:
+                            new_draft = (resp.content or "").strip()
                         if strict:
                             from litagent.quality import (
                                 project_grounded_response,
                                 render_grounded_report_traced,
                             )
 
-                            new_draft, wire_projection = project_grounded_response(
-                                new_draft,
-                                response_format,
-                                trace_hook=self._trace_hook,
-                                parent_task_id=task.task_id,
-                                stage="revision",
-                            )
+                            if not staged:
+                                new_draft, wire_projection = project_grounded_response(
+                                    new_draft,
+                                    response_format,
+                                    trace_hook=self._trace_hook,
+                                    parent_task_id=task.task_id,
+                                    stage="revision",
+                                )
 
                             revision_bindings = {}
                             new_draft = render_grounded_report_traced(

@@ -38,13 +38,14 @@ def sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def options() -> RunOptions:
+def options(*, generation_strategy="single_v1") -> RunOptions:
     """Keep optional paid verification disabled and complete Evaluation mandatory."""
     return RunOptions(
         quality_policy="strict_auto_v2",
         report_language="zh-CN",
         review_structure="academic_v2",
         body_quality="analysis_v1",
+        generation_strategy=generation_strategy,
         verification=VerificationOptions(judge=False, jev=False),
     )
 
@@ -108,7 +109,9 @@ def prepare(root: Path, config, history_path: Path) -> dict:
         "version": VERSION,
         "suite_id": root.name,
         "config": build_config_summary(config, "strict_auto_v2"),
-        "options": options().model_dump(mode="json"),
+        "options": options(generation_strategy="body_summary_v1").model_dump(
+            mode="json"
+        ),
         "models": MODELS,
         "historical_accounting": historical,
         "hashes": {str(p.resolve()): sha(p) for p in sorted(paths)},
@@ -176,7 +179,12 @@ def validate_manifest(root: Path, config) -> dict:
         or m.get("suite_id") != root.name
         or digest({k: v for k, v in m.items() if k != "binding"}) != m.get("binding")
         or m.get("config") != build_config_summary(config, "strict_auto_v2")
-        or m.get("options") != options().model_dump(mode="json")
+        or m.get("options")
+        != options(
+            generation_strategy=m.get("options", {}).get(
+                "generation_strategy", "single_v1"
+            )
+        ).model_dump(mode="json")
         or m.get("models") != MODELS
         or m.get("formal_gate") != PILOT_EVALUATION_GATE_CONTRACT
         or m.get("pilots") != list(PILOT_IDS)
@@ -219,7 +227,7 @@ class StageModelQualityRunner(QualitySuiteRunner):
             root=output_root or Path("artifacts/benchmarks/survey"),
             run_archive=ArchiveRepository(),
             suite_id=self.manifest["suite_id"],
-            run_options=options(),
+            run_options=RunOptions.model_validate(self.manifest["options"]),
             executor=executor,
         )
         self.binding = digest([self.binding, self.manifest["binding"]])

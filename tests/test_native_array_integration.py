@@ -310,7 +310,10 @@ def test_trace_projection_exports_only_metadata_and_hashes():
 
 
 @pytest.mark.asyncio
-async def test_real_reviewer_to_whole_revision_uses_explicit_array_wire():
+@pytest.mark.parametrize("staged", [False, True])
+async def test_real_reviewer_to_whole_revision_uses_explicit_array_wire(
+    tmp_path, staged
+):
     from types import SimpleNamespace
     from unittest.mock import AsyncMock
 
@@ -341,18 +344,43 @@ async def test_real_reviewer_to_whole_revision_uses_explicit_array_wire():
         packet = json.loads(request.content)
         requests.append(packet)
         index = len(requests) - 1
-        if index in {0, 2}:
-            assert (
-                packet["response_format"]["json_schema"]["name"]
-                == "grounded_report_v23_arrays"
-            )
-            content = json.dumps(array_from_native(doc if index == 0 else revised))
+        if index in ({0, 1, 3, 4} if staged else {0, 2}):
+            name = packet["response_format"]["json_schema"]["name"]
+            value = array_from_native(doc if index < (2 if staged else 1) else revised)
+            if staged:
+                if index in {0, 3}:
+                    assert name == "grounded_body_v1"
+                    if index == 3:
+                        writing_packet = json.loads(packet["messages"][1]["content"])
+                        assert "On DeiT-S" in writing_packet["current_draft"]
+                        assert (
+                            "Clarify this sentence"
+                            in writing_packet["located_feedback"]
+                        )
+                        assert (
+                            "address those bound criticisms"
+                            in packet["messages"][0]["content"]
+                        )
+                    for key in ("abstract", "conclusion"):
+                        del value["sections"][key]
+                else:
+                    assert name == "grounded_summaries_v1"
+                    value = {
+                        "sections": {
+                            key: value["sections"][key]
+                            for key in ("abstract", "conclusion")
+                        }
+                    }
+            else:
+                assert name == "grounded_report_v23_arrays"
+            content = json.dumps(value)
         else:
-            assert index in {1, 3}
+            assert index in ({2, 5} if staged else {1, 3})
+            first_review = index == (2 if staged else 1)
             review_packet = json.loads(packet["messages"][1]["content"])
             content = {
-                "score": 0.6 if index == 1 else 0.9,
-                "verdict": "revise" if index == 1 else "accept",
+                "score": 0.6 if first_review else 0.9,
+                "verdict": "revise" if first_review else "accept",
                 "evidence_compliance": {
                     "passed": True,
                     "unsupported_claims": [],
@@ -360,7 +388,7 @@ async def test_real_reviewer_to_whole_revision_uses_explicit_array_wire():
                 },
                 "issues": [],
             }
-            if index == 1:
+            if first_review:
                 quote = next(
                     line
                     for line in review_packet["current_draft"].splitlines()
@@ -416,6 +444,14 @@ async def test_real_reviewer_to_whole_revision_uses_explicit_array_wire():
         evidence_selector=SimpleNamespace(
             select=AsyncMock(return_value=source_selection(cards))
         ),
+        **(
+            {
+                "run_id_provider": lambda: "staged-review",
+                "repair_state_path_provider": lambda: tmp_path / "repair.json",
+            }
+            if staged
+            else {}
+        ),
     )
     worker = AdversarialReviewWorker(pro, synthesis, ReviewerWorker(lite), max_rounds=2)
     task = SubTask(
@@ -429,20 +465,29 @@ async def test_real_reviewer_to_whole_revision_uses_explicit_array_wire():
             "body_quality": "analysis_v1",
             "report_language": "en",
             "verification": {"judge": False, "jev": False},
+            **({"generation_strategy": "body_summary_v1"} if staged else {}),
         },
     )
     try:
         result = await worker.execute(task)
-        assert [r["model"] for r in requests] == ["pro", "lite", "pro", "lite"]
+        assert [r["model"] for r in requests] == (
+            ["pro", "pro", "lite", "pro", "pro", "lite"]
+            if staged
+            else ["pro", "lite", "pro", "lite"]
+        )
         assert "For DeiT-S, EViT" in result["final_draft"]
         proof = result["writing_bindings"]["native_wire_input_projection"]
-        assert (
-            proof["raw_response_sha256"]
-            == hashlib.sha256(
-                json.dumps(array_from_native(revised)).encode()
-            ).hexdigest()
-        )
+        if staged:
+            assert proof["transport"] == "host_assembled_stages"
+            assert set(proof["stage_response_sha256"]) == {"body", "summaries"}
+        else:
+            assert (
+                proof["raw_response_sha256"]
+                == hashlib.sha256(
+                    json.dumps(array_from_native(revised)).encode()
+                ).hexdigest()
+            )
         assert proof["scientific_verdict"] == "not_evaluated"
-        assert budget.snapshot()["requests_sent"] == 4
+        assert budget.snapshot()["requests_sent"] == (6 if staged else 4)
     finally:
         await owner.close()
