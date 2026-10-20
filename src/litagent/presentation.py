@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 
 from litagent.benchmark.survey_archive import SurveyBenchmarkArchive
+from litagent.config import AppConfig, LLMConfig
 
 PUBLIC_ROOT = Path(__file__).resolve().parent / "static" / "presentation"
 
@@ -15,6 +16,24 @@ PUBLIC_ROOT = Path(__file__).resolve().parent / "static" / "presentation"
 def presentation_enabled() -> bool:
     """Identify the explicit process-wide, read-only presentation mode."""
     return os.getenv("LITAGENT_DEMO_MODE", "").lower() == "presentation"
+
+
+def presentation_config() -> AppConfig:
+    """Use public model labels without requiring a checkout or live config lookup."""
+    models = json.loads((PUBLIC_ROOT / "suite.json").read_text(encoding="utf-8"))[
+        "execution_context"
+    ]["models"]
+    return AppConfig(
+        agent={},
+        logging={},
+        llm=LLMConfig(
+            model=models["extraction"],
+            **{
+                f"{stage}_model": models[stage]
+                for stage in ("extraction", "generation", "evaluation")
+            },
+        ),
+    )
 
 
 class PresentationRepository:

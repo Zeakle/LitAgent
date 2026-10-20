@@ -47,6 +47,7 @@ from litagent.presentation import (
     PresentationBenchmarkArchive,
     PresentationRepository,
     PresentationService,
+    presentation_config,
     presentation_enabled,
 )
 from litagent.report_audit import ReportAuditService
@@ -221,7 +222,9 @@ async def _shutdown_owned_tasks(application: FastAPI) -> None:
 @asynccontextmanager
 async def lifespan(application: FastAPI):
     """Initialize stable runtime state and close every owned task on shutdown."""
-    application.state.config = load_config()
+    application.state.config = (
+        presentation_config() if presentation_enabled() else load_config()
+    )
     if presentation_enabled():
         application.state.flow_repository = PresentationRepository()
         application.state.flow_archive_index = {
@@ -767,7 +770,9 @@ async def get_workbench_context():
     """Return local UI capabilities and the same-origin mutation token."""
     mode = os.getenv("LITAGENT_DEMO_MODE", "live").lower()
     live_enabled = mode == "live"
-    config = app.state.config or load_config()
+    config = app.state.config or (
+        presentation_config() if presentation_enabled() else load_config()
+    )
     audit_service = (
         None
         if presentation_enabled()

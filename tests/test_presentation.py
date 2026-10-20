@@ -98,6 +98,7 @@ with ExitStack() as stack:
     ):
         stack.enter_context(patch(target, side_effect=AssertionError(target)))
     from litagent.api import app
+    stack.enter_context(patch("litagent.api.load_config", side_effect=AssertionError("private live configuration read")))
     with TestClient(app) as client:
         assert client.get("/health").status_code == 200
         context = client.get("/workbench/context").json()
