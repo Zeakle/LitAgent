@@ -345,7 +345,9 @@ class AdversarialReviewWorker(Worker):
                                 )
 
                                 messages, response_format = prepare_grounded_request(
-                                    messages
+                                    messages,
+                                    array_wire=task.input_data.get("body_quality")
+                                    == "analysis_v1",
                                 )
                                 kwargs.update(
                                     max_tokens=20000,
@@ -373,7 +375,18 @@ class AdversarialReviewWorker(Worker):
 
                         new_draft = (resp.content or "").strip()
                         if strict:
-                            from litagent.quality import render_grounded_report_traced
+                            from litagent.quality import (
+                                project_grounded_response,
+                                render_grounded_report_traced,
+                            )
+
+                            new_draft, wire_projection = project_grounded_response(
+                                new_draft,
+                                response_format,
+                                trace_hook=self._trace_hook,
+                                parent_task_id=task.task_id,
+                                stage="revision",
+                            )
 
                             revision_bindings = {}
                             new_draft = render_grounded_report_traced(
@@ -393,12 +406,20 @@ class AdversarialReviewWorker(Worker):
                                 == "strict_auto_v2",
                                 analysis_mode=task.input_data.get("body_quality")
                                 == "analysis_v1",
+                                require_unit_citation_scope=task.input_data.get(
+                                    "body_quality"
+                                )
+                                == "analysis_v1",
                                 require_scope_notices=task.input_data.get(
                                     "quality_policy"
                                 )
                                 == "strict_auto_v2",
                                 bindings=revision_bindings,
                             )
+                            if wire_projection:
+                                revision_bindings["native_wire_input_projection"] = (
+                                    wire_projection
+                                )
                         if not new_draft:
                             logger.warning(
                                 "Revision LLM returned empty content, "

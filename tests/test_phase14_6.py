@@ -75,7 +75,7 @@ def test_flow_demo_projection_uses_real_artifact_contract() -> None:
     assert view["summary"]["publishable"] is True
     assert view["dag"]["dependencies"]["extract"] == ["relevance_gate"]
     assert view["report"]["survey"].startswith("# Reproducible Survey")
-    assert view["evidence"][0]["evidence_id"] == "E:demo-1"
+    assert view["evidence"][0]["evidence_id"] == "demo-1"
     assert view["graph"]["tier_counts"] == {"core": 1}
     assert view["evaluation"]["faithfulness"]["score"] == 0.94
 

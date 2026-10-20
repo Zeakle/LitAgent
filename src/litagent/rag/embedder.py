@@ -7,14 +7,19 @@ import threading
 from collections.abc import Callable, Sequence
 from typing import Any
 
-from sentence_transformers import SentenceTransformer
-
 from litagent.config import EmbeddingBackend, RAGConfig
 from litagent.logging import get_logger
 from litagent.rag.interfaces import Embedder, EmbeddingDocument, RetrievalEmbedder
 
 logger = get_logger("rag.embedder")
 _DEFAULT_MODEL = "all-MiniLM-L6-v2"
+
+
+def SentenceTransformer(*args, **kwargs):
+    """Import the optional inference runtime only when a model is requested."""
+    from sentence_transformers import SentenceTransformer as factory
+
+    return factory(*args, **kwargs)
 
 
 class EmbeddingBackendError(RuntimeError):

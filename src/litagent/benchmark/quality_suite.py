@@ -36,6 +36,7 @@ from litagent.runner import LitAgent, RunPolicy
 from litagent.workbench import RunOptions, verification_enabled
 
 PILOT_IDS = ("few-shot-metric", "vit-data-efficient", "nerf-foundations")
+PILOT_EVALUATION_GATE_CONTRACT = "three-explainable-pilots-one-complete-evaluation-v1"
 LIMITS = {"survey": 500000, "judge": 100000, "jev": 200000}
 REQUEST_LIMITS = {"survey": 64, "judge": 2, "jev": 20}
 
@@ -61,6 +62,7 @@ def _technical_failure(failures: list[str]) -> str | None:
         "strict_writing_passage_binding_invalid",
         "strict_writing_passage_range_invalid",
         "strict_writing_passage_empty",
+        "strict_writing_unit_citation_scope_ambiguous",
         "strict_writing_summary_binding_invalid",
         "strict_repair_passage_fields_invalid",
         "strict_repair_passage_binding_invalid",
@@ -70,6 +72,7 @@ def _technical_failure(failures: list[str]) -> str | None:
         "evaluation_decision_consistency_invalid",
         "strict_writing_duplicate_object_key",
         "evaluation_inventory_shape_invalid",
+        "evaluation_inventory_json_invalid",
         "evaluation_inventory_duplicate_key",
         "evaluation_inventory_unit_coverage_invalid",
         "evaluation_inventory_fragment_coverage_invalid",
@@ -86,6 +89,8 @@ def _technical_failure(failures: list[str]) -> str | None:
         "evaluation_global_issue_identity_invalid",
         "evaluation_core_coverage_invalid",
         "evaluation_analysis_coverage_invalid",
+        "evaluation_global_input_identity_invalid",
+        "evaluation_analysis_claim_ownership_invalid",
         "evaluation_conflict_identity_invalid",
         "evaluation_batch_conflicts_not_allowed",
         "evaluation_decision_status_invalid",
@@ -242,6 +247,7 @@ class QualitySuiteResult(BaseModel):
     max_new_observations: int | None = Field(default=None, ge=1, le=18)
     resume_unrun: bool = False
     inherited_observations: int = Field(default=0, ge=0, le=18)
+    execution_context: dict | None = None
     scientific_accuracy: None = None
     false_acceptance_rate: None = None
     false_rejection_rate: None = None
@@ -294,6 +300,39 @@ def summarize(result: dict) -> dict:
     }
 
 
+def evaluation_execution(faithfulness: dict) -> str:
+    """Describe observed execution without inferring scientific success from a gate."""
+    if not isinstance(faithfulness, dict):
+        return "unrecorded"
+    details = faithfulness.get("details") or {}
+    if not isinstance(details, dict):
+        return "unrecorded"
+    stages = details.get("stages") or {}
+    if not isinstance(stages, dict):
+        return "unrecorded"
+    requests = stages.get("requests")
+    if isinstance(requests, list) and requests:
+        return (
+            "completed"
+            if details.get("evaluation_version") == "survey-evaluation-v3"
+            and isinstance(details.get("coverage"), dict)
+            and details["coverage"].get("complete") is True
+            and stages.get("global_check") == "completed"
+            else "incomplete"
+        )
+    if (
+        faithfulness.get("skipped") is True
+        and details.get("skipped_reason")
+        in {"final_report_unavailable", "evidence_selection_invalid"}
+    ) or (
+        details.get("evaluation_version") == "survey-evaluation-v3"
+        and isinstance(requests, list)
+        and not requests
+    ):
+        return "not_run"
+    return "unrecorded"
+
+
 def public_projection(result: dict) -> dict:
     """Exclude query text, body, private paths, raw responses and runtime records."""
     keys = (
@@ -322,6 +361,44 @@ def public_projection(result: dict) -> dict:
         "false_rejection_rate",
     )
     output = {key: result.get(key) for key in keys}
+    context = result.get("execution_context")
+    if context:
+        output["execution_context"] = {
+            key: context.get(key)
+            for key in (
+                "version",
+                "binding",
+                "models",
+                "verification",
+                "historical_accounting",
+            )
+        }
+        if context.get("formal_gate") == PILOT_EVALUATION_GATE_CONTRACT:
+            output["execution_context"]["formal_gate"] = PILOT_EVALUATION_GATE_CONTRACT
+        output["execution_context"]["models"] = {
+            role: (context.get("models") or {}).get(role)
+            for role in ("extraction", "generation", "evaluation")
+        }
+        output["execution_context"]["verification"] = {
+            key: (context.get("verification") or {}).get(key)
+            for key in ("version", "judge", "jev")
+        }
+        output["execution_context"]["historical_accounting"] = {
+            key: value
+            for key, value in (context.get("historical_accounting") or {}).items()
+            if key
+            in {
+                "initial_generation_rounds",
+                "model_requests",
+                "model_known_tokens",
+                "model_unknown_conservative_tokens",
+                "jev_requests",
+                "jev_conservative_input_tokens",
+                "jev_usage_complete",
+                "judge_requests",
+            }
+            and type(value) in (int, bool)
+        }
     output["observations"] = [
         {
             key: row.get(key)
@@ -335,6 +412,7 @@ def public_projection(result: dict) -> dict:
                 "costs",
                 "elapsed_ms",
                 "complete_verification",
+                "evaluation_execution",
                 "failure_codes",
                 "report_sha256",
             )
@@ -342,6 +420,10 @@ def public_projection(result: dict) -> dict:
         for row in result["observations"]
     ]
     for row in output["observations"]:
+        if not isinstance(row.get("evaluation_execution"), str) or row[
+            "evaluation_execution"
+        ] not in {"not_run", "incomplete", "completed", "unrecorded"}:
+            row["evaluation_execution"] = "unrecorded"
         gates = dict(row.get("gates") or {})
         for service in ("judge", "jev"):
             if (row.get("costs") or {}).get(service, {}).get("requests") == 0:
@@ -390,6 +472,7 @@ def export_bundle(root: Path, result: dict) -> None:
         "jev_stage",
         "status",
         "evaluation",
+        "evaluation_execution",
         "judge",
         "jev",
         "report_sha256",
@@ -404,16 +487,70 @@ def export_bundle(root: Path, result: dict) -> None:
     stream = io.StringIO(newline="")
     writer = csv.DictWriter(stream, fieldnames=columns)
     writer.writeheader()
+    judge_label = (
+        "Judge disabled / 未启用"
+        if data.get("execution_context", {}).get("verification", {}).get("judge")
+        is False
+        else ("self_judged" if data.get("self_judged") else "independent_judge")
+    )
+    context_lines = []
+    context_html = ""
+    if context := data.get("execution_context"):
+        model_names = {
+            "extraction": "提取 / Extraction",
+            "generation": "写作与修订 / Writing",
+            "evaluation": "核验 / Evaluation",
+        }
+        historical_names = {
+            "initial_generation_rounds": "历史首次生成轮数 / Prior generation rounds",
+            "model_requests": "历史模型请求 / Prior model requests",
+            "model_known_tokens": "已知 tokens / Known tokens",
+            "model_unknown_conservative_tokens": "未知用量保守预留 / Unknown-usage holds",
+            "jev_requests": "历史 Jev 请求 / Prior Jev requests",
+            "jev_conservative_input_tokens": "Jev 保守输入占用 / Jev input accounting",
+            "judge_requests": "历史 Judge 请求 / Prior Judge requests",
+            "jev_usage_complete": "Jev 用量完整 / Complete Jev usage",
+        }
+        context_rows = [
+            (model_names[key], value) for key, value in context["models"].items()
+        ] + [
+            (historical_names[key], value)
+            for key, value in context["historical_accounting"].items()
+        ]
+        context_lines = [
+            "## 模型与历史账本 / Models and prior accounting",
+            "",
+            "| 项目 / Field | 值 / Value |",
+            "|---|---|",
+            *[f"| {key} | {value} |" for key, value in context_rows],
+            "",
+        ]
+        context_html = (
+            '<section class="scroll"><h2>模型与历史账本 / Models and prior accounting</h2>'
+            "<table><thead><tr><th>项目 / Field</th><th>值 / Value</th></tr></thead><tbody>"
+            + "".join(
+                "<tr><td>"
+                + html.escape(str(key))
+                + "</td><td>"
+                + html.escape(str(value))
+                + "</td></tr>"
+                for key, value in context_rows
+            )
+            + "</tbody></table><details><summary>实验身份 / Experiment identity</summary><pre>"
+            + html.escape(str(context["binding"]))
+            + "</pre></details></section>"
+        )
     lines = [
         "# 严格自动验收 Benchmark",
         "",
-        "自动评测 · self_judged · 人工校准未验证。",
+        f"自动评测 · {judge_label} · 人工校准未验证。",
         "",
         f"正式套件：{data['counts']['formal']['automatic_passed']}/15 自动交付；实际运行 {data['counts']['formal']['run']}/15。",
         f"试点：{data['counts']['pilot']['automatic_passed']}/{data['counts']['pilot']['planned']} 自动交付；实际运行 {data['counts']['pilot']['run']}/{data['counts']['pilot']['planned']}。",
         f"停止原因：{', '.join(data['stop_reasons']) or '无'}。",
         "用量不完整时，tokens 是包含未知请求预留的保守计账，不是精确实际消耗或费用。",
         "",
+        *context_lines,
         "| 阶段 | 题目 | Evaluation | Judge | Jev | 交付 |",
         "|---|---|---|---|---|---|",
     ]
@@ -431,6 +568,7 @@ def export_bundle(root: Path, result: dict) -> None:
         if "extraction_jev" in gates:
             gates = {**gates, "jev": gates["extraction_jev"]}
         csv_row = {**item, **gates}
+        csv_row["evaluation_execution"] = item.get("evaluation_execution", "not_run")
         csv_row["failure_codes"] = ";".join(item.get("failure_codes") or [])
         for service in LIMITS:
             for field in ("tokens", "requests", "usage_complete"):
@@ -441,7 +579,13 @@ def export_bundle(root: Path, result: dict) -> None:
         cells = [
             item["phase"],
             item["case_id"],
-            *(gates.get(k, "unverified") for k in ("evaluation", "judge", "jev")),
+            (
+                "执行 / execution: "
+                + item.get("evaluation_execution", "not_run")
+                + " · 门禁 / gate: "
+                + gates.get("evaluation", "unverified")
+            ),
+            *(gates.get(k, "unverified") for k in ("judge", "jev")),
             item["status"],
         ]
         lines.append(
@@ -473,7 +617,7 @@ def export_bundle(root: Path, result: dict) -> None:
     formal = data["counts"]["formal"]
     pilot = data["counts"]["pilot"]
     stop_summary = html.escape(" · ".join(data["stop_reasons"]) or "无 / None")
-    document = f"""<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Strict Automatic Benchmark</title><style>body{{font:16px system-ui;max-width:1100px;margin:2rem auto;padding:1rem;background:#f7f8fa;color:#192535}}h1{{font-size:1.8rem}}section{{background:white;border:1px solid #ccd4de;border-radius:12px;padding:1rem;margin:1rem 0}}.scroll{{overflow:auto}}table{{border-collapse:collapse;width:100%}}th,td{{padding:.7rem;text-align:left;border-bottom:1px solid #ddd}}svg{{width:100%;max-width:600px;height:auto}}pre{{white-space:pre-wrap;overflow-wrap:anywhere}}button{{padding:.6rem}}@media(max-width:420px){{body{{margin:0;padding:.6rem}}h1{{font-size:1.4rem}}}}</style><button id="locale">English / 中文</button><h1 id="title">严格自动验收 Benchmark</h1><p id="note">自动评测 · self_judged · 人工校准未验证；科学准确率、误放行率和误拒绝率不可用。</p><section><h2>运行状态 / Run status</h2><p id="pilot-summary">试点 / Pilot: {pilot['run']}/{pilot['planned']} 已运行 / run · {pilot['automatic_passed']}/{pilot['planned']} 自动交付 / passed · {pilot['not_run']} 未运行 / not run</p><p id="stop-summary">{stop_summary}</p></section><section><h2 id="overview">正式套件</h2><p id="formal-summary">{formal['automatic_passed']}/15 自动交付 · {formal['run']}/15 已运行 · {formal['not_run']} 未运行</p><svg viewBox="0 0 600 90" role="img" aria-label="Passed {formal['automatic_passed']} of 15 planned cases"><rect x="0" y="10" width="600" height="20" fill="#dce3ec"/><rect x="0" y="10" width="{formal['automatic_passed'] * 40}" height="20" fill="#287a60"/><text x="0" y="65">{formal['automatic_passed']} passed / 15 planned</text></svg></section><section class="scroll"><table><thead><tr><th>阶段 / Phase</th><th>题目 / Case</th><th>Evaluation</th><th>Judge</th><th>Jev</th><th>交付 / Delivery</th></tr></thead><tbody>{''.join(rows)}</tbody></table></section><section><h2>统计与服务预算 / Statistics and budgets</h2><p>用量不完整时，tokens 包含未知请求的保守预留；预算 charged 不是精确费用。 / Incomplete usage includes conservative reservations; charged budget is not exact cost.</p><pre id="stats"></pre></section><script id="data" type="application/json">{encoded}</script><script>const d=JSON.parse(document.getElementById('data').textContent);document.getElementById('stats').textContent=JSON.stringify({{counts:d.counts,service_usage:d.service_usage,budgets:d.budgets,stop_reasons:d.stop_reasons}},null,2);let en=false;document.getElementById('locale').onclick=()=>{{en=!en;document.documentElement.lang=en?'en':'zh-CN';document.getElementById('title').textContent=en?'Strict Automatic Benchmark':'严格自动验收 Benchmark';document.getElementById('overview').textContent=en?'Formal suite':'正式套件';const f=d.counts.formal;document.getElementById('formal-summary').textContent=en?(f.automatic_passed+'/15 automatically delivered · '+f.run+'/15 run · '+f.not_run+' not run'):(f.automatic_passed+'/15 自动交付 · '+f.run+'/15 已运行 · '+f.not_run+' 未运行');document.getElementById('note').textContent=en?'Automatic evaluation · self_judged · no human calibration. Accuracy, false acceptance and false rejection rates unavailable.':'自动评测 · self_judged · 人工校准未验证；科学准确率、误放行率和误拒绝率不可用。';}};</script></html>"""
+    document = f"""<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Strict Automatic Benchmark</title><style>body{{font:16px system-ui;max-width:1100px;margin:2rem auto;padding:1rem;background:#f7f8fa;color:#192535}}h1{{font-size:1.8rem}}section{{background:white;border:1px solid #ccd4de;border-radius:12px;padding:1rem;margin:1rem 0}}.scroll{{overflow:auto}}table{{border-collapse:collapse;width:100%}}th,td{{padding:.7rem;text-align:left;border-bottom:1px solid #ddd}}svg{{width:100%;max-width:600px;height:auto}}pre{{white-space:pre-wrap;overflow-wrap:anywhere}}button{{padding:.6rem}}@media(max-width:420px){{body{{margin:0;padding:.6rem}}h1{{font-size:1.4rem}}}}</style><button id="locale">English / 中文</button><h1 id="title">严格自动验收 Benchmark</h1><p id="note">自动评测 · {judge_label} · 人工校准未验证；科学准确率、误放行率和误拒绝率不可用。</p>{context_html}<section><h2>运行状态 / Run status</h2><p id="pilot-summary">试点 / Pilot: {pilot['run']}/{pilot['planned']} 已运行 / run · {pilot['automatic_passed']}/{pilot['planned']} 自动交付 / passed · {pilot['not_run']} 未运行 / not run</p><p id="stop-summary">{stop_summary}</p></section><section><h2 id="overview">正式套件</h2><p id="formal-summary">{formal['automatic_passed']}/15 自动交付 · {formal['run']}/15 已运行 · {formal['not_run']} 未运行</p><svg viewBox="0 0 600 90" role="img" aria-label="Passed {formal['automatic_passed']} of 15 planned cases"><rect x="0" y="10" width="600" height="20" fill="#dce3ec"/><rect x="0" y="10" width="{formal['automatic_passed'] * 40}" height="20" fill="#287a60"/><text x="0" y="65">{formal['automatic_passed']} passed / 15 planned</text></svg></section><section class="scroll"><table><thead><tr><th>阶段 / Phase</th><th>题目 / Case</th><th>Evaluation</th><th>Judge</th><th>Jev</th><th>交付 / Delivery</th></tr></thead><tbody>{''.join(rows)}</tbody></table></section><section><h2>统计与服务预算 / Statistics and budgets</h2><p>用量不完整时，tokens 包含未知请求的保守预留；预算 charged 不是精确费用。 / Incomplete usage includes conservative reservations; charged budget is not exact cost.</p><pre id="stats"></pre></section><script id="data" type="application/json">{encoded}</script><script>const d=JSON.parse(document.getElementById('data').textContent);document.getElementById('stats').textContent=JSON.stringify({{counts:d.counts,service_usage:d.service_usage,budgets:d.budgets,stop_reasons:d.stop_reasons}},null,2);let en=false;document.getElementById('locale').onclick=()=>{{en=!en;document.documentElement.lang=en?'en':'zh-CN';document.getElementById('title').textContent=en?'Strict Automatic Benchmark':'严格自动验收 Benchmark';document.getElementById('overview').textContent=en?'Formal suite':'正式套件';const f=d.counts.formal;document.getElementById('formal-summary').textContent=en?(f.automatic_passed+'/15 automatically delivered · '+f.run+'/15 run · '+f.not_run+' not run'):(f.automatic_passed+'/15 自动交付 · '+f.run+'/15 已运行 · '+f.not_run+' 未运行');document.getElementById('note').textContent=en?'Automatic evaluation · {judge_label} · no human calibration. Accuracy, false acceptance and false rejection rates unavailable.':'自动评测 · {judge_label} · 人工校准未验证；科学准确率、误放行率和误拒绝率不可用。';}};</script></html>"""
     (root / "benchmark.html").write_text(document, encoding="utf-8")
 
 
@@ -832,22 +976,13 @@ class QualitySuiteRunner:
                             stop_reasons=["quality_campaign_round_limit"],
                         )
                         break
-                    if (
-                        index == 3
-                        and not state.get("formal_eligible")
-                        and not any(
-                            o.get("complete_verification")
-                            and (
-                                not self.resume_unrun
-                                or o.get("verification_contract")
-                                == self.verification_contract
-                            )
-                            for o in state["observations"]
-                        )
-                    ):
+                    gate_failure = (
+                        self._formal_gate_failure(state) if index == 3 else None
+                    )
+                    if gate_failure:
                         state.update(
                             status="stopped",
-                            stop_reasons=["pilot_no_completed_judge_jev_contract"],
+                            stop_reasons=[gate_failure],
                         )
                         break
                     if any(
@@ -931,6 +1066,19 @@ class QualitySuiteRunner:
                 return state
             finally:
                 await self.service.shutdown()
+
+    def _formal_gate_failure(self, state):
+        """Preserve the historical pilot rule for existing callers."""
+        if not state.get("formal_eligible") and not any(
+            o.get("complete_verification")
+            and (
+                not self.resume_unrun
+                or o.get("verification_contract") == self.verification_contract
+            )
+            for o in state["observations"]
+        ):
+            return "pilot_no_completed_judge_jev_contract"
+        return None
 
     async def _live(self, case, config, run_id):
         """Pass only the research question into generation; labels are post-hoc only."""
@@ -1059,6 +1207,9 @@ class QualitySuiteRunner:
             "status": "delivered" if acceptance.get("publishable") else "blocked",
             "acceptance": acceptance,
             "gates": acceptance.get("gates", {}),
+            "evaluation_execution": evaluation_execution(
+                report.get("evaluation", {}).get("faithfulness", {})
+            ),
             "counts": {
                 key: details.get(key)
                 for key in ("supported_count", "unsupported_count", "unverified_count")

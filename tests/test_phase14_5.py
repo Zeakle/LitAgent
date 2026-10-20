@@ -1606,7 +1606,7 @@ def test_self_judged_completed_ablation_can_be_formal_eligible(tmp_path):
     runner = SurveyBenchmarkRunner(
         base_config=config,
         judge_config=SurveyJudgeConfig(
-            base_url="https://judge.example", model=config.llm.model
+            base_url="https://judge.example", model=config.llm.model_for("generation")
         ),
         artifacts=BenchmarkArtifactRepository(tmp_path / "benchmark"),
         run_archive=ArchiveRepository(tmp_path / "runs"),

@@ -292,6 +292,11 @@ class SurveyPlanner:
             return fallback
 
         try:
+            kwargs = {}
+            if self._config.thinking_mode not in (None, "provider_default"):
+                kwargs["extra_body"] = {
+                    "thinking": {"type": self._config.thinking_mode}
+                }
             resp = await self._llm.chat(
                 [
                     {"role": "system", "content": _DECOMPOSE_SYSTEM},
@@ -300,6 +305,7 @@ class SurveyPlanner:
                 response_format={"type": "json_object"},
                 max_tokens=self._config.max_tokens,
                 temperature=self._config.temperature,
+                **kwargs,
             )
 
             content = (resp.content or "").strip()

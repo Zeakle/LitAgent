@@ -1,0 +1,99 @@
+[
+  {
+    "version": 1,
+    "run_id": "stage-model-quality-20261020-002-pilot-few-shot-metric",
+    "query": "Compare metric-learning approaches for few-shot image classification.",
+    "status": "completed",
+    "started_at": "2026-10-20T05:48:39.083635+00:00",
+    "completed_at": "2026-10-20T05:54:32.352507+00:00",
+    "elapsed_ms": 353268,
+    "provenance": "sanitized_real_diagnostic_replay",
+    "source_archive_sha256": "4e29b945169c0903513896e6f41876f032f1d5fb440de8f2f02864e85d42bf42",
+    "formal_benchmark_evidence": false,
+    "events": [
+      {
+        "event": "writing.wire.failed",
+        "data": {
+          "phase": "initial",
+          "candidate_sha256": "f4f9ae41282f3b7b1440173b40ff2a5a1ceeee2f3cc716d13855c35db9c192f1",
+          "raw_response_sha256": "f4f9ae41282f3b7b1440173b40ff2a5a1ceeee2f3cc716d13855c35db9c192f1",
+          "contract_version": "native-array-wire-v1",
+          "json_position": 8299,
+          "json_line": 1,
+          "json_column": 8300,
+          "task_id": "adversarial_review",
+          "reason_code": "array_wire_contract_invalid"
+        }
+      }
+    ],
+    "nodes": {},
+    "graph": {},
+    "trace": {},
+    "usage": {
+      "total_tokens": 124448,
+      "llm_calls": null
+    },
+    "report": {
+      "partial": true,
+      "survey": "Survey incomplete. Partial results from 13 tasks.",
+      "evaluation": {
+        "citation_accuracy": {
+          "score": 0.0,
+          "passed": false,
+          "skipped": true,
+          "details": {
+            "skipped_reason": "final_report_unavailable"
+          }
+        },
+        "internal_consistency": {
+          "score": 0.0,
+          "passed": false,
+          "skipped": true,
+          "details": {
+            "skipped_reason": "final_report_unavailable"
+          }
+        },
+        "faithfulness": {
+          "score": 0.0,
+          "passed": false,
+          "skipped": true,
+          "details": {
+            "skipped_reason": "final_report_unavailable"
+          }
+        }
+      },
+      "quality": {
+        "status": "failed",
+        "failed_metrics": [],
+        "unverified_metrics": [
+          "citation_accuracy",
+          "faithfulness"
+        ],
+        "automatic_failure_codes": [
+          "evaluation_not_passed",
+          "automatic_inventory_missing",
+          "automatic_report_partial"
+        ]
+      },
+      "delivery": {
+        "status": "blocked",
+        "publishable": false,
+        "reason_codes": [
+          "evaluation_not_passed",
+          "automatic_inventory_missing",
+          "automatic_report_partial"
+        ]
+      },
+      "metadata": {
+        "report_language": "zh-CN",
+        "quality_policy": "strict_auto_v2",
+        "verification": {
+          "version": "optional-verification-v1",
+          "judge": false,
+          "jev": false
+        },
+        "public_diagnostic_only": true
+      }
+    }
+  }
+]

@@ -1,18 +1,18 @@
-import { bindAuditControls, bindAutomaticAuditPreferences } from "./audit-controls.js?v=15.10.6.88.1-body-analysis";
+import { bindAuditControls, bindAutomaticAuditPreferences } from "./audit-controls.js?v=15.10.6.124-evaluation-execution";
 import { bindFormatControls } from "./format-controls.js?v=15.10.10";
 import { createApiClient, openEventStream } from "./api-client.js";
-import { renderBenchmarkDetail, renderBenchmarkList, renderBenchmarkObservation } from "./benchmark-view.js?v=15.10.6.88.1-body-analysis";
-import { adaptArchiveView, adaptInteractiveView, chooseDefaultSection, normalizeRunList } from "./adapters.js?v=15.10.6.88.1-body-analysis";
+import { createBenchmarkController } from "./benchmark-controller.js?v=15.10.6.124-evaluation-execution";
+import { renderBenchmarkDetail, renderBenchmarkList, renderBenchmarkObservation } from "./benchmark-view.js?v=15.10.6.124-evaluation-execution";
+import { adaptArchiveView, adaptInteractiveView, chooseDefaultSection, normalizeRunList } from "./adapters.js?v=15.10.6.124-evaluation-execution";
 import { evidenceMap, renderEvidenceList } from "./evidence-view.js";
 import { createExecutionWorkspace } from "./execution-workspace.js";
 import { renderExecutionInspector } from "./execution-inspector.js";
 import { renderHistory } from "./history-view.js";
-import { applyTranslations, translator } from "./i18n.js?v=15.10.6.88.1-body-analysis";
-import { renderQuality, locateReportDiagnostic } from "./quality-view.js?v=15.10.6.88.1-body-analysis";
+import { applyTranslations, translator } from "./i18n.js?v=15.10.6.124-evaluation-execution";
+import { renderQuality, locateReportDiagnostic } from "./quality-view.js?v=15.10.6.124-evaluation-execution";
 import { renderOutline, renderReportDocument, renderSearchRecords } from "./report-view.js?v=15.10.10";
 import { renderReview } from "./review-view.js?v=15.10.5-strict";
 import { createWorkbenchStore } from "./state.js";
-
 const $ = (selector) => document.querySelector(selector);
 const locale = localStorage.getItem("litagent-locale") || "zh-CN";
 const store = createWorkbenchStore({ locale });
@@ -25,7 +25,6 @@ const benchmarkState = { results: [], selectedId: null, detail: null, observatio
 const api = createApiClient(() => context?.operation_token);
 const executionWorkspace = createExecutionWorkspace({ store, t, onInspect: setInspector });
 const automaticAuditPreferences = bindAutomaticAuditPreferences({ capabilities: () => context?.auto_audit_capabilities, t });
-
 function t(key) { return translator(store.get().locale)(key); }
 function setNotice(message = "", kind = "info") {
   const element = $("#notice");
@@ -33,7 +32,6 @@ function setNotice(message = "", kind = "info") {
   element.dataset.kind = kind;
   element.textContent = message;
 }
-
 function setInspector(selection, trigger = null) {
   const drawer = $("#inspector-drawer");
   const content = $("#inspector-content");
@@ -93,7 +91,7 @@ function renderSummary(view) {
   const summary = view?.summary || {};
   $("#run-query").textContent = view?.identity?.query || t("noRun");
   $("#run-source-label").textContent = view ? `${view.identity.source} / ${summary.report_language || view.identity.reportLanguage || "—"}` : "LITAGENT";
-  $("#summary-status").textContent = summaryValue(view?.identity?.status);
+  $("#summary-status").textContent = view?.identity?.status === "completed" ? t("executionCompleted") : summaryValue(view?.identity?.status);
   $("#summary-delivery").textContent = summaryValue(view?.delivery?.status || summary.delivery_status);
   $("#summary-quality").textContent = summaryValue(view?.quality?.status || summary.quality_status);
   $("#summary-tokens").textContent = summary.total_tokens == null ? "—" : Number(summary.total_tokens).toLocaleString();
@@ -148,6 +146,7 @@ function render() {
   const state = store.get(); const view = state.view;
   applyTranslations(document, t);
   automaticAuditPreferences.render();
+  document.documentElement.lang = state.locale;
   $("#locale-toggle").textContent = state.locale === "zh-CN" ? "EN" : "中文";
   $("#run-count").textContent = state.runs.length;
   renderHistory($("#run-list"), state.runs, state.selectedRunKey, $("#run-search").value, state.locale, t, selectRun);
@@ -192,33 +191,12 @@ function renderBenchmarkState() {
   if (benchmarkState.observation) renderBenchmarkObservation($("#benchmark-observation-detail"), benchmarkState.observation, t);
 }
 
-async function loadBenchmarks() {
-  try {
-    benchmarkState.results = await api.json("/workbench/benchmarks");
-    benchmarkState.loaded = true;
-    const preferred = benchmarkState.selectedId || benchmarkState.results[0]?.benchmark_id;
-    if (preferred) await selectBenchmark(preferred);
-    else renderBenchmarkState();
-  } catch (error) { setNotice(`${t("operationFailed")}: ${error.message}`, "error"); }
-}
-
-async function selectBenchmark(id) {
-  try {
-    const detail = await api.json(`/workbench/benchmarks/${encodeURIComponent(id)}`);
-    benchmarkState.selectedId = id;
-    benchmarkState.detail = detail;
-    benchmarkState.observation = null;
-    renderBenchmarkState();
-  } catch (error) { setNotice(`${t("operationFailed")}: ${error.message}`, "error"); }
-}
-
-async function selectBenchmarkObservation(id) {
-  try {
-    const payload = await api.json(`/workbench/benchmarks/${encodeURIComponent(benchmarkState.selectedId)}/observations/${encodeURIComponent(id)}`);
-    benchmarkState.observation = payload;
-    renderBenchmarkObservation($("#benchmark-observation-detail"), payload, t);
-  } catch (error) { setNotice(`${t("operationFailed")}: ${error.message}`, "error"); }
-}
+const { load: loadBenchmarks, select: selectBenchmark, selectObservation: selectBenchmarkObservation } = createBenchmarkController({
+  api, state: benchmarkState, render: renderBenchmarkState,
+  renderObservation: payload => renderBenchmarkObservation($("#benchmark-observation-detail"), payload, t),
+  clearObservation: () => $("#benchmark-observation-detail")?.replaceChildren(),
+  onError: error => setNotice(`${t("operationFailed")}: ${error.message}`, "error"),
+});
 
 function setSection(section, user = true) {
   store.update({ activeSection: section, sectionWasUserSelected: user || store.get().sectionWasUserSelected });
@@ -352,7 +330,10 @@ bindAuditControls({ store, api, setNotice, onSource: claim => {if (!locateReport
 } });
 $("#sidebar-toggle").addEventListener("click", () => { $("#run-sidebar").dataset.open = "true"; $("#sidebar-scrim").hidden = false; });
 $("#sidebar-scrim").addEventListener("click", () => { $("#run-sidebar").dataset.open = "false"; $("#sidebar-scrim").hidden = true; });
+document.addEventListener("keydown", event => {
+  if (event.key !== "Escape" || $("#run-sidebar").dataset.open !== "true" || document.querySelector("dialog[open]")) return;
+  event.preventDefault(); $("#run-sidebar").dataset.open = "false"; $("#sidebar-scrim").hidden = true; $("#sidebar-toggle").focus();
+});
 executionWorkspace.bind();
-
 render();
 initialize().catch((error) => setNotice(`${t("operationFailed")}: ${error.message}`, "error"));

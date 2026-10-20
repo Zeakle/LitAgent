@@ -373,6 +373,10 @@ class ReviewerWorker(Worker):
                 raise ValueError("strict_review_unknown_evidence_refs")
             system += "\nStrict review: every issue must include source_quote copied exactly from the CURRENT draft and existing_evidence_ids exactly matching that quote. Positions are assigned by the host. Old-draft or unlocated issues cannot direct revision. Source-located evidence remains scientifically unverified. Every scientific statement must be checked ONLY against its actual citations; uncited sources may identify core coverage gaps but cannot support that statement."
             system += "\nUse cards.allowed_section_keys as the complete section permission map; global card visibility never grants another section permission."
+            if body_quality == "analysis_v1":
+                from litagent.body_quality import APPLICABILITY_INSTRUCTION
+
+                system += APPLICABILITY_INSTRUCTION
         for attempt in range(1 if strict else 2):
             active_selection = (
                 compact_evidence_selection(selection)
@@ -398,6 +402,7 @@ class ReviewerWorker(Worker):
                         evidence_selection=active_selection,
                         use_full_sources=quality_policy == "strict_auto_v2",
                         analysis_mode=body_quality == "analysis_v1",
+                        require_unit_citation_scope=body_quality == "analysis_v1",
                         use_scope_notices=quality_policy == "strict_auto_v2",
                     )[1]["content"]
                 )

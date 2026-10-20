@@ -30,6 +30,7 @@ class LLMResponse:
     # Reasoning providers may require this value when replaying tool-call turns.
     reasoning_content: str = ""
     finish_reason: str | None = None
+    request_id: str | None = None
 
 
 class BaseLLMClient(ABC):
@@ -233,6 +234,11 @@ class OpenAICompatibleClient(BaseLLMClient):
                 reasoning_content=getattr(choice.message, "reasoning_content", "")
                 or "",
                 finish_reason=finish_reason,
+                request_id=(
+                    resp._request_id
+                    if isinstance(getattr(resp, "_request_id", None), str)
+                    else None
+                ),
             )
 
             self._emit(
@@ -251,6 +257,8 @@ class OpenAICompatibleClient(BaseLLMClient):
                     "usage_available": resp.usage is not None,
                     "tool_calls": _tool_calls_for_trace(tool_calls),
                     "finish_reason": finish_reason,
+                    "request_id": response.request_id,
+                    "actual_model": response.model,
                     "max_tokens": max_tokens,
                 },
             )

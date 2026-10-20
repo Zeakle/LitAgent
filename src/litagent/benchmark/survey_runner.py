@@ -831,7 +831,7 @@ class SurveyBenchmarkRunner:
                 {
                     "case_id": case.case_id,
                     "repetition": repetition,
-                    "generation_model": self._base_config.llm.model,
+                    "generation_model": self._base_config.llm.model_for("generation"),
                     "planner": self._base_config.planner.model_dump(mode="json"),
                     "semantic_scholar_enabled": bool(
                         os.environ.get("SEMANTIC_SCHOLAR_API_KEY")
@@ -869,7 +869,9 @@ class SurveyBenchmarkRunner:
                         "profile_id": profile.profile_id,
                         "profile_fingerprint": profile.fingerprint,
                         "repetition": repetition,
-                        "generation_model": self._base_config.llm.model,
+                        "generation_model": self._base_config.llm.model_for(
+                            "generation"
+                        ),
                         "judge_model": self._judge_config.model,
                         "judge_config_fingerprint": self._judge_config.fingerprint,
                         "git_sha": git_sha,
@@ -1003,7 +1005,9 @@ class SurveyBenchmarkRunner:
                         )
                 observation = observation.model_copy(
                     update={
-                        "generation_model": self._base_config.llm.model,
+                        "generation_model": self._base_config.llm.model_for(
+                            "generation"
+                        ),
                         "judge_model": self._judge_config.model,
                         "git_sha": observation.git_sha or git_sha,
                         "git_dirty": (
@@ -1264,7 +1268,8 @@ class SurveyBenchmarkRunner:
             or ablation.manifest_fingerprint != manifest_fingerprint
             or ablation.prompt_source_fingerprint != runtime_prompt_source_fingerprint()
             or ablation.judge_prompt_fingerprint != judge_prompt_fingerprint()
-            or ablation.generation_model != self._base_config.llm.model
+            or ablation.generation_model
+            != self._base_config.llm.model_for("generation")
             or ablation.judge_model != self._judge_config.model
             or ablation.judge_config_fingerprint != self._judge_config.fingerprint
         ):
@@ -1341,7 +1346,9 @@ class SurveyBenchmarkRunner:
         reused_ablation_run_id: str | None = None,
     ) -> SurveyBenchmarkResult:
         """Assemble one reproducible terminal benchmark artifact."""
-        self_judged = self._judge_config.model == self._base_config.llm.model
+        self_judged = self._judge_config.model == self._base_config.llm.model_for(
+            "generation"
+        )
         final_reasons = list(reason_codes)
         incomplete = False
         for item in observations:
@@ -1409,7 +1416,7 @@ class SurveyBenchmarkRunner:
             manifest_fingerprint=_hash_files(manifest_paths),
             git_sha=git_sha,
             git_dirty=git_dirty,
-            generation_model=self._base_config.llm.model,
+            generation_model=self._base_config.llm.model_for("generation"),
             judge_model=self._judge_config.model,
             judge_config_fingerprint=self._judge_config.fingerprint,
             self_judged=self_judged,
@@ -1537,7 +1544,7 @@ class SurveyBenchmarkRunner:
             survey_trace_id=survey_tracer.trace_id,
             survey_trace_url=survey_tracer.trace_url,
             external_input_fingerprint=external_input_fingerprint(artifact),
-            generation_model=config.llm.model,
+            generation_model=config.llm.model_for("generation"),
             config_fingerprint=build_config_summary(config)["fingerprint"],
         ).model_copy(update=dict(provenance or {}))
         self._recovery.save_product(product_slot, product_identity, product)

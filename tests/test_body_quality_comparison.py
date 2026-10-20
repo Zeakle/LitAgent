@@ -5,9 +5,9 @@ import json
 from pathlib import Path
 
 import pytest
+from model_config_helpers import load_legacy_mini_config as load_config
 from test_strict_automatic import frozen
 
-from litagent.config import load_config
 from litagent.context.evidence_selector import EvidenceSelection
 from litagent.quality import digest as evidence_digest
 from litagent.report_audit import atomic_json

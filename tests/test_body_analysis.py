@@ -258,6 +258,7 @@ async def test_real_synthesis_uses_the_analysis_request_and_new_compiler():
 
     from litagent.agents.synthesis import SynthesisWorker
     from litagent.llm.client import LLMResponse
+    from litagent.native_wire import array_from_native
     from litagent.orchestrator.task_graph import SubTask
     from litagent.quality import build_fact_cards
 
@@ -265,7 +266,9 @@ async def test_real_synthesis_uses_the_analysis_request_and_new_compiler():
     cards = build_fact_cards(selected.selected_items)
     llm = AsyncMock()
     llm.chat.return_value = LLMResponse(
-        content=json.dumps(analysis_document(cards)), model="offline", usage={}
+        content=json.dumps(array_from_native(analysis_document(cards))),
+        model="offline",
+        usage={},
     )
     selector = AsyncMock()
     selector.select.return_value = selected
@@ -288,9 +291,18 @@ async def test_real_synthesis_uses_the_analysis_request_and_new_compiler():
     assert result["analysis_plan"]["requirements_status"] == "not_verified"
     assert result["writing_bindings"]["body_analysis_contract"] == ANALYSIS_CONTRACT
     assert (
-        llm.chat.call_args.kwargs["response_format"]["json_schema"]["name"]
-        == "grounded_report_v22"
+        result["writing_bindings"]["unit_citation_scope_contract"]
+        == "unit-citation-scope-v1"
     )
+    payload = json.loads(llm.chat.call_args.args[0][1]["content"])
+    assert payload["unit_citation_scope_contract"] == "unit-citation-scope-v1"
+    assert (
+        llm.chat.call_args.kwargs["response_format"]["json_schema"]["name"]
+        == "grounded_report_v23_arrays"
+    )
+    assert result["writing_bindings"]["native_wire_input_projection"][
+        "raw_response_sha256"
+    ]
 
 
 @pytest.mark.asyncio
@@ -333,17 +345,27 @@ async def test_real_evaluation_adds_analysis_to_existing_global_call(fault):
         async def chat(self, messages, **kwargs):
             """Keep batch and global response contracts separate in the fake transport."""
             response = await super().chat(messages, **kwargs)
-            payload = json.loads(messages[1]["content"])
+            wire_payload = json.loads(messages[1]["content"])
+            assert "schema" not in wire_payload
+            payload = self.calls[-1]
             if "allowed_citation_aliases" in payload:
                 native = kwargs["response_format"]["json_schema"]
-                assert native["name"] == "host_fragment_inventory_v2"
+                assert native["name"] == "host_flat_fragment_inventory_v1"
                 assert native["schema"] == payload["schema"]
                 assert native["strict"] is True
                 if fault == "inventory_nesting":
                     result = json.loads(response.content)
-                    first, second, *_ = result["units"]
-                    result["units"][first][second] = result["units"].pop(second)
+                    first, second, *_ = result["fragments"]
+                    result["fragments"][first][second] = result["fragments"].pop(second)
                     response.content = json.dumps(result)
+            if "cited_materials" in payload:
+                native = kwargs["response_format"]["json_schema"]
+                assert native["name"] == "host_batch_assessment_v1"
+                assert native["schema"] == payload["schema"]
+                assert native["strict"] is True
+                assert payload["schema"]["properties"]["decisions"]["minItems"] == len(
+                    payload["assertions"]
+                )
             if "analyses" in payload.get("schema", {}).get("properties", {}):
                 assert "unit_inventory" not in payload
                 assert payload["expected_source_unit_ids"] == [
@@ -433,6 +455,12 @@ async def test_real_evaluation_adds_analysis_to_existing_global_call(fault):
         return
     assert len(llm.calls) == 3
     assert result["body_analysis_contract"] == ANALYSIS_CONTRACT
+    if fault == "unknown_claim":
+        assert result["score"] is None
+        assert (
+            result["unverified_reason"] == "evaluation_analysis_claim_ownership_invalid"
+        )
+        assert result["stages"]["global_check"] == "invalid_response"
     assert result["analysis_check"]["status"] == (
         "passed" if fault is None else "failed"
     )

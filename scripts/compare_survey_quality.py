@@ -54,6 +54,8 @@ def execution_options(args) -> tuple[str, list[str]]:
 
 def fixed_parameters(cfg) -> dict:
     """Describe every fixed generation and evaluation limit used by this replay."""
+    if not cfg.llm.uses_single_model(cfg.llm.model):
+        raise ValueError("historical_comparison_requires_single_model")
     return {
         "model": cfg.llm.model,
         "max_cost_tokens": cfg.safety.max_cost_tokens,

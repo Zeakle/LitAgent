@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from collections.abc import Collection, Sequence
 from dataclasses import asdict, dataclass
@@ -11,6 +12,32 @@ from typing import Any
 _EVIDENCE_REF_RE = re.compile(r"\[E:([^\[\]\s;,]+)\]")
 _EVIDENCE_REF_START_RE = re.compile(r"\[E:")
 _CITATION_MEMBER_RE = re.compile(r"E:([^\[\]\s;,]+)")
+SOURCE_FIELDS_IDENTITY = "source_fields_v1"
+FACT_FIELD_NAMES = frozenset(
+    {"method", "conditions", "dataset", "metric", "value", "unit", "qualifiers"}
+)
+
+
+def source_field_record_identity(chunk_key: str, text: str, fields: Any) -> str:
+    """Identify distinct extracted associations without treating them as verified."""
+    if fields is None:
+        fields = {}
+    if not isinstance(fields, dict):
+        raise ValueError("extraction_contract_invalid:fact_fields_type")
+    normalized = {}
+    for key, value in fields.items():
+        if key not in FACT_FIELD_NAMES:
+            raise ValueError("extraction_contract_invalid:fact_field_unknown")
+        if value is not None and not isinstance(value, str):
+            raise ValueError(f"extraction_contract_invalid:fact_field_type:{key}")
+        if isinstance(value, str) and value.strip():
+            normalized[key] = value.strip()
+    return json.dumps(
+        [chunk_key, text.strip(), normalized],
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
 
 
 @dataclass(frozen=True)
@@ -229,6 +256,8 @@ def build_evidence_items(extraction: dict) -> list[dict[str, Any]]:
         if isinstance(chunk, dict) and chunk.get("chunk_key")
     }
     items: list[EvidenceItem] = []
+    field_items: list[dict[str, Any]] = []
+    field_identity = extraction.get("record_identity") == SOURCE_FIELDS_IDENTITY
     claim_records = extraction.get("claim_records")
 
     if isinstance(claim_records, list):
@@ -240,9 +269,14 @@ def build_evidence_items(extraction: dict) -> list[dict[str, Any]]:
             chunk = chunks.get(chunk_key)
             if not claim_text or chunk is None:
                 continue
-            digest = hashlib.sha256(
-                f"{claim_text}|{chunk_key}".encode("utf-8")
-            ).hexdigest()[:12]
+            identity = (
+                source_field_record_identity(
+                    chunk_key, claim_text, record.get("fact_fields")
+                )
+                if field_identity
+                else f"{claim_text}|{chunk_key}"
+            )
+            digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:12]
             page = "" if chunk.get("page") is None else chunk["page"]
             block_index = (
                 "" if chunk.get("block_index") is None else chunk["block_index"]
@@ -275,7 +309,13 @@ def build_evidence_items(extraction: dict) -> list[dict[str, Any]]:
                     evidence_version="v2",
                 )
             )
-        return [item.to_dict() for item in items]
+            if field_identity:
+                # Copy fields from this exact record; (chunk, text) is not unique.
+                projected = items[-1].to_dict()
+                projected["fact_fields"] = dict(record.get("fact_fields") or {})
+                projected["record_identity"] = SOURCE_FIELDS_IDENTITY
+                field_items.append(projected)
+        return field_items if field_identity else [item.to_dict() for item in items]
 
     # Compatibility evidence remains usable in the current run, but is v1 and
     # therefore never eligible for trusted cross-run promotion.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import hashlib
 import html
 import json
@@ -206,9 +207,11 @@ class SynthesisWorker(Worker):
         extraction_verifier=None,
         run_id_provider=None,
         repair_state_path_provider=None,
+        received_native: Mapping | None = None,
     ):
         """Initialize the synthesis worker."""
         self._methodology_provider = methodology_provider
+        self._received_native = copy.deepcopy(received_native)
         self._llm = llm
         self._memory = memory
         self._context_config = context_config or ContextConfig()
@@ -243,20 +246,40 @@ class SynthesisWorker(Worker):
             task.input_data.get("quality_policy") == "strict_auto_v2"
             and self._run_id_provider
         ):
-            from litagent.quality import load_targeted_repairs, targeted_repair_state
+            from litagent.quality import (
+                load_targeted_repairs,
+                targeted_repair_state,
+                validate_received_native,
+            )
 
             run_id = self._run_id_provider()
-            repair_state = targeted_repair_state(
-                task.input_data.get("targeted_repair_state"), run_id
-            )
-            if self._repair_state_path_provider:
+            if self._received_native is not None:
+                if self._repair_state_path_provider is None:
+                    raise ValueError("received_native_identity_invalid")
+                repair_state = copy.deepcopy(
+                    validate_received_native(
+                        self._received_native, task.input_data, run_id
+                    )
+                )
+                persisted = load_targeted_repairs(
+                    self._repair_state_path_provider(), run_id
+                )
+                if persisted != repair_state:
+                    raise ValueError("received_native_checkpoint_conflict")
+            else:
+                repair_state = targeted_repair_state(
+                    task.input_data.get("targeted_repair_state"), run_id
+                )
+            if self._repair_state_path_provider and self._received_native is None:
                 persisted = load_targeted_repairs(
                     self._repair_state_path_provider(), run_id
                 )
                 if persisted["attempts"]:
                     raise ValueError("strict_targeted_repair_restart_no_replay")
-            if repair_state["attempts"]:
+            if repair_state["attempts"] and self._received_native is None:
                 raise ValueError("strict_targeted_repair_restart_no_replay")
+        elif self._received_native is not None:
+            raise ValueError("received_native_identity_invalid")
         upstream = task.input_data.get("upstream_results", {})
         extractions = self._get_extractions(upstream)
         graph_data = self._get_graph_data(upstream)
@@ -396,6 +419,8 @@ class SynthesisWorker(Worker):
             ) or coverage_requirements(
                 query, task.input_data.get("requested_methods", [])
             )
+            # Received-native v1 preserves the original formatting contract;
+            # fresh runs opt into the version-bound citation-scope preflight.
             messages = grounded_messages(
                 cards,
                 review_structure,
@@ -406,37 +431,105 @@ class SynthesisWorker(Worker):
                 use_full_sources=task.input_data.get("quality_policy")
                 == "strict_auto_v2",
                 analysis_mode=task.input_data.get("body_quality") == "analysis_v1",
+                require_unit_citation_scope=task.input_data.get("body_quality")
+                == "analysis_v1"
+                and self._received_native is None,
                 use_scope_notices=task.input_data.get("quality_policy")
                 == "strict_auto_v2",
             )
-            messages, response_format = prepare_grounded_request(messages)
-            check_grounded_request_budget(
-                self._llm,
+            analysis_plan = json.loads(messages[1]["content"]).get("analysis_plan")
+            messages, response_format = prepare_grounded_request(
                 messages,
-                response_format,
-                trace_hook=self._trace_hook,
-                parent_task_id=task.task_id,
-                stage="synthesis",
+                array_wire=task.input_data.get("body_quality") == "analysis_v1"
+                and self._received_native is None,
             )
+            wire_projection = None
             generation_options = {}
             if self._thinking_mode != "provider_default":
                 generation_options["extra_body"] = {
                     "thinking": {"type": self._thinking_mode}
                 }
-            response = await asyncio.wait_for(
-                self._llm.chat(
+            if self._received_native is not None:
+                if (
+                    digest(cards) != self._received_native["fact_cards_sha256"]
+                    or digest(selection.to_dict())
+                    != self._received_native["selection_sha256"]
+                ):
+                    raise ValueError("received_native_sources_changed")
+                candidate = self._received_native["candidate"]
+                if self._trace_hook:
+                    self._trace_hook(
+                        "writing.native.reused",
+                        {
+                            "task_id": task.task_id,
+                            "source_run_id": self._received_native["source_run_id"],
+                            "candidate_sha256": self._received_native[
+                                "candidate_sha256"
+                            ],
+                            "source_checkpoint_sha256": self._received_native[
+                                "source_checkpoint_sha256"
+                            ],
+                        },
+                    )
+            else:
+                check_grounded_request_budget(
+                    self._llm,
                     messages,
-                    max_tokens=20000,
-                    response_format=response_format,
-                    transport_max_attempts=1,
-                    **generation_options,
-                ),
-                180,
-            )
+                    response_format,
+                    trace_hook=self._trace_hook,
+                    parent_task_id=task.task_id,
+                    stage="synthesis",
+                )
+                response = await asyncio.wait_for(
+                    self._llm.chat(
+                        messages,
+                        max_tokens=20000,
+                        response_format=response_format,
+                        transport_max_attempts=1,
+                        **generation_options,
+                    ),
+                    180,
+                )
+                candidate = response.content
+                from litagent.quality import (
+                    project_grounded_response,
+                    save_targeted_repairs,
+                )
+
+                # Preserve the provider bytes before any local projection. Native
+                # repair targets refer to canonical coordinates, never raw wire.
+                if (
+                    response_format.get("json_schema", {}).get("name")
+                    == "grounded_report_v23_arrays"
+                    and repair_state is not None
+                    and self._repair_state_path_provider
+                ):
+                    save_targeted_repairs(
+                        self._repair_state_path_provider(),
+                        repair_state,
+                        native_wire_response=candidate,
+                    )
+                candidate, wire_projection = project_grounded_response(
+                    candidate,
+                    response_format,
+                    trace_hook=self._trace_hook,
+                    parent_task_id=task.task_id,
+                )
+                if (
+                    wire_projection
+                    and repair_state is not None
+                    and self._repair_state_path_provider
+                ):
+                    save_targeted_repairs(
+                        self._repair_state_path_provider(),
+                        repair_state,
+                        native_wire_projection=wire_projection,
+                        native_projected_candidate=candidate,
+                    )
             writing_bindings = {}
             try:
                 draft = render_grounded_report_traced(
-                    response.content,
+                    candidate,
                     cards,
                     review_structure,
                     report_language,
@@ -449,6 +542,9 @@ class SynthesisWorker(Worker):
                     require_full_sources=task.input_data.get("quality_policy")
                     == "strict_auto_v2",
                     analysis_mode=task.input_data.get("body_quality") == "analysis_v1",
+                    require_unit_citation_scope=task.input_data.get("body_quality")
+                    == "analysis_v1"
+                    and self._received_native is None,
                     require_scope_notices=task.input_data.get("quality_policy")
                     == "strict_auto_v2",
                     bindings=writing_bindings,
@@ -459,7 +555,7 @@ class SynthesisWorker(Worker):
                 draft, writing_bindings = await self._repair_native_initial(
                     task,
                     messages,
-                    response.content,
+                    candidate,
                     failure,
                     cards,
                     selection,
@@ -468,6 +564,8 @@ class SynthesisWorker(Worker):
                     repair_state,
                     generation_options,
                 )
+            if wire_projection:
+                writing_bindings["native_wire_input_projection"] = wire_projection
             draft = assemble_methodology(
                 draft, review_structure, report_language, review_methodology
             )
@@ -484,9 +582,7 @@ class SynthesisWorker(Worker):
                 **(
                     {
                         "body_quality": "analysis_v1",
-                        "analysis_plan": json.loads(messages[1]["content"])[
-                            "analysis_plan"
-                        ],
+                        "analysis_plan": analysis_plan,
                     }
                     if task.input_data.get("body_quality") == "analysis_v1"
                     else {}
@@ -765,6 +861,81 @@ class SynthesisWorker(Worker):
         state,
         generation_options,
     ):
+        """Use remaining shared attempts only after a known, located local rejection."""
+        from litagent.quality import GroundedWritingError, digest
+
+        previous_failure = None
+        while True:
+            previous_count = len(state["attempts"])
+            try:
+                return await self._repair_native_once(
+                    task,
+                    messages,
+                    candidate,
+                    failure,
+                    cards,
+                    selection,
+                    structure,
+                    language,
+                    state,
+                    generation_options,
+                    previous_failure=previous_failure,
+                )
+            except GroundedWritingError as rejected:
+                if (
+                    task.input_data.get("body_quality") != "analysis_v1"
+                    or len(state["attempts"]) == previous_count
+                    or len(state["attempts"]) >= 2
+                    or not state["attempts"]
+                    or state["attempts"][-1]["status"] != "failed"
+                    or not state["attempts"][-1]
+                    .get("usage", {})
+                    .get("usage_available", False)
+                ):
+                    raise
+                # A new bounded revision starts from the original candidate. Invalid
+                # protocol, unknown usage and transport failures never enter this branch.
+                previous_failure = {
+                    "candidate_sha256": rejected.candidate_sha256,
+                    "diagnostics": rejected.diagnostics,
+                    "attempt_index": state["attempts"][-1]["index"],
+                }
+                proof = state["attempts"][-1].get("repair_proof", {})
+                if proof.get("output_sha256") == rejected.candidate_sha256:
+                    # Only failed locations need coordinate migration in the next
+                    # prompt; the full immutable proof remains in the local attempt.
+                    paths = [d.get("raw_json_path", "") for d in rejected.diagnostics]
+                    previous_failure["repair_relocations"] = [
+                        row
+                        for row in proof.get("relocations", [])
+                        if any(
+                            path
+                            and (
+                                new == path
+                                or new.startswith(path + ".")
+                                or path.startswith(new + ".")
+                            )
+                            for path in paths
+                            for new in row["new_paths"]
+                        )
+                    ]
+                    previous_failure["migration_proof_sha256"] = digest(proof)
+
+    async def _repair_native_once(
+        self,
+        task,
+        messages,
+        candidate,
+        failure,
+        cards,
+        selection,
+        structure,
+        language,
+        state,
+        generation_options,
+        *,
+        previous_failure=None,
+    ):
         """Attempt one located repair before review, preserving the complete failed candidate."""
         from litagent.quality import (
             apply_native_repairs,
@@ -786,6 +957,7 @@ class SynthesisWorker(Worker):
                 structure=structure,
                 language=language,
                 evidence_selection=selection,
+                previous_failure=previous_failure,
             )
         except ValueError as exc:
             if str(exc) == "strict_native_repair_not_eligible":
@@ -827,11 +999,29 @@ class SynthesisWorker(Worker):
                 usage=dict(response.usage),
                 response_sha256=hashlib.sha256(response.content.encode()).hexdigest(),
             )
-            save_targeted_repairs(path, state, native_response=response.content)
+            attempt_artifact = {
+                "candidate": candidate,
+                "binding": binding,
+                "diagnostics": failure.diagnostics,
+                "response": response.content,
+                "previous_failure": previous_failure,
+            }
+            save_targeted_repairs(
+                path,
+                state,
+                native_response=response.content,
+                **{f"native_attempt_{entry['index']}": attempt_artifact},
+            )
             if not response.usage.get("usage_available", bool(response.usage)):
                 raise ValueError("strict_native_repair_usage_incomplete")
             repaired, proof = apply_native_repairs(
                 candidate, response.content, binding, cards=cards
+            )
+            attempt_artifact["applied_candidate"] = repaired
+            attempt_artifact["repair_proof"] = proof
+            entry["repair_proof"] = proof
+            save_targeted_repairs(
+                path, state, **{f"native_attempt_{entry['index']}": attempt_artifact}
             )
             locations = {}
             draft = render_grounded_report_traced(
@@ -844,6 +1034,11 @@ class SynthesisWorker(Worker):
                 parent_task_id=task.task_id,
                 stage="native_initial_repair",
                 analysis_mode=task.input_data.get("body_quality") == "analysis_v1",
+                require_unit_citation_scope=bool(
+                    json.loads(messages[1]["content"]).get(
+                        "unit_citation_scope_contract"
+                    )
+                ),
                 require_native=True,
                 require_full_sources=True,
                 require_scope_notices=json.loads(messages[1]["content"]).get(
@@ -906,6 +1101,7 @@ class SynthesisWorker(Worker):
                 evidence_selection=evidence_selection,
                 use_full_sources=quality_policy == "strict_auto_v2",
                 analysis_mode=body_quality == "analysis_v1",
+                require_unit_citation_scope=body_quality == "analysis_v1",
                 use_scope_notices=quality_policy == "strict_auto_v2",
             )
         if isinstance(evidence_selection, Mapping) and not isinstance(
@@ -992,6 +1188,7 @@ class SynthesisWorker(Worker):
                 evidence_selection=evidence_selection,
                 use_full_sources=quality_policy == "strict_auto_v2",
                 analysis_mode=body_quality == "analysis_v1",
+                require_unit_citation_scope=body_quality == "analysis_v1",
                 use_scope_notices=quality_policy == "strict_auto_v2",
             )
         system = build_system_prompt(

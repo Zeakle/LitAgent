@@ -25,6 +25,36 @@ BODY_SECTION_KEYS = (
 )
 
 
+def validate_unit_citation_scope(
+    text: str, evidence_ids: list[str], language: str
+) -> None:
+    """Reject exposed semicolon scopes without inventing reference inheritance."""
+    from litagent.eval.scoped import _source_boundary_tokens, build_source_fragments
+    from litagent.quality import _render_grounded_sentence
+    from litagent.report_render import ReportSourceUnit
+
+    if (
+        not isinstance(text, str)
+        or not text.strip()
+        or not isinstance(evidence_ids, list)
+        or not evidence_ids
+        or any(not isinstance(eid, str) or not eid for eid in evidence_ids)
+    ):
+        raise ValueError("strict_writing_passage_fields_invalid")
+    if language not in {"en", "zh-CN"}:
+        raise ValueError("unsupported_report_language")
+    # Match the real evaluator's punctuation rules, including protected URLs,
+    # quotations and brackets, rather than interpreting prose semantically.
+    if not any(token in {";", "；"} for _, token in _source_boundary_tokens(text)):
+        return
+    rendered = _render_grounded_sentence(text, evidence_ids, language, native=True)
+    fragments = build_source_fragments(
+        ReportSourceUnit("native-unit", rendered, 0, len(rendered))
+    )
+    if len(fragments) > 1 and any(not f["citation_aliases"] for f in fragments):
+        raise ValueError("strict_writing_unit_citation_scope_ambiguous")
+
+
 def scope_notice_catalog(language: str) -> dict[str, str]:
     """Return report-scope statements without adding empirical or field-wide claims."""
     if language == "zh-CN":
@@ -338,13 +368,17 @@ def compile_passage_report(
     language: str | None = None,
     notice_bindings: dict | None = None,
     analysis_mode: bool = False,
+    require_unit_citation_scope: bool = False,
     analysis_bindings: dict | None = None,
+    section_scopes: Mapping | None = None,
 ) -> tuple[str, dict]:
     """Derive canonical summary citations from real scientific body units only."""
     body_notice_ids = set()
     from litagent.quality import GroundedWritingError
 
     if binding_mode not in {"passages", "full_sources"}:
+        raise ValueError("strict_writing_binding_mode_invalid")
+    if require_unit_citation_scope and not analysis_mode:
         raise ValueError("strict_writing_binding_mode_invalid")
     full_sources = binding_mode == "full_sources"
     if require_scope_notices and (not full_sources or language not in {"en", "zh-CN"}):
@@ -385,6 +419,12 @@ def compile_passage_report(
                 "section_key": key,
                 "candidate_text": sentence.get("text"),
                 "actual_fact_card_ids": original_sentence.get("fact_card_ids", []),
+                **(
+                    {"allowed_fact_card_ids": list(section_scopes.get(key, []))}
+                    if section_scopes is not None
+                    and str(exc) == "strict_writing_out_of_scope_fact_card"
+                    else {}
+                ),
                 **(
                     {
                         "actual_body_reference": copy.deepcopy(
@@ -476,6 +516,16 @@ def compile_passage_report(
                         select_passage(cid, pid, catalog)
                         for cid, pid in zip(ids, selected)
                     ]
+                    if section_scopes is not None and not set(ids).issubset(
+                        section_scopes.get(key, [])
+                    ):
+                        raise ValueError("strict_writing_out_of_scope_fact_card")
+                    if require_unit_citation_scope and sentence["kind"] == "scientific":
+                        validate_unit_citation_scope(
+                            sentence["text"],
+                            [cards[cid]["evidence_id"] for cid in ids],
+                            language,
+                        )
                     sentence["support_quotes"] = [
                         item["source_quote"] for item in located
                     ]
@@ -523,6 +573,12 @@ def compile_passage_report(
                         }
                         if not located_by_card:
                             raise ValueError("strict_writing_summary_binding_invalid")
+                        if require_unit_citation_scope:
+                            validate_unit_citation_scope(
+                                text,
+                                [cards[cid]["evidence_id"] for cid in located_by_card],
+                                language,
+                            )
                         located = list(located_by_card.values())
                         sentence.clear()
                         sentence.update(

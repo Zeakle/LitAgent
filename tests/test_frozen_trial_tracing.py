@@ -5,9 +5,9 @@ import json
 from unittest.mock import Mock
 
 import pytest
+from model_config_helpers import load_legacy_mini_config as load_config
 from test_frozen_quality_repair import factories, source
 
-from litagent.config import load_config
 from litagent.observability.tracing import LangFuseTracer
 from scripts.run_frozen_quality_repair import prepare, run_trial
 

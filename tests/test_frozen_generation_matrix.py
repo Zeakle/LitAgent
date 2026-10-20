@@ -167,6 +167,7 @@ def test_changed_matrix_inputs_stop_before_any_trial(
     "reason",
     [
         "evaluation_inventory_unit_coverage_invalid",
+        "evaluation_inventory_json_invalid",
         "rewrite_context_budget_exceeded",
         "unknown_usage",
     ],

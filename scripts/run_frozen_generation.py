@@ -701,7 +701,7 @@ def prepare(
         raise ValueError("frozen_generation_policy_invalid")
     if (
         config.llm.base_url.rstrip("/") != ORIGIN
-        or config.llm.model != MODEL
+        or not config.llm.uses_single_model(MODEL)
         or config.safety.max_cost_tokens != 500000
         or config.eval.strict_max_claims != 128
         or config.eval.strict_max_batches != 8

@@ -123,16 +123,27 @@ def build_config_summary(
         "safety": config.safety.model_dump(mode="json"),
         "api": config.api.model_dump(mode="json"),
         "resilience": config.resilience.model_dump(),
-        "extractor": config.extractor.model_dump(),
+        "extractor": config.extractor.model_dump(exclude_none=True),
         "relevance": config.relevance.model_dump(),
         "eval": config.eval.model_dump(),
-        "planner": config.planner.model_dump(),
+        "planner": config.planner.model_dump(exclude_none=True),
         "observability": {
             "enabled": config.observability.enabled,
             "payload_mode": config.observability.payload_mode,
         },
         "mcp_servers": _mcp_summary(config),
     }
+    if any(
+        getattr(config.llm, f"{stage}_model") is not None
+        for stage in ("extraction", "generation", "evaluation")
+    ):
+        effective["llm"]["model_routing"] = {
+            "version": "stage-model-routing-v1",
+            **{
+                stage: config.llm.model_for(stage)
+                for stage in ("extraction", "generation", "evaluation")
+            },
+        }
     rag = _rag_summary(config)
     if rag is not None:
         effective["rag"] = rag

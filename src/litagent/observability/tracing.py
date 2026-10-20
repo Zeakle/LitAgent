@@ -118,6 +118,27 @@ class LangFuseTracer:
                     }
                 )
 
+        elif event in {"writing.wire.projected", "writing.wire.failed"}:
+            span = self._spans.get(data.get("task_id", "")) or self._root
+            if span:
+                span.update(
+                    metadata={
+                        "writing_wire": {
+                            key: data.get(key)
+                            for key in (
+                                "task_id",
+                                "phase",
+                                "contract_version",
+                                "candidate_sha256",
+                                "input_sha256",
+                                "count",
+                                "reason_code",
+                            )
+                        }
+                    },
+                    **({"level": "ERROR"} if event == "writing.wire.failed" else {}),
+                )
+
         elif event == "writing.validation.failed":
             span = self._spans.get(data.get("task_id", "")) or self._root
             if span:

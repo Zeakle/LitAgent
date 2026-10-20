@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import re
 import uuid
 from dataclasses import asdict, dataclass
 from typing import Any, Mapping, Sequence
 
+from litagent.evidence import extract_evidence_refs
+from litagent.quality import build_fact_cards
 from litagent.rag.claims_index import ClaimsIndex, TrustedClaim
 
 _CLAIM_NAMESPACE = uuid.UUID("a9506bd8-35d8-59e9-8180-2f0f018c99e5")
@@ -112,6 +116,151 @@ def _to_trusted_claim(
         return None
 
 
+def _verified_report_items(
+    report_data: Mapping[str, Any], raw_items: list
+) -> list[dict]:
+    """Promote assessed final statements, never unverified extractor candidates."""
+    survey = report_data.get("survey")
+    evaluation = report_data.get("evaluation")
+    if not isinstance(survey, str) or not isinstance(evaluation, Mapping):
+        return []
+    metric = evaluation.get("faithfulness")
+    details = metric.get("details") if isinstance(metric, Mapping) else None
+    if not isinstance(details, Mapping):
+        return []
+    coverage = details.get("coverage") or {}
+    stages = details.get("stages") or {}
+    assertions = details.get("assertions")
+    card_map = details.get("fact_card_map")
+    if (
+        details.get("evaluation_version") != "survey-evaluation-v3"
+        or details.get("source_report_sha256")
+        != hashlib.sha256(survey.encode()).hexdigest()
+        or not isinstance(coverage, Mapping)
+        or coverage.get("complete") is not True
+        or type(coverage.get("source_units")) is not int
+        or coverage["source_units"] <= 0
+        or coverage.get("processed_units") != coverage["source_units"]
+        or not isinstance(stages, Mapping)
+        or stages.get("global_check") != "completed"
+        or not isinstance(assertions, list)
+        or not assertions
+        or stages.get("expected_assertions") != len(assertions)
+        or stages.get("processed_assertions") != len(assertions)
+        or not isinstance(card_map, Mapping)
+        or not card_map
+    ):
+        return []
+    ledger = {}
+    for item in raw_items:
+        eid = item.get("evidence_id")
+        if not isinstance(eid, str) or not eid:
+            continue
+        if eid in ledger and ledger[eid] != item:
+            return []
+        ledger[eid] = item
+    cards = build_fact_cards(ledger)
+    # Compare the same provenance projection persisted by Evaluation, including ID.
+    provenance_keys = (
+        "evidence_id",
+        "paper_id",
+        "content_sha256",
+        "source_locator",
+        "source_version",
+        "chunk_key",
+        "page",
+        "block_index",
+        "content_scope",
+        "missing_fields",
+    )
+    evaluated_eids = set()
+    for cid, saved in card_map.items():
+        card = cards.get(cid)
+        if (
+            not card
+            or not isinstance(saved, Mapping)
+            or saved != {k: card.get(k) for k in provenance_keys}
+        ):
+            return []
+        evaluated_eids.add(card["evidence_id"])
+    selected = []
+    seen_ids = set()
+    for assertion in assertions:
+        if not isinstance(assertion, Mapping):
+            return []
+        cid = assertion.get("claim_id")
+        if not isinstance(cid, str) or cid in seen_ids:
+            return []
+        seen_ids.add(cid)
+        if assertion.get("kind") != "scientific":
+            continue
+        # A corrupted scientific result invalidates the complete promotion set.
+        if (
+            assertion.get("status") != "supported"
+            or assertion.get("correct_kind") != "scientific"
+            or assertion.get("atomic") is not True
+            or assertion.get("classification_valid") is not True
+            or assertion.get("source_faithful") is not True
+            or assertion.get("local_error")
+        ):
+            return []
+        start, end = assertion.get("source_start"), assertion.get("source_end")
+        quote = assertion.get("source_quote")
+        eids = assertion.get("evidence_ids")
+        text = assertion.get("claim_text")
+        validation = assertion.get("support_validation")
+        if (
+            type(start) is not int
+            or type(end) is not int
+            or not 0 <= start < end <= len(survey)
+            or survey[start:end] != quote
+            or not isinstance(eids, list)
+            or not eids
+            or any(not isinstance(eid, str) for eid in eids)
+            or len(set(eids)) != len(eids)
+            or not set(eids).issubset(evaluated_eids)
+            or extract_evidence_refs(quote) != set(eids)
+            or not isinstance(text, str)
+            or not text.strip()
+            or not isinstance(validation, Mapping)
+            or validation.get("status") != "passed"
+        ):
+            return []
+        spans = validation.get("spans")
+        if not isinstance(spans, list) or not spans:
+            return []
+        for span in spans:
+            if not isinstance(span, Mapping) or span.get("evidence_id") not in eids:
+                return []
+            source = ledger[span["evidence_id"]].get("supporting_text")
+            a, b = span.get("source_start"), span.get("source_end")
+            if (
+                span.get("source") != "original_support"
+                or not isinstance(source, str)
+                or type(a) is not int
+                or type(b) is not int
+                or not 0 <= a < b <= len(source)
+                or source[a:b] != span.get("quote")
+            ):
+                return []
+        sources = {
+            (
+                ledger[eid].get("paper_id"),
+                ledger[eid].get("chunk_key"),
+                ledger[eid].get("supporting_text"),
+                ledger[eid].get("content_hash"),
+            )
+            for eid in eids
+        }
+        # TrustedClaim has a single source; retain cross-source comparisons locally.
+        if len(sources) != 1:
+            continue
+        text = re.sub(r"\[E:[^\[\]\s;,]+\]", "", text).strip()
+        if text:
+            selected.append({**ledger[eids[0]], "claim_text": text, "confidence": None})
+    return selected
+
+
 class ClaimsPromoter:
     """Promote evidence-backed claims from publishable survey runs."""
 
@@ -138,9 +287,38 @@ class ClaimsPromoter:
             for item in extraction.get("evidence_items", [])
             if isinstance(item, Mapping) and item.get("claim_text")
         ]
+        grounded = any(
+            extraction.get("claim_contract") == "host-grounded-claims-v1"
+            for extraction in extractions
+        )
+        # New evaluated reports cannot fall back to the historical candidate path.
+        evaluation = report_data.get("evaluation")
+        metric = (
+            evaluation.get("faithfulness") if isinstance(evaluation, Mapping) else None
+        )
+        details = metric.get("details") if isinstance(metric, Mapping) else None
+        grounded = grounded or (
+            isinstance(details, Mapping)
+            and details.get("evaluation_version") == "survey-evaluation-v3"
+        )
+        metadata = report_data.get("metadata")
+        grounded = grounded or (
+            isinstance(metadata, Mapping)
+            and metadata.get("quality_policy")
+            in {"strict_v1", "strict_auto_v1", "strict_auto_v2"}
+        )
+        try:
+            eligible = (
+                _verified_report_items(report_data, raw_items)
+                if grounded
+                else raw_items
+            )
+        except (TypeError, ValueError, KeyError):
+            # Invalid persisted proof must never reopen the legacy promotion path.
+            eligible = []
         claims = [
             claim
-            for item in raw_items
+            for item in eligible
             if (
                 claim := _to_trusted_claim(
                     run_id=run_id,
@@ -152,18 +330,20 @@ class ClaimsPromoter:
             )
             is not None
         ]
+        claims = list({claim.claim_id: claim for claim in claims}.values())
+        attempted = len(eligible) if grounded and eligible else len(raw_items)
         if not claims:
             return ClaimPromotionSummary(
-                "skipped", len(raw_items), 0, len(raw_items), "no_promotable_claims"
+                "skipped", attempted, 0, attempted, "no_promotable_claims"
             )
         try:
             promoted = await self._index.upsert_trusted(claims)
             return ClaimPromotionSummary(
-                "succeeded", len(raw_items), promoted, len(raw_items) - len(claims)
+                "succeeded", attempted, promoted, attempted - len(claims)
             )
         except asyncio.CancelledError:
             raise
         except Exception:
             return ClaimPromotionSummary(
-                "degraded", len(raw_items), 0, len(raw_items), "claims_upsert_failed"
+                "degraded", attempted, 0, attempted, "claims_upsert_failed"
             )

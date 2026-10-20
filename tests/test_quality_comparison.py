@@ -6,8 +6,9 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from model_config_helpers import load_legacy_mini_config as load_config
 
-from litagent.config import ContextConfig, load_config
+from litagent.config import ContextConfig
 from litagent.context.budget import BudgetManager
 from litagent.context.evidence_selector import (
     EvidenceSelection,
@@ -26,6 +27,12 @@ _spec = importlib.util.spec_from_file_location(
 )
 comparison = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(comparison)
+
+
+@pytest.fixture(autouse=True)
+def legacy_comparison_cli_profile(monkeypatch):
+    """Exercise the historical single-model CLI using its explicit old profile."""
+    monkeypatch.setattr(comparison, "load_config", load_config)
 
 
 def captured():

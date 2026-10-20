@@ -5,8 +5,15 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Callable
+from copy import deepcopy
 
-from litagent.body_quality import ROLES
+from litagent.body_quality import (
+    ANALYSIS_OWNERSHIP_CONTRACT,
+    APPLICABILITY_CONTRACT,
+    APPLICABILITY_INSTRUCTION,
+    ROLES,
+    analysis_claim_ids_by_section,
+)
 from litagent.eval.scoped import (
     STRICT_ASSESSMENT_PROMPT,
     Assessment,
@@ -15,7 +22,9 @@ from litagent.eval.scoped import (
     ScopedEvaluationError,
     UnitDecision,
     _require_ids,
+    build_evaluation_request,
 )
+from litagent.safety.budget import strict_request_reservation
 
 VERSION = "survey-evaluation-v3"
 STRICT_DECISION_CONTRACT = "scientific-decision-consistency-v1"
@@ -113,6 +122,30 @@ def global_review_schema(payload):
         schema["properties"][key].update(minItems=len(ids), maxItems=len(ids))
         if ids:
             schema["$defs"][definition]["properties"][field]["enum"] = ids
+    grouped = analysis_claim_ids_by_section(
+        payload.get("assertions", []), payload.get("report_structure", [])
+    )
+
+    def claim_array(ids):
+        result = {"type": "array", "items": {"type": "string"}}
+        if ids:
+            result["items"]["enum"] = ids
+        else:
+            result["maxItems"] = 0
+        return result
+
+    branches = []
+    for key, ids in grouped.items():
+        branch = deepcopy(schema["$defs"]["AnalysisDecision"])
+        branch["properties"]["section_key"] = {"type": "string", "const": key}
+        branch["properties"]["claim_ids"] = claim_array(ids)
+        if not ids:
+            branch["properties"]["adequate"]["const"] = False
+        branches.append(branch)
+    schema["properties"]["analyses"]["items"] = {"anyOf": branches}
+    schema["$defs"]["LimitationsDecision"]["properties"]["claim_ids"] = claim_array(
+        grouped["open_problems"]
+    )
     return schema
 
 
@@ -145,14 +178,43 @@ def valid_limitations(result, assertions, supported_ids, report_structure=()):
 
 def request_size(prompt: str, payload: dict, output: int) -> int:
     """Use the same complete UTF-8 reservation as the provider boundary."""
-    messages = [
-        {"role": "system", "content": prompt},
-        {
-            "role": "user",
-            "content": json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
-        },
-    ]
-    return len(json.dumps(messages, ensure_ascii=False).encode()) + 1024 + output
+    messages, response_format = build_evaluation_request(prompt, payload)
+    return strict_request_reservation(messages, output, response_format)
+
+
+def assessment_schema(payload: dict) -> dict:
+    """Constrain complete batch identities without prescribing scientific verdicts."""
+    schema = Assessment.model_json_schema()
+    if payload.get("body_analysis_contract") != "body-analysis-v1":
+        return schema
+    for key, definition, field, rows in (
+        ("decisions", "PassageDecision", "claim_id", payload["assertions"]),
+        ("units", "UnitDecision", "source_unit_id", payload["source_units"]),
+    ):
+        ids = [r[field] for r in rows]
+        if any(not isinstance(i, str) or not i for i in ids) or len(ids) != len(
+            set(ids)
+        ):
+            raise ValueError("evaluation_batch_input_identity_invalid")
+        schema["properties"][key].update(minItems=len(ids), maxItems=len(ids))
+        if ids:
+            schema["$defs"][definition]["properties"][field]["enum"] = ids
+    schema["properties"]["conflicts"]["maxItems"] = 0
+    passages = list(payload["support_passages"])
+    if passages:
+        schema["$defs"]["SupportSelection"]["properties"]["support_id"][
+            "enum"
+        ] = passages
+        schema["$defs"]["AspectCheck"]["properties"]["support_ids"]["items"][
+            "enum"
+        ] = passages
+    else:
+        # Uncited claims still receive explicit negative or uncertain decisions.
+        schema["$defs"]["PassageDecision"]["properties"]["support_basis"][
+            "maxItems"
+        ] = 0
+        schema["$defs"]["AspectCheck"]["properties"]["support_ids"]["maxItems"] = 0
+    return schema
 
 
 def batch_payload(payload: dict, claims: list[dict]) -> dict:
@@ -161,7 +223,7 @@ def batch_payload(payload: dict, claims: list[dict]) -> dict:
     aliases = {e["evidence_alias"] for c in claims for e in c["evidence"]}
     materials = {k: v for k, v in payload["cited_materials"].items() if k in aliases}
     supports = {v.get("original_support_ref") for v in materials.values()}
-    return {
+    result = {
         **payload,
         "assertions": claims,
         "source_units": [
@@ -179,6 +241,10 @@ def batch_payload(payload: dict, claims: list[dict]) -> dict:
             k: v for k, v in payload["support_passages"].items() if v[0] in aliases
         },
     }
+    if payload.get("body_analysis_contract") == "body-analysis-v1":
+        result["assessment_output_contract"] = "host-batch-assessment-v1"
+        result["schema"] = assessment_schema(result)
+    return result
 
 
 BATCH_PROMPT = (
@@ -239,13 +305,26 @@ NOTICE_PROMPT = "\nThe host_scope_notice_catalog contains fixed statements about
 
 def global_prompt(payload: dict) -> str:
     """Keep ordinary citations separate from concrete report inconsistencies."""
-    if payload.get("global_consistency_contract") != GLOBAL_CONSISTENCY_CONTRACT:
+    if payload.get(
+        "global_consistency_contract"
+    ) != GLOBAL_CONSISTENCY_CONTRACT and not payload.get("body_analysis_contract"):
         return GLOBAL_PROMPT
     return (
         GLOBAL_PROMPT
         + (
             "\nHOST GLOBAL COMPLETENESS host-global-completeness-v1: source_units is the complete set to review. excluded_unit_inventory lists exclusions ONLY; an empty exclusions list never means an empty report. Return exactly one units entry per expected_source_unit_id, one coverage entry per expected_requirement_id and one analyses entry per analysis_duties key. Inadequate or unanswerable content still requires an explicit negative decision and explanation; never return empty arrays for nonempty inputs.\nBODY ANALYSIS: return analyses with section_key, adequate, claim_ids and explanation for EVERY key in analysis_duties. Judge substantive mechanisms, contributions and applicability in methods; classification criteria/relations in taxonomy; comparable conditions or explicit non-comparability in experiments; concrete limitations in open_problems; scientific synthesis in abstract and evidence-backed answers/tradeoffs in conclusion. A title, method mention, scope notice, repeated fact or arbitrary correct assertion cannot establish analytical adequacy. Every adequate result must cite actual scientific IDs from that section. Do not infer support; the host separately checks scientific verdicts. More length/assertions is not a quality test.\n"
             if payload.get("body_analysis_contract")
+            else ""
+        )
+        + (
+            "\nHOST ANALYSIS OWNERSHIP host-analysis-claim-ownership-v1: "
+            "analysis_claim_ids_by_section is the authoritative host map. "
+            "Use ONLY the listed scientific IDs for that section, even when another "
+            "section repeats the same finding or citations. Never substitute a summary "
+            "ID for a body ID. Empty available IDs require adequate=false and claim_ids=[]. "
+            "Availability is not scientific support or analytical adequacy. "
+            "The limitations check uses only open_problems IDs.\n"
+            if payload.get("analysis_ownership_contract") == ANALYSIS_OWNERSHIP_CONTRACT
             else ""
         )
         + """
@@ -259,6 +338,11 @@ finding in abstract/conclusion is permitted; repeating the same finding twice
 inside one summary section is an issue. Never invent counts or a missing source.
 """
         + (NOTICE_PROMPT if payload.get("host_scope_notice_catalog") else "")
+        + (
+            APPLICABILITY_INSTRUCTION
+            if payload.get("source_applicability_contract") == APPLICABILITY_CONTRACT
+            else ""
+        )
     )
 
 
@@ -289,6 +373,11 @@ def batch_prompt(payload: dict) -> str:
             else ""
         )
         + (NOTICE_PROMPT if payload.get("host_scope_notice_catalog") else "")
+        + (
+            APPLICABILITY_INSTRUCTION
+            if payload.get("source_applicability_contract") == APPLICABILITY_CONTRACT
+            else ""
+        )
     )
 
 
@@ -451,10 +540,7 @@ async def assess_batches(
             entry["decisions"] = [d.model_dump() for d in result.decisions]
             progress["processed_assertions"] = len(decisions)
         except ScopedEvaluationError as exc:
-            if (
-                response is not None
-                and str(exc) == "evaluation_decision_consistency_invalid"
-            ):
+            if response is not None:
                 entry.update(
                     status="invalid_response",
                     reason_code=str(exc),
@@ -466,8 +552,20 @@ async def assess_batches(
             if checkpoint:
                 checkpoint(progress)
             raise
-        except BaseException:
-            entry["status"] = "interrupted_no_replay"
+        except BaseException as exc:
+            if response is not None and isinstance(exc, Exception):
+                reason = str(exc)
+                entry.update(
+                    status="invalid_response",
+                    reason_code=(
+                        reason
+                        if reason.startswith("evaluation_")
+                        else "evaluation_assessment_response_invalid"
+                    ),
+                    usage=response.usage,
+                )
+            else:
+                entry["status"] = "interrupted_no_replay"
             if checkpoint:
                 checkpoint(progress)
             raise
@@ -477,6 +575,10 @@ async def assess_batches(
         **(
             {
                 "body_analysis_contract": payload["body_analysis_contract"],
+                "analysis_ownership_contract": ANALYSIS_OWNERSHIP_CONTRACT,
+                "analysis_claim_ids_by_section": analysis_claim_ids_by_section(
+                    payload["assertions"], payload["report_structure"]
+                ),
                 "analysis_duties": ROLES,
             }
             if payload.get("body_analysis_contract")
@@ -490,6 +592,11 @@ async def assess_batches(
         **(
             {"global_consistency_contract": payload["global_consistency_contract"]}
             if "global_consistency_contract" in payload
+            else {}
+        ),
+        **(
+            {"source_applicability_contract": payload["source_applicability_contract"]}
+            if "source_applicability_contract" in payload
             else {}
         ),
         **(

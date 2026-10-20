@@ -35,6 +35,14 @@ const LABELS = {
   support_aspect_unverified: ["断言的部分内容未获核验", "An assertion aspect remains unverified"],
   support_relation_unverified: ["证据未确认该科学关系或条件", "Evidence does not verify this relation or condition"],
   support_entity_unverified: ["证据中的实体对应尚未确认", "Evidence entity correspondence is unverified"],
+  analysis_semantics_inadequate: ["模型判定分析内容不足", "Model found inadequate analysis"],
+  analysis_claims_missing: ["缺少本章科学断言", "No scientific claims for this chapter"],
+  analysis_duplicate_claim: ["断言 ID 重复", "Duplicated claim IDs"],
+  analysis_unknown_claim: ["未知断言 ID", "Unknown claim IDs"],
+  analysis_wrong_section_claim: ["断言不属于本章", "Claims do not belong to this chapter"],
+  analysis_claim_not_supported: ["所用科学断言尚未获支持", "Selected scientific claims are not supported"],
+  invalid_response: ["响应契约无效", "Invalid response contract"],
+  evaluation_analysis_claim_ownership_invalid: ["章节断言归属无效，整体未核验", "Invalid chapter claim ownership; overall evaluation unverified"],
   support_basis_quote_invalid: ["支持原文与所选来源字段不匹配", "Support text does not match the selected source field"],
   insufficient_support: ["证据不足", "Insufficient support"], attribution_mismatch: ["引用归属错误", "Attribution mismatch"], uncited_claim: ["缺少引用", "Uncited claim"], unknown_evidence_ref: ["证据缺失", "Unknown evidence"], record_mismatch: ["运行记录不一致", "Record mismatch"],
   gate: ["内容质量／交付状态", "Content quality / delivery"], reasons: ["阻断或降级原因", "Blocking or degradation reasons"], noReasons: ["未记录降级原因。", "No degradation reason recorded."], diagnosticOnly: ["结果供复核；不修改评分或人工批准。", "Review evidence only; preserves scores and approval."],
@@ -61,6 +69,8 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
   const L = key => LABELS[key]?.[options.locale === "en" ? 1 : 0] || key;
   const details = evaluation?.faithfulness?.details || {};
   const v2 = ["survey-evaluation-v2", "survey-evaluation-v3"].includes(details.evaluation_version);
+  const noFinalReport = details.skipped_reason === "final_report_unavailable";
+  const hasPipeline = options.pipelineVerification && Object.keys(options.pipelineVerification).length > 0;
   container.replaceChildren();
   const metrics = node(container, "div", null, "metric-grid");
   for (const [name, result] of Object.entries(evaluation || {})) {
@@ -77,10 +87,10 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
   const gate = node(container, "section", null, "quality-gate");
   node(gate, "h3", `${quality?.status || "unverified"} / ${delivery?.status || "pending"}`);
   node(gate, "p", `${L("gate")} · ${L("reasons")}: ${(delivery?.reason_codes || []).join(", ") || L("noReasons")}`);
-  node(gate, "p", details.evaluation_version === "survey-evaluation-v3" ? `${options.locale === "en" ? "Evaluation v3 · complete batched assessment" : "评估 v3 · 完整分批核验"}` : v2 ? `${L(details.support_contract === "host-support-passages-v2" ? "current" : details.support_contract === "cited-support-spans-v1" ? "previousSupport" : "historicalV2")} · ${details.evaluation_version}` : options.pipelineVerification && !Object.keys(evaluation || {}).length ? (options.locale === "en" ? "Evaluation was not run; no report scores were produced." : "Evaluation 未运行；尚未产生正文评分。") : L("historical"));
+  node(gate, "p", noFinalReport ? (options.locale === "en" ? "Writing validation failed; Evaluation was not run." : "写作校验失败；Evaluation 未运行。") : details.evaluation_version === "survey-evaluation-v3" ? `${options.locale === "en" ? "Evaluation v3 · complete batched assessment" : "评估 v3 · 完整分批核验"}` : v2 ? `${L(details.support_contract === "host-support-passages-v2" ? "current" : details.support_contract === "cited-support-spans-v1" ? "previousSupport" : "historicalV2")} · ${details.evaluation_version}` : hasPipeline && !Object.keys(evaluation || {}).length ? (options.locale === "en" ? "Evaluation was not run; no report scores were produced." : "Evaluation 未运行；尚未产生正文评分。") : L("historical"));
   if (options.revision) node(gate, "p", `r${options.revision}${options.sha ? ` · SHA ${options.sha}` : ""}`, "audit-binding");
   if (v2) node(gate,"p",`${L("support")}: ${details.support_contract || L("unavailable")}`);
-  if (options.bodyDiagnostics || details.body_analysis_contract) {
+  if (!noFinalReport && (options.bodyDiagnostics || details.body_analysis_contract)) {
     const section=node(container,"section",null,"quality-section"),en=options.locale === "en";
     node(section,"h3",en ? "Academic body · analytical depth" : "学术正文 · 分析质量");
     const d=options.bodyDiagnostics;
@@ -88,6 +98,12 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
     node(section,"p",en ? "Length and counts are diagnostics, not a quality score. Preparation candidates are not verified findings." : "长度与数量仅用于诊断；准备表中的候选材料不等于已核验科学发现。");
     for(const row of details.analysis_check?.sections || []) {
       node(section,"p",`${row.section_key}: ${L(row.adequate ? "passed" : "failed")} · ${row.explanation}`);
+      if(row.host_validation) {
+        const model=row.model_adequate == null ? "unverified" : row.model_adequate ? "passed" : "failed";
+        node(section,"p",`${en ? "Model analysis decision" : "模型分析结论"}: ${L(model)} · ${en ? "Host gate checks" : "宿主门禁检查"}: ${L(row.host_validation.status)} · ${(row.host_validation.failure_codes || []).map(L).join("; ")}`);
+      } else {
+        node(section,"p",`${en ? "Host ownership check" : "宿主归属核验"}: ${L("unavailable")}`);
+      }
       for(const id of row.claim_ids || []) {
         const claim=(details.assertions || []).find(c=>c.claim_id===id);if(!claim)continue;
         const button=node(section,"button",`${L("source")} · ${id}`);button.type="button";button.addEventListener("click",()=>onSelect({kind:"quality-diagnostic",id,value:claim},button));
@@ -126,6 +142,7 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
     const table = node(strict, "table", null, "quality-distribution quality-batches"); const body = node(table, "tbody");
     for (const batch of stages.batches || []) { const row = node(body, "tr"); node(row, "th", `${en ? "Batch" : "批次"} ${batch.index + 1}`); node(row, "td", L(batch.status)); node(row, "td", `${batch.claim_ids?.length || 0} ${L("claims")}`); }
     node(strict, "p", `${en ? "Global consistency" : "全局一致性"}: ${L(stages.global_check || "unverified")}`);
+    if(stages.global_reason_code)node(strict,"p",L(stages.global_reason_code));
     if(details.scope_notice_contract)node(strict,"p",`${en ? "Substantive limitations" : "具体科学局限"}: ${L(details.limitations_check?.adequate === true ? "passed" : "unverified")} · ${details.limitations_check?.explanation || L("unavailable")}`);
     for (const requirement of details.coverage_requirements || []) {
       const verdict = (details.core_coverage || []).find(c => c.requirement_id === requirement.requirement_id);
@@ -190,9 +207,16 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
   }
   const extraction = options.extractionVerification;
   const history = options.evaluationHistory;
-  if (history && history.version === "version-bound-evaluation-history-v1" && history.source_report_sha256 === options.sha) {
+  const cleanup = history?.editorial_cleanup;
+  const editorialBound = cleanup?.version === "assessed-repair-repetition-v1"
+    && cleanup.requires_full_reassessment === true
+    && cleanup.result_sha256 === options.sha
+    && cleanup.candidate_sha256 === (history.parent_report_sha256 || history.source_report_sha256)
+    && history.prior_history?.source_report_sha256 === cleanup.candidate_sha256
+    && history.final_evaluation?.faithfulness?.details?.source_report_sha256 === options.sha;
+  if (history && history.version === "version-bound-evaluation-history-v1" && (editorialBound || (!cleanup && history.source_report_sha256 === options.sha))) {
     const section=node(container,"section",null,"quality-section");const en=options.locale === "en";
-    node(section,"h3",en ? "Evaluation attempts · this report version" : "本版本 Evaluation 与修复过程");
+    node(section,"h3",editorialBound ? (en ? "Source-version repairs and current Evaluation" : "来源版本修复与当前核验") : (en ? "Evaluation attempts · this report version" : "本版本 Evaluation 与修复过程"));
     const show=(label,evaluation,reason,committed)=>{
       const box=node(section,"details",null,"quality-diagnostic");node(box,"summary",label);
       const d=evaluation?.faithfulness?.details;
@@ -204,8 +228,10 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
       node(box,"p",`${en ? "Global check" : "全局检查"}: ${L(d.stages?.global_check || "unverified")}`);
       for(const issue of d.global_issues || d.stages?.global_issues || [])node(box,"p",issue.explanation);
     };
-    show(en ? "Initial Evaluation" : "首次 Evaluation",history.initial_evaluation,"",false);
-    for(const [i,attempt] of (history.attempts || []).entries())show(`${en ? "Repair candidate" : "修复候选"} ${i+1}`,attempt.candidate_evaluation,attempt.reason_code,attempt.committed);
+    const earlier = editorialBound ? history.prior_history : history;
+    show(editorialBound ? (en ? "Source-version initial Evaluation" : "来源版本首次 Evaluation") : (en ? "Initial Evaluation" : "首次 Evaluation"),earlier.initial_evaluation,"",false);
+    for(const [i,attempt] of (earlier.attempts || []).entries())show(`${editorialBound ? (en ? "Source-version repair candidate" : "来源版本修复候选") : (en ? "Repair candidate" : "修复候选")} ${i+1}`,attempt.candidate_evaluation,attempt.reason_code,attempt.committed);
+    if(editorialBound)node(section,"p",en ? "Local cleanup removed one confirmed redundant sentence. Earlier evaluations belong to source versions; the current report was assessed in full again." : "本地整理移除一条已确认重复句。前序评估属于来源版本；当前正文已重新完整核验。");
     show(en ? "Final report Evaluation" : "最终正文 Evaluation",history.final_evaluation,"",true);
   }
   const repairs = options.targetedRepairState;
@@ -219,9 +245,10 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
       for(const attempt of repairs.attempts)node(section,"p",`${attempt.stage === "native_initial" ? (en ? "Initial native unit" : "初稿单元") : (en ? "Evaluation repair" : "正文定向修复")}: ${L(attempt.status)}`);
     }
   }
-  if (options.pipelineVerification) {
+  if (hasPipeline) {
     const section=node(container,"section",null,"quality-section");
     node(section,"h3",options.locale === "en" ? "This run · pipeline stages" : "本轮流程阶段");
+    if(options.pipelineVerification.assessment_scope === "generation_only")node(section,"p",options.locale === "en" ? "Generation diagnostics belong to rejected draft candidates, not Evaluation scores." : "生成诊断属于被拒草稿，不是 Evaluation 评分。");
     for (const [stage, status] of Object.entries(options.pipelineVerification.stages || {})) node(section,"p",`${stage}: ${L(status)}`);
     for (const [service, cost] of Object.entries(options.pipelineVerification.costs || {})) node(section,"p",`${service}: ${cost.tokens == null || !cost.usage_complete ? L("unavailable") : cost.tokens} tokens · ${cost.requests} calls`);
     if(options.pipelineVerification.reason)node(section,"p",String(options.pipelineVerification.reason),"notice-error");
@@ -230,6 +257,8 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
       node(detail,"summary",`${options.locale === "en" ? "Rejected draft unit" : "被拒绝的初稿单元"}: ${issue.location} · ${issue.subreason || issue.reason_code}`);
       node(detail,"p",issue.candidate_text);
       node(detail,"p",`${options.locale === "en" ? "JSON location" : "JSON位置"}: ${issue.raw_json_path}`);
+      if(issue.phase)node(detail,"p",`${options.locale === "en" ? "Generation stage" : "生成阶段"}: ${issue.phase}`);
+      if(issue.candidate_sha256)node(detail,"p",`SHA ${issue.candidate_sha256}`,"audit-binding");
     }
   }
   if (extraction) {

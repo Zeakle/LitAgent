@@ -1,0 +1,110 @@
+{
+  "origin": "stage-model-quality-20261017-002 public TADAM response; no private data",
+  "paper": {
+    "paper_id": "fixture:tadam",
+    "title": "TADAM: Task dependent adaptive metric for improved few-shot learning",
+    "quality_policy": "strict_auto_v2",
+    "chunks": [
+      {
+        "chunk_key": "section:abstract:0:853d46a56214",
+        "section": "abstract",
+        "text": "Few-shot learning has become essential for producing models that generalize from few examples. In this work, we identify that metric scaling and metric task conditioning are important to improve the performance of few-shot algorithms. Our analysis reveals that simple metric scaling completely changes the nature of few-shot algorithm parameter updates. Metric scaling provides improvements up to 14% in accuracy for certain metrics on the mini-Imagenet 5-way 5-shot classification task. We further propose a simple and effective way of conditioning a learner on the task sample set, resulting in learning a task-dependent metric space. Moreover, we propose and empirically test a practical end-to-end optimization procedure based on auxiliary task co-training to learn a task-dependent metric space. The resulting few-shot learning model based on the task-dependent scaled metric achieves state of the art on mini-Imagenet. We confirm these results on another few-shot dataset that we introduce in this paper based on CIFAR100. Our code is publicly available at https://github.com/ElementAI/TADAM. 1 Introduction",
+        "content_scope": "fulltext",
+        "page": 1,
+        "block_index": 0
+      },
+      {
+        "chunk_key": "abstract",
+        "section": "abstract",
+        "text": "Few-shot learning has become essential for producing models that generalize from few examples. In this work, we identify that metric scaling and metric task conditioning are important to improve the performance of few-shot algorithms. Our analysis reveals that simple metric scaling completely changes the nature of few-shot algorithm parameter updates. Metric scaling provides improvements up to 14% in accuracy for certain metrics on the mini-Imagenet 5-way 5-shot classification task. We further propose a simple and effective way of conditioning a learner on the task sample set, resulting in learning a task-dependent metric space. Moreover, we propose and empirically test a practical end-to-end optimization procedure based on auxiliary task co-training to learn a task-dependent metric space. The resulting few-shot learning model based on the task-dependent scaled metric achieves state of the art on mini-Imagenet. We confirm these results on another few-shot dataset that we introduce in this paper based on CIFAR100. Our code is publicly available at https://github.com/ElementAI/TADAM.",
+        "content_scope": "fulltext",
+        "page": 1,
+        "block_index": 0
+      },
+      {
+        "chunk_key": "section:abstract:2:53dad0eab796",
+        "section": "abstract",
+        "text": "us, the model is exposed to different tasks (or episodes) during the training phase, and it is evaluated on a non-overlapping set of new tasks [33]. Two recent approaches have attracted significant attention in the few-shot learning domain: Matching Networks [33], and Prototypical Networks [28]. In both approaches, the sample set and the query set are embedded with a neural network, and nearest neighbor classification is used given a metric in the embedded space. Since then, the problem of learning the most suitable metric for few-shot learning has been of interest to the field [33, 28, 29, 17, 16]. Learning a metric space in the context of few-shot learning generally implies identifying a suitable similarity measure (e.g. cosine or Euclidean), a feature extractor mapping raw inputs onto similarity space (e.g. convolutional stack for images or LSTM stack for text), a cost function to drive the parameter updates, and a training scheme (often episodic). Although the individual components in this list have been explored, the relationships between them have not received considerable attention.",
+        "content_scope": "fulltext",
+        "page": 1,
+        "block_index": 0
+      },
+      {
+        "chunk_key": "section:abstract:4:ee2d3b2584cf",
+        "section": "abstract",
+        "text": "ling. Using this 32nd Conference on Neural Information Processing Systems (NeurIPS 2018), Montréal, Canada. arXiv:1805.10123v4 [cs.LG] 25 Jan 2019 mechanism we close more than the 10% gap in performance between the cosine similarity and the Euclidean distance reported in [28]. Even more importantly, we extend the very notion of the metric space by making it task dependent via conditioning the feature extractor on the specific task. However, learning such a space is in general more challenging than learning a static one. Hence, we find a solution in exploiting the interaction between the conditioned feature extractor and the training procedure based on auxiliary co-training on a simpler task. Our proposed few-shot learning architecture based on task-dependent scaled metric achieves superior performance on two challenging few-shot image classification datasets. It shows up to 8.5% absolute accuracy improvement over the baseline (Snell et al. [28]), and 4.8% over the state-of-the-art [17] on the 5-shot, 5-way mini-Imagenet classification task, reaching 76.7% of accuracy, which is the best-reported accuracy on this dataset. 1.1 Background",
+        "content_scope": "fulltext",
+        "page": 1,
+        "block_index": 0
+      }
+    ]
+  },
+  "response": {
+    "claim_records": [
+      {
+        "text": "It shows up to 8.5% absolute accuracy improvement over the baseline (Snell et al. [28]), and 4.8% over the state-of-the-art [17] on the 5-shot, 5-way mini-Imagenet classification task, reaching 76.7% of accuracy, which is the best-reported accuracy on this dataset.",
+        "source_chunk_key": "section:abstract:4:ee2d3b2584cf",
+        "confidence": 1.0,
+        "fact_fields": {
+          "method": "It",
+          "conditions": null,
+          "dataset": "5-shot, 5-way mini-Imagenet classification task",
+          "metric": "absolute accuracy improvement over the baseline (Snell et al. [28])",
+          "value": "8.5%",
+          "unit": "%",
+          "qualifiers": "up to"
+        }
+      },
+      {
+        "text": "It shows up to 8.5% absolute accuracy improvement over the baseline (Snell et al. [28]), and 4.8% over the state-of-the-art [17] on the 5-shot, 5-way mini-Imagenet classification task, reaching 76.7% of accuracy, which is the best-reported accuracy on this dataset.",
+        "source_chunk_key": "section:abstract:4:ee2d3b2584cf",
+        "confidence": 1.0,
+        "fact_fields": {
+          "method": "It",
+          "conditions": null,
+          "dataset": "5-shot, 5-way mini-Imagenet classification task",
+          "metric": "absolute accuracy improvement over the state-of-the-art [17]",
+          "value": "4.8%",
+          "unit": "%",
+          "qualifiers": null
+        }
+      },
+      {
+        "text": "It shows up to 8.5% absolute accuracy improvement over the baseline (Snell et al. [28]), and 4.8% over the state-of-the-art [17] on the 5-shot, 5-way mini-Imagenet classification task, reaching 76.7% of accuracy, which is the best-reported accuracy on this dataset.",
+        "source_chunk_key": "section:abstract:4:ee2d3b2584cf",
+        "confidence": 1.0,
+        "fact_fields": {
+          "method": "It",
+          "conditions": null,
+          "dataset": "5-shot, 5-way mini-Imagenet classification task",
+          "metric": "accuracy",
+          "value": "76.7%",
+          "unit": "%",
+          "qualifiers": "best-reported accuracy on this dataset"
+        }
+      }
+    ],
+    "metrics": {
+      "accuracy improvement (metric scaling, mini-Imagenet 5-way 5-shot)": "up to 14%",
+      "performance gap closed (cosine similarity vs Euclidean distance)": "more than 10%",
+      "absolute accuracy improvement over baseline (Snell et al. [28], 5-shot 5-way mini-Imagenet)": "up to 8.5%",
+      "absolute accuracy improvement over state-of-the-art [17] (5-shot 5-way mini-Imagenet)": "4.8%",
+      "accuracy (5-shot 5-way mini-Imagenet)": "76.7%"
+    },
+    "methods": [
+      "metric scaling",
+      "metric task conditioning",
+      "conditioning a learner on the task sample set",
+      "end-to-end optimization procedure based on auxiliary task co-training",
+      "Matching Networks",
+      "Prototypical Networks",
+      "conditioning the feature extractor on the specific task",
+      "auxiliary co-training on a simpler task"
+    ],
+    "datasets": [
+      "mini-Imagenet",
+      "few-shot dataset based on CIFAR100"
+    ]
+  },
+  "response_model": "doubao-seed-2-1-lite-260915"
+}

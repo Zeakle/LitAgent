@@ -19,6 +19,7 @@ from litagent.benchmark.survey_models import (
     JudgeUsage,
     SurveyJudgeMetrics,
 )
+from litagent.body_quality import APPLICABILITY_CONTRACT, APPLICABILITY_INSTRUCTION
 from litagent.evidence import extract_evidence_refs_ordered
 from litagent.quality import digest, strict_acceptance, validate_fact_snapshot
 from litagent.report_render import build_report_source_units
@@ -51,7 +52,10 @@ def freeze_automatic_inputs(
     report: dict, ledger: Mapping, *, run_id: str, revision: int = 1
 ) -> dict:
     """Bind complete original sources, evaluated assertions and host records to one SHA."""
-    from litagent.eval.scoped import LOCAL_NUMERIC_CONTRACT
+    from litagent.eval.scoped import (
+        CHINESE_COMPARATIVE_CONTRACT,
+        LOCAL_NUMERIC_CONTRACT,
+    )
 
     survey = report["survey"]
     metadata = report.get("metadata", {})
@@ -202,6 +206,18 @@ def freeze_automatic_inputs(
             ),
             "version": JUDGE_VERSION,
             **(
+                {"source_applicability_contract": APPLICABILITY_CONTRACT}
+                if details.get("source_applicability_contract")
+                == APPLICABILITY_CONTRACT
+                else {}
+            ),
+            **(
+                {"local_comparative_contract": CHINESE_COMPARATIVE_CONTRACT}
+                if details.get("local_comparative_contract")
+                == CHINESE_COMPARATIVE_CONTRACT
+                else {}
+            ),
+            **(
                 {"local_numeric_contract": LOCAL_NUMERIC_CONTRACT}
                 if policy == "strict_auto_v2"
                 else {}
@@ -243,6 +259,7 @@ async def evaluate_frozen_judge(
         valid_limitations,
     )
     from litagent.eval.scoped import (
+        CHINESE_COMPARATIVE_CONTRACT,
         LOCAL_NUMERIC_CONTRACT,
     )
     from litagent.eval.scoped import STRICT_ASSESSMENT_PROMPT as ASSESSMENT_PROMPT
@@ -309,7 +326,15 @@ async def evaluate_frozen_judge(
         original_only=True,
     )
     science_units = {c["source_unit_id"] for c in science}
+    applicability = (
+        frozen_inventory.get("source_applicability_contract") == APPLICABILITY_CONTRACT
+    )
     payload = {
+        **(
+            {"source_applicability_contract": APPLICABILITY_CONTRACT}
+            if applicability
+            else {}
+        ),
         "source_units": [
             {"source_unit_id": u.unit_id, "text": u.text}
             for u in units
@@ -322,7 +347,9 @@ async def evaluate_frozen_judge(
                     {"evidence_alias": aliases[eid], "material_ref": aliases[eid]}
                     for eid in c["evidence_ids"]
                 ],
-                "required_support_aspects": required_support_aspects(c["claim_text"]),
+                "required_support_aspects": required_support_aspects(
+                    c["claim_text"], applicability=applicability
+                ),
             }
             for c in science
         ],
@@ -397,7 +424,12 @@ async def evaluate_frozen_judge(
 
     try:
         assessed = Assessment.model_validate_json(
-            await call(ASSESSMENT_PROMPT, payload, "science")
+            await call(
+                ASSESSMENT_PROMPT
+                + (APPLICABILITY_INSTRUCTION if applicability else ""),
+                payload,
+                "science",
+            )
         )
         _require_ids(
             [d.claim_id for d in assessed.decisions],
@@ -422,6 +454,9 @@ async def evaluate_frozen_judge(
                 original_only=True,
                 local_numeric_bindings=frozen_inventory.get("local_numeric_contract")
                 == LOCAL_NUMERIC_CONTRACT,
+                chinese_comparatives=frozen_inventory.get("local_comparative_contract")
+                == CHINESE_COMPARATIVE_CONTRACT,
+                applicability=applicability,
             )
             supported = (
                 decision.status == "supported"

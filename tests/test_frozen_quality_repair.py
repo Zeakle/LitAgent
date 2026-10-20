@@ -7,9 +7,9 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+from model_config_helpers import load_legacy_mini_config as load_config
 from test_quality_recovery_paths import completed_unverified
 
-from litagent.config import load_config
 from litagent.quality import build_fact_cards, digest
 from litagent.runner import RewriteOutcome
 from scripts.run_frozen_quality_repair import TrialBudget, prepare, run_trial

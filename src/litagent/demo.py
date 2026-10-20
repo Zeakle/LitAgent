@@ -138,13 +138,75 @@ def project_flow_demo_view(
         "extraction_verification"
     )
     pipeline = dict(artifact.get("pipeline_verification") or {})
-    if pipeline:
+    evaluation_unavailable = (
+        _mapping(
+            _mapping(_mapping(report.get("evaluation")).get("faithfulness")).get(
+                "details"
+            )
+        ).get("skipped_reason")
+        == "final_report_unavailable"
+    )
+    if evaluation_unavailable:
+        # A failed writer's placeholder is not evaluated academic prose.
+        pipeline = {
+            **pipeline,
+            "assessment_scope": "generation_only",
+            "stages": {
+                **pipeline.get("stages", {}),
+                "writing": "failed",
+                "evaluation": "not_run",
+            },
+        }
+    if pipeline or any(
+        event.get("event") == "writing.wire.failed"
+        for event in artifact.get("events", [])
+    ):
         pipeline["writing_diagnostics"] = [
-            diagnostic
+            {
+                **diagnostic,
+                "phase": event.get("data", {}).get("phase"),
+                "candidate_sha256": event.get("data", {}).get("candidate_sha256"),
+            }
             for event in artifact.get("events", [])
             if event.get("event") == "writing.validation.failed"
             for diagnostic in event.get("data", {}).get("diagnostics", [])
         ]
+        # Wire failures locate a rejected provider response, never a sentence in
+        # the placeholder report. Historical artifacts are projected read-only.
+        for event in artifact.get("events", []):
+            if event.get("event") != "writing.wire.failed":
+                continue
+            data = _mapping(event.get("data"))
+            positions = {
+                key: data.get(key)
+                for key in ("json_line", "json_column", "json_position")
+            }
+            path = "native_response"
+            if all(type(value) is int and value >= 0 for value in positions.values()):
+                path += f" (line={positions['json_line']}, column={positions['json_column']}, character={positions['json_position']})"
+            elif isinstance(data.get("schema_path"), list):
+                path += "." + ".".join(str(part) for part in data["schema_path"])
+            pipeline["writing_diagnostics"].append(
+                {
+                    "location": "native_response",
+                    "raw_json_path": path,
+                    "candidate_text": "",
+                    "reason_code": data.get(
+                        "reason_code", "array_wire_contract_invalid"
+                    ),
+                    "subreason": data.get("subreason")
+                    or data.get("error_type")
+                    or data.get("reason_code"),
+                    "phase": data.get("phase"),
+                    "candidate_sha256": data.get("candidate_sha256")
+                    or data.get("raw_response_sha256"),
+                    **{
+                        key: value
+                        for key, value in positions.items()
+                        if type(value) is int
+                    },
+                }
+            )
     if not report and receipt:
         # A sidecar is evidence of a pre-writing attempt, never a verified report.
         metadata = {

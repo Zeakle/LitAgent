@@ -8,6 +8,136 @@ import pytest
 
 
 @pytest.mark.parametrize("locale", ["zh-CN", "en"])
+def test_failed_writer_is_not_historical_evaluation_or_placeholder_analysis(locale):
+    script = r"""
+const fs=require('node:fs');
+(async()=>{
+ class E{constructor(){this.children=[];this.dataset={};this.textContent='';}append(...x){this.children.push(...x);}replaceChildren(...x){this.children=x;}addEventListener(){}setAttribute(){}}
+ global.document={createElement:()=>new E()};
+ const {renderQuality}=await import('data:text/javascript;base64,'+fs.readFileSync(process.argv[1]+'/quality-view.js').toString('base64'));
+ const root=new E(),walk=e=>[e,...e.children.flatMap(walk)],en=process.argv[2]==='en';
+ const evaluation={faithfulness:{score:0,passed:false,skipped:true,details:{skipped_reason:'final_report_unavailable'}}};
+ const pipeline={assessment_scope:'generation_only',stages:{writing:'failed',evaluation:'not_run'},writing_diagnostics:[{location:'open_problems.blocks.0.sentences.4',raw_json_path:'sections.open_problems.first_block.additional_sentences.3',candidate_text:'',reason_code:'strict_writing_scope_notice_repeated',phase:'native_initial_repair',candidate_sha256:'a'.repeat(64)}]};
+ const before=JSON.stringify(evaluation);
+ renderQuality(root,evaluation,{status:'failed'},{status:'blocked'},()=>{},x=>x,{locale:process.argv[2],sha:'b'.repeat(64),bodyDiagnostics:{academic_characters:49,non_body_characters:0,repeated_units:0},pipelineVerification:pipeline});
+ let text=walk(root).map(e=>e.textContent).join(' ');
+ if(!text.includes(en?'Writing validation failed; Evaluation was not run.':'写作校验失败；Evaluation 未运行。'))throw Error(text);
+ if(text.includes(en?'Historical evaluation scope':'历史评估口径')||text.includes(en?'Academic characters':'学术正文字符')||text.includes('0.000'))throw Error('Invented assessment from placeholder');
+ for(const value of ['strict_writing_scope_notice_repeated','native_initial_repair','a'.repeat(64),'sections.open_problems.first_block.additional_sentences.3',en?'not Evaluation scores':'不是 Evaluation 评分'])if(!text.includes(value))throw Error(value);
+ if(before!==JSON.stringify(evaluation))throw Error('Original evaluation mutated');
+ renderQuality(root,{faithfulness:{score:.5,passed:false,details:{}}},{status:'failed'},{status:'blocked'},()=>{},x=>x,{locale:process.argv[2]});
+ text=walk(root).map(e=>e.textContent).join(' ');
+ if(!text.includes(en?'Historical evaluation scope':'历史评估口径'))throw Error('History compatibility');
+})().catch(e=>{console.error(e);process.exit(1)});
+"""
+    result = subprocess.run(
+        [
+            shutil.which("node") or "node",
+            "-e",
+            script,
+            str(Path("src/litagent/static/flow-demo").resolve()),
+            locale,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("locale", ["zh-CN", "en"])
+@pytest.mark.parametrize("shape", ["old_parent_sha", "current_sha"])
+def test_editorial_history_requires_exact_parent_and_current_assessment_identities(
+    locale, shape
+):
+    """Read older receipts without overwriting scores or mixing report versions."""
+    script = r"""
+const fs=require('node:fs');
+(async()=>{
+ class E{constructor(){this.children=[];this.dataset={};this.textContent='';}append(...x){this.children.push(...x);}replaceChildren(...x){this.children=x;}addEventListener(){}setAttribute(){}}
+ global.document={createElement:()=>new E()};
+ const {renderQuality}=await import('data:text/javascript;base64,'+fs.readFileSync(process.argv[1]+'/quality-view.js').toString('base64'));
+ const evaluation={faithfulness:{details:{source_report_sha256:'new',supported_count:15,unsupported_count:0,unverified_count:0}}};
+ const prior={source_report_sha256:'old',initial_evaluation:{faithfulness:{details:{supported_count:14,unsupported_count:2}}},attempts:[{reason_code:'first-local-rejection',candidate_evaluation:null},{reason_code:'second-scientific-pass',candidate_evaluation:{faithfulness:{details:{supported_count:16,unsupported_count:0}}}}]};
+ const history={version:'version-bound-evaluation-history-v1',source_report_sha256:'old',prior_history:prior,editorial_cleanup:{version:'assessed-repair-repetition-v1',requires_full_reassessment:true,candidate_sha256:'old',result_sha256:'new'},final_evaluation:evaluation};
+ if(process.argv[3]==='current_sha'){history.source_report_sha256='new';history.parent_report_sha256='old';}
+ const before=JSON.stringify(history),root=new E(),walk=e=>[e,...e.children.flatMap(walk)],en=process.argv[2]==='en';
+ renderQuality(root,{}, {},{},()=>{},x=>x,{locale:process.argv[2],sha:'new',evaluationHistory:history});
+ let text=walk(root).map(e=>e.textContent).join(' ');
+ for(const value of ['first-local-rejection','second-scientific-pass',en?'Source-version initial Evaluation':'来源版本首次 Evaluation',en?'assessed in full again':'重新完整核验'])if(!text.includes(value))throw Error(value);
+ if(before!==JSON.stringify(history))throw Error('immutable source history changed');
+ for(const fault of ['selected_sha','parent','evaluation']){
+   const h=structuredClone(history);let sha='new';
+   if(fault==='selected_sha')sha='wrong';
+   else if(fault==='parent')h.prior_history.source_report_sha256='wrong';
+   else h.final_evaluation.faithfulness.details.source_report_sha256='wrong';
+   renderQuality(root,{}, {},{},()=>{},x=>x,{locale:process.argv[2],sha,evaluationHistory:h});
+   text=walk(root).map(e=>e.textContent).join(' ');if(text.includes('first-local-rejection'))throw Error('stale history displayed');
+ }
+})().catch(e=>{console.error(e);process.exit(1)});
+"""
+    result = subprocess.run(
+        [
+            shutil.which("node") or "node",
+            "-e",
+            script,
+            str(Path("src/litagent/static/flow-demo").resolve()),
+            locale,
+            shape,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("locale", ["zh-CN", "en"])
+@pytest.mark.parametrize("historical", [False, True])
+def test_analysis_host_ownership_failure_cannot_hide_behind_positive_model_prose(
+    locale, historical
+):
+    """Render separate decisions without deriving new verdicts for old artifacts."""
+    script = r"""
+const fs=require('node:fs');
+(async()=>{
+ class E{constructor(){this.children=[];this.dataset={};this.textContent='';}append(...x){this.children.push(...x);}replaceChildren(...x){this.children=x;}addEventListener(){}setAttribute(){}}
+ global.document={createElement:()=>new E()};
+ const {renderQuality}=await import('data:text/javascript;base64,'+fs.readFileSync(process.argv[1]+'/quality-view.js').toString('base64'));
+ const row={section_key:'methods',adequate:false,model_adequate:true,claim_ids:[],explanation:'The model praised this analysis.',host_validation:{status:'failed',failure_codes:['analysis_wrong_section_claim'],allowed_claim_ids:['method-claim']}};
+ if(process.argv[3]==='True'){delete row.model_adequate;delete row.host_validation;}
+ const d={evaluation_version:'survey-evaluation-v3',body_analysis_contract:'body-analysis-v1',analysis_check:{status:'failed',sections:[row]},stages:{global_check:'invalid_response',global_reason_code:'evaluation_analysis_claim_ownership_invalid'}};
+ const before=JSON.stringify(d),root=new E(),walk=e=>[e,...e.children.flatMap(walk)];
+ renderQuality(root,{faithfulness:{details:d}},{status:'failed'},{status:'blocked'},()=>{},x=>x,{locale:process.argv[2]});
+ const text=walk(root).map(e=>e.textContent).join(' '),en=process.argv[2]==='en';
+ if(process.argv[3]==='True'){
+   if(!text.includes(en?'Host ownership check: Not recorded / unavailable':'宿主归属核验: 未记录／不可用'))throw Error(text);
+ }else{
+   if(!text.includes(en?'Model analysis decision: Passed':'模型分析结论: 通过'))throw Error(text);
+   if(!text.includes(en?'Host gate checks: Failed':'宿主门禁检查: 未通过'))throw Error(text);
+   if(!text.includes(en?'Claims do not belong to this chapter':'断言不属于本章'))throw Error(text);
+ }
+ if(before!==JSON.stringify(d))throw Error('immutable evaluation changed');
+ if(!text.includes(en?'Invalid response contract':'响应契约无效')||!text.includes(en?'overall evaluation unverified':'整体未核验'))throw Error('Invalid global result is not explained');
+})().catch(e=>{console.error(e);process.exit(1)});
+"""
+    result = subprocess.run(
+        [
+            shutil.which("node") or "node",
+            "-e",
+            script,
+            str(Path("src/litagent/static/flow-demo").resolve()),
+            locale,
+            str(historical),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("locale", ["zh-CN", "en"])
 @pytest.mark.parametrize("status", ["completed", "failed", "started_no_replay"])
 def test_targeted_repair_count_is_not_a_scientific_success(locale, status):
     node = shutil.which("node")

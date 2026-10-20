@@ -178,10 +178,16 @@ def build_parser() -> argparse.ArgumentParser:
         "demo",
         help="Open the reproducible flow replay",
     )
-    demo.add_argument(
+    mode = demo.add_mutually_exclusive_group()
+    mode.add_argument(
         "--live",
         action="store_true",
         help="Allow real Survey runs; offline replay is the default",
+    )
+    mode.add_argument(
+        "--presentation",
+        action="store_true",
+        help="Replay packaged public records only; disable private state and all writes",
     )
     demo.add_argument("--host", default="127.0.0.1")
     demo.add_argument("--port", type=int, default=8000)
@@ -221,7 +227,11 @@ def _cmd_demo(args: argparse.Namespace) -> None:
     """Start the local replay server in offline or explicit live mode."""
     if not 1 <= args.port <= 65535:
         raise SystemExit("demo port must be between 1 and 65535")
-    os.environ["LITAGENT_DEMO_MODE"] = "live" if args.live else "offline"
+    os.environ["LITAGENT_DEMO_MODE"] = (
+        "presentation"
+        if getattr(args, "presentation", False)
+        else "live" if args.live else "offline"
+    )
     url = f"http://{args.host}:{args.port}/flow-demo"
     if args.host not in {"127.0.0.1", "localhost", "::1"}:
         print(

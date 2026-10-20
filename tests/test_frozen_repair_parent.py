@@ -5,9 +5,9 @@ import json
 from pathlib import Path
 
 import pytest
+from model_config_helpers import load_legacy_mini_config as load_config
 from test_frozen_quality_repair import factories, source
 
-from litagent.config import load_config
 from litagent.observability.context import reset_task_id, set_task_id
 from litagent.report_audit import digest
 from litagent.safety.budget import CostBudget

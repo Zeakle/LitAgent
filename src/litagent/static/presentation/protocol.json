@@ -1,0 +1,39 @@
+{
+  "protocol_id": "native-inline-protocol-20261020-release-001",
+  "request_binding": "353f17dc5a35b0ef0cd8156c01e55b16c7f1cb7ad297d67a036f0f6c921bbbbf",
+  "status": "protocol_failed",
+  "scientific_verdict": "not_evaluated",
+  "new_survey_rounds": 0,
+  "requests": 1,
+  "known_tokens": 27896,
+  "unknown_hold": 0,
+  "model": "doubao-seed-2-1-pro-260915",
+  "finish_reason": "stop",
+  "prompt_tokens": 23744,
+  "completion_tokens": 4152,
+  "max_total_tokens": 120000,
+  "max_output_tokens": 20000,
+  "response_sha256": "6bed2125af95a6b502c3b140cd1c2ea5f4f2378306dc93b699792ee3524098db",
+  "json_error": {
+    "offset": 8287,
+    "line": 1,
+    "column": 8288
+  },
+  "error_type": "JSONDecodeError",
+  "family_requests": 28,
+  "family_known_tokens": 152344,
+  "cumulative": {
+    "initial_generation_rounds": 29,
+    "model_requests": 555,
+    "model_known_tokens": 2969529,
+    "model_unknown_conservative_tokens": 1003467,
+    "jev_requests": 67,
+    "jev_conservative_input_tokens": 756769,
+    "judge_requests": 0,
+    "jev_usage_complete": false
+  },
+  "phase14_5": "in_progress",
+  "followup_surveys_run": 0,
+  "stop_reason": "protocol_failed_no_followup",
+  "source_receipt_sha256": "506be16bd0765403a27db83464606c3fa45cd506c4918e8e87628eb416e0ceba"
+}

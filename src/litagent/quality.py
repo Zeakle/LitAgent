@@ -6,12 +6,19 @@ import copy
 import hashlib
 import json
 import re
+from collections import Counter
 from collections.abc import Mapping
 from typing import Callable, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from litagent.body_quality import ANALYSIS_CONTRACT, ANALYSIS_VERSION
+from litagent.body_quality import (
+    ANALYSIS_CONTRACT,
+    ANALYSIS_VERSION,
+    APPLICABILITY_CONTRACT,
+    APPLICABILITY_INSTRUCTION,
+    SUMMARY_ARRAY_WIRE_CONTRACT,
+)
 from litagent.evidence import extract_evidence_refs_ordered
 from litagent.review_structure import structure_sections
 
@@ -22,6 +29,12 @@ WRITING_QUOTE_CONTRACT = "host-located-writing-quotes-v1"
 WRITING_BUDGET_CONTRACT = "preserved-draft-stage-budget-v1"
 REPAIR_ENTRY_CONTRACT = "completed-bound-diagnostic-repair-v1"
 NATIVE_REPAIR_CONTRACT = "bound-native-unit-repair-v1"
+COMPLETE_NATIVE_REPAIR_LEGACY = "complete-native-unit-repair-v2"
+COMPLETE_NATIVE_REPAIR_V3 = "complete-native-unit-repair-v3"
+COMPLETE_NATIVE_REPAIR_V4 = "complete-native-unit-repair-v4"
+COMPLETE_NATIVE_REPAIR_CONTRACT = "complete-native-unit-repair-v5"
+SECTION_SOURCE_CONTRACT = "chapter-source-menu-v1"
+RECEIVED_NATIVE_CONTRACT = "received-native-draft-v1"
 TARGETED_REPAIR_CONTRACT = "shared-targeted-repair-limit-v1"
 DOCUMENT_SUBJECT_CONTRACT = "document-subject-context-v1"
 REQUEST_REFERENCE_CONTRACT = "local-source-and-card-references-v1"
@@ -432,6 +445,85 @@ def targeted_repair_state(value, run_id: str, *, allow_inflight: bool = False) -
     return value
 
 
+def native_task_identity(value: Mapping) -> str:
+    """Bind a received draft to its question, evidence preparation and disclosures."""
+    return digest(
+        {
+            key: value.get(key)
+            for key in (
+                "query",
+                "quality_policy",
+                "body_quality",
+                "review_structure",
+                "report_language",
+                "verification",
+                "coverage_requirements",
+                "requested_methods",
+                "search_started_at",
+                "methodology_results",
+            )
+        }
+    )
+
+
+def validate_received_native(value, task_input: Mapping, run_id: str) -> dict:
+    """Accept only an explicit host continuation with one known consumed attempt."""
+    fields = {
+        "version",
+        "run_id",
+        "source_run_id",
+        "source_checkpoint_sha256",
+        "candidate",
+        "candidate_sha256",
+        "fact_cards_sha256",
+        "selection_sha256",
+        "task_sha256",
+        "repair_state",
+        "binding_sha256",
+    }
+    if (
+        not isinstance(value, dict)
+        or set(value) != fields
+        or value["version"] != RECEIVED_NATIVE_CONTRACT
+        or value["run_id"] != run_id
+        or not isinstance(value["source_run_id"], str)
+        or not value["source_run_id"]
+        or value["source_run_id"] == run_id
+        or task_input.get("quality_policy") != "strict_auto_v2"
+        or task_input.get("body_quality") != "analysis_v1"
+        or not isinstance(value["candidate"], str)
+        or value["candidate_sha256"]
+        != hashlib.sha256(value["candidate"].encode()).hexdigest()
+        or value["task_sha256"] != native_task_identity(task_input)
+        or any(
+            not isinstance(value[key], str)
+            or not re.fullmatch(r"[0-9a-f]{64}", value[key])
+            for key in (
+                "source_checkpoint_sha256",
+                "fact_cards_sha256",
+                "selection_sha256",
+            )
+        )
+        or value["binding_sha256"]
+        != digest({k: v for k, v in value.items() if k != "binding_sha256"})
+    ):
+        raise ValueError("received_native_identity_invalid")
+    state = targeted_repair_state(value["repair_state"], run_id)
+    if len(state["attempts"]) != 1:
+        raise ValueError("received_native_counter_invalid")
+    attempt = state["attempts"][0]
+    if (
+        attempt["stage"] != "native_initial"
+        or attempt["status"] != "failed"
+        or not isinstance(attempt.get("usage"), Mapping)
+        or attempt["usage"].get("usage_available") is not True
+        or not isinstance(attempt.get("response_sha256"), str)
+        or not re.fullmatch(r"[0-9a-f]{64}", attempt["response_sha256"])
+    ):
+        raise ValueError("received_native_counter_invalid")
+    return state
+
+
 def load_targeted_repairs(path, run_id: str) -> dict:
     """Read a durable counter, rejecting an unknown in-flight response."""
     if not path.exists():
@@ -534,6 +626,22 @@ def _native_unit(document: dict, path: str) -> dict:
         raise ValueError("strict_native_repair_path_invalid") from exc
 
 
+def _body_reference_path(reference: Mapping) -> str:
+    """Resolve a validated body selector to an exact native sentence path."""
+    from litagent.writing_passages import _body_reference
+
+    _body_reference(reference, scientific=True)
+    bi, si = reference["block_index"], reference["sentence_index"]
+    return (
+        "sections."
+        + reference["section_key"]
+        + "."
+        + ("first_block" if bi == 0 else f"additional_blocks.{bi - 1}")
+        + "."
+        + ("first_sentence" if si == 0 else f"additional_sentences.{si - 1}")
+    )
+
+
 def prepare_native_repair_request(
     messages: list[dict],
     candidate: str,
@@ -543,8 +651,9 @@ def prepare_native_repair_request(
     structure: str,
     language: str,
     evidence_selection=None,
+    previous_failure: Mapping | None = None,
 ) -> tuple[list[dict], dict, dict]:
-    """Authorize only located scientific-gap units and their broken summary dependencies."""
+    """Bind local body repairs and their summary dependencies to unchanged sources."""
     from litagent.workbench import language_instruction
     from litagent.writing_passages import (
         BODY_SECTION_KEYS,
@@ -557,7 +666,29 @@ def prepare_native_repair_request(
 
     document = json.loads(candidate, object_pairs_hook=_unique_native_fields)
     packet = copy.deepcopy(json.loads(messages[1]["content"]))
+    if "native_wire_contract" in packet:
+        packet["input_native_wire_contract"] = packet.pop("native_wire_contract")
+    from litagent.body_quality import UNIT_CITATION_SCOPE_CONTRACT
+
+    if packet.get("unit_citation_scope_contract") not in {
+        None,
+        UNIT_CITATION_SCOPE_CONTRACT,
+    }:
+        raise ValueError("strict_native_repair_contract_invalid")
     notice_mode = packet.get("writing_contract") in {NOTICE_VERSION, ANALYSIS_VERSION}
+    complete_mode = packet.get("body_analysis_contract") == ANALYSIS_CONTRACT
+    repairable = {
+        "strict_writing_uncited_scientific_gap",
+        "strict_writing_scope_notice_invalid",
+    }
+    if complete_mode:
+        repairable.add("strict_writing_scope_notice_repeated")
+    if complete_mode and packet.get("unit_citation_scope_contract"):
+        repairable.add("strict_writing_out_of_scope_fact_card")
+        repairable.add("strict_writing_unit_citation_scope_ambiguous")
+    elif complete_mode:
+        repairable.add("strict_writing_out_of_scope_fact_card")
+    scopes = _writing_scopes(cards, structure, language, evidence_selection)
     try:
         compile_passage_report(
             candidate,
@@ -566,6 +697,10 @@ def prepare_native_repair_request(
             require_scope_notices=notice_mode,
             analysis_mode=packet.get("body_analysis_contract") == ANALYSIS_CONTRACT,
             language=language,
+            section_scopes=scopes,
+            require_unit_citation_scope=bool(
+                packet.get("unit_citation_scope_contract")
+            ),
         )
     except GroundedWritingError as failure:
         if failure.diagnostics != diagnostics:
@@ -578,7 +713,6 @@ def prepare_native_repair_request(
         ANALYSIS_VERSION,
     }:
         raise ValueError("strict_native_repair_contract_invalid")
-    scopes = _writing_scopes(cards, structure, language, evidence_selection)
     if set(packet.get("cards", {})) != set(cards):
         raise ValueError("strict_native_repair_source_identity_invalid")
     for cid, item in packet["cards"].items():
@@ -592,36 +726,113 @@ def prepare_native_repair_request(
             raise ValueError("strict_native_repair_source_identity_invalid")
     targets = {}
     for diagnostic in diagnostics:
-        if diagnostic.get("reason_code") not in {
-            "strict_writing_uncited_scientific_gap",
-            "strict_writing_scope_notice_invalid",
-        }:
+        if diagnostic.get("reason_code") not in repairable:
             continue
         path = diagnostic.get("raw_json_path", "")
         unit = _native_unit(document, path)
         section = path.split(".")[1]
+        if section not in BODY_SECTION_KEYS:
+            # Summary repairs have their own field and selector contract below.
+            if complete_mode and section in {"abstract", "conclusion"}:
+                continue
+            raise ValueError("strict_native_repair_not_eligible")
         if (
             section not in BODY_SECTION_KEYS
             or path in targets
             or unit.get("text") != diagnostic.get("candidate_text")
-            or unit.get("kind") == "scientific"
-            or unit.get("fact_card_ids")
+            or unit.get("fact_card_ids") != diagnostic.get("actual_fact_card_ids")
+            or (
+                diagnostic["reason_code"] == "strict_writing_out_of_scope_fact_card"
+                and (
+                    unit.get("kind") != "scientific"
+                    or not unit.get("fact_card_ids")
+                    or not set(unit["fact_card_ids"]).issubset(cards)
+                    or set(unit["fact_card_ids"]).issubset(scopes[section])
+                )
+            )
+            or (
+                diagnostic["reason_code"]
+                == "strict_writing_unit_citation_scope_ambiguous"
+                and (unit.get("kind") != "scientific" or not unit.get("fact_card_ids"))
+            )
+            or (
+                diagnostic["reason_code"]
+                not in {
+                    "strict_writing_out_of_scope_fact_card",
+                    "strict_writing_unit_citation_scope_ambiguous",
+                }
+                and (unit.get("kind") == "scientific" or unit.get("fact_card_ids"))
+            )
         ):
             raise ValueError("strict_native_repair_diagnostic_invalid")
         targets[path] = {
             "section_key": section,
             "original": copy.deepcopy(unit),
             "allowed_fact_card_ids": list(scopes[section]),
+            **(
+                {
+                    "reason_code": diagnostic["reason_code"],
+                    "must_remain_scientific": unit.get("kind") == "scientific",
+                }
+                if complete_mode
+                else {}
+            ),
         }
         if not targets[path]["allowed_fact_card_ids"] and not notice_mode:
             raise ValueError("strict_native_repair_source_unavailable")
-    if not targets:
-        raise ValueError("strict_native_repair_not_eligible")
     for diagnostic in diagnostics:
-        if diagnostic.get("reason_code") in {
-            "strict_writing_uncited_scientific_gap",
-            "strict_writing_scope_notice_invalid",
-        }:
+        section = diagnostic.get("section_key")
+        code = diagnostic.get("reason_code")
+        if (
+            complete_mode
+            and section in {"abstract", "conclusion"}
+            and code
+            in {
+                "strict_writing_summary_binding_invalid",
+                "strict_writing_summary_content_duplicate",
+                "strict_writing_unit_citation_scope_ambiguous",
+            }
+        ):
+            path = diagnostic.get("raw_json_path", "")
+            unit = _native_unit(document, path)
+            refs = unit.get("body_references")
+            if (
+                path in targets
+                or path.split(".")[1] != section
+                or unit.get("text") != diagnostic.get("candidate_text")
+                or refs != diagnostic.get("actual_body_references")
+                or set(unit) != {"text", "body_references"}
+            ):
+                raise ValueError("strict_native_repair_diagnostic_invalid")
+            # Keep passive dependencies fixed when all selectors already identify
+            # scientific units. Independent summary errors need explicit targets.
+            from litagent.writing_passages import _body_reference
+
+            dependent = False
+            valid = isinstance(refs, list) and bool(refs)
+            for ref in refs if isinstance(refs, list) else []:
+                try:
+                    refpath = _body_reference_path(ref)
+                    _body_reference(ref, scientific=True)
+                    body_unit = _native_unit(document, refpath)
+                    valid = valid and (
+                        body_unit.get("kind") == "scientific" or refpath in targets
+                    )
+                    dependent = dependent or refpath in targets
+                except ValueError:
+                    valid = False
+            if code != "strict_writing_summary_binding_invalid" or not (
+                valid and dependent
+            ):
+                targets[path] = {
+                    "section_key": section,
+                    "original": copy.deepcopy(unit),
+                    "unit_type": "summary",
+                    "allowed_fact_card_ids": [],
+                    "reason_code": code,
+                }
+                continue
+        if diagnostic.get("reason_code") in repairable:
             continue
         if diagnostic.get("reason_code") != "strict_writing_summary_binding_invalid":
             raise ValueError("strict_native_repair_not_eligible")
@@ -652,6 +863,13 @@ def prepare_native_repair_request(
                     + ("first_sentence" if si == 0 else f"additional_sentences.{si-1}")
                 )
                 affected = affected or target in targets
+                if complete_mode and target in targets:
+                    # Summary selectors require scientific units, including ones
+                    # that the rejected candidate mislabeled as scope notices.
+                    targets[target]["must_remain_scientific"] = True
+                    targets[target].setdefault("summary_dependency_paths", []).append(
+                        diagnostic["raw_json_path"]
+                    )
             if not affected:
                 raise ValueError("strict_native_repair_dependency_invalid")
             continue
@@ -675,6 +893,55 @@ def prepare_native_repair_request(
             or target not in targets
         ):
             raise ValueError("strict_native_repair_dependency_invalid")
+
+    if not targets:
+        raise ValueError("strict_native_repair_not_eligible")
+    if complete_mode:
+        allowed_refs = []
+        protected_notices = set()
+        for section_key in BODY_SECTION_KEYS:
+            section = document["sections"].get(section_key, {})
+            blocks = [
+                section.get("first_block", {}),
+                *section.get("additional_blocks", []),
+            ]
+            for bi, block in enumerate(blocks):
+                units = [
+                    block.get("first_sentence", {}),
+                    *block.get("additional_sentences", []),
+                ]
+                for si, unit in enumerate(units):
+                    ref = {
+                        "section_key": section_key,
+                        "block_index": bi,
+                        "sentence_index": si,
+                    }
+                    path = _body_reference_path(ref)
+                    target = targets.get(path, {})
+                    if unit.get("kind") == "scientific" or target.get(
+                        "must_remain_scientific"
+                    ):
+                        allowed_refs.append(ref)
+                    if path not in targets and unit.get("scope_notice_id") not in {
+                        None,
+                        "none",
+                    }:
+                        protected_notices.add(unit["scope_notice_id"])
+        body_unit_catalog = {f"b{i}": ref for i, ref in enumerate(allowed_refs)}
+        for target in targets.values():
+            if target.get("unit_type") == "summary":
+                if not body_unit_catalog:
+                    raise ValueError("strict_native_repair_source_unavailable")
+                target["allowed_body_unit_ids"] = list(body_unit_catalog)
+            else:
+                target["allowed_scope_notice_ids"] = [
+                    "none",
+                    *[
+                        nid
+                        for nid in scope_notice_catalog(language)
+                        if nid not in protected_notices
+                    ],
+                ]
 
     def schema_object(properties):
         return {
@@ -716,13 +983,34 @@ def prepare_native_repair_request(
         }
     )
     binding = {
-        "version": NATIVE_REPAIR_CONTRACT,
+        "version": (
+            COMPLETE_NATIVE_REPAIR_CONTRACT if complete_mode else NATIVE_REPAIR_CONTRACT
+        ),
         "candidate_sha256": hashlib.sha256(candidate.encode()).hexdigest(),
         "fact_cards_sha256": digest(cards),
         "targets": keyed,
     }
+    if complete_mode:
+        binding["body_unit_catalog"] = body_unit_catalog
     if notice_mode:
-        for unit_schema in schema["properties"]["patches"]["properties"].values():
+        for key, unit_schema in schema["properties"]["patches"]["properties"].items():
+            if keyed[key].get("unit_type") == "summary":
+                unit_schema.clear()
+                unit_schema.update(
+                    schema_object(
+                        {
+                            "text": {"type": "string"},
+                            "body_unit_ids": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string",
+                                    "enum": keyed[key]["allowed_body_unit_ids"],
+                                },
+                            },
+                        }
+                    )
+                )
+                continue
             unit_schema["properties"]["kind"]["enum"] = [
                 "scientific",
                 "organization",
@@ -730,17 +1018,87 @@ def prepare_native_repair_request(
             ]
             unit_schema["properties"]["scope_notice_id"] = {
                 "type": "string",
-                "enum": ["none", *scope_notice_catalog(language)],
+                "enum": keyed[key].get(
+                    "allowed_scope_notice_ids",
+                    ["none", *scope_notice_catalog(language)],
+                ),
             }
             unit_schema["required"].append("scope_notice_id")
+            if keyed[key].get("must_remain_scientific"):
+                unit_schema["properties"]["kind"]["enum"] = ["scientific"]
+                unit_schema["properties"]["scope_notice_id"]["enum"] = ["none"]
         binding.update(scope_notice_contract=SCOPE_NOTICE_CONTRACT, language=language)
+    if complete_mode:
+        for key, unit_schema in schema["properties"]["patches"]["properties"].items():
+            fields = list(unit_schema["properties"])
+            extra_fields = {
+                field: {
+                    "$ref": f"#/properties/patches/properties/{key}/properties/{field}"
+                }
+                for field in fields
+            }
+            if keyed[key].get("unit_type") != "summary":
+                extra_fields["kind"] = {"type": "string", "enum": ["scientific"]}
+                extra_fields["scope_notice_id"] = {"type": "string", "enum": ["none"]}
+            unit_schema["properties"]["additional_units"] = {
+                "type": "array",
+                "items": schema_object(extra_fields),
+            }
     binding["binding_sha256"] = digest(binding)
+    model_targets = (
+        {
+            key: {
+                **{k: v for k, v in target.items() if k != "original"},
+            }
+            for key, target in keyed.items()
+        }
+        if complete_mode
+        else keyed
+    )
     packet.update(
-        repair_contract=NATIVE_REPAIR_CONTRACT,
-        repair_targets=keyed,
+        repair_contract=binding["version"],
+        repair_targets=model_targets,
         current_candidate=document,
         candidate_sha256=binding["candidate_sha256"],
     )
+    if complete_mode:
+        packet["body_unit_catalog"] = body_unit_catalog
+        plan = packet.get("analysis_plan")
+        if not isinstance(plan, Mapping) or not isinstance(plan.get("sources"), list):
+            raise ValueError("strict_native_repair_source_identity_invalid")
+        projected_sources = []
+        for row in plan["sources"]:
+            cid = row.get("fact_card_id") if isinstance(row, Mapping) else None
+            card = cards.get(cid)
+            entry = packet["cards"].get(cid, {})
+            source_ref = entry.get("source_ref")
+            source = packet["sources"].get(source_ref, {})
+            if (
+                not card
+                or row.get("evidence_id") != card["evidence_id"]
+                or row.get("paper_id") != source.get("paper_id")
+                or row.get("source_sha256") != card["content_sha256"]
+                or row.get("candidate_fields") != entry.get("unverified_fields")
+            ):
+                raise ValueError("strict_native_repair_source_identity_invalid")
+            # Preserve every candidate finding and raw original, while referring
+            # duplicate source metadata/fields to the existing authoritative tables.
+            projected_sources.append(
+                {
+                    k: v
+                    for k, v in row.items()
+                    if k
+                    not in {
+                        "paper_id",
+                        "evidence_id",
+                        "source_sha256",
+                        "candidate_fields",
+                    }
+                }
+                | {"source_ref": source_ref}
+            )
+        plan["sources"] = projected_sources
+        plan["source_metadata_contract"] = "cards-and-sources-v1"
     prepared = [
         {
             "role": "system",
@@ -760,12 +1118,64 @@ def prepare_native_repair_request(
         prepared[0][
             "content"
         ] += ' In this version scientific replacements use scope_notice_id=none and actual support. A non-scientific replacement must use text="", no cards, and a host scope_notice_id; do not assert a field-wide scientific gap. Notices do not answer core questions, and the open-problems section must retain a cited scientific limitation.'
+    if packet.get("source_applicability_contract") == APPLICABILITY_CONTRACT:
+        prepared[0]["content"] += APPLICABILITY_INSTRUCTION
+    if complete_mode:
+        prepared[0]["content"] = prepared[0]["content"].replace(
+            "or edit summary selectors.", "or edit non-target summary selectors."
+        )
+        from litagent.body_quality import UNIT_CITATION_SCOPE_INSTRUCTION
+
+        if packet.get("unit_citation_scope_contract"):
+            prepared[0]["content"] += UNIT_CITATION_SCOPE_INSTRUCTION.replace(
+                "Use additional_sentences", "Use additional_units in that target patch"
+            )
+        prepared[0]["content"] += (
+            "\nCOMPLETE LOCAL REPAIR: repair every supplied target and no other unit. "
+            "An out-of-scope scientific unit must remain scientific, with actual "
+            "support chosen ONLY from that target's allowed_fact_card_ids. Preserve "
+            "its method, conditions and core question; do not turn it into a scope "
+            "notice or keep the claim and attach a convenient unrelated citation. "
+            "The global source list is not section permission. Read the complete "
+            "original sources. Only explicitly targeted summary selectors may change; "
+            "summary patches use text and allowed_body_unit_ids from the exact "
+            "body_unit_catalog; the host restores original body_references. Never use "
+            "fact_card_ids or scope notices. Each selected body unit must be "
+            "scientific. Repair ambiguous summary clauses by expressing one "
+            "supported finding with its complete conditions. Non-target selectors "
+            "and all other protected units are fixed; "
+            "the host checks the entire candidate, then independently evaluates its "
+            "scientific support. Previous rejected patches are feedback, not a new "
+            "base document or evidence. analysis_plan.sources refers to original paper "
+            "text through sources[source_ref] and candidate_fields through "
+            "cards[fact_card_id].unverified_fields; host-only evidence IDs and hashes "
+            "remain frozen locally, not citation alternatives. Each target's original "
+            "is exactly current_candidate at its path. The existing patch "
+            "fields describe the first replacement unit. Put any remaining independent "
+            "facts in additional_units (zero to three complete units), preserving "
+            "their order, methods, conditions and findings; do not drop a premise to "
+            "fit one sentence or join independent facts with a semicolon. Body groups "
+            "must all be scientific when split; notices can only be single units. "
+            "Each summary additional unit uses text/body_unit_ids. The host splices "
+            "groups in place and relocates derived summary selectors while preserving "
+            "all other authored content. Do not use additional_sentences in a patch. "
+            "Set can_repair=false if unavailable."
+        )
+    if previous_failure is not None:
+        packet["previous_local_failure"] = copy.deepcopy(previous_failure)
+        prepared[1]["content"] = json.dumps(
+            packet, ensure_ascii=False, separators=(",", ":")
+        )
     return (
         prepared,
         {
             "type": "json_schema",
             "json_schema": {
-                "name": "native_unit_repair_v1",
+                "name": (
+                    "native_unit_repair_v5"
+                    if complete_mode
+                    else "native_unit_repair_v1"
+                ),
                 "strict": True,
                 "schema": schema,
             },
@@ -780,7 +1190,14 @@ def apply_native_repairs(
     """Replace authorized native units without changing any other candidate node."""
     expected = {k: v for k, v in binding.items() if k != "binding_sha256"}
     if (
-        binding.get("version") != NATIVE_REPAIR_CONTRACT
+        binding.get("version")
+        not in {
+            NATIVE_REPAIR_CONTRACT,
+            COMPLETE_NATIVE_REPAIR_LEGACY,
+            COMPLETE_NATIVE_REPAIR_V3,
+            COMPLETE_NATIVE_REPAIR_V4,
+            COMPLETE_NATIVE_REPAIR_CONTRACT,
+        }
         or digest(expected) != binding.get("binding_sha256")
         or hashlib.sha256(candidate.encode()).hexdigest()
         != binding.get("candidate_sha256")
@@ -802,9 +1219,39 @@ def apply_native_repairs(
         binding["targets"]
     ):
         raise ValueError("strict_native_repair_response_invalid")
+    if binding["version"] == COMPLETE_NATIVE_REPAIR_CONTRACT:
+        return _apply_native_unit_groups(candidate, document, result, binding, cards)
     for key, target in binding["targets"].items():
         original = _native_unit(patched, target["path"])
         patch = result["patches"][key]
+        if (
+            binding["version"] == COMPLETE_NATIVE_REPAIR_V4
+            and target.get("unit_type") == "summary"
+        ):
+            ids = patch.get("body_unit_ids") if isinstance(patch, dict) else None
+            catalog = binding.get("body_unit_catalog", {})
+            if (
+                original != target["original"]
+                or not isinstance(patch, dict)
+                or set(patch) != {"text", "body_unit_ids"}
+                or not isinstance(patch.get("text"), str)
+                or not patch["text"].strip()
+                or not isinstance(ids, list)
+                or not 1 <= len(ids) <= 6
+                or any(not isinstance(uid, str) for uid in ids)
+                or len(set(ids)) != len(ids)
+                or any(
+                    uid not in target["allowed_body_unit_ids"] or uid not in catalog
+                    for uid in ids
+                )
+            ):
+                raise ValueError("strict_native_repair_patch_invalid")
+            refs = [copy.deepcopy(catalog[uid]) for uid in ids]
+            for ref in refs:
+                _body_reference_path(ref)
+            original.clear()
+            original.update(text=patch["text"], body_references=refs)
+            continue
         checked = patch
         if binding.get("scope_notice_contract"):
             from litagent.writing_passages import expand_scope_notice
@@ -828,14 +1275,181 @@ def apply_native_repairs(
                 target["allowed_fact_card_ids"]
             )
             or not set(checked["fact_card_ids"]).issubset(cards)
+            or (
+                binding["version"]
+                in {
+                    COMPLETE_NATIVE_REPAIR_LEGACY,
+                    COMPLETE_NATIVE_REPAIR_V3,
+                    COMPLETE_NATIVE_REPAIR_V4,
+                    COMPLETE_NATIVE_REPAIR_CONTRACT,
+                }
+                and target.get("must_remain_scientific")
+                and checked.get("kind") != "scientific"
+            )
         ):
             raise ValueError("strict_native_repair_patch_invalid")
         original.clear()
         original.update(patch)
     return json.dumps(patched, ensure_ascii=False), {
-        "contract": NATIVE_REPAIR_CONTRACT,
+        "contract": binding["version"],
         "input_sha256": binding["candidate_sha256"],
         "modified_paths": [t["path"] for t in binding["targets"].values()],
+    }
+
+
+def _apply_native_unit_groups(candidate, document, result, binding, cards):
+    """Splice authorized atomic groups and relocate only derived selectors."""
+    from litagent.writing_passages import BODY_SECTION_KEYS
+
+    groups = {}
+    for key, target in binding["targets"].items():
+        patch = result["patches"][key]
+        if not isinstance(patch, dict):
+            raise ValueError("strict_native_repair_patch_invalid")
+        extras = patch.get("additional_units", [])
+        if not isinstance(extras, list) or len(extras) > 3:
+            raise ValueError("strict_native_repair_patch_invalid")
+        primary = {k: v for k, v in patch.items() if k != "additional_units"}
+        units = []
+        for replacement in [primary, *extras]:
+            # The former validator checks every field, source and scientific kind.
+            # This internal envelope grants no new target or evidence permission.
+            legacy = {
+                k: copy.deepcopy(v) for k, v in binding.items() if k != "binding_sha256"
+            }
+            legacy.update(version=COMPLETE_NATIVE_REPAIR_V4, targets={key: target})
+            legacy["binding_sha256"] = digest(legacy)
+            checked, _ = apply_native_repairs(
+                candidate,
+                json.dumps(
+                    {"can_repair": True, "patches": {key: replacement}},
+                    ensure_ascii=False,
+                ),
+                legacy,
+                cards=cards,
+            )
+            unit = copy.deepcopy(_native_unit(json.loads(checked), target["path"]))
+            if (
+                extras
+                and target.get("unit_type") != "summary"
+                and unit.get("kind") != "scientific"
+            ):
+                raise ValueError("strict_native_repair_patch_invalid")
+            units.append(unit)
+        if target["path"] in groups:
+            raise ValueError("strict_native_repair_binding_invalid")
+        groups[target["path"]] = units
+
+    def path(section, block, sentence):
+        return (
+            "sections."
+            + section
+            + "."
+            + ("first_block" if block == 0 else f"additional_blocks.{block - 1}")
+            + "."
+            + (
+                "first_sentence"
+                if sentence == 0
+                else f"additional_sentences.{sentence - 1}"
+            )
+        )
+
+    patched = copy.deepcopy(document)
+    body_positions = {}
+    relocations = []
+    found = set()
+    known_sections = {*BODY_SECTION_KEYS, "abstract", "conclusion"}
+    if (
+        not isinstance(document.get("sections"), dict)
+        or set(document["sections"]) - known_sections
+    ):
+        raise ValueError("strict_native_repair_binding_invalid")
+    for section_key, section in document["sections"].items():
+        blocks = [section["first_block"], *section["additional_blocks"]]
+        for bi, block in enumerate(blocks):
+            original_units = [block["first_sentence"], *block["additional_sentences"]]
+            updated = []
+            for si, original in enumerate(original_units):
+                old_path = path(section_key, bi, si)
+                replacements = groups.get(old_path, [original])
+                if old_path in groups:
+                    found.add(old_path)
+                new_paths, new_refs = [], []
+                for replacement in replacements:
+                    new_index = len(updated)
+                    updated.append(copy.deepcopy(replacement))
+                    new_paths.append(path(section_key, bi, new_index))
+                    new_refs.append(
+                        {
+                            "section_key": section_key,
+                            "block_index": bi,
+                            "sentence_index": new_index,
+                        }
+                    )
+                if section_key in BODY_SECTION_KEYS:
+                    body_positions[old_path] = new_refs
+                if old_path in groups or new_paths != [old_path]:
+                    relocations.append(
+                        {
+                            "original_path": old_path,
+                            "new_paths": new_paths,
+                            "authored_target": old_path in groups,
+                            "original_unit_sha256": digest(original),
+                            "replacement_unit_sha256": [
+                                digest(u) for u in replacements
+                            ],
+                        }
+                    )
+            destination = patched["sections"][section_key]
+            target_block = (
+                destination["first_block"]
+                if bi == 0
+                else destination["additional_blocks"][bi - 1]
+            )
+            target_block.update(
+                first_sentence=updated[0], additional_sentences=updated[1:]
+            )
+    if found != set(groups):
+        raise ValueError("strict_native_repair_path_invalid")
+    dependencies = []
+    for section_key in ("abstract", "conclusion"):
+        section = patched["sections"].get(section_key)
+        if section is None:
+            continue
+        for bi, block in enumerate(
+            [section["first_block"], *section["additional_blocks"]]
+        ):
+            for si, unit in enumerate(
+                [block["first_sentence"], *block["additional_sentences"]]
+            ):
+                before = unit.get("body_references")
+                if not isinstance(before, list):
+                    raise ValueError("strict_native_repair_patch_invalid")
+                after = []
+                for ref in before:
+                    source_path = _body_reference_path(ref)
+                    if source_path not in body_positions:
+                        raise ValueError("strict_native_repair_dependency_invalid")
+                    # A selector names the original finding group. Expanding its
+                    # positions preserves that explicit dependency after a split.
+                    after.extend(copy.deepcopy(body_positions[source_path]))
+                if before != after:
+                    dependencies.append(
+                        {
+                            "path": path(section_key, bi, si),
+                            "before": before,
+                            "after": after,
+                        }
+                    )
+                    unit["body_references"] = after
+    rendered = json.dumps(patched, ensure_ascii=False)
+    return rendered, {
+        "contract": binding["version"],
+        "input_sha256": binding["candidate_sha256"],
+        "output_sha256": hashlib.sha256(rendered.encode()).hexdigest(),
+        "modified_paths": [target["path"] for target in binding["targets"].values()],
+        "relocations": relocations,
+        "derived_summary_changes": dependencies,
     }
 
 
@@ -1124,7 +1738,9 @@ def _project_grounded_references(packet: dict, messages: list[dict]) -> None:
     packet["reference_contract"] = REQUEST_REFERENCE_CONTRACT
 
 
-def prepare_grounded_request(messages: list[dict]) -> tuple[list[dict], dict]:
+def prepare_grounded_request(
+    messages: list[dict], *, array_wire: bool = False
+) -> tuple[list[dict], dict]:
     """Move the exact chapter permissions into the provider's native schema."""
     import copy
 
@@ -1294,12 +1910,17 @@ def prepare_grounded_request(messages: list[dict]) -> tuple[list[dict], dict]:
         definitions[f"b{index}"] = block
         block_ref = {"$ref": f"#/$defs/b{index}"}
         additional_blocks = {"type": "array", "items": block_ref}
-        if key in {"abstract", "conclusion"}:
+        if (
+            key in {"abstract", "conclusion"}
+            and packet.get("body_analysis_contract") != ANALYSIS_CONTRACT
+        ):
             additional_blocks = {
                 "type": "array",
                 "prefixItems": [block_ref] * (SUMMARY_RULES["max_blocks"] - 1),
                 "items": False,
             }
+        # The host keeps the same summary limits. Ordinary array encoding avoids
+        # the provider's observed malformed output at bounded-prefix boundaries.
         sections[key] = object_schema(
             {
                 "first_block": block_ref,
@@ -1328,6 +1949,38 @@ def prepare_grounded_request(messages: list[dict]) -> tuple[list[dict], dict]:
         },
     }
     _project_grounded_references(packet, prepared)
+    if packet.get("body_analysis_contract") == ANALYSIS_CONTRACT:
+        packet["section_source_contract"] = SECTION_SOURCE_CONTRACT
+        packet["summary_array_wire_contract"] = SUMMARY_ARRAY_WIRE_CONTRACT
+        packet["section_source_index"] = {
+            key: [
+                {"fact_card_id": cid, "source_ref": packet["cards"][cid]["source_ref"]}
+                for cid in allowed
+            ]
+            for key, allowed in scopes.items()
+            if key not in {"abstract", "conclusion"}
+        }
+        # Replace a duplicate ID list, never source text or a permission edge.
+        plan = packet.get("analysis_plan")
+        duties = plan.get("section_duties") if isinstance(plan, Mapping) else None
+        if (
+            not isinstance(duties, list)
+            or any(not isinstance(d, Mapping) for d in duties)
+            or any(not isinstance(d.get("section_key"), str) for d in duties)
+            or len(duties) != len(scopes)
+            or {d.get("section_key") for d in duties} != set(scopes)
+        ):
+            raise ValueError("strict_writing_schema_contract_invalid")
+        for duty in duties:
+            key = duty["section_key"]
+            if duty.get("candidate_card_ids") != scopes[key]:
+                raise ValueError("strict_writing_schema_contract_invalid")
+            del duty["candidate_card_ids"]
+            duty["candidate_sources_ref"] = (
+                f"section_source_index.{key}"
+                if key in packet["section_source_index"]
+                else "scientific_body_units"
+            )
     del packet["grounded_report_schema"]
     # Native enums and each card's allowed_section_keys retain the full scopes.
     # Remove only the third encoding after validating the producer's contract.
@@ -1424,7 +2077,282 @@ def prepare_grounded_request(messages: list[dict]) -> tuple[list[dict], dict]:
         from litagent.body_quality import ANALYSIS_INSTRUCTION
 
         prepared[0]["content"] += ANALYSIS_INSTRUCTION
+        if packet.get("unit_citation_scope_contract"):
+            from litagent.body_quality import UNIT_CITATION_SCOPE_INSTRUCTION
+
+            if UNIT_CITATION_SCOPE_INSTRUCTION not in prepared[0]["content"]:
+                prepared[0]["content"] += UNIT_CITATION_SCOPE_INSTRUCTION
+        prepared[0]["content"] += (
+            "\nFINAL NATIVE CONTRACT: for each body section, first use its "
+            "section_source_index to choose permitted fact_card_ids, then read "
+            "their sources[source_ref].source_quote in full. A source visible "
+            "elsewhere is not permission for this section. Native body units have "
+            "ONLY text, kind, fact_card_ids, scope_notice_id. Scientific units "
+            "use actual supporting cards and scope_notice_id=none. For an optional "
+            'non-scientific scope notice use text="", fact_card_ids=[], and one '
+            "unchanged ID from scope_notice_catalog; never write free-text gap "
+            "claims. Notices do not answer missing core questions. Abstract and "
+            "conclusion units have ONLY text and body_references; derive scientific "
+            "premises from existing body units and let the host derive citations. "
+            "Do not copy the initial block or sentence into additional arrays. "
+            "Do not output references, retrieval logs or appendices. The host "
+            "rejects local violations and independently evaluates every scientific "
+            "claim; valid JSON, source locations and candidate fields are not "
+            "scientific verification."
+        )
+    if array_wire:
+        from litagent.body_quality import NATIVE_ARRAY_WIRE_CONTRACT
+        from litagent.native_wire import array_wire_schema
+
+        if not (
+            notice_mode and packet.get("body_analysis_contract") == ANALYSIS_CONTRACT
+        ):
+            raise ValueError("array_wire_binding_mode_invalid")
+        canonical_schema = response_format["json_schema"]["schema"]
+        response_format["json_schema"].update(
+            name="grounded_report_v23_arrays",
+            schema=array_wire_schema(canonical_schema),
+        )
+        packet["native_wire_contract"] = NATIVE_ARRAY_WIRE_CONTRACT
+        prepared[1]["content"] = json.dumps(
+            packet, ensure_ascii=False, separators=(",", ":")
+        )
+        # Replace conflicting container instructions rather than appending a
+        # second shape. Unit fields and scientific requirements stay unchanged.
+        prepared[0]["content"] = (
+            prepared[0]["content"]
+            .replace(
+                "Each section has first_block and additional_blocks.",
+                "Each section has a nonempty blocks array.",
+            )
+            .replace(
+                "Each block has heading, type, first_sentence and additional_sentences.",
+                "Each block has heading, type and a nonempty sentences array.",
+            )
+            .replace(
+                "Put the first real unit in first_sentence; continuation arrays contain only additional units. Never duplicate the first block or sentence in a continuation array.",
+                "Put each actual block and sentence exactly once in its array.",
+            )
+            .replace(
+                "Use additional_blocks/additional_sentences when",
+                "Use further blocks/sentences array entries when",
+            )
+            .replace(
+                "Use additional_sentences for separate findings,",
+                "Use separate sentences array entries for separate findings,",
+            )
+            .replace(
+                "Do not copy the initial block or sentence into additional arrays.",
+                "Do not duplicate a block or sentence in any array.",
+            )
+            .replace(
+                "Zero selects first_block; one selects additional_blocks[0], etc.",
+                "Use the zero-based blocks array index.",
+            )
+            .replace(
+                "Abstract/conclusion units have ONLY body_reference; no text or kind. "
+                "The host copies the selected body's complete text, kind and citations.",
+                "Abstract/conclusion units have ONLY text and body_references. "
+                "The host derives citations from their selected scientific body units.",
+            )
+            .replace(
+                "The host copies the original body unit text; no new summary prose is allowed.",
+                "Summary prose must preserve the selected scientific findings and conditions.",
+            )
+        )
+        prepared[0]["content"] = re.sub(
+            r"ABSTRACT/CONCLUSION: every unit has ONLY body_reference,.*?"
+            r"then choose summary units; never add a body fact just to justify a summary\.\n",
+            "ABSTRACT/CONCLUSION: write text and select existing scientific body units "
+            "through body_references. Both indices are zero-based array positions; "
+            "methods block_index=0 sentence_index=0 selects methods.blocks[0].sentences[0]. "
+            "Preserve every scientific premise and condition. The host derives citations; "
+            "all summary science is independently verified against the original sources.\n",
+            prepared[0]["content"],
+            flags=re.S,
+        )
+        prepared[0]["content"] = (
+            prepared[0]["content"]
+            .replace(
+                "Scientific summary body_reference must select a cited scientific body unit. "
+                "Non-scientific references only align same-kind uncited body prose.",
+                "Every summary body_references entry must select a cited scientific body unit.",
+            )
+            .replace(
+                "body_reference's section_key", "body_references entries' section_key"
+            )
+            .replace(
+                "choose body_reference and receive",
+                "choose body_references and receive",
+            )
+            .replace(
+                "citations from body_reference.", "citations from body_references."
+            )
+        )
+        if any(
+            name in prepared[0]["content"]
+            for name in (
+                "first_block",
+                "additional_blocks",
+                "first_sentence",
+                "additional_sentences",
+            )
+        ):
+            raise ValueError("array_wire_prompt_contract_invalid")
+        for definition in response_format["json_schema"]["schema"]["$defs"].values():
+            # Selector indices have identical values in both representations.
+            for name, description in (
+                ("block_index", "Use the zero-based blocks array index."),
+                ("sentence_index", "Use the zero-based sentences array index."),
+            ):
+                refs = definition.get("properties", {}).get("body_references", {})
+                prop = refs.get("items", {}).get("properties", {}).get(name)
+                if prop is not None:
+                    prop["description"] = description
+        from litagent.body_quality import NATIVE_SCHEMA_ENCODING_CONTRACT
+        from litagent.native_wire import inline_local_schema
+
+        response_format["json_schema"]["schema"] = inline_local_schema(
+            response_format["json_schema"]["schema"]
+        )
+        packet["native_schema_encoding_contract"] = NATIVE_SCHEMA_ENCODING_CONTRACT
+        prepared[1]["content"] = json.dumps(
+            packet, ensure_ascii=False, separators=(",", ":")
+        )
     return prepared, response_format
+
+
+def project_grounded_response(
+    content: str,
+    response_format: dict,
+    *,
+    trace_hook=None,
+    parent_task_id="",
+    stage="initial",
+) -> tuple[str, dict | None]:
+    """Validate an explicit array response and retain a lossless canonical proof."""
+    if (
+        response_format.get("json_schema", {}).get("name")
+        != "grounded_report_v23_arrays"
+    ):
+        return content, None
+    from jsonschema import Draft202012Validator
+    from jsonschema import ValidationError as SchemaError
+
+    from litagent.native_wire import canonical_from_array
+
+    raw_sha = hashlib.sha256(content.encode()).hexdigest()
+
+    def emit(event, data):
+        """Keep optional observability failures from changing acceptance results."""
+        if trace_hook:
+            try:
+                trace_hook(
+                    event,
+                    {
+                        "task_id": parent_task_id,
+                        "phase": stage,
+                        "contract_version": "native-array-wire-v1",
+                        "candidate_sha256": raw_sha,
+                        **data,
+                    },
+                )
+            except Exception:
+                from litagent.logging import get_logger
+
+                get_logger("quality").debug("Writing wire trace hook failed")
+
+    try:
+        # Reference existence and source permissions retain their existing
+        # located diagnostics and bounded repair path in the canonical compiler.
+        canonical, proof = canonical_from_array(content, validate_references=False)
+        decoded = json.loads(content)
+        schema_errors = list(
+            Draft202012Validator(response_format["json_schema"]["schema"]).iter_errors(
+                decoded
+            )
+        )
+        for error in schema_errors:
+            path = list(error.absolute_path)
+            located_source_enum = (
+                error.validator == "enum"
+                and len(path) in {7, 8}
+                and path[0] == "sections"
+                and path[1] not in {"abstract", "conclusion"}
+                and path[2] == "blocks"
+                and type(path[3]) is int
+                and path[4] == "sentences"
+                and type(path[5]) is int
+                and (
+                    (
+                        len(path) == 8
+                        and path[6] == "fact_card_ids"
+                        and type(path[7]) is int
+                    )
+                    or (len(path) == 7 and path[6] == "scope_notice_id")
+                )
+            )
+            if not located_source_enum:
+                raise error
+        # Array transport cannot express the original first-position rule.
+        # Check it explicitly; valid transport never waives a host constraint.
+        for block in decoded["sections"]["open_problems"]["blocks"]:
+            first = block["sentences"][0]
+            if first["kind"] != "scientific" or first["scope_notice_id"] != "none":
+                raise ValueError("array_wire_first_scientific_required")
+        candidate = json.dumps(canonical, ensure_ascii=False)
+        proof.update(
+            raw_response_sha256=raw_sha,
+            canonical_candidate_sha256=hashlib.sha256(candidate.encode()).hexdigest(),
+            schema_status="requires_host_diagnostics" if schema_errors else "valid",
+            deferred_source_paths=[
+                list(error.absolute_path) for error in schema_errors
+            ],
+        )
+    except (ValueError, TypeError, SchemaError) as exc:
+        emit(
+            "writing.wire.failed",
+            {
+                "task_id": parent_task_id,
+                "phase": stage,
+                "raw_response_sha256": raw_sha,
+                "reason_code": "array_wire_contract_invalid",
+                "error_type": type(exc).__name__,
+                "subreason": (
+                    "json_decode_error"
+                    if isinstance(exc, json.JSONDecodeError)
+                    else (
+                        "schema_" + str(exc.validator)
+                        if isinstance(exc, SchemaError)
+                        else str(exc)
+                    )
+                ),
+                **(
+                    {"schema_path": list(exc.absolute_path)}
+                    if isinstance(exc, SchemaError)
+                    else {}
+                ),
+                **(
+                    {
+                        "json_position": exc.pos,
+                        "json_line": exc.lineno,
+                        "json_column": exc.colno,
+                    }
+                    if isinstance(exc, json.JSONDecodeError)
+                    else {}
+                ),
+            },
+        )
+        raise ValueError("array_wire_contract_invalid") from exc
+    emit(
+        "writing.wire.projected",
+        {
+            "input_sha256": proof["canonical_candidate_sha256"],
+            "count": len(proof["positions"]),
+            **proof,
+        },
+    )
+    return candidate, proof
 
 
 def prepare_fragment_repair_request(
@@ -1501,6 +2429,33 @@ def prepare_fragment_repair_request(
         if "[E:" in quote:
             raise ValueError("strict_repair_reference_unknown")
         model_targets[fid] = {"section_key": key, "source_quote": quote}
+    if packet.get("body_analysis_contract") == ANALYSIS_CONTRACT:
+
+        def plain_context(value):
+            """Remove host reference decorations only from read-only report context."""
+            if isinstance(value, str):
+                return re.sub(
+                    r"\[F:([^\]\s]+)\]",
+                    lambda match: "" if match[1] in packet["cards"] else match[0],
+                    value,
+                )
+            if isinstance(value, list):
+                return [plain_context(item) for item in value]
+            if isinstance(value, dict):
+                return {key: plain_context(item) for key, item in value.items()}
+            return value
+
+        # Full original sources are never normalized. The separate target/card map
+        # retains citation ownership without teaching the model inline ID syntax.
+        for target in model_targets.values():
+            target["original_fact_card_ids"] = re.findall(
+                r"\[F:([^\]\s]+)\]", target["source_quote"]
+            )
+            target["source_quote"] = plain_context(target["source_quote"])
+        for key in ("current_draft", "located_feedback", "feedback"):
+            if key in packet:
+                packet[key] = plain_context(packet[key])
+        packet["repair_context_reference_contract"] = "analysis-clean-repair-context-v1"
     schema = object_schema({"patches": object_schema(properties)})
     packet.pop("generation_section_order", None)
     packet["repair_contract"] = FRAGMENT_REPAIR_CONTRACT
@@ -1584,6 +2539,21 @@ def prepare_fragment_repair_request(
                 )
             )
             + prepared[0]["content"][end:]
+        )
+    if packet.get("source_applicability_contract") == APPLICABILITY_CONTRACT:
+        prepared[0]["content"] += APPLICABILITY_INSTRUCTION
+    if packet.get("unit_citation_scope_contract"):
+        from litagent.body_quality import UNIT_CITATION_SCOPE_INSTRUCTION
+
+        prepared[0]["content"] += UNIT_CITATION_SCOPE_INSTRUCTION
+    if packet.get("repair_context_reference_contract"):
+        prepared[0]["content"] += (
+            "\nPLAIN REPAIR TEXT: source_quote/current_draft contain read-only prose; "
+            "original_fact_card_ids separately retain their original references. "
+            "Put all output source identities ONLY in fact_card_ids, never in text. "
+            "Do not copy bracketed references, Markdown links or identifiers into text. "
+            "Prefer correcting the original subject's actual task and conditions to "
+            "replacing it with an unrelated finding. Do not repeat protected findings."
         )
     return prepared, {
         "type": "json_schema",
@@ -1712,6 +2682,115 @@ def validate_repair_content(original: str, candidate: str, targets) -> dict:
         "target_fragment_ids": [t["source_fragment_id"] for t in targets],
         "issues": issues,
     }
+
+
+def evaluated_repair_repetitions(original, initial_evaluation, candidate, evaluation):
+    """Find newly duplicated supported findings using exact assessed identities."""
+    before = initial_evaluation.get("faithfulness", {}).get("details", {})
+    after = evaluation.get("faithfulness", {}).get("details", {})
+    result = {
+        "version": "assessed-repair-repetition-v1",
+        "source_report_sha256": hashlib.sha256(original.encode()).hexdigest(),
+        "candidate_sha256": hashlib.sha256(candidate.encode()).hexdigest(),
+        "status": "not_checked",
+        "duplicates": [],
+    }
+    if (
+        before.get("source_report_sha256") != result["source_report_sha256"]
+        or after.get("source_report_sha256") != result["candidate_sha256"]
+    ):
+        raise ValueError("strict_repair_assessment_identity_invalid")
+    if not after.get("coverage", {}).get("complete"):
+        return result
+
+    def signature(row):
+        return (
+            row.get("section"),
+            re.sub(r"\s+", " ", row["claim_text"]).strip(" 。.!！?？;；"),
+            tuple(sorted(row["evidence_ids"])),
+        )
+
+    protected, counts, groups = {}, Counter(), {}
+    for row in before.get("assertions", []):
+        if row.get("kind") == "scientific":
+            counts[signature(row)] += 1
+            if row.get("status") == "supported":
+                if (
+                    original[row["source_start"] : row["source_end"]]
+                    != row["source_quote"]
+                ):
+                    raise ValueError("strict_repair_assessment_location_invalid")
+                protected[row["source_quote"]] = row
+    for row in after.get("assertions", []):
+        if row.get("kind") != "scientific" or row.get("status") != "supported":
+            continue
+        if candidate[row["source_start"] : row["source_end"]] != row["source_quote"]:
+            raise ValueError("strict_repair_assessment_location_invalid")
+        groups.setdefault(signature(row), []).append(row)
+    for key, rows in groups.items():
+        if len(rows) <= max(1, counts[key]):
+            continue
+        kept = [r for r in rows if r["source_quote"] in protected]
+        added = [r for r in rows if r["source_quote"] not in protected]
+        if kept:
+            result["duplicates"].extend(
+                {"protected": kept[0], "repeated": row} for row in added
+            )
+    result["status"] = "failed" if result["duplicates"] else "passed"
+    result["reason_code"] = (
+        "strict_repair_duplicate_content" if result["duplicates"] else None
+    )
+    return result
+
+
+def remove_assessed_repetition(
+    original, initial_evaluation, candidate, evaluation, bindings, language="zh-CN"
+):
+    """Remove one proven redundant repair unit, requiring complete new assessment."""
+    from litagent.writing_passages import bind_scope_notices
+
+    check = evaluated_repair_repetitions(
+        original, initial_evaluation, candidate, evaluation
+    )
+    if (
+        len(check["duplicates"]) != 1
+        or bindings.get("report_sha256") != check["candidate_sha256"]
+    ):
+        raise ValueError("strict_editorial_repetition_binding_invalid")
+    row = check["duplicates"][0]["repeated"]
+    siblings = [
+        c
+        for c in evaluation["faithfulness"]["details"]["assertions"]
+        if c["source_fragment_id"] == row["source_fragment_id"]
+    ]
+    removed = [
+        b
+        for b in bindings["locations"]
+        if b["rendered_unit"] == row["source_quote"]
+        and b["location"].startswith("repair:")
+    ]
+    if len(siblings) != 1 or not removed:
+        raise ValueError("strict_editorial_mixed_unit_invalid")
+    start, end = row["source_start"], row["source_end"]
+    cleaned = candidate[:start] + candidate[end:]
+    updated = copy.deepcopy(bindings)
+    updated["locations"] = [b for b in updated["locations"] if b not in removed]
+    if any(b["rendered_unit"] not in cleaned for b in updated["locations"]):
+        raise ValueError("strict_editorial_protected_content_changed")
+    updated["report_sha256"] = hashlib.sha256(cleaned.encode()).hexdigest()
+    updated["scope_notices"] = bind_scope_notices(
+        cleaned, bindings.get("scope_notices", {}), language
+    )
+    check.update(
+        removed_start=start,
+        removed_end=end,
+        removed_text=row["source_quote"],
+        result_sha256=updated["report_sha256"],
+        independent_findings_removed=0,
+        requires_full_reassessment=True,
+        model_rewrite_calls=0,
+    )
+    return cleaned, updated, check
 
 
 def apply_fragment_repairs(
@@ -2029,12 +3108,15 @@ def grounded_messages(
     use_full_sources: bool = False,
     use_scope_notices: bool = False,
     analysis_mode: bool = False,
+    require_unit_citation_scope: bool = False,
 ) -> list[dict]:
     """Share complete paper sources without repeating them for each card."""
     from litagent.workbench import language_instruction
 
     if language not in {"en", "zh-CN"}:
         raise ValueError("unsupported_report_language")
+    if require_unit_citation_scope and not analysis_mode:
+        raise ValueError("strict_writing_binding_mode_invalid")
     if use_scope_notices and not use_full_sources:
         raise ValueError("strict_writing_binding_mode_invalid")
     scopes = _writing_scopes(cards, structure, language, evidence_selection)
@@ -2231,13 +3313,22 @@ def grounded_messages(
     if analysis_mode:
         if not use_scope_notices or not use_full_sources:
             raise ValueError("body_analysis_requires_full_sources")
-        from litagent.body_quality import ANALYSIS_INSTRUCTION, build_analysis_plan
+        from litagent.body_quality import (
+            ANALYSIS_INSTRUCTION,
+            UNIT_CITATION_SCOPE_CONTRACT,
+            UNIT_CITATION_SCOPE_INSTRUCTION,
+            build_analysis_plan,
+        )
 
         payload["writing_contract"] = ANALYSIS_VERSION
         payload["analysis_plan"] = build_analysis_plan(
             query, requirements, cards, scopes
         )
         payload["body_analysis_contract"] = ANALYSIS_CONTRACT
+        if require_unit_citation_scope:
+            payload["unit_citation_scope_contract"] = UNIT_CITATION_SCOPE_CONTRACT
+            instruction += UNIT_CITATION_SCOPE_INSTRUCTION
+        payload["source_applicability_contract"] = APPLICABILITY_CONTRACT
         instruction += ANALYSIS_INSTRUCTION
     return [
         {
@@ -2246,9 +3337,15 @@ def grounded_messages(
             + "\nReturn a complete object with nonempty title and sections, never {}. "
             "Each section has section_key and blocks; each block has type and "
             "sentences; every sentence has text, kind, fact_card_ids. "
-            "Use supplied section_keys in order. Missing evidence must be disclosed "
-            "as a gap sentence, not an empty or invented report.\n"
-            "Follow each section_contract responsibility and allowed_fact_card_ids. "
+            "Use supplied section_keys in order. "
+            + (
+                "Missing selected evidence may use an optional unchanged host scope "
+                "notice with empty text and no cards, never free-text gap claims.\n"
+                if use_scope_notices
+                else "Missing evidence must be disclosed as a gap sentence, not an "
+                "empty or invented report.\n"
+            )
+            + "Follow each section_contract responsibility and allowed_fact_card_ids. "
             "Allowed cards are available sources, not a required citation list. "
             "Answer every coverage_requirement under its original conditions; "
             "source mentions alone do not establish coverage.\n"
@@ -2525,6 +3622,7 @@ def render_grounded_report(
     require_full_sources: bool = False,
     require_scope_notices: bool = False,
     analysis_mode: bool = False,
+    require_unit_citation_scope: bool = False,
     _analysis_bindings: dict | None = None,
     _notice_bindings: dict | None = None,
     _support_locations: list[dict] | None = None,
@@ -2547,7 +3645,11 @@ def render_grounded_report(
             language=language,
             notice_bindings=_notice_bindings,
             analysis_mode=analysis_mode,
+            require_unit_citation_scope=require_unit_citation_scope,
             analysis_bindings=_analysis_bindings,
+            section_scopes=_writing_scopes(
+                cards, structure, language, evidence_selection
+            ),
         )
         require_source_quotes = True
     report, native = _decode_grounded_report(
@@ -2824,6 +3926,7 @@ def render_grounded_report_traced(
     require_full_sources: bool = False,
     require_scope_notices: bool = False,
     analysis_mode: bool = False,
+    require_unit_citation_scope: bool = False,
     bindings: dict | None = None,
 ) -> str:
     """Persist candidate-bound binding errors without masking or repairing them."""
@@ -2845,6 +3948,7 @@ def render_grounded_report_traced(
             require_full_sources=require_full_sources,
             require_scope_notices=require_scope_notices,
             analysis_mode=analysis_mode,
+            require_unit_citation_scope=require_unit_citation_scope,
             _analysis_bindings=analyses,
             _notice_bindings=notices,
             _support_locations=locations,
@@ -2855,6 +3959,10 @@ def render_grounded_report_traced(
                 report_sha256=hashlib.sha256(result.encode()).hexdigest(),
                 locations=locations,
             )
+            if require_unit_citation_scope:
+                from litagent.body_quality import UNIT_CITATION_SCOPE_CONTRACT
+
+                bindings["unit_citation_scope_contract"] = UNIT_CITATION_SCOPE_CONTRACT
             if analysis_mode:
                 bindings.update(
                     body_analysis_contract=ANALYSIS_CONTRACT,

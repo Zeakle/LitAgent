@@ -118,13 +118,52 @@ class RunOptions(Contract):
         if self.body_quality == "legacy":
             payload.pop("body_quality")
         else:
-            from litagent.body_quality import ANALYSIS_CONTRACT, ANALYSIS_VERSION
+            from litagent.body_quality import (
+                ANALYSIS_CHAPTER_CONTRACT,
+                ANALYSIS_CONTRACT,
+                ANALYSIS_VERSION,
+                EVALUATION_ENCODING_CONTRACT,
+                EXTRACTION_CLAIM_CONTRACT,
+                EXTRACTION_FIELD_SPAN_CONTRACT,
+                EXTRACTION_SOURCE_LAYOUT_CONTRACT,
+                METRIC_INFLECTION_CONTRACT,
+                NATIVE_ARRAY_WIRE_CONTRACT,
+                NATIVE_SCHEMA_ENCODING_CONTRACT,
+                PAPER_BATCH_CONTRACT,
+                SUMMARY_ARRAY_WIRE_CONTRACT,
+                UNIT_CITATION_SCOPE_CONTRACT,
+            )
 
             payload["body_contracts"] = [
                 ANALYSIS_CONTRACT,
                 ANALYSIS_VERSION,
                 "host-global-completeness-v1",
                 "host-fragment-inventory-v2",
+                "host-batch-assessment-v1",
+                "evaluation-wire-identity-v1",
+                EVALUATION_ENCODING_CONTRACT,
+                EXTRACTION_FIELD_SPAN_CONTRACT,
+                EXTRACTION_CLAIM_CONTRACT,
+                EXTRACTION_SOURCE_LAYOUT_CONTRACT,
+                METRIC_INFLECTION_CONTRACT,
+                SUMMARY_ARRAY_WIRE_CONTRACT,
+                NATIVE_ARRAY_WIRE_CONTRACT,
+                NATIVE_SCHEMA_ENCODING_CONTRACT,
+                "host-flat-fragment-inventory-v1",
+                "local-chinese-comparatives-v1",
+                "host-analysis-claim-ownership-v1",
+                ANALYSIS_CHAPTER_CONTRACT,
+                UNIT_CITATION_SCOPE_CONTRACT,
+                "atomic-fragment-decomposition-v1",
+                PAPER_BATCH_CONTRACT + ":size=2:concurrency=2",
+                "complete-native-diagnostics-v1",
+                "failed-worker-repair-ledger-v1",
+                "chapter-source-menu-v1",
+                "complete-native-unit-repair-v5",
+                "source-applicability-v1",
+                "analysis-diagnostic-cause-v1",
+                "analysis-clean-repair-context-v1",
+                "assessed-repair-repetition-v1",
             ]
         if self.quality_policy == "legacy":
             payload.pop("quality_policy")

@@ -152,7 +152,7 @@ class ReportAuditService:
         cfg = self.config.report_audit
         return SurveyJudgeConfig(
             base_url=cfg.judge_base_url or self.config.llm.base_url,
-            model=cfg.judge_model or self.config.llm.model,
+            model=cfg.judge_model or self.config.llm.model_for("generation"),
             api_key_env=cfg.judge_api_key_env
             or (
                 "LLM_API_KEY"
@@ -178,7 +178,7 @@ class ReportAuditService:
             "enabled": enabled,
             "judge_available": judge_ready,
             "judge_model": judge.model,
-            "self_judged": judge.model == self.config.llm.model
+            "self_judged": judge.model == self.config.llm.model_for("generation")
             and judge.base_url == self.config.llm.base_url,
             "judge_reason": (
                 None
@@ -218,7 +218,10 @@ class ReportAuditService:
         judge = self.judge_config()
         generation = snapshot.get(
             "generation_provider",
-            {"model": self.config.llm.model, "origin": self.config.llm.base_url},
+            {
+                "model": self.config.llm.model_for("generation"),
+                "origin": self.config.llm.base_url,
+            },
         )
         model = generation.get("model")
         origin = generation.get("origin")

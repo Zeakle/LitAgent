@@ -6,12 +6,17 @@ import math
 import os
 from typing import Any
 
-from sentence_transformers import CrossEncoder
-
 from litagent.rag.interfaces import Reranker, ScoredDoc
 from litagent.rag.models import ScoredPaperHit
 
 _DEFAULT_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+
+
+def CrossEncoder(*args, **kwargs):
+    """Avoid importing inference libraries for read-only presentation startup."""
+    from sentence_transformers import CrossEncoder as factory
+
+    return factory(*args, **kwargs)
 
 
 def build_paper_rerank_text(

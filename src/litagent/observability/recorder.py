@@ -432,6 +432,13 @@ class RunRecorder:
                     data
                 )
             return
+        if event == "writing.wire.failed":
+            node = self._artifact["nodes"].get(f"worker:{data.get('task_id', '')}")
+            if node is not None:
+                node["metadata"].setdefault("writing_wire_failures", []).append(
+                    _snapshot(data)
+                )
+            return
         node_key, lifecycle = _node_identity(event, data)
         if node_key is None:
             return

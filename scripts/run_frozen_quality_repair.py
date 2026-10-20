@@ -317,7 +317,9 @@ def prepare(
     """Freeze source, configuration, code and exact known usage for one trial."""
     if re.fullmatch(r"[A-Za-z0-9_-]{1,100}", run_id) is None:
         raise ValueError("frozen_trial_id_invalid")
-    if config.llm.base_url.rstrip("/") != ORIGIN or config.llm.model != MODEL:
+    if config.llm.base_url.rstrip("/") != ORIGIN or not config.llm.uses_single_model(
+        MODEL
+    ):
         raise ValueError("frozen_trial_provider_invalid")
     if config.safety.max_cost_tokens != 500000:
         raise ValueError("frozen_trial_budget_invalid")

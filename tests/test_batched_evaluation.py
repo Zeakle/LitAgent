@@ -23,8 +23,33 @@ class BatchLLM:
 
     async def chat(self, messages, **kwargs):
         payload = json.loads(messages[1]["content"])
+        native = kwargs.get("response_format", {}).get("json_schema")
+        if native is not None:
+            payload["schema"] = native["schema"]
         self.calls.append(payload)
         if "allowed_citation_aliases" in payload:
+            if "fragments" in payload["schema"]["properties"]:
+                result = {
+                    "fragments": {
+                        f["source_fragment_id"]: {
+                            "assertions": [
+                                {"kind": "scientific", "claim_text": f["text"]}
+                            ],
+                            "exclusion_reason": "",
+                        }
+                        for u in payload["source_units"]
+                        for f in u["source_fragments"]
+                    }
+                }
+                return LLMResponse(
+                    content=json.dumps(result),
+                    model="offline",
+                    usage={
+                        "prompt_tokens": 10,
+                        "completion_tokens": 10,
+                        "usage_available": True,
+                    },
+                )
             result = (
                 {
                     "units": {

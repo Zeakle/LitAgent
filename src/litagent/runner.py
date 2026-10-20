@@ -341,7 +341,10 @@ class LitAgent:
 
         self._cost_budget: CostBudget | None = None
         self._targeted_repair_state_path: Path | None = None
+        self._evaluation_progress_root: Path | None = None
         self._llm: BaseLLMClient | None = None
+        self._owned_llm = None
+        self._stage_llms: dict[str, BaseLLMClient] = {}
         self._registry = None
         self._executor: ToolExecutor | None = None
         self._budget_manager: BudgetManager | None = None
@@ -882,15 +885,16 @@ class LitAgent:
                 if isinstance(item, str) and item
             )
         degradation_codes = list(dict.fromkeys(degradation_codes))
+        final_output_present = bool(
+            isinstance(adversarial_result, Mapping)
+            and adversarial_result.get("final_draft")
+        )
         execution = self._derive_execution(
             graph,
             budget_exceeded=(
                 self._cost_budget.is_exceeded() if self._cost_budget else False
             ),
-            final_output_present=bool(
-                isinstance(results.get("adversarial_review"), dict)
-                and results["adversarial_review"].get("final_draft")
-            ),
+            final_output_present=final_output_present,
             budget_stop_reason=(
                 self._cost_budget.stop_reason if self._cost_budget else None
             ),
@@ -948,24 +952,39 @@ class LitAgent:
         if options.quality_policy == "strict_auto_v2":
             from litagent.quality import load_targeted_repairs, targeted_repair_state
 
-            state = targeted_repair_state(
-                metadata.get("targeted_repair_state"), self._session_id
-            )
             checkpoint_state = load_targeted_repairs(
                 self._targeted_repair_path(), self._session_id
+            )
+            if not final_output_present:
+                # A failed worker has no result to carry its consumed repair ledger.
+                metadata["targeted_repair_state"] = checkpoint_state
+            state = targeted_repair_state(
+                metadata.get("targeted_repair_state"), self._session_id
             )
             if checkpoint_state["attempts"] and checkpoint_state != state:
                 raise ValueError("strict_targeted_repair_checkpoint_conflict")
             metadata["targeted_repair_state"] = state
 
-        initial_evaluation = await _await_with_cancellation(
-            self._evaluate(
-                query=query,
-                survey=report_data["survey"],
-                results=results,
-                phase="initial",
-            ),
-            cancellation,
+        initial_evaluation = (
+            {
+                evaluator.metric_name: {
+                    "score": 0.0,
+                    "passed": False,
+                    "skipped": True,
+                    "details": {"skipped_reason": "final_report_unavailable"},
+                }
+                for evaluator in self._evaluators
+            }
+            if not final_output_present
+            else await _await_with_cancellation(
+                self._evaluate(
+                    query=query,
+                    survey=report_data["survey"],
+                    results=results,
+                    phase="initial",
+                ),
+                cancellation,
+            )
         )
         initial_quality = self._derive_quality(initial_evaluation)
         report_data.update(
@@ -1120,7 +1139,7 @@ class LitAgent:
                 report, context[CTX_EVIDENCE], run_id=self._session_id
             )
             snapshot["generation_provider"] = {
-                "model": self._config.llm.model,
+                "model": self._config.llm.model_for("generation"),
                 "origin": self._config.llm.base_url,
             }
             if verification_enabled(report["metadata"], "judge"):
@@ -1460,6 +1479,33 @@ class LitAgent:
             )
         return history
 
+    def _stage_llm(self, stage: str):
+        """Keep explicit historical injections working when no views were wired."""
+        return self._stage_llms.get(stage, self._llm)
+
+    def _wire_llms(self):
+        """Publish the transport owner before constructing borrowed role views."""
+        from litagent.llm.routing import ModelBoundClient
+
+        cfg = self._config
+        self._llm = OpenAICompatibleClient(
+            base_url=cfg.llm.base_url,
+            model=cfg.llm.model,
+            max_tokens=cfg.llm.max_tokens,
+            temperature=cfg.llm.temperature,
+            cost_budget=self._cost_budget,
+            trace_hook=self._trace_hook,
+        )
+        self._owned_llm = self._llm
+        self._stage_llms = {
+            stage: (
+                ModelBoundClient(self._llm, cfg.llm.model_for(stage), stage)
+                if getattr(cfg.llm, f"{stage}_model") is not None
+                else self._llm
+            )
+            for stage in ("extraction", "generation", "evaluation")
+        }
+
     @_cleanup_incomplete_wiring
     async def _wire(self) -> None:
         """Construct all configured components once in dependency order."""
@@ -1489,14 +1535,7 @@ class LitAgent:
         )
 
         try:
-            self._llm = OpenAICompatibleClient(
-                base_url=cfg.llm.base_url,
-                model=cfg.llm.model,
-                max_tokens=cfg.llm.max_tokens,
-                temperature=cfg.llm.temperature,
-                cost_budget=self._cost_budget,
-                trace_hook=self._trace_hook,
-            )
+            self._wire_llms()
             logger.info(f"LLM client: {cfg.llm.model} @ {cfg.llm.base_url}")
         except Exception as e:
             raise ConfigError(f"Failed to create LLM client: {e}") from e
@@ -1556,10 +1595,11 @@ class LitAgent:
         regex_strategy = RegexStrategy(self._executor)
         if cfg.extractor.enable_llm:
             llm_strategy = LLMStrategy(
-                self._llm,
+                self._stage_llm("extraction"),
                 self._skill_manager,
                 max_tokens=cfg.extractor.max_tokens,
                 thinking_mode=cfg.extractor.thinking_mode,
+                record_identity=cfg.extractor.record_identity,
             )
             self._extraction_strategy = ResilientExtractionStrategy(
                 llm_strategy,
@@ -1618,6 +1658,8 @@ class LitAgent:
             max_papers=cfg.extractor.max_papers,
             fulltext_loader=TargetedFulltext(cfg.rag),
             failure_callback=self._cost_budget.stop_after_worker_failure,
+            strict_paper_batch_size=2,
+            strict_grounded_claims=True,
         )
         workers.append(self._extractor)
 
@@ -1635,7 +1677,7 @@ class LitAgent:
         from litagent.extraction_verification import ExtractionVerifier
 
         self._synthesis = SynthesisWorker(
-            llm=self._llm,
+            llm=self._stage_llm("generation"),
             memory=self._infra.memory if self._run_policy.memory_reads else None,
             budget=self._budget_manager,
             skill_manager=self._skill_manager,
@@ -1660,7 +1702,7 @@ class LitAgent:
         workers.append(self._synthesis)
 
         self._reviewer = ReviewerWorker(
-            llm=self._llm,
+            llm=self._stage_llm("evaluation"),
             claims_index=(
                 self._infra.claims_index if self._run_policy.claims_reads else None
             ),
@@ -1675,7 +1717,7 @@ class LitAgent:
         workers.append(self._reviewer)
 
         self._adversarial = AdversarialReviewWorker(
-            llm=self._llm,
+            llm=self._stage_llm("generation"),
             synthesis=self._synthesis,
             reviewer=self._reviewer,
             max_rounds=cfg.adversarial.max_rounds,
@@ -1719,18 +1761,18 @@ class LitAgent:
         eval_mt = cfg.eval.max_tokens
         self._evaluators = [
             CitationEvaluator(
-                self._llm,
+                self._stage_llm("evaluation"),
                 max_tokens=eval_mt,
                 thinking_mode=cfg.eval.thinking_mode,
                 timeout_seconds=cfg.eval.timeout_seconds,
             ),
             ConsistencyEvaluator(
-                self._llm,
+                self._stage_llm("evaluation"),
                 max_tokens=eval_mt,
                 thinking_mode=cfg.eval.thinking_mode,
                 timeout_seconds=cfg.eval.timeout_seconds,
             ),
-            RagasFaithfulnessEvaluator(self._config, llm=self._llm),
+            RagasFaithfulnessEvaluator(self._config, llm=self._stage_llm("evaluation")),
         ]
 
         self._wired = True
@@ -2085,10 +2127,14 @@ class LitAgent:
                 results=results,
             )
             if is_strict_policy(context.get("quality_policy")):
+                from litagent.body_quality import EVALUATION_ENCODING_CONTRACT
                 from litagent.quality import digest
 
                 identity = digest([self._session_id, survey, phase])
-                path = Path("artifacts/evaluations") / identity / "progress.json"
+                progress_root = self._evaluation_progress_root or Path(
+                    "artifacts/evaluations"
+                )
+                path = progress_root / identity / "progress.json"
                 if path.exists():
                     previous = json.loads(path.read_text(encoding="utf-8"))
                     if previous.get("started"):
@@ -2108,7 +2154,10 @@ class LitAgent:
                                 "phase": phase,
                                 "evaluation_version": "survey-evaluation-v3",
                                 **(
-                                    {"body_analysis_contract": "body-analysis-v1"}
+                                    {
+                                        "body_analysis_contract": "body-analysis-v1",
+                                        "evaluation_encoding_contract": EVALUATION_ENCODING_CONTRACT,
+                                    }
                                     if context.get("body_quality") == "analysis_v1"
                                     else {}
                                 ),
@@ -3023,7 +3072,7 @@ class LitAgent:
         budget_reserved = False
         repair_entry = None
         repair_state = None
-        request_budget = getattr(self._llm, "_cost_budget", None)
+        request_budget = getattr(self._stage_llm("generation"), "_cost_budget", None)
         if not isinstance(request_budget, CostBudget):
             request_budget = None
 
@@ -3096,7 +3145,7 @@ class LitAgent:
                     )
                     chat_kwargs["response_format"] = response_format
                     reservation = check_grounded_request_budget(
-                        self._llm,
+                        self._stage_llm("generation"),
                         messages,
                         response_format,
                         trace_hook=self._trace_hook,
@@ -3110,7 +3159,7 @@ class LitAgent:
                     )
                 else:
                     reservation = check_request_budget(
-                        self._llm,
+                        self._stage_llm("generation"),
                         messages,
                         self._config.eval.max_tokens,
                         self._config.eval.context_tokens,
@@ -3151,7 +3200,9 @@ class LitAgent:
                     emit_targeted_repair(
                         self._trace_hook, repair_state, "evidence_rewrite"
                     )
-                response = await self._llm.chat(messages, **chat_kwargs)
+                response = await self._stage_llm("generation").chat(
+                    messages, **chat_kwargs
+                )
                 if repair_entry is not None:
                     repair_entry.update(
                         usage=dict(response.usage),
@@ -3394,6 +3445,39 @@ class LitAgent:
         )
         candidate_quality = self._derive_quality(candidate_evaluation)
 
+        if strict and report_data["metadata"].get("body_quality") == "analysis_v1":
+            from litagent.quality import evaluated_repair_repetitions
+
+            repetition = evaluated_repair_repetitions(
+                original_survey, initial_evaluation, candidate, candidate_evaluation
+            )
+            if repetition["status"] == "failed":
+                report_data["metadata"]["local_repair_diagnostics"] = repetition
+                self._emit(
+                    "subspan.end",
+                    {
+                        "task_id": "evidence_rewrite",
+                        "output": {
+                            "accepted": False,
+                            "reason": repetition["reason_code"],
+                        },
+                    },
+                )
+                return RewriteOutcome(
+                    True,
+                    False,
+                    candidate,
+                    validation,
+                    candidate_evaluation,
+                    {
+                        **candidate_quality,
+                        "status": "failed",
+                        "failed_metrics": ["body_repetition"],
+                    },
+                    "strict_repair_duplicate_content",
+                    candidate_bindings,
+                )
+
         if self._passed_metric_regressed(
             initial_evaluation,
             candidate_evaluation,
@@ -3583,10 +3667,12 @@ class LitAgent:
                     prepare_grounded_request,
                 )
 
-                messages, response_format = prepare_grounded_request(messages)
+                messages, response_format = prepare_grounded_request(
+                    messages, array_wire=metadata.get("body_quality") == "analysis_v1"
+                )
                 kwargs.update(response_format=response_format, transport_max_attempts=1)
                 check_grounded_request_budget(
-                    self._llm,
+                    self._stage_llm("generation"),
                     messages,
                     response_format,
                     trace_hook=self._trace_hook,
@@ -3603,10 +3689,21 @@ class LitAgent:
                     "thinking": {"type": self._config.eval.thinking_mode}
                 }
             async with asyncio.timeout(self._config.eval.timeout_seconds):
-                response = await self._llm.chat(messages, **kwargs)
+                response = await self._stage_llm("generation").chat(messages, **kwargs)
             candidate = (response.content or "").strip()
             if is_strict_policy(metadata.get("quality_policy")):
-                from litagent.quality import render_grounded_report_traced
+                from litagent.quality import (
+                    project_grounded_response,
+                    render_grounded_report_traced,
+                )
+
+                candidate, wire_projection = project_grounded_response(
+                    candidate,
+                    response_format,
+                    trace_hook=self._trace_hook,
+                    parent_task_id="human_revision",
+                    stage="human_revision",
+                )
 
                 candidate_bindings = {}
                 candidate = render_grounded_report_traced(
@@ -3620,12 +3717,16 @@ class LitAgent:
                     require_full_sources=metadata.get("quality_policy")
                     == "strict_auto_v2",
                     analysis_mode=metadata.get("body_quality") == "analysis_v1",
+                    require_unit_citation_scope=metadata.get("body_quality")
+                    == "analysis_v1",
                     require_scope_notices=metadata.get("quality_policy")
                     == "strict_auto_v2",
                     bindings=candidate_bindings,
                     trace_hook=self._trace_hook,
                     parent_task_id="human_revision",
                 )
+                if wire_projection:
+                    candidate_bindings["native_wire_input_projection"] = wire_projection
         except asyncio.CancelledError:
             finish_revision(
                 {"committed": False, "reason_code": "human_revision_cancelled"}
@@ -3854,6 +3955,16 @@ class LitAgent:
                 await bridge.disconnect_all()
             except BaseException as exc:
                 logger.debug("MCP disconnect error: %s", exc)
+
+        owner = self._owned_llm
+        self._owned_llm = None
+        if owner is not None:
+            self._stage_llms = {}
+            self._llm = None
+            try:
+                await owner.close()
+            except BaseException as exc:
+                logger.debug("LLM transport close error: %s", exc)
 
         infra = self._infra
         self._infra = Infra()

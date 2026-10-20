@@ -28,6 +28,7 @@ context:
   review_feedback_max_tokens: 2000      # bounded previous-review feedback
 
 extractor:
+  record_identity: source_fields_v1
   max_concurrent: 5
   enable_llm: true
   max_papers: 50
@@ -44,7 +45,10 @@ orchestrator:
 
 llm:
   base_url: "https://ark.cn-beijing.volces.com/api/v3"
-  model: "doubao-seed-2-0-mini-260428"
+  model: "doubao-seed-2-1-lite-260915"
+  extraction_model: "doubao-seed-2-1-lite-260915"
+  generation_model: "doubao-seed-2-1-pro-260915"
+  evaluation_model: "doubao-seed-2-1-lite-260915"
   max_tokens: 20000
   temperature: 0.1
 
@@ -156,7 +160,8 @@ eval:
 planner:
   decompose_enabled: true   # LLM 把 query 扩展成 2-3 子 query（多路召回）；false 退回单 query
   max_sub_queries: 3        # 简短检索词上限，不强制原问题占槽，防 N×源 组合爆炸
-  max_tokens: 8192          # structured output is short, but thinking mode also consumes this cap
+  max_tokens: 8192          # Keep the existing output reservation.
+  thinking_mode: disabled   # Planning must use the same explicit non-reasoning mode.
   temperature: 0.3          # 略高促子 query 多样化
   use_procedural_profiles: false      # 13.7.1：开关开启后 planner 用画像重排 source
   procedural_min_samples: 3           # 样本数不足不排

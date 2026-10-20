@@ -9,6 +9,12 @@ const value = (item, digits = 2) => item == null ? "—" : typeof item === "numb
 const percent = (item) => item == null ? "—" : `${(Number(item) * 100).toFixed(1)}%`;
 const auditGate = (observation, key, t) => {
   const gate=observation?.gates?.[key === "jev" && observation?.gates?.extraction_jev ? "extraction_jev" : key];
+  if(key === "evaluation") {
+    const labels = {not_run:"evaluationNotExecuted",incomplete:"evaluationIncomplete",completed:"evaluationCompleted",unrecorded:"evaluationUnrecorded"};
+    const status = observation ? observation.evaluation_execution : "not_run";
+    const label = Object.hasOwn(labels, status) ? labels[status] : labels.unrecorded;
+    return `${t(label)} · ${t("evaluationDeliveryGate")}: ${gate || t("notRun")}`;
+  }
   if(gate === "disabled")return t("verificationDisabled");
   return key !== "evaluation" && observation?.costs?.[key]?.requests === 0 ? t("notRun") : gate || t("notRun");
 };
@@ -135,6 +141,14 @@ export function renderBenchmarkList(target, results, selectedId, onSelect, t) {
 
 function renderAutomaticBenchmark(target, result, onObservation, t) {
   target.append(el("h3", result.run_id), el("p", t("automaticBenchmarkDisclosure")));
+  const context = result.execution_context;
+  const judgeEnabled = context?.verification?.judge !== false;
+  target.append(el("p", judgeEnabled ? (result.self_judged ? "self_judged" : "independent_judge") : `Judge: ${t("verificationDisabled")}`));
+  if (context) {
+    target.append(metricTable(["Stage / 阶段", "Model / 模型"], Object.entries(context.models || {})));
+    target.append(el("h4", t("historicalUsage")), el("p", t("incompleteUsageNote")));
+    target.append(metricTable(["Historical field / 历史字段", "Value / 数值"], Object.entries(context.historical_accounting || {}).map(([key, item]) => [key, String(item)])));
+  }
   for (const phase of ["pilot", "formal"]) {
     const counts = result.counts?.[phase] || {};
     const section = el("section", "", "quality-section");

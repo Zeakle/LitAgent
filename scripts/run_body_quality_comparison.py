@@ -62,7 +62,9 @@ def prepare(
     checkpoint = root / "comparison.json"
     if checkpoint.exists() and json.loads(checkpoint.read_text()).get("observations"):
         raise ValueError("body_comparison_already_started")
-    if config.llm.base_url.rstrip("/") != ORIGIN or config.llm.model != MODEL:
+    if config.llm.base_url.rstrip("/") != ORIGIN or not config.llm.uses_single_model(
+        MODEL
+    ):
         raise ValueError("body_comparison_model_invalid")
     history_path = source_root / "vit" / "checkpoint.json"
     history = json.loads(history_path.read_text())

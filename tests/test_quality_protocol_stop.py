@@ -97,6 +97,7 @@ def live_runner(tmp_path, monkeypatch, reports):
     "reason",
     [
         "evaluation_inventory_shape_invalid",
+        "evaluation_inventory_json_invalid",
         "strict_writing_passage_fields_invalid",
         "strict_writing_passage_binding_invalid",
         "strict_writing_summary_binding_invalid",
@@ -116,6 +117,8 @@ def live_runner(tmp_path, monkeypatch, reports):
         "evaluation_decision_coverage_invalid",
         "evaluation_global_unit_coverage_invalid",
         "evaluation_global_issue_identity_invalid",
+        "evaluation_global_input_identity_invalid",
+        "evaluation_analysis_claim_ownership_invalid",
         "evaluation_core_coverage_invalid",
         "evaluation_conflict_identity_invalid",
         "evaluation_batch_conflicts_not_allowed",

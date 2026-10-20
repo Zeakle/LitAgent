@@ -31,11 +31,15 @@ def capture_hooks(llm):
 
 def assert_reconstructable(detail):
     """Recompute request identity and complete output reservation from saved input."""
+    native = detail["response_format"].get("type") == "json_schema"
+    identity = (
+        [detail["messages"], detail["response_format"]]
+        if native
+        else detail["messages"]
+    )
     assert (
         detail["input_sha256"]
-        == hashlib.sha256(
-            json.dumps(detail["messages"], ensure_ascii=False).encode()
-        ).hexdigest()
+        == hashlib.sha256(json.dumps(identity, ensure_ascii=False).encode()).hexdigest()
     )
     assert detail["budget"]["reservation"] == strict_request_reservation(
         detail["messages"], detail["max_tokens"], detail["response_format"]
@@ -44,8 +48,13 @@ def assert_reconstructable(detail):
 
 
 @pytest.mark.asyncio
-async def test_inventory_rejection_saves_full_input_without_issuing_or_advancing_budget():
+@pytest.mark.parametrize("native", [False, True])
+async def test_inventory_rejection_saves_full_input_without_issuing_or_advancing_budget(
+    native,
+):
     survey, context = materials(42)
+    if native:
+        context["body_quality"] = "analysis_v1"
     llm = BatchLLM()
     budget = CostBudget()
     budget.configure_strict()

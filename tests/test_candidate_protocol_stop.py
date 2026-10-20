@@ -35,6 +35,9 @@ def failed_candidate(reason):
     "reason",
     [
         "evaluation_inventory_unit_coverage_invalid",
+        "strict_writing_unit_citation_scope_ambiguous",
+        "evaluation_inventory_json_invalid",
+        "evaluation_analysis_claim_ownership_invalid",
         "evaluation_usage_incomplete",
         "evaluation_context_budget_exceeded",
     ],

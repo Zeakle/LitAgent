@@ -102,9 +102,34 @@ class LLMConfig(BaseModel):
 
     base_url: str = "https://api.deepseek.com"
     model: str = "deepseek-v4-flash"
+    extraction_model: str | None = Field(default=None, min_length=1)
+    generation_model: str | None = Field(default=None, min_length=1)
+    evaluation_model: str | None = Field(default=None, min_length=1)
     # This cap applies when a task does not provide a narrower override.
     max_tokens: int = Field(default=20000, gt=0)
     temperature: float = Field(default=0.1, ge=0, le=2.0)
+
+    @model_validator(mode="after")
+    def _validate_stage_models(self):
+        """Reject whitespace-only overrides instead of silently inheriting a model."""
+        for stage in ("extraction", "generation", "evaluation"):
+            value = getattr(self, f"{stage}_model")
+            if value is not None and value != value.strip():
+                raise ValueError("stage model IDs must not contain outer whitespace")
+        return self
+
+    def model_for(self, stage: str) -> str:
+        """Resolve a fixed stage model while preserving omitted legacy settings."""
+        if stage not in {"extraction", "generation", "evaluation"}:
+            raise ValueError("unknown LLM stage")
+        return getattr(self, f"{stage}_model") or self.model
+
+    def uses_single_model(self, model: str) -> bool:
+        """Guard replay scripts that explicitly bind one model for every stage."""
+        return self.model == model and all(
+            self.model_for(s) == model
+            for s in ("extraction", "generation", "evaluation")
+        )
 
 
 class AdversarialConfig(BaseModel):
@@ -124,6 +149,7 @@ class PlannerConfig(BaseModel):
     max_sub_queries: int = Field(default=3, ge=1, le=3)
     max_tokens: int = Field(default=8192, gt=0)
     temperature: float = Field(default=0.3, ge=0.0, le=2.0)
+    thinking_mode: Literal["provider_default", "enabled", "disabled"] | None = None
     use_procedural_profiles: bool = False
     procedural_min_samples: int = Field(default=3, ge=1)
 
@@ -199,6 +225,7 @@ class ExtractorConfig(BaseModel):
     max_papers: int = Field(default=50, gt=0, le=200)
     max_tokens: int = Field(default=2048, gt=0, le=8192)
     thinking_mode: Literal["provider_default", "enabled", "disabled"] = "disabled"
+    record_identity: Literal["source_fields_v1"] | None = None
     per_paper_timeout_ms: int = Field(default=60000, ge=1000, le=120000)
 
 

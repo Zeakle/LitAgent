@@ -61,6 +61,8 @@ benchmark = [
 litagent = [
     "skills/*/SKILL.md",
     "static/flow-demo/*",
+    "static/presentation/*",
+    "static/presentation/presentation/*/*",
     "rag/*.sql",
     "csl/*",
 ]

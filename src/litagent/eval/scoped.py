@@ -8,10 +8,12 @@ import json
 import re
 from collections.abc import Mapping
 from decimal import Decimal
+from functools import partial
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from litagent.body_quality import ANALYSIS_OWNERSHIP_CONTRACT, APPLICABILITY_CONTRACT
 from litagent.evidence import extract_evidence_refs_ordered
 from litagent.report_render import build_report_source_units
 from litagent.review_structure import _managed_span
@@ -30,6 +32,7 @@ STRICT_QUANTITY_ROLE_CONTRACT = "explicit-quantity-role-v1"
 STRICT_INVENTORY_CONTRACT = "host-keyed-fragment-inventory-v3"
 REQUEST_DIAGNOSTICS_CONTRACT = "evaluation-request-diagnostics-v1"
 LOCAL_NUMERIC_CONTRACT = "local-comparative-targets-v1"
+CHINESE_COMPARATIVE_CONTRACT = "local-chinese-comparatives-v1"
 
 
 class ScopedEvaluationError(ValueError):
@@ -256,6 +259,32 @@ remain unsupported/unverifiable; never infer support from the requested aspect.
 """
 )
 
+FLAT_INVENTORY_PROMPT = (
+    "Extract every atomic assertion from each host fragment. Return ONLY the supplied "
+    "native JSON schema: fragments is an object keyed by ALL exact supplied fragment IDs. "
+    "Each value contains assertions (kind, claim_text) and exclusion_reason. Do not return "
+    "unit keys, citations, offsets or invented keys. The host owns fragment-to-unit and "
+    "citation mappings. Input source_units supplies context, not output nesting.\n"
+    + "Extract ONLY assertions"
+    + STRICT_INVENTORY_PROMPT.split("Extract ONLY assertions", 1)[1]
+    + """
+ATOMIC FRAGMENT DECOMPOSITION atomic-fragment-decomposition-v1:
+A host fragment is a citation/location scope, not a single assertion. Return
+several assertions under the SAME fragment key when it states independent facts.
+Example: 'A improves accuracy on D; B reduces memory on E' contains TWO assertions,
+with A/accuracy/D in one and B/memory/E in the other, never a combined paraphrase.
+Example: 'Under low-data training A improves accuracy and reduces latency on D'
+needs separate accuracy and latency assertions, BOTH retaining low-data training
+and D. Do not discard either finding or invent an average, baseline or causal link.
+A supported mechanism and an unsupported extrapolation must remain separate
+assertions so the latter cannot borrow support from the former. Preserve all
+qualifiers, conditions, negations and scientific premises in proposals/summaries.
+Do not split a single conditional relation so that its outcome loses its condition.
+Only the host assigns IDs/citations; never move a claim into another fragment to
+obtain references. Capacity overflow must stop verification, not omit assertions.
+"""
+)
+
 
 class Contract(BaseModel):
     """Reject silent transport defaults and schema drift."""
@@ -341,14 +370,32 @@ def _strict_inventory_schema(input_units: list[dict]) -> dict:
     }
 
 
-def _strict_inventory_response(
-    content: str,
-    input_units: list[dict],
-    progress: dict,
-    *,
-    research_gaps: bool = False,
-) -> Inventory:
-    """Bind semantic output to exact host fragments, rejecting schema drift."""
+def flat_inventory_schema(input_units: list[dict]) -> dict:
+    """Flatten output keys while retaining every host-owned source partition."""
+    nested = _strict_inventory_schema(input_units)
+    ids = [f["source_fragment_id"] for u in input_units for f in u["source_fragments"]]
+    if len(ids) != len(set(ids)):
+        raise ValueError("evaluation_inventory_host_partition_invalid")
+    return {
+        "$defs": nested["$defs"],
+        "type": "object",
+        "properties": {
+            "fragments": {
+                "type": "object",
+                "properties": {
+                    fid: {"$ref": "#/$defs/FragmentInventory"} for fid in ids
+                },
+                "required": ids,
+                "additionalProperties": False,
+            }
+        },
+        "required": ["fragments"],
+        "additionalProperties": False,
+    }
+
+
+def _inventory_json(content: str) -> Any:
+    """Reject incomplete JSON and duplicate keys before assigning source ownership."""
 
     def unique_object(pairs):
         value = {}
@@ -358,7 +405,68 @@ def _strict_inventory_response(
             value[key] = item
         return value
 
-    raw = json.loads(content, object_pairs_hook=unique_object)
+    try:
+        return json.loads(content, object_pairs_hook=unique_object)
+    except json.JSONDecodeError as exc:
+        raise ScopedEvaluationError(
+            "evaluation_inventory_json_invalid",
+            {
+                "inventory_response": {
+                    "json_error_line": exc.lineno,
+                    "json_error_column": exc.colno,
+                    "json_error_offset": exc.pos,
+                    "response_chars": len(content),
+                    "trailing_whitespace_chars": len(content) - len(content.rstrip()),
+                }
+            },
+        ) from exc
+
+
+def flat_inventory_response(
+    content: str,
+    input_units: list[dict],
+    progress: dict,
+    *,
+    research_gaps: bool = False,
+) -> Inventory:
+    """Resolve flat keys exclusively through the validated host partition map."""
+    flat_inventory_schema(input_units)
+    raw = _inventory_json(content)
+    if not isinstance(raw, dict) or set(raw) != {"fragments"}:
+        raise ValueError("evaluation_inventory_shape_invalid")
+    fragments = raw["fragments"]
+    if not isinstance(fragments, dict):
+        raise ValueError("evaluation_inventory_shape_invalid")
+    _require_ids(
+        list(fragments),
+        [f["source_fragment_id"] for u in input_units for f in u["source_fragments"]],
+        "evaluation_inventory_fragment_coverage_invalid",
+    )
+    # Ownership comes from the complete host map, never from a model-supplied unit.
+    nested = {
+        u["source_unit_id"]: {
+            f["source_fragment_id"]: fragments[f["source_fragment_id"]]
+            for f in u["source_fragments"]
+        }
+        for u in input_units
+    }
+    return _strict_inventory_response(
+        json.dumps({"units": nested}, ensure_ascii=False),
+        input_units,
+        progress,
+        research_gaps=research_gaps,
+    )
+
+
+def _strict_inventory_response(
+    content: str,
+    input_units: list[dict],
+    progress: dict,
+    *,
+    research_gaps: bool = False,
+) -> Inventory:
+    """Bind semantic output to exact host fragments, rejecting schema drift."""
+    raw = _inventory_json(content)
     if not isinstance(raw, dict) or set(raw) != {"units"}:
         raise ValueError("evaluation_inventory_shape_invalid")
     supplied = raw["units"]
@@ -526,19 +634,79 @@ def _require_ids(actual: list[str], expected: list[str], reason: str) -> None:
         raise ValueError(reason)
 
 
-def _section(survey: str, start: int) -> str:
-    """Locate a heading for diagnostics without changing the original offsets."""
+def _section(survey: str, start: int, *, academic_parent: bool = False) -> str:
+    """Locate a leaf heading or its academic parent without changing offsets."""
     from markdown_it import MarkdownIt
 
     lines = survey.splitlines(keepends=True)
+    offsets = [0]
+    for line in lines:
+        offsets.append(offsets[-1] + len(line))
     title = ""
-    for i, token in enumerate(MarkdownIt("commonmark").parse(survey)):
-        # Use source lines rather than text matching to distinguish repeated headings.
-        if token.type == "heading_open" and token.level == 0:
-            offset = sum(len(line) for line in lines[: token.map[0]])
-            if offset <= start:
-                title = lines[token.map[0]].lstrip("# ").strip()
+    for token in MarkdownIt("commonmark").parse(survey):
+        # Token nesting is independent of heading rank: h3 is also level zero.
+        if token.type != "heading_open" or token.level != 0:
+            continue
+        if academic_parent and token.tag not in {"h1", "h2"}:
+            continue
+        offset = offsets[token.map[0]]
+        if offset <= start:
+            title = lines[token.map[0]].lstrip("# ").strip()
     return title
+
+
+def evaluation_response_format(payload: dict) -> dict | None:
+    """Resolve the same native contract for planning and actual provider calls."""
+    contracts = (
+        ("inventory_output_contract", "host-fragment-inventory-v2"),
+        ("inventory_output_contract", "host-flat-fragment-inventory-v1"),
+        ("assessment_output_contract", "host-batch-assessment-v1"),
+        ("global_output_contract", "host-global-completeness-v1"),
+    )
+    for field, contract in contracts:
+        if payload.get(field) == contract:
+            return {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": contract.replace("-", "_"),
+                    "strict": True,
+                    "schema": payload["schema"],
+                },
+            }
+    return None
+
+
+def build_evaluation_request(
+    prompt: str, payload: dict
+) -> tuple[list[dict], dict | None]:
+    """Encode complete inputs once for planning, diagnostics and provider calls."""
+    from litagent.body_quality import EVALUATION_ENCODING_CONTRACT
+
+    native_format = evaluation_response_format(payload)
+    wire_payload = payload
+    if native_format is not None and native_format["json_schema"]["name"] in {
+        "host_flat_fragment_inventory_v1",
+        "host_batch_assessment_v1",
+        "host_global_completeness_v1",
+    }:
+        # Keep the canonical schema for validation; the provider receives it natively.
+        wire_payload = {k: v for k, v in payload.items() if k != "schema"}
+        wire_payload["response_schema_contract"] = EVALUATION_ENCODING_CONTRACT
+    return [
+        {"role": "system", "content": prompt},
+        {
+            "role": "user",
+            "content": json.dumps(
+                wire_payload, ensure_ascii=False, default=str, separators=(",", ":")
+            ),
+        },
+    ], native_format
+
+
+def _request_identity(messages: list[dict], response_format: dict | None) -> str:
+    """Bind native schemas without changing historical JSON-object identities."""
+    value = [messages, response_format] if response_format is not None else messages
+    return hashlib.sha256(json.dumps(value, ensure_ascii=False).encode()).hexdigest()
 
 
 def check_request_budget(
@@ -574,24 +742,14 @@ def _record_request_rejection(
     response_format=None,
 ) -> None:
     """Keep full rejected inputs local and checkpoint only safe request metadata."""
-    messages = [
-        {"role": "system", "content": prompt},
-        {
-            "role": "user",
-            "content": json.dumps(
-                payload, ensure_ascii=False, default=str, separators=(",", ":")
-            ),
-        },
-    ]
+    messages, response_format = build_evaluation_request(prompt, payload)
     budget = getattr(llm, "_cost_budget", None)
     metadata = {
         "phase": phase,
         "contract_version": REQUEST_DIAGNOSTICS_CONTRACT,
         "reason_code": reason,
         "status": "rejected_not_sent",
-        "input_sha256": hashlib.sha256(
-            json.dumps(messages, ensure_ascii=False).encode()
-        ).hexdigest(),
+        "input_sha256": _request_identity(messages, response_format),
         "max_tokens": config.max_tokens,
         "budget": {
             "reservation": strict_request_reservation(
@@ -755,10 +913,10 @@ def support_passage_table(
     }
 
 
-def required_support_aspects(text: str) -> list[str]:
+def required_support_aspects(text: str, *, applicability: bool = False) -> list[str]:
     """Require explicit assessment of conditions and independent scientific relations."""
     aspects = ["predicate"]
-    if re.search(
+    if applicability or re.search(
         r"\b(?:on|when|under|with|dataset|trained|deployment)\b|在|当|数据集|部署|条件",
         text,
         re.I,
@@ -932,8 +1090,16 @@ _DIRECTION = re.compile(
 )
 
 
-def _numeric_facts(text: str) -> list[tuple[str, bool, str | None, str | None]]:
+_INFLECTED_METRIC = re.compile(
+    _METRIC.pattern.replace("(?:accuracy|", "(?:accurac(?:y|ies)|"), re.I
+)
+
+
+def _numeric_facts(
+    text: str, *, metric_inflections: bool = False
+) -> list[tuple[str, bool, str | None, str | None]]:
     """Bind visible numerical values to a nearby explicit metric conservatively."""
+    metric_pattern = _INFLECTED_METRIC if metric_inflections else _METRIC
     facts = []
     for number in _NUMBER.finditer(text):
         before = text[max(0, number.start() - 100) : number.start()]
@@ -946,15 +1112,15 @@ def _numeric_facts(text: str) -> list[tuple[str, bool, str | None, str | None]]:
             re.I,
         )
         shared_metric = (
-            _METRIC.match(after, shared_suffix.end()) if shared_suffix else None
+            metric_pattern.match(after, shared_suffix.end()) if shared_suffix else None
         )
         next_number = _NUMBER.search(after)
         if next_number:
             after = after[: next_number.start()]
         preceding_numbers = list(_NUMBER.finditer(before))
-        metrics = list(_METRIC.finditer(before))
+        metrics = list(metric_pattern.finditer(before))
         metric = metrics[-1].lastgroup if metrics else None
-        following = _METRIC.search(after)
+        following = metric_pattern.search(after)
         if following and (
             not metrics
             or preceding_numbers
@@ -986,16 +1152,27 @@ _LOCAL_METRIC = re.compile(
     + _METRIC.pattern,
     re.I,
 )
+_INFLECTED_LOCAL_METRIC = re.compile(
+    _LOCAL_METRIC.pattern.replace("(?:accuracy|", "(?:accurac(?:y|ies)|"), re.I
+)
 _POST_COMPARATIVE = re.compile(
     r"\s*(?:(?P<decrease>less|fewer|lower)|(?P<increase>more|higher))\b\s*",
     re.I,
 )
+_POST_CHINESE_COMPARATIVE = re.compile(
+    r"\s*(?:(?P<decrease>(?:less|fewer|lower)\b|更少|较少|更低|较低)|"
+    r"(?P<increase>(?:more|higher)\b|更多|较多|更高|较高))\s*(?:的\s*)?",
+    re.I,
+)
 
 
-def _bound_numeric_facts(text: str) -> list[tuple[str, bool, str | None, str | None]]:
+def _bound_numeric_facts(
+    text: str, *, chinese_comparatives: bool = False, metric_inflections: bool = False
+) -> list[tuple[str, bool, str | None, str | None]]:
     """Prefer each number's explicit target and comparative over earlier results."""
     numbers = list(_NUMBER.finditer(text))
-    facts = _numeric_facts(text)
+    facts = _numeric_facts(text, metric_inflections=metric_inflections)
+    metric_pattern = _INFLECTED_LOCAL_METRIC if metric_inflections else _LOCAL_METRIC
     bound = []
     for index, (number, old) in enumerate(zip(numbers, facts, strict=True)):
         start = numbers[index - 1].end() if index else 0
@@ -1007,7 +1184,7 @@ def _bound_numeric_facts(text: str) -> list[tuple[str, bool, str | None, str | N
         if len(parts) > 1:
             before = parts[-1]
             metric = direction = None
-        preceding = list(_LOCAL_METRIC.finditer(before))
+        preceding = list(metric_pattern.finditer(before))
         if preceding:
             if metric != preceding[-1].lastgroup:
                 direction = None
@@ -1015,14 +1192,17 @@ def _bound_numeric_facts(text: str) -> list[tuple[str, bool, str | None, str | N
         directions = list(_DIRECTION.finditer(before))
         if directions:
             direction = directions[-1].lastgroup
-        comparative = _POST_COMPARATIVE.match(after)
+        pattern = (
+            _POST_CHINESE_COMPARATIVE if chinese_comparatives else _POST_COMPARATIVE
+        )
+        comparative = pattern.match(after)
         if comparative:
             direction = "decrease" if comparative["decrease"] else "increase"
         prefix_end = comparative.end() if comparative else 0
-        following = _LOCAL_METRIC.match(after, prefix_end)
+        following = metric_pattern.match(after, prefix_end)
         if not following:
             prefix = re.match(r"\s*(?:的|of\s+)?\s*", after, re.I)
-            following = _LOCAL_METRIC.match(after, prefix.end())
+            following = metric_pattern.match(after, prefix.end())
         if following:
             metric = following.lastgroup
             suffix = re.match(r"\s*(?:的)?\s*", after[following.end() :])
@@ -1033,13 +1213,20 @@ def _bound_numeric_facts(text: str) -> list[tuple[str, bool, str | None, str | N
     return bound
 
 
-def _comparative_reduction_bases(text: str, value: str) -> set[str]:
+def _comparative_reduction_bases(
+    text: str, value: str, *, chinese_comparatives: bool = False
+) -> set[str]:
     """Treat 'less/fewer' as a change amount, without confusing it with 'to'."""
     modes = _reduction_bases(text, value)
     for number in _NUMBER.finditer(text):
         if str(Decimal(number[1]).normalize()) != value:
             continue
-        if re.match(r"\s*(?:less|fewer)\b", text[number.end() :], re.I):
+        pattern = (
+            r"\s*(?:(?:less|fewer)\b|更少|较少)"
+            if chinese_comparatives
+            else r"\s*(?:less|fewer)\b"
+        )
+        if re.match(pattern, text[number.end() :], re.I):
             modes.add("by")
     return modes
 
@@ -1096,7 +1283,9 @@ def _source_scope_issue(claim: str, quote: str, context: str) -> bool:
     )
 
 
-def _respectively_binding_valid(claim: str, proof: str) -> bool:
+def _respectively_binding_valid(
+    claim: str, proof: str, *, numeric=_numeric_facts
+) -> bool:
     """Check explicit two-entity ordered results instead of borrowing matching numbers."""
     for sentence in re.split(r"(?<!\d)[.!?。](?:\s|$)", proof):
         if not re.search(r"\brespectively\b|分别", sentence, re.I):
@@ -1107,11 +1296,11 @@ def _respectively_binding_valid(claim: str, proof: str) -> bool:
         )
         if not pair or not all(_protected_entities(e) for e in pair.groups()):
             continue
-        facts = [f for f in _numeric_facts(sentence) if f[1] and f[2] == "accuracy"]
+        facts = [f for f in numeric(sentence) if f[1] and f[2] == "accuracy"]
         if len(facts) < 2:
             continue
         expected = dict(zip(pair.groups(), [f[0] for f in facts[-2:]], strict=True))
-        actual = [f[0] for f in _numeric_facts(claim) if f[1] and f[2] == "accuracy"]
+        actual = [f[0] for f in numeric(claim) if f[1] and f[2] == "accuracy"]
         # Only a numerical accuracy claim needs this ordered correspondence.
         if not actual or not any(value in actual for value in expected.values()):
             continue
@@ -1286,7 +1475,7 @@ def _quantity_role_issue(text: str, quotes: list[str]) -> dict | None:
 
 
 def _quantitative_binding_issue(
-    text: str, quotes: list[str], sources: list[str]
+    text: str, quotes: list[str], sources: list[str], *, numeric=_numeric_facts
 ) -> dict | None:
     """Reject explicit crossed results, leaving ambiguous pronoun context to review."""
     entities = sorted(_protected_entities(text))
@@ -1329,9 +1518,9 @@ def _quantitative_binding_issue(
                 if index and prefix and not _protected_entities(part)
                 else part
             )
-    results = [(sentence, _numeric_facts(sentence)) for sentence in bound_sentences]
+    results = [(sentence, numeric(sentence)) for sentence in bound_sentences]
     requested_contexts = _result_contexts(text)
-    for value, percent, metric, _ in _numeric_facts(text):
+    for value, percent, metric, _ in numeric(text):
         if metric is None:
             continue
         matching = [
@@ -1412,6 +1601,9 @@ def validate_support_basis(
     passages: Mapping | None = None,
     original_only: bool = False,
     local_numeric_bindings: bool = False,
+    chinese_comparatives: bool = False,
+    applicability: bool = False,
+    metric_inflections: bool = False,
 ) -> dict:
     """Locate support and reject unverifiable ownership, entities and numeric metrics."""
     if not decision.support_basis:
@@ -1488,7 +1680,9 @@ def validate_support_basis(
             }
         )
     if isinstance(decision, PassageDecision):
-        required = required_support_aspects(claim["claim_text"])
+        required = required_support_aspects(
+            claim["claim_text"], applicability=applicability
+        )
         aspects = [a.aspect for a in decision.aspect_checks]
         if len(aspects) != len(set(aspects)) or set(aspects) != set(required):
             return {
@@ -1553,12 +1747,13 @@ def validate_support_basis(
     relation = _relation_issue(text, [s["quote"] for s in spans], sources)
     if relation:
         return {"status": "unverified", **relation, "spans": spans}
+    numeric_unbound = partial(_numeric_facts, metric_inflections=metric_inflections)
     if original_only:
         mechanism = _mechanism_binding_issue(text, [s["quote"] for s in spans], sources)
         if mechanism:
             return {"status": "unverified", **mechanism, "spans": spans}
         binding = _quantitative_binding_issue(
-            text, [s["quote"] for s in spans], sources
+            text, [s["quote"] for s in spans], sources, numeric=numeric_unbound
         )
         if binding:
             return {"status": "unverified", **binding, "spans": spans}
@@ -1566,9 +1761,20 @@ def validate_support_basis(
         if quantity_role:
             return {"status": "unverified", **quantity_role, "spans": spans}
     # Separate spans cannot lend their metric/direction to another quoted number.
-    numeric = _bound_numeric_facts if local_numeric_bindings else _numeric_facts
+    numeric = (
+        partial(
+            _bound_numeric_facts,
+            chinese_comparatives=chinese_comparatives,
+            metric_inflections=metric_inflections,
+        )
+        if local_numeric_bindings
+        else numeric_unbound
+    )
     proof_facts = [fact for span in spans for fact in numeric(span["quote"])]
-    if not all(_respectively_binding_valid(text, span["quote"]) for span in spans):
+    if not all(
+        _respectively_binding_valid(text, span["quote"], numeric=numeric_unbound)
+        for span in spans
+    ):
         return {
             "status": "unverified",
             "issue": "support_binding_unverified",
@@ -1601,7 +1807,11 @@ def validate_support_basis(
                 "spans": spans,
             }
         reduction = (
-            _comparative_reduction_bases if local_numeric_bindings else _reduction_bases
+            partial(
+                _comparative_reduction_bases, chinese_comparatives=chinese_comparatives
+            )
+            if local_numeric_bindings
+            else _reduction_bases
         )
         bases = reduction(text, value) if direction == "decrease" else set()
         if bases and not bases.intersection(reduction(proof, value)):
@@ -1766,7 +1976,11 @@ async def evaluate_scoped(
                 "source_quote": units[issue["source_unit_id"]].text,
                 "source_start": units[issue["source_unit_id"]].start,
                 "source_end": units[issue["source_unit_id"]].end,
-                "section": _section(survey, units[issue["source_unit_id"]].start),
+                "section": _section(
+                    survey,
+                    units[issue["source_unit_id"]].start,
+                    academic_parent=context.get("body_quality") == "analysis_v1",
+                ),
                 "evidence_refs": extract_evidence_refs_ordered(
                     units[issue["source_unit_id"]].text
                 ),
@@ -1789,7 +2003,11 @@ async def evaluate_scoped(
                     "source_quote": fragment["source_quote"],
                     "source_start": unit.start + fragment["start"],
                     "source_end": unit.start + fragment["end"],
-                    "section": _section(survey, unit.start),
+                    "section": _section(
+                        survey,
+                        unit.start,
+                        academic_parent=context.get("body_quality") == "analysis_v1",
+                    ),
                     "evidence_refs": list(fragment["citation_aliases"]),
                     "reason_code": "evaluation_extraction_incomplete",
                     "diagnostic_source": "survey-evaluation-v3",
@@ -1816,6 +2034,8 @@ async def evaluate_scoped(
             details["unverified_count"] = details["factual_claim_count"]
         if context.get("body_quality") == "analysis_v1":
             details["body_analysis_contract"] = "body-analysis-v1"
+            details["analysis_ownership_contract"] = ANALYSIS_OWNERSHIP_CONTRACT
+            details["source_applicability_contract"] = APPLICABILITY_CONTRACT
             details["analysis_check"] = progress.get(
                 "analysis_check", {"status": "unverified"}
             )
@@ -1850,6 +2070,11 @@ async def evaluate_scoped(
         )
         if context.get("body_quality") == "analysis_v1":
             result["body_analysis_contract"] = "body-analysis-v1"
+            result["analysis_ownership_contract"] = ANALYSIS_OWNERSHIP_CONTRACT
+            result["source_applicability_contract"] = APPLICABILITY_CONTRACT
+            from litagent.body_quality import METRIC_INFLECTION_CONTRACT
+
+            result["metric_inflection_contract"] = METRIC_INFLECTION_CONTRACT
             result["analysis_check"] = progress.get(
                 "analysis_check", {"status": "unverified"}
             )
@@ -1858,6 +2083,8 @@ async def evaluate_scoped(
             result["scope_notice_contract"] = context["scope_notice_contract"]
         if context.get("quality_policy") == "strict_auto_v2":
             result["local_numeric_contract"] = LOCAL_NUMERIC_CONTRACT
+            if context.get("body_quality") == "analysis_v1":
+                result["local_comparative_contract"] = CHINESE_COMPARATIVE_CONTRACT
     return result
 
 
@@ -1979,10 +2206,15 @@ async def _evaluate_scoped(*, llm, survey, context, config) -> dict:
                 ],
             }
         )
+    flat_inventory = strict and context.get("body_quality") == "analysis_v1"
     inventory_schema = (
-        _strict_inventory_schema(input_units)
-        if strict
-        else Inventory.model_json_schema()
+        flat_inventory_schema(input_units)
+        if flat_inventory
+        else (
+            _strict_inventory_schema(input_units)
+            if strict
+            else Inventory.model_json_schema()
+        )
     )
     if not strict:
         alias_schema = inventory_schema["$defs"]["Assertion"]["properties"][
@@ -2004,31 +2236,9 @@ async def _evaluate_scoped(*, llm, survey, context, config) -> dict:
     async def call(prompt: str, payload: dict) -> Any:
         """Do not retry invalid output or transport failures during evaluation."""
         call_kwargs = dict(kwargs)
-        native_format = None
-        native_name = None
-        if payload.get("global_output_contract") == "host-global-completeness-v1":
-            native_name = "host_global_completeness_v1"
-        elif payload.get("inventory_output_contract") == "host-fragment-inventory-v2":
-            native_name = "host_fragment_inventory_v2"
-        if native_name is not None:
-            call_kwargs["response_format"] = {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": native_name,
-                    "strict": True,
-                    "schema": payload["schema"],
-                },
-            }
-            native_format = call_kwargs["response_format"]
-        messages = [
-            {"role": "system", "content": prompt},
-            {
-                "role": "user",
-                "content": json.dumps(
-                    payload, ensure_ascii=False, default=str, separators=(",", ":")
-                ),
-            },
-        ]
+        messages, native_format = build_evaluation_request(prompt, payload)
+        if native_format is not None:
+            call_kwargs["response_format"] = native_format
         budget = getattr(llm, "_cost_budget", None)
         try:
             reservation = check_request_budget(
@@ -2070,9 +2280,7 @@ async def _evaluate_scoped(*, llm, survey, context, config) -> dict:
                     if "allowed_citation_aliases" in payload
                     else "assessment" if "cited_materials" in payload else "global"
                 ),
-                "input_sha256": hashlib.sha256(
-                    json.dumps(messages, ensure_ascii=False).encode()
-                ).hexdigest(),
+                "input_sha256": _request_identity(messages, native_format),
                 "status": "started_no_replay",
                 "reserved_tokens": reservation,
             }
@@ -2089,6 +2297,7 @@ async def _evaluate_scoped(*, llm, survey, context, config) -> dict:
                     status="response_received",
                     usage=response.usage,
                     response=response.content,
+                    finish_reason=getattr(response, "finish_reason", None),
                 )
             if budget is not None and not response.usage.get(
                 "usage_available", bool(response.usage)
@@ -2119,6 +2328,7 @@ async def _evaluate_scoped(*, llm, survey, context, config) -> dict:
 
         if context.get("body_quality") == "analysis_v1":
             payload["body_analysis_contract"] = "body-analysis-v1"
+            payload["source_applicability_contract"] = APPLICABILITY_CONTRACT
         if context.get("quality_policy") == "strict_auto_v2":
             payload["source_fidelity_contract"] = SOURCE_FIDELITY_CONTRACT
             payload["global_consistency_contract"] = GLOBAL_CONSISTENCY_CONTRACT
@@ -2142,6 +2352,7 @@ async def _evaluate_scoped(*, llm, survey, context, config) -> dict:
                 config=config,
                 progress=progress,
                 checkpoint=context.get("evaluation_checkpoint"),
+                response_format=evaluation_response_format(rejected),
             )
 
         return await assess_batches(
@@ -2155,7 +2366,11 @@ async def _evaluate_scoped(*, llm, survey, context, config) -> dict:
 
     async with asyncio.timeout(config.timeout_seconds * (10 if strict else 1)):
         generated = await call(
-            STRICT_INVENTORY_PROMPT if strict else INVENTORY_PROMPT,
+            (
+                FLAT_INVENTORY_PROMPT
+                if flat_inventory
+                else STRICT_INVENTORY_PROMPT if strict else INVENTORY_PROMPT
+            ),
             {
                 "extraction_contract": EXTRACTION_CONTRACT,
                 "classification_contract": CLASSIFICATION_CONTRACT,
@@ -2164,8 +2379,8 @@ async def _evaluate_scoped(*, llm, survey, context, config) -> dict:
                 ),
                 "research_question": context.get("query", ""),
                 **(
-                    {"inventory_output_contract": "host-fragment-inventory-v2"}
-                    if strict and context.get("body_quality") == "analysis_v1"
+                    {"inventory_output_contract": "host-flat-fragment-inventory-v1"}
+                    if flat_inventory
                     else {}
                 ),
                 "host_methodology_validation": model_host_validation,
@@ -2187,7 +2402,7 @@ async def _evaluate_scoped(*, llm, survey, context, config) -> dict:
             },
         )
         inventory = (
-            _strict_inventory_response(
+            (flat_inventory_response if flat_inventory else _strict_inventory_response)(
                 generated.content,
                 input_units,
                 progress,
@@ -2278,7 +2493,12 @@ async def _evaluate_scoped(*, llm, survey, context, config) -> dict:
                         "source_quote": quote,
                         "source_start": start,
                         "source_end": start + len(quote),
-                        "section": _section(survey, start),
+                        "section": _section(
+                            survey,
+                            start,
+                            academic_parent=context.get("body_quality")
+                            == "analysis_v1",
+                        ),
                         "evidence_ids": ids,
                         "local_error": local,
                     }
@@ -2325,7 +2545,10 @@ async def _evaluate_scoped(*, llm, survey, context, config) -> dict:
                     if claim["kind"] == "scientific" and eid in valid_refs
                 ],
                 "required_support_aspects": (
-                    required_support_aspects(claim["claim_text"])
+                    required_support_aspects(
+                        claim["claim_text"],
+                        applicability=context.get("body_quality") == "analysis_v1",
+                    )
                     if claim["kind"] == "scientific"
                     else []
                 ),
@@ -2341,7 +2564,15 @@ async def _evaluate_scoped(*, llm, survey, context, config) -> dict:
                     STRICT_SUPPORT_CONTRACT if strict else SUPPORT_CONTRACT
                 ),
                 "report_structure": [
-                    {"source_unit_id": u.unit_id, "section": _section(survey, u.start)}
+                    {
+                        "source_unit_id": u.unit_id,
+                        "section": _section(
+                            survey,
+                            u.start,
+                            academic_parent=context.get("body_quality")
+                            == "analysis_v1",
+                        ),
+                    }
                     for u in units
                 ],
                 "source_units": input_units,
@@ -2493,6 +2724,11 @@ async def _evaluate_scoped(*, llm, survey, context, config) -> dict:
                     original_only=strict,
                     local_numeric_bindings=context.get("quality_policy")
                     == "strict_auto_v2",
+                    chinese_comparatives=context.get("quality_policy")
+                    == "strict_auto_v2"
+                    and context.get("body_quality") == "analysis_v1",
+                    applicability=context.get("body_quality") == "analysis_v1",
+                    metric_inflections=context.get("body_quality") == "analysis_v1",
                 )
                 value["support_validation"] = check
                 if check["status"] != "passed":
@@ -2507,6 +2743,26 @@ async def _evaluate_scoped(*, llm, survey, context, config) -> dict:
     methods = [d for d in decisions if d["kind"] == "runtime_method"]
     organization = [d for d in decisions if d["kind"] == "report_structure"]
     incomplete = [d for d in decisions if d["status"] == "unverifiable"]
+    if context.get("body_quality") == "analysis_v1" and progress.get("analysis_check"):
+        from litagent.body_quality import validate_analysis_decisions
+
+        # A positive model decision cannot bypass later host scientific checks.
+        progress["analysis_check"] = validate_analysis_decisions(
+            progress["analysis_check"]["sections"],
+            decisions,
+            {d["claim_id"] for d in science if d["status"] == "supported"},
+            [
+                {
+                    "source_unit_id": u.unit_id,
+                    "section": _section(
+                        survey,
+                        u.start,
+                        academic_parent=context.get("body_quality") == "analysis_v1",
+                    ),
+                }
+                for u in units
+            ],
+        )
     scientific_ids = {d["claim_id"] for d in science}
     pairs = set()
     for conflict in assessment.conflicts:
@@ -2518,6 +2774,22 @@ async def _evaluate_scoped(*, llm, survey, context, config) -> dict:
         ):
             raise ValueError("evaluation_conflict_identity_invalid")
         pairs.add(pair)
+    ownership_invalid = any(
+        code
+        in {
+            "analysis_unknown_claim",
+            "analysis_wrong_section_claim",
+            "analysis_duplicate_claim",
+        }
+        for row in progress.get("analysis_check", {}).get("sections", [])
+        for code in row.get("host_validation", {}).get("failure_codes", [])
+    )
+    if ownership_invalid:
+        progress["global_check"] = "invalid_response"
+        progress["global_reason_code"] = "evaluation_analysis_claim_ownership_invalid"
+        checkpoint = context.get("evaluation_checkpoint")
+        if checkpoint:
+            checkpoint(progress)
     supported = sum(d["status"] == "supported" for d in science)
     diagnostics = [
         {
@@ -2534,9 +2806,15 @@ async def _evaluate_scoped(*, llm, survey, context, config) -> dict:
         if d["status"] != "supported"
     ]
     return {
-        "score": supported / len(science) if science and not incomplete else None,
+        "score": (
+            supported / len(science)
+            if science and not incomplete and not ownership_invalid
+            else None
+        ),
         "unverified_reason": (
-            "evaluation_assertions_unverifiable" if incomplete else None
+            "evaluation_analysis_claim_ownership_invalid"
+            if ownership_invalid
+            else "evaluation_assertions_unverifiable" if incomplete else None
         ),
         "conflicts": [c.model_dump() for c in assessment.conflicts],
         "evaluation_version": EVALUATION_VERSION,
@@ -2559,7 +2837,7 @@ async def _evaluate_scoped(*, llm, survey, context, config) -> dict:
             "model_processed_units": len(inventory.units),
             "host_processed_units": len(host_units),
             "assertions": len(decisions),
-            "complete": not incomplete,
+            "complete": not incomplete and not ownership_invalid,
             **(
                 {
                     "model_source_fragments": progress["coverage"][

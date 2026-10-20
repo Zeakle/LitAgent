@@ -1,0 +1,1187 @@
+{
+  "survey": "# 少样本图像分类中度量学习方法的比较\n\n## 摘要\n\n深度度量学习通过在嵌入空间中比较未见样本与少量支持样本来处理少样本图像分类，是与元学习和迁移学习相邻但机制不同的主要路线 [E:arxiv:2105.08149:abstract:claim:072f92fa0581]。 代表性方法的改进重点不同：深度K-tuplet网络强化样本关系驱动的特征嵌入，SRL把向量度量扩展为子空间与加权子空间距离，不确定性感知框架则建模查询—原型相似性的不确定性 [E:arxiv:1907.03123:abstract:claim:3bee9c457d48] [E:arxiv:2010.04525:page:1:block:5:claim:cc74c784a067]。 实验证据显示，深度K-tuplet网络在miniImageNet及跨数据集评估中报告优势，SRL在MiniImageNet、TieredImageNet和CUB上具有竞争力或更优，Proto-Triplet Loss与ICNN loss在miniImagenNet上报告2%准确率提升 [E:arxiv:1907.03123:abstract:claim:c67c6880df9f] [E:arxiv:1907.03123:abstract:claim:75a33a7689e3] [E:arxiv:2105.00379:abstract:claim:5a92b722e27b] [E:arxiv:2305.09062:abstract:claim:f0bf6c6f0ef9] [E:arxiv:2305.09062:page:1:block:6:claim:422d4ac2023b]。 主要限制是统一度量依赖相似任务领域，基类与新类发生域偏移时距离度量学习会退化，而且所选材料缺少跨论文完全一致的数值、成本和协议，不能形成统一排名 [E:arxiv:1904.03014:abstract:claim:d2ef600b4458] [E:arxiv:1904.04232:section:abstract:8:e517c42438f5:claim:80c301451784]。\n\n## 引言\n\n### 问题背景与综述范围\n\n少样本图像分类要求模型仅依据每类少量训练图像识别新类别，核心困难是在标注样本很少时仍保持识别与泛化能力 [E:arxiv:2105.08149:abstract:claim:0158f2fb61fc]。 为缓解少量标注样本导致的过拟合风险，已有研究将方法概括为元学习、迁移学习和度量学习等路径 [E:arxiv:2105.08149:page:1:block:9:claim:80ed82933082]。 深度度量学习是少样本图像分类的一条主要路线，它在深度神经网络学到的嵌入空间中，根据未见样本与少量已见样本的距离进行分类 [E:arxiv:2105.08149:abstract:claim:072f92fa0581]。 本报告围绕“learning to compare”的度量学习思想，比较其在嵌入学习、类别表示、距离或相似性建模以及跨域评估中的差异 [E:arxiv:1904.04232:section:abstract:8:e517c42438f5:claim:80c301451784]。 本综述围绕给定问题组织所选文献证据。\n\n## 基础概念与方法分类\n\n### 按度量学习链条划分方法\n\n典型度量学习方法把查询样本映射到特征空间，并依据查询样本与支持集原型之间的特征相似性寻找最近原型来完成分类 [E:arxiv:2010.04525:abstract:claim:9091a1fb4b38]。 基于度量的少样本方法通常用神经网络学习查询样本与支持样本之间的特征相似性，但K-tuplet网络所针对的工作指出，仅强调相似性比较会忽视训练样本关系对特征嵌入的作用 [E:arxiv:1907.03123:abstract:claim:3bee9c457d48]。 SRL框架把度量学习技术从向量表示扩展到子空间表示，用局部CNN特征空间中的子空间表示图像，并以加权子空间距离衡量图像相似性 [E:arxiv:2105.00379:abstract:claim:e6449640cdc0]。 不确定性感知路线仍以查询—支持集相似性为基础，但把观测到的相似性转换为概率表示，并通过图模型联合估计查询样本与各原型之间的相似性不确定性 [E:arxiv:2010.04525:page:1:block:5:claim:cc74c784a067]。 从元学习结构看，传统度量型元学习为所有任务学习一个任务不变度量，因而允许任务具有不同类别数，但前提是任务来自相似领域并能共享统一度量 [E:arxiv:1904.03014:abstract:claim:d2ef600b4458]。\n\n### 与相邻方法族的边界\n\n迁移学习方法假定源域与目标域存在共享知识，并把在丰富源数据上训练的模型微调至少量目标标注样本；这与直接学习嵌入和距离的度量学习路线不同 [E:arxiv:2105.08149:page:1:block:9:claim:fba8e6bcb13b]。 大规模网络训练与微调所代表的BiT是少样本分类中强韧的迁移基线，因此比较度量学习方法时需要把它作为相邻参照，而不能把其结果直接归为度量学习结果 [E:arxiv:2104.02638:section:abstract:45:924c867b4c98:claim:7e5b663ed774]。 跨元学习与迁移学习的评估显示，评价规范差异会使不同方法族难以直接或充分比较，这也是后文按数据集和设置解释结果的原因 [E:arxiv:2104.02638:abstract:claim:56732debe647]。\n\n## 代表性方法分析\n\n### 代表性度量学习机制\n\n深度K-tuplet网络从经典triplet network出发，通过episode-training利用输入样本之间的关系学习通用表示，并可与非线性距离度量函数结合以完成少样本分类 [E:arxiv:1907.03123:abstract:claim:3bee9c457d48]。 该方法的关键贡献在于强化特征嵌入：训练后的网络能够为未见新类别提取判别性特征，而不是只学习查询样本与支持样本之间的相似度比较器 [E:arxiv:1907.03123:abstract:claim:75a33a7689e3]。 Uncertainty-Aware Few-Shot框架把查询—支持对的相似性不确定性纳入优化，用概率表示承载相似性，并借助图模型联合考虑查询样本与支持集原型之间的关系 [E:arxiv:2010.04525:page:1:block:5:claim:cc74c784a067]。 该框架针对的问题是神经网络对不同样本对计算出的相似性具有不同不确定性；显式建模这种不确定性，是为了在少样本优化中更充分地利用有限样本 [E:arxiv:2010.04525:abstract:claim:9091a1fb4b38]。\n\n### 子空间、混合度量与损失函数路线\n\nSRL以局部CNN特征空间中的子空间表示单张图像，并在每类有K张图像时构造prototypical subspace与discriminative subspace来聚合K-shot信息 [E:arxiv:2010.04525:page:1:block:5:claim:cc74c784a067]。 与全局向量原型相比，SRL的方法定位是保留图像内部空间结构与多样性，并用加权子空间距离替代普通向量距离进行相似性判断 [E:arxiv:2010.04525:abstract:claim:9091a1fb4b38]。 Meta-Metric-Learner采用任务特定的度量型学习者作为基础模型，再由元学习者学习并指定该基础模型，以结合优化型与度量型元学习的优点 [E:arxiv:1904.03014:abstract:claim:d2ef600b4458]。 距离度量学习家族内部还包括cosine similarity、到类均值表示的Euclidean distance、CNN关系模块、ridge regression和图神经网络等比较模型，它们的差别在于相似性或距离函数的参数化方式 [E:arxiv:1904.04232:section:abstract:8:e517c42438f5:claim:80c301451784]。 在更宽的少样本算法分类中，度量学习型方法与初始化型、幻觉型方法并列，因此本报告只把后两者作为理解度量学习定位的背景 [E:arxiv:1904.04232:section:abstract:6:9155911597f2:claim:9456348a9217]。\n\n## 综合比较与证据分析\n\n### 数据集、设置与可比较结果\n\n深度K-tuplet网络在miniImageNet基准上的结果优于其他基于度量的少样本分类方法，但所给摘要没有提供具体准确率、shot/way设置或置信区间 [E:arxiv:1907.03123:abstract:claim:c67c6880df9f]。 在使用miniImageNet训练出的模型评估Caltech-101、CUB-200、Stanford Dogs和Cars等完全不同数据集时，深度K-tuplet网络显著优于先前方法，证据支持其在这些跨数据集未见类别上的泛化能力 [E:arxiv:1907.03123:abstract:claim:75a33a7689e3]。 SRL框架在MiniImageNet、TieredImageNet和Caltech-UCSD Birds-200-2011（CUB）三个公开基准上展示出相对于先前先进方法具有竞争力或更优的性能，但材料未给出可直接换算的数值表 [E:arxiv:2105.00379:abstract:claim:5a92b722e27b]。 Proto-Triplet Loss与ICNN loss在广泛实验设置下，使miniImagenNet基准上的准确率相对其他基于度量的少样本学习方法提高2%，并在Caltech CUB、Dogs和Cars上展示出有竞争力的跨域泛化 [E:arxiv:2305.09062:abstract:claim:f0bf6c6f0ef9] [E:arxiv:2305.09062:page:1:block:6:claim:422d4ac2023b]。 这些结果共同说明，强化嵌入结构、子空间表示或类内/类间距离约束都可能改善度量学习，但由于论文报告的基准、基线和协议不同，不能仅凭摘要中的“优于”表述构造统一排名 [E:arxiv:2105.08149:page:1:block:9:claim:80ed82933082]。\n\n### 跨方法族与专门领域基准的参照\n\n在Meta-Dataset与VTAB的跨方法族研究中，BiT在Meta-Dataset上平均优于竞争方法，即使只在ImageNet上训练也是如此；而在Meta-Dataset上训练和验证的元学习方法在VTAB上难以竞争 [E:arxiv:2104.02638:abstract:claim:56732debe647]。 同一研究还表明，精心工程化的大规模网络训练与微调可在大规模、多数据集基准上成为具有竞争力且稳健的少样本分类基线，因此度量学习方法的优势应限定在相应基准和协议内解释 [E:arxiv:2104.02638:section:abstract:45:924c867b4c98:claim:7e5b663ed774]。 FewSAR在统一设置下分析定量结果和运行时间后报告，度量学习方法在少样本SAR目标图像分类中可取得最佳准确率；但该结论属于SAR图像领域，不能直接外推到普通自然图像少样本分类 [E:arxiv:2306.09592:abstract:claim:e56324677ded]。 所选材料明确比较了三种距离度量学习方法，并指出距离度量学习通过“learning to compare”处理少样本分类，但没有在提供的摘录中列出三者逐项准确率和计算成本 [E:arxiv:1904.04232:section:abstract:8:e517c42438f5:claim:80c301451784]。\n\n## 局限与开放问题\n\n### 已有证据支持的局限\n\n传统任务不变度量要求任务来自相似领域；当任务领域差异较大时，单一统一度量未必能跨任务有效，这限制了度量型元学习在灵活领域场景中的适用性 [E:arxiv:1904.03014:abstract:claim:d2ef600b4458]。 距离度量学习方法在基类与新类之间存在域偏移时会遇到困难；相关实验表明，现有少样本分类算法在基类和新类来自不同领域的实际设置中可能不及基线方法 [E:arxiv:1904.04232:section:abstract:8:e517c42438f5:claim:80c301451784]。 深度K-tuplet网络所回应的缺陷是，许多有效的度量型少样本方法关注查询与支持样本的特征相似性比较，却忽视通过训练样本关系学习强特征嵌入 [E:arxiv:1907.03123:abstract:claim:3bee9c457d48]。 不确定性感知框架所处理的局限是，神经网络对不同查询—支持样本对给出的相似性具有不同不确定性；若不建模这种不确定性，有限样本提供的信息可能无法被充分利用 [E:arxiv:2010.04525:abstract:claim:9091a1fb4b38]。 跨迁移学习与元学习社区的评估揭示了episodic approaches的一些限制，同时也揭示迁移学习自身不足，说明没有一种评估范式可以脱离数据规模、领域和协议单独占优 [E:arxiv:2104.02638:section:abstract:9:1354132472a1:claim:9a9927d8cdf8]。\n\n### 本综述材料边界\n\n所选摘录支持对若干代表性度量学习机制进行定性比较，但多数论文摘要没有给出完整的逐方法准确率、方差、训练成本、推理时间和统一backbone设置 [E:arxiv:1904.04232:section:abstract:8:e517c42438f5:claim:80c301451784]。 因此，关于自然图像少样本分类中所有度量学习方法的统一数值排名、参数效率或计算效率，本报告只能依据已给出的基准结论作有限比较 [E:arxiv:2105.08149:abstract:claim:0158f2fb61fc]。 本综述不据所选材料的缺失推断整个研究领域不存在相关工作。\n\n## 结论\n\n度量学习方法的共同基础是学习可比较的嵌入与距离，但性能改进来自不同环节：K-tuplet网络强调样本关系和判别性特征，SRL强调子空间结构，不确定性感知方法强调相似性可靠性，Proto-Triplet Loss与ICNN loss强调类内和类间距离约束 [E:arxiv:2010.04525:abstract:claim:9091a1fb4b38] [E:arxiv:1907.03123:abstract:claim:3bee9c457d48] [E:arxiv:2010.04525:page:1:block:5:claim:cc74c784a067] [E:arxiv:2305.09062:abstract:claim:f0bf6c6f0ef9] [E:arxiv:2305.09062:page:1:block:6:claim:422d4ac2023b]。 在自然图像基准上，最稳妥的结论不是给出跨论文总排名，而是指出各方法分别在miniImageNet、MiniImageNet/TieredImageNet/CUB以及跨数据集未见类别评估中报告了优势或竞争力 [E:arxiv:1907.03123:abstract:claim:c67c6880df9f] [E:arxiv:1907.03123:abstract:claim:75a33a7689e3] [E:arxiv:2105.00379:abstract:claim:5a92b722e27b] [E:arxiv:2105.08149:page:1:block:9:claim:80ed82933082]。 与大规模迁移基线相比，度量学习的证据必须放在具体协议内理解；BiT在Meta-Dataset等跨方法族评估中表现强劲，而FewSAR中度量学习最佳准确率的结论只适用于少样本SAR图像分类 [E:arxiv:2104.02638:abstract:claim:56732debe647] [E:arxiv:2104.02638:section:abstract:45:924c867b4c98:claim:7e5b663ed774] [E:arxiv:2306.09592:abstract:claim:e56324677ded]。 未来比较应在相同backbone、shot/way设置、数据集划分、准确率统计和运行成本下复测，并专门纳入域偏移与任务领域差异，因为这些条件正是所选证据中反复出现的失效来源 [E:arxiv:1904.03014:abstract:claim:d2ef600b4458] [E:arxiv:1904.04232:section:abstract:8:e517c42438f5:claim:80c301451784] [E:arxiv:2105.08149:abstract:claim:0158f2fb61fc]。\n\n## 附录 A：检索与证据来源\n\n<!-- litagent:run-methodology:v2 -->\n\n检索开始时间: 2026-10-18T06:04:57.811908+00:00 (UTC; raw=1792303497.811908).\n\n实际检索（查询／来源／状态／结果数／原因）：\n- search_arxiv_q0 / metric learning few-shot image classification / arxiv / success / 20 / 无\n- search_arxiv_q1 / Siamese neural networks one-shot image recognition / arxiv / success / 12 / 无\n- search_arxiv_q2 / matching networks for one-shot learning / arxiv / success / 20 / 无\n- search_huggingface_q0 / metric learning few-shot image classification / huggingface / success / 20 / 无\n- search_huggingface_q1 / Siamese neural networks one-shot image recognition / huggingface / success / 20 / 无\n- search_huggingface_q2 / matching networks for one-shot learning / huggingface / success / 20 / 无\n\n- 检索结果条数: 112\n- 去重论文数: 128\n- 相关论文数: 50\n- 候选证据条数: 467\n- 已选证据条数: 22\n\n证据内容模式: abstract_and_selected_fulltext\n定向全文获取（仅解析文本块，不代表完整全文审查）：\n- arxiv:1907.03123: available; &#91;'gibberish_block_excluded', 'duplicate_block_removed'&#93;; 选取文本块数=339\n- arxiv:2305.09062: available; &#91;'repeated_header_footer_removed', 'duplicate_block_removed'&#93;; 选取文本块数=386\n- arxiv:1802.04376: available; &#91;'repeated_header_footer_removed', 'gibberish_block_excluded', 'duplicate_block_removed'&#93;; 选取文本块数=143\n- arxiv:1904.03014: available; &#91;'gibberish_block_excluded', 'duplicate_block_removed'&#93;; 选取文本块数=277\n- arxiv:1805.07513: capacity_not_selected; 未记录; 选取文本块数=未记录\n- arxiv:2105.08149: available; &#91;'page_number_removed'&#93;; 选取文本块数=394\n- arxiv:2010.04525: available; &#91;'duplicate_block_removed'&#93;; 选取文本块数=181\n- arxiv:2001.08735: capacity_not_selected; 未记录; 选取文本块数=未记录\n- arxiv:2104.02638: already_available; 未记录; 选取文本块数=未记录\n- arxiv:1703.05175: already_available; 未记录; 选取文本块数=未记录\n- arxiv:1711.06025: already_available; 未记录; 选取文本块数=未记录\n- arxiv:2407.05647: capacity_not_selected; 未记录; 选取文本块数=未记录\n- arxiv:1909.02729: available; &#91;'repeated_header_footer_removed', 'page_number_removed', 'duplicate_block_removed'&#93;; 选取文本块数=396\n- arxiv:2105.00379: available; &#91;'duplicate_block_removed'&#93;; 选取文本块数=191\n- arxiv:2003.06777: already_available; 未记录; 选取文本块数=未记录\n- arxiv:1909.09602: capacity_not_selected; 未记录; 选取文本块数=未记录\n- arxiv:2107.09242: capacity_not_selected; 未记录; 选取文本块数=未记录\n- arxiv:2311.01212: capacity_not_selected; 未记录; 选取文本块数=未记录\n- arxiv:2208.12398: capacity_not_selected; 未记录; 选取文本块数=未记录\n- arxiv:2409.07989: capacity_not_selected; 未记录; 选取文本块数=未记录\n- arxiv:2412.03159: capacity_not_selected; 未记录; 选取文本块数=未记录\n- arxiv:1607.08085: capacity_not_selected; 未记录; 选取文本块数=未记录\n- arxiv:1902.07104: capacity_not_selected; 未记录; 选取文本块数=未记录\n- arxiv:2009.13364: capacity_not_selected; 未记录; 选取文本块数=未记录\n- arxiv:2211.15202: capacity_not_selected; 未记录; 选取文本块数=未记录\n- arxiv:1805.10123: already_available; 未记录; 选取文本块数=未记录\n- arxiv:1904.04232: already_available; 未记录; 选取文本块数=未记录\n- arxiv:2307.04114: capacity_not_selected; 未记录; 选取文本块数=未记录\n- arxiv:2203.11378: capacity_not_selected; 未记录; 选取文本块数=未记录\n- arxiv:2306.09592: capacity_not_selected; 未记录; 选取文本块数=未记录\n- arxiv:2408.01427: capacity_not_selected; 未记录; 选取文本块数=未记录\n- arxiv:2408.14192: capacity_not_selected; 未记录; 选取文本块数=未记录\n- arxiv:2003.04390: already_available; 未记录; 选取文本块数=未记录\n- arxiv:1904.03758: already_available; 未记录; 选取文本块数=未记录\n- arxiv:1606.04080: already_available; 未记录; 选取文本块数=未记录\n- arxiv:1811.04857: capacity_not_selected; 未记录; 选取文本块数=未记录\n- arxiv:2307.14063: capacity_not_selected; 未记录; 选取文本块数=未记录\n- arxiv:2003.11539: already_available; 未记录; 选取文本块数=未记录\n- arxiv:1907.11832: capacity_not_selected; 未记录; 选取文本块数=未记录\n- arxiv:2107.07746: capacity_not_selected; 未记录; 选取文本块数=未记录\n- arxiv:2211.04928: capacity_not_selected; 未记录; 选取文本块数=未记录\n- arxiv:2206.08671: capacity_not_selected; 未记录; 选取文本块数=未记录\n- arxiv:1911.04623: already_available; 未记录; 选取文本块数=未记录\n- arxiv:2009.13953: capacity_not_selected; 未记录; 选取文本块数=未记录\n- arxiv:1901.07169: capacity_not_selected; 未记录; 选取文本块数=未记录\n- arxiv:1906.03859: capacity_not_selected; 未记录; 选取文本块数=未记录\n- arxiv:1703.03400: already_available; 未记录; 选取文本块数=未记录\n- arxiv:2311.17026: capacity_not_selected; 未记录; 选取文本块数=未记录\n- arxiv:1903.03096: already_available; 未记录; 选取文本块数=未记录\n- arxiv:1902.09324: capacity_not_selected; 未记录; 选取文本块数=未记录\n- 纳排标准: 未记录\n- 独立重复筛选: 未执行\n- 全文审查: 仅使用解析选取的文本块；未执行完整全文审查\n- 偏倚风险评估: 未执行\n不宣称完整 PRISMA 合规。\n\n<!-- /litagent:run-methodology:v2 -->\n",
+  "source_sha256": "8e57a05f421fb57c96974d6da73e35216f63861b6a12fddd948c1de33aead5d8",
+  "assertions": [
+    {
+      "claim_id": "claim_0",
+      "kind": "scientific",
+      "claim_text": "深度度量学习通过在嵌入空间中比较未见样本与少量支持样本来处理少样本图像分类，是与元学习和迁移学习相邻但机制不同的主要路线。",
+      "source_unit_id": "unit:0:28",
+      "source_fragment_id": "unit:0:28:fragment:0",
+      "source_quote": "深度度量学习通过在嵌入空间中比较未见样本与少量支持样本来处理少样本图像分类，是与元学习和迁移学习相邻但机制不同的主要路线 [E:arxiv:2105.08149:abstract:claim:072f92fa0581]。",
+      "source_start": 28,
+      "source_end": 138,
+      "section": "摘要",
+      "evidence_ids": [
+        "arxiv:2105.08149:abstract:claim:072f92fa0581"
+      ],
+      "local_error": null,
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_1",
+      "kind": "scientific",
+      "claim_text": "代表性方法的改进重点不同：深度K-tuplet网络强化样本关系驱动的特征嵌入，SRL把向量度量扩展为子空间与加权子空间距离，不确定性感知框架则建模查询—原型相似性的不确定性。",
+      "source_unit_id": "unit:0:28",
+      "source_fragment_id": "unit:0:28:fragment:1",
+      "source_quote": "代表性方法的改进重点不同：深度K-tuplet网络强化样本关系驱动的特征嵌入，SRL把向量度量扩展为子空间与加权子空间距离，不确定性感知框架则建模查询—原型相似性的不确定性 [E:arxiv:1907.03123:abstract:claim:3bee9c457d48] [E:arxiv:2010.04525:page:1:block:5:claim:cc74c784a067]。",
+      "source_start": 139,
+      "source_end": 330,
+      "section": "摘要",
+      "evidence_ids": [
+        "arxiv:1907.03123:abstract:claim:3bee9c457d48",
+        "arxiv:2010.04525:page:1:block:5:claim:cc74c784a067"
+      ],
+      "local_error": null,
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_2",
+      "kind": "scientific",
+      "claim_text": "实验证据显示，深度K-tuplet网络在miniImageNet及跨数据集评估中报告优势，SRL在MiniImageNet、TieredImageNet和CUB上具有竞争力或更优，Proto-Triplet Loss与ICNN loss在miniImagenNet上报告2%准确率提升。",
+      "source_unit_id": "unit:0:28",
+      "source_fragment_id": "unit:0:28:fragment:2",
+      "source_quote": "实验证据显示，深度K-tuplet网络在miniImageNet及跨数据集评估中报告优势，SRL在MiniImageNet、TieredImageNet和CUB上具有竞争力或更优，Proto-Triplet Loss与ICNN loss在miniImagenNet上报告2%准确率提升 [E:arxiv:1907.03123:abstract:claim:c67c6880df9f] [E:arxiv:1907.03123:abstract:claim:75a33a7689e3] [E:arxiv:2105.00379:abstract:claim:5a92b722e27b] [E:arxiv:2305.09062:abstract:claim:f0bf6c6f0ef9] [E:arxiv:2305.09062:page:1:block:6:claim:422d4ac2023b]。",
+      "source_start": 331,
+      "source_end": 725,
+      "section": "摘要",
+      "evidence_ids": [
+        "arxiv:1907.03123:abstract:claim:c67c6880df9f",
+        "arxiv:1907.03123:abstract:claim:75a33a7689e3",
+        "arxiv:2105.00379:abstract:claim:5a92b722e27b",
+        "arxiv:2305.09062:abstract:claim:f0bf6c6f0ef9",
+        "arxiv:2305.09062:page:1:block:6:claim:422d4ac2023b"
+      ],
+      "local_error": null,
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_3",
+      "kind": "scientific",
+      "claim_text": "主要限制是统一度量依赖相似任务领域，基类与新类发生域偏移时距离度量学习会退化，而且所选材料缺少跨论文完全一致的数值、成本和协议，不能形成统一排名。",
+      "source_unit_id": "unit:0:28",
+      "source_fragment_id": "unit:0:28:fragment:3",
+      "source_quote": "主要限制是统一度量依赖相似任务领域，基类与新类发生域偏移时距离度量学习会退化，而且所选材料缺少跨论文完全一致的数值、成本和协议，不能形成统一排名 [E:arxiv:1904.03014:abstract:claim:d2ef600b4458] [E:arxiv:1904.04232:section:abstract:8:e517c42438f5:claim:80c301451784]。",
+      "source_start": 726,
+      "source_end": 920,
+      "section": "摘要",
+      "evidence_ids": [
+        "arxiv:1904.03014:abstract:claim:d2ef600b4458",
+        "arxiv:1904.04232:section:abstract:8:e517c42438f5:claim:80c301451784"
+      ],
+      "local_error": null,
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_4",
+      "kind": "scientific",
+      "claim_text": "少样本图像分类要求模型仅依据每类少量训练图像识别新类别，核心困难是在标注样本很少时仍保持识别与泛化能力。",
+      "source_unit_id": "unit:1:944",
+      "source_fragment_id": "unit:1:944:fragment:0",
+      "source_quote": "少样本图像分类要求模型仅依据每类少量训练图像识别新类别，核心困难是在标注样本很少时仍保持识别与泛化能力 [E:arxiv:2105.08149:abstract:claim:0158f2fb61fc]。",
+      "source_start": 944,
+      "source_end": 1045,
+      "section": "问题背景与综述范围",
+      "evidence_ids": [
+        "arxiv:2105.08149:abstract:claim:0158f2fb61fc"
+      ],
+      "local_error": null,
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_5",
+      "kind": "scientific",
+      "claim_text": "为缓解少量标注样本导致的过拟合风险，已有研究将方法概括为元学习、迁移学习和度量学习等路径。",
+      "source_unit_id": "unit:1:944",
+      "source_fragment_id": "unit:1:944:fragment:1",
+      "source_quote": "为缓解少量标注样本导致的过拟合风险，已有研究将方法概括为元学习、迁移学习和度量学习等路径 [E:arxiv:2105.08149:page:1:block:9:claim:80ed82933082]。",
+      "source_start": 1046,
+      "source_end": 1146,
+      "section": "问题背景与综述范围",
+      "evidence_ids": [
+        "arxiv:2105.08149:page:1:block:9:claim:80ed82933082"
+      ],
+      "local_error": null,
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_6",
+      "kind": "scientific",
+      "claim_text": "深度度量学习是少样本图像分类的一条主要路线，它在深度神经网络学到的嵌入空间中，根据未见样本与少量已见样本的距离进行分类。",
+      "source_unit_id": "unit:1:944",
+      "source_fragment_id": "unit:1:944:fragment:2",
+      "source_quote": "深度度量学习是少样本图像分类的一条主要路线，它在深度神经网络学到的嵌入空间中，根据未见样本与少量已见样本的距离进行分类 [E:arxiv:2105.08149:abstract:claim:072f92fa0581]。",
+      "source_start": 1147,
+      "source_end": 1256,
+      "section": "问题背景与综述范围",
+      "evidence_ids": [
+        "arxiv:2105.08149:abstract:claim:072f92fa0581"
+      ],
+      "local_error": null,
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_7",
+      "kind": "report_structure",
+      "claim_text": "本报告围绕“learning to compare”的度量学习思想，比较其在嵌入学习、类别表示、距离或相似性建模以及跨域评估中的差异。",
+      "source_unit_id": "unit:1:944",
+      "source_fragment_id": "unit:1:944:fragment:3",
+      "source_quote": "本报告围绕“learning to compare”的度量学习思想，比较其在嵌入学习、类别表示、距离或相似性建模以及跨域评估中的差异 [E:arxiv:1904.04232:section:abstract:8:e517c42438f5:claim:80c301451784]。",
+      "source_start": 1257,
+      "source_end": 1396,
+      "section": "问题背景与综述范围",
+      "evidence_ids": [
+        "arxiv:1904.04232:section:abstract:8:e517c42438f5:claim:80c301451784"
+      ],
+      "local_error": null,
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_8",
+      "kind": "report_structure",
+      "claim_text": "本综述围绕给定问题组织所选文献证据。",
+      "source_unit_id": "unit:1:944",
+      "source_fragment_id": "unit:1:944:fragment:4",
+      "source_quote": "本综述围绕给定问题组织所选文献证据。",
+      "source_start": 1397,
+      "source_end": 1415,
+      "section": "问题背景与综述范围",
+      "evidence_ids": [],
+      "local_error": null,
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_9",
+      "kind": "scientific",
+      "claim_text": "典型度量学习方法把查询样本映射到特征空间，并依据查询样本与支持集原型之间的特征相似性寻找最近原型来完成分类。",
+      "source_unit_id": "unit:2:1448",
+      "source_fragment_id": "unit:2:1448:fragment:0",
+      "source_quote": "典型度量学习方法把查询样本映射到特征空间，并依据查询样本与支持集原型之间的特征相似性寻找最近原型来完成分类 [E:arxiv:2010.04525:abstract:claim:9091a1fb4b38]。",
+      "source_start": 1448,
+      "source_end": 1551,
+      "section": "按度量学习链条划分方法",
+      "evidence_ids": [
+        "arxiv:2010.04525:abstract:claim:9091a1fb4b38"
+      ],
+      "local_error": null,
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_10",
+      "kind": "scientific",
+      "claim_text": "基于度量的少样本方法通常用神经网络学习查询样本与支持样本之间的特征相似性，但K-tuplet网络所针对的工作指出，仅强调相似性比较会忽视训练样本关系对特征嵌入的作用。",
+      "source_unit_id": "unit:2:1448",
+      "source_fragment_id": "unit:2:1448:fragment:1",
+      "source_quote": "基于度量的少样本方法通常用神经网络学习查询样本与支持样本之间的特征相似性，但K-tuplet网络所针对的工作指出，仅强调相似性比较会忽视训练样本关系对特征嵌入的作用 [E:arxiv:1907.03123:abstract:claim:3bee9c457d48]。",
+      "source_start": 1552,
+      "source_end": 1684,
+      "section": "按度量学习链条划分方法",
+      "evidence_ids": [
+        "arxiv:1907.03123:abstract:claim:3bee9c457d48"
+      ],
+      "local_error": null,
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_11",
+      "kind": "scientific",
+      "claim_text": "SRL框架把度量学习技术从向量表示扩展到子空间表示，用局部CNN特征空间中的子空间表示图像，并以加权子空间距离衡量图像相似性。",
+      "source_unit_id": "unit:2:1448",
+      "source_fragment_id": "unit:2:1448:fragment:2",
+      "source_quote": "SRL框架把度量学习技术从向量表示扩展到子空间表示，用局部CNN特征空间中的子空间表示图像，并以加权子空间距离衡量图像相似性 [E:arxiv:2105.00379:abstract:claim:e6449640cdc0]。",
+      "source_start": 1685,
+      "source_end": 1797,
+      "section": "按度量学习链条划分方法",
+      "evidence_ids": [
+        "arxiv:2105.00379:abstract:claim:e6449640cdc0"
+      ],
+      "local_error": null,
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_12",
+      "kind": "scientific",
+      "claim_text": "不确定性感知路线仍以查询—支持集相似性为基础，但把观测到的相似性转换为概率表示，并通过图模型联合估计查询样本与各原型之间的相似性不确定性。",
+      "source_unit_id": "unit:2:1448",
+      "source_fragment_id": "unit:2:1448:fragment:3",
+      "source_quote": "不确定性感知路线仍以查询—支持集相似性为基础，但把观测到的相似性转换为概率表示，并通过图模型联合估计查询样本与各原型之间的相似性不确定性 [E:arxiv:2010.04525:page:1:block:5:claim:cc74c784a067]。",
+      "source_start": 1798,
+      "source_end": 1922,
+      "section": "按度量学习链条划分方法",
+      "evidence_ids": [
+        "arxiv:2010.04525:page:1:block:5:claim:cc74c784a067"
+      ],
+      "local_error": null,
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_13",
+      "kind": "scientific",
+      "claim_text": "从元学习结构看，传统度量型元学习为所有任务学习一个任务不变度量，因而允许任务具有不同类别数，但前提是任务来自相似领域并能共享统一度量。",
+      "source_unit_id": "unit:2:1448",
+      "source_fragment_id": "unit:2:1448:fragment:4",
+      "source_quote": "从元学习结构看，传统度量型元学习为所有任务学习一个任务不变度量，因而允许任务具有不同类别数，但前提是任务来自相似领域并能共享统一度量 [E:arxiv:1904.03014:abstract:claim:d2ef600b4458]。",
+      "source_start": 1923,
+      "source_end": 2039,
+      "section": "按度量学习链条划分方法",
+      "evidence_ids": [
+        "arxiv:1904.03014:abstract:claim:d2ef600b4458"
+      ],
+      "local_error": null,
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_14",
+      "kind": "scientific",
+      "claim_text": "迁移学习方法假定源域与目标域存在共享知识，并把在丰富源数据上训练的模型微调至少量目标标注样本。",
+      "source_unit_id": "unit:3:2056",
+      "source_fragment_id": "unit:3:2056:fragment:0",
+      "source_quote": "迁移学习方法假定源域与目标域存在共享知识，并把在丰富源数据上训练的模型微调至少量目标标注样本；",
+      "source_start": 2056,
+      "source_end": 2103,
+      "section": "与相邻方法族的边界",
+      "evidence_ids": [],
+      "local_error": "uncited_claim",
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_15",
+      "kind": "scientific",
+      "claim_text": "迁移学习方法与直接学习嵌入和距离的度量学习路线不同。",
+      "source_unit_id": "unit:3:2056",
+      "source_fragment_id": "unit:3:2056:fragment:1",
+      "source_quote": "这与直接学习嵌入和距离的度量学习路线不同 [E:arxiv:2105.08149:page:1:block:9:claim:fba8e6bcb13b]。",
+      "source_start": 2103,
+      "source_end": 2179,
+      "section": "与相邻方法族的边界",
+      "evidence_ids": [
+        "arxiv:2105.08149:page:1:block:9:claim:fba8e6bcb13b"
+      ],
+      "local_error": null,
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_16",
+      "kind": "scientific",
+      "claim_text": "大规模网络训练与微调所代表的BiT是少样本分类中强韧的迁移基线，因此比较度量学习方法时需要把它作为相邻参照，而不能把其结果直接归为度量学习结果。",
+      "source_unit_id": "unit:3:2056",
+      "source_fragment_id": "unit:3:2056:fragment:2",
+      "source_quote": "大规模网络训练与微调所代表的BiT是少样本分类中强韧的迁移基线，因此比较度量学习方法时需要把它作为相邻参照，而不能把其结果直接归为度量学习结果 [E:arxiv:2104.02638:section:abstract:45:924c867b4c98:claim:7e5b663ed774]。",
+      "source_start": 2180,
+      "source_end": 2325,
+      "section": "与相邻方法族的边界",
+      "evidence_ids": [
+        "arxiv:2104.02638:section:abstract:45:924c867b4c98:claim:7e5b663ed774"
+      ],
+      "local_error": null,
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_17",
+      "kind": "scientific",
+      "claim_text": "跨元学习与迁移学习的评估显示，评价规范差异会使不同方法族难以直接或充分比较，这也是后文按数据集和设置解释结果的原因。",
+      "source_unit_id": "unit:3:2056",
+      "source_fragment_id": "unit:3:2056:fragment:3",
+      "source_quote": "跨元学习与迁移学习的评估显示，评价规范差异会使不同方法族难以直接或充分比较，这也是后文按数据集和设置解释结果的原因 [E:arxiv:2104.02638:abstract:claim:56732debe647]。",
+      "source_start": 2326,
+      "source_end": 2433,
+      "section": "与相邻方法族的边界",
+      "evidence_ids": [
+        "arxiv:2104.02638:abstract:claim:56732debe647"
+      ],
+      "local_error": null,
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_18",
+      "kind": "scientific",
+      "claim_text": "深度K-tuplet网络从经典triplet network出发，通过episode-training利用输入样本之间的关系学习通用表示，并可与非线性距离度量函数结合以完成少样本分类。",
+      "source_unit_id": "unit:4:2462",
+      "source_fragment_id": "unit:4:2462:fragment:0",
+      "source_quote": "深度K-tuplet网络从经典triplet network出发，通过episode-training利用输入样本之间的关系学习通用表示，并可与非线性距离度量函数结合以完成少样本分类 [E:arxiv:1907.03123:abstract:claim:3bee9c457d48]。",
+      "source_start": 2462,
+      "source_end": 2603,
+      "section": "代表性度量学习机制",
+      "evidence_ids": [
+        "arxiv:1907.03123:abstract:claim:3bee9c457d48"
+      ],
+      "local_error": null,
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_19",
+      "kind": "scientific",
+      "claim_text": "该方法的关键贡献在于强化特征嵌入：训练后的网络能够为未见新类别提取判别性特征，而不是只学习查询样本与支持样本之间的相似度比较器。",
+      "source_unit_id": "unit:4:2462",
+      "source_fragment_id": "unit:4:2462:fragment:1",
+      "source_quote": "该方法的关键贡献在于强化特征嵌入：训练后的网络能够为未见新类别提取判别性特征，而不是只学习查询样本与支持样本之间的相似度比较器 [E:arxiv:1907.03123:abstract:claim:75a33a7689e3]。",
+      "source_start": 2604,
+      "source_end": 2717,
+      "section": "代表性度量学习机制",
+      "evidence_ids": [
+        "arxiv:1907.03123:abstract:claim:75a33a7689e3"
+      ],
+      "local_error": null,
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_20",
+      "kind": "scientific",
+      "claim_text": "Uncertainty-Aware Few-Shot框架把查询—支持对的相似性不确定性纳入优化，用概率表示承载相似性，并借助图模型联合考虑查询样本与支持集原型之间的关系。",
+      "source_unit_id": "unit:4:2462",
+      "source_fragment_id": "unit:4:2462:fragment:2",
+      "source_quote": "Uncertainty-Aware Few-Shot框架把查询—支持对的相似性不确定性纳入优化，用概率表示承载相似性，并借助图模型联合考虑查询样本与支持集原型之间的关系 [E:arxiv:2010.04525:page:1:block:5:claim:cc74c784a067]。",
+      "source_start": 2718,
+      "source_end": 2858,
+      "section": "代表性度量学习机制",
+      "evidence_ids": [
+        "arxiv:2010.04525:page:1:block:5:claim:cc74c784a067"
+      ],
+      "local_error": null,
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_21",
+      "kind": "scientific",
+      "claim_text": "该框架针对的问题是神经网络对不同样本对计算出的相似性具有不同不确定性。",
+      "source_unit_id": "unit:4:2462",
+      "source_fragment_id": "unit:4:2462:fragment:3",
+      "source_quote": "该框架针对的问题是神经网络对不同样本对计算出的相似性具有不同不确定性；",
+      "source_start": 2859,
+      "source_end": 2894,
+      "section": "代表性度量学习机制",
+      "evidence_ids": [],
+      "local_error": "uncited_claim",
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_22",
+      "kind": "scientific",
+      "claim_text": "显式建模这种不确定性，是为了在少样本优化中更充分地利用有限样本。",
+      "source_unit_id": "unit:4:2462",
+      "source_fragment_id": "unit:4:2462:fragment:4",
+      "source_quote": "显式建模这种不确定性，是为了在少样本优化中更充分地利用有限样本 [E:arxiv:2010.04525:abstract:claim:9091a1fb4b38]。",
+      "source_start": 2894,
+      "source_end": 2975,
+      "section": "代表性度量学习机制",
+      "evidence_ids": [
+        "arxiv:2010.04525:abstract:claim:9091a1fb4b38"
+      ],
+      "local_error": null,
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_23",
+      "kind": "scientific",
+      "claim_text": "SRL以局部CNN特征空间中的子空间表示单张图像，并在每类有K张图像时构造prototypical subspace与discriminative subspace来聚合K-shot信息。",
+      "source_unit_id": "unit:5:2998",
+      "source_fragment_id": "unit:5:2998:fragment:0",
+      "source_quote": "SRL以局部CNN特征空间中的子空间表示单张图像，并在每类有K张图像时构造prototypical subspace与discriminative subspace来聚合K-shot信息 [E:arxiv:2010.04525:page:1:block:5:claim:cc74c784a067]。",
+      "source_start": 2998,
+      "source_end": 3147,
+      "section": "子空间、混合度量与损失函数路线",
+      "evidence_ids": [
+        "arxiv:2010.04525:page:1:block:5:claim:cc74c784a067"
+      ],
+      "local_error": null,
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_24",
+      "kind": "scientific",
+      "claim_text": "与全局向量原型相比，SRL的方法定位是保留图像内部空间结构与多样性，并用加权子空间距离替代普通向量距离进行相似性判断。",
+      "source_unit_id": "unit:5:2998",
+      "source_fragment_id": "unit:5:2998:fragment:1",
+      "source_quote": "与全局向量原型相比，SRL的方法定位是保留图像内部空间结构与多样性，并用加权子空间距离替代普通向量距离进行相似性判断 [E:arxiv:2010.04525:abstract:claim:9091a1fb4b38]。",
+      "source_start": 3148,
+      "source_end": 3256,
+      "section": "子空间、混合度量与损失函数路线",
+      "evidence_ids": [
+        "arxiv:2010.04525:abstract:claim:9091a1fb4b38"
+      ],
+      "local_error": null,
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_25",
+      "kind": "scientific",
+      "claim_text": "Meta-Metric-Learner采用任务特定的度量型学习者作为基础模型，再由元学习者学习并指定该基础模型，以结合优化型与度量型元学习的优点。",
+      "source_unit_id": "unit:5:2998",
+      "source_fragment_id": "unit:5:2998:fragment:2",
+      "source_quote": "Meta-Metric-Learner采用任务特定的度量型学习者作为基础模型，再由元学习者学习并指定该基础模型，以结合优化型与度量型元学习的优点 [E:arxiv:1904.03014:abstract:claim:d2ef600b4458]。",
+      "source_start": 3257,
+      "source_end": 3379,
+      "section": "子空间、混合度量与损失函数路线",
+      "evidence_ids": [
+        "arxiv:1904.03014:abstract:claim:d2ef600b4458"
+      ],
+      "local_error": null,
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_26",
+      "kind": "scientific",
+      "claim_text": "距离度量学习家族内部还包括cosine similarity、到类均值表示的Euclidean distance、CNN关系模块、ridge regression和图神经网络等比较模型，它们的差别在于相似性或距离函数的参数化方式。",
+      "source_unit_id": "unit:5:2998",
+      "source_fragment_id": "unit:5:2998:fragment:3",
+      "source_quote": "距离度量学习家族内部还包括cosine similarity、到类均值表示的Euclidean distance、CNN关系模块、ridge regression和图神经网络等比较模型，它们的差别在于相似性或距离函数的参数化方式 [E:arxiv:1904.04232:section:abstract:8:e517c42438f5:claim:80c301451784]。",
+      "source_start": 3380,
+      "source_end": 3567,
+      "section": "子空间、混合度量与损失函数路线",
+      "evidence_ids": [
+        "arxiv:1904.04232:section:abstract:8:e517c42438f5:claim:80c301451784"
+      ],
+      "local_error": null,
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_27",
+      "kind": "report_structure",
+      "claim_text": "在更宽的少样本算法分类中，度量学习型方法与初始化型、幻觉型方法并列，因此本报告只把后两者作为理解度量学习定位的背景。",
+      "source_unit_id": "unit:5:2998",
+      "source_fragment_id": "unit:5:2998:fragment:4",
+      "source_quote": "在更宽的少样本算法分类中，度量学习型方法与初始化型、幻觉型方法并列，因此本报告只把后两者作为理解度量学习定位的背景 [E:arxiv:1904.04232:section:abstract:6:9155911597f2:claim:9456348a9217]。",
+      "source_start": 3568,
+      "source_end": 3698,
+      "section": "子空间、混合度量与损失函数路线",
+      "evidence_ids": [
+        "arxiv:1904.04232:section:abstract:6:9155911597f2:claim:9456348a9217"
+      ],
+      "local_error": null,
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_28",
+      "kind": "scientific",
+      "claim_text": "深度K-tuplet网络在miniImageNet基准上的结果优于其他基于度量的少样本分类方法，但所给摘要没有提供具体准确率、shot/way设置或置信区间。",
+      "source_unit_id": "unit:6:3732",
+      "source_fragment_id": "unit:6:3732:fragment:0",
+      "source_quote": "深度K-tuplet网络在miniImageNet基准上的结果优于其他基于度量的少样本分类方法，但所给摘要没有提供具体准确率、shot/way设置或置信区间 [E:arxiv:1907.03123:abstract:claim:c67c6880df9f]。",
+      "source_start": 3732,
+      "source_end": 3860,
+      "section": "数据集、设置与可比较结果",
+      "evidence_ids": [
+        "arxiv:1907.03123:abstract:claim:c67c6880df9f"
+      ],
+      "local_error": null,
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_29",
+      "kind": "scientific",
+      "claim_text": "在使用miniImageNet训练出的模型评估Caltech-101、CUB-200、Stanford Dogs和Cars等完全不同数据集时，深度K-tuplet网络显著优于先前方法，证据支持其在这些跨数据集未见类别上的泛化能力。",
+      "source_unit_id": "unit:6:3732",
+      "source_fragment_id": "unit:6:3732:fragment:1",
+      "source_quote": "在使用miniImageNet训练出的模型评估Caltech-101、CUB-200、Stanford Dogs和Cars等完全不同数据集时，深度K-tuplet网络显著优于先前方法，证据支持其在这些跨数据集未见类别上的泛化能力 [E:arxiv:1907.03123:abstract:claim:75a33a7689e3]。",
+      "source_start": 3861,
+      "source_end": 4025,
+      "section": "数据集、设置与可比较结果",
+      "evidence_ids": [
+        "arxiv:1907.03123:abstract:claim:75a33a7689e3"
+      ],
+      "local_error": null,
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_30",
+      "kind": "scientific",
+      "claim_text": "SRL框架在MiniImageNet、TieredImageNet和Caltech-UCSD Birds-200-2011（CUB）三个公开基准上展示出相对于先前先进方法具有竞争力或更优的性能，但材料未给出可直接换算的数值表。",
+      "source_unit_id": "unit:6:3732",
+      "source_fragment_id": "unit:6:3732:fragment:2",
+      "source_quote": "SRL框架在MiniImageNet、TieredImageNet和Caltech-UCSD Birds-200-2011（CUB）三个公开基准上展示出相对于先前先进方法具有竞争力或更优的性能，但材料未给出可直接换算的数值表 [E:arxiv:2105.00379:abstract:claim:5a92b722e27b]。",
+      "source_start": 4026,
+      "source_end": 4188,
+      "section": "数据集、设置与可比较结果",
+      "evidence_ids": [
+        "arxiv:2105.00379:abstract:claim:5a92b722e27b"
+      ],
+      "local_error": null,
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_31",
+      "kind": "scientific",
+      "claim_text": "Proto-Triplet Loss与ICNN loss在广泛实验设置下，使miniImagenNet基准上的准确率相对其他基于度量的少样本学习方法提高2%，并在Caltech CUB、Dogs和Cars上展示出有竞争力的跨域泛化。",
+      "source_unit_id": "unit:6:3732",
+      "source_fragment_id": "unit:6:3732:fragment:3",
+      "source_quote": "Proto-Triplet Loss与ICNN loss在广泛实验设置下，使miniImagenNet基准上的准确率相对其他基于度量的少样本学习方法提高2%，并在Caltech CUB、Dogs和Cars上展示出有竞争力的跨域泛化 [E:arxiv:2305.09062:abstract:claim:f0bf6c6f0ef9] [E:arxiv:2305.09062:page:1:block:6:claim:422d4ac2023b]。",
+      "source_start": 4189,
+      "source_end": 4409,
+      "section": "数据集、设置与可比较结果",
+      "evidence_ids": [
+        "arxiv:2305.09062:abstract:claim:f0bf6c6f0ef9",
+        "arxiv:2305.09062:page:1:block:6:claim:422d4ac2023b"
+      ],
+      "local_error": null,
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_32",
+      "kind": "scientific",
+      "claim_text": "这些结果共同说明，强化嵌入结构、子空间表示或类内/类间距离约束都可能改善度量学习，但由于论文报告的基准、基线和协议不同，不能仅凭摘要中的“优于”表述构造统一排名。",
+      "source_unit_id": "unit:6:3732",
+      "source_fragment_id": "unit:6:3732:fragment:4",
+      "source_quote": "这些结果共同说明，强化嵌入结构、子空间表示或类内/类间距离约束都可能改善度量学习，但由于论文报告的基准、基线和协议不同，不能仅凭摘要中的“优于”表述构造统一排名 [E:arxiv:2105.08149:page:1:block:9:claim:80ed82933082]。",
+      "source_start": 4410,
+      "source_end": 4546,
+      "section": "数据集、设置与可比较结果",
+      "evidence_ids": [
+        "arxiv:2105.08149:page:1:block:9:claim:80ed82933082"
+      ],
+      "local_error": null,
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_33",
+      "kind": "scientific",
+      "claim_text": "在Meta-Dataset与VTAB的跨方法族研究中，BiT在Meta-Dataset上平均优于竞争方法，即使只在ImageNet上训练也是如此。",
+      "source_unit_id": "unit:7:4568",
+      "source_fragment_id": "unit:7:4568:fragment:0",
+      "source_quote": "在Meta-Dataset与VTAB的跨方法族研究中，BiT在Meta-Dataset上平均优于竞争方法，即使只在ImageNet上训练也是如此；",
+      "source_start": 4568,
+      "source_end": 4641,
+      "section": "跨方法族与专门领域基准的参照",
+      "evidence_ids": [],
+      "local_error": "uncited_claim",
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_34",
+      "kind": "scientific",
+      "claim_text": "而在Meta-Dataset上训练和验证的元学习方法在VTAB上难以竞争。",
+      "source_unit_id": "unit:7:4568",
+      "source_fragment_id": "unit:7:4568:fragment:1",
+      "source_quote": "而在Meta-Dataset上训练和验证的元学习方法在VTAB上难以竞争 [E:arxiv:2104.02638:abstract:claim:56732debe647]。",
+      "source_start": 4641,
+      "source_end": 4727,
+      "section": "跨方法族与专门领域基准的参照",
+      "evidence_ids": [
+        "arxiv:2104.02638:abstract:claim:56732debe647"
+      ],
+      "local_error": null,
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_35",
+      "kind": "scientific",
+      "claim_text": "同一研究还表明，精心工程化的大规模网络训练与微调可在大规模、多数据集基准上成为具有竞争力且稳健的少样本分类基线，因此度量学习方法的优势应限定在相应基准和协议内解释。",
+      "source_unit_id": "unit:7:4568",
+      "source_fragment_id": "unit:7:4568:fragment:2",
+      "source_quote": "同一研究还表明，精心工程化的大规模网络训练与微调可在大规模、多数据集基准上成为具有竞争力且稳健的少样本分类基线，因此度量学习方法的优势应限定在相应基准和协议内解释 [E:arxiv:2104.02638:section:abstract:45:924c867b4c98:claim:7e5b663ed774]。",
+      "source_start": 4728,
+      "source_end": 4883,
+      "section": "跨方法族与专门领域基准的参照",
+      "evidence_ids": [
+        "arxiv:2104.02638:section:abstract:45:924c867b4c98:claim:7e5b663ed774"
+      ],
+      "local_error": null,
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_36",
+      "kind": "scientific",
+      "claim_text": "FewSAR在统一设置下分析定量结果和运行时间后报告，度量学习方法在少样本SAR目标图像分类中可取得最佳准确率。",
+      "source_unit_id": "unit:7:4568",
+      "source_fragment_id": "unit:7:4568:fragment:3",
+      "source_quote": "FewSAR在统一设置下分析定量结果和运行时间后报告，度量学习方法在少样本SAR目标图像分类中可取得最佳准确率；",
+      "source_start": 4884,
+      "source_end": 4940,
+      "section": "跨方法族与专门领域基准的参照",
+      "evidence_ids": [],
+      "local_error": "uncited_claim",
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_37",
+      "kind": "scientific",
+      "claim_text": "但该结论属于SAR图像领域，不能直接外推到普通自然图像少样本分类。",
+      "source_unit_id": "unit:7:4568",
+      "source_fragment_id": "unit:7:4568:fragment:4",
+      "source_quote": "但该结论属于SAR图像领域，不能直接外推到普通自然图像少样本分类 [E:arxiv:2306.09592:abstract:claim:e56324677ded]。",
+      "source_start": 4940,
+      "source_end": 5022,
+      "section": "跨方法族与专门领域基准的参照",
+      "evidence_ids": [
+        "arxiv:2306.09592:abstract:claim:e56324677ded"
+      ],
+      "local_error": null,
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_38",
+      "kind": "runtime_method",
+      "claim_text": "所选材料明确比较了三种距离度量学习方法，并指出距离度量学习通过“learning to compare”处理少样本分类，但没有在提供的摘录中列出三者逐项准确率和计算成本。",
+      "source_unit_id": "unit:7:4568",
+      "source_fragment_id": "unit:7:4568:fragment:5",
+      "source_quote": "所选材料明确比较了三种距离度量学习方法，并指出距离度量学习通过“learning to compare”处理少样本分类，但没有在提供的摘录中列出三者逐项准确率和计算成本 [E:arxiv:1904.04232:section:abstract:8:e517c42438f5:claim:80c301451784]。",
+      "source_start": 5023,
+      "source_end": 5180,
+      "section": "跨方法族与专门领域基准的参照",
+      "evidence_ids": [
+        "arxiv:1904.04232:section:abstract:8:e517c42438f5:claim:80c301451784"
+      ],
+      "local_error": null,
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_39",
+      "kind": "scientific",
+      "claim_text": "传统任务不变度量要求任务来自相似领域。",
+      "source_unit_id": "unit:8:5209",
+      "source_fragment_id": "unit:8:5209:fragment:0",
+      "source_quote": "传统任务不变度量要求任务来自相似领域；",
+      "source_start": 5209,
+      "source_end": 5228,
+      "section": "已有证据支持的局限",
+      "evidence_ids": [],
+      "local_error": "uncited_claim",
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_40",
+      "kind": "scientific",
+      "claim_text": "当任务领域差异较大时，单一统一度量未必能跨任务有效，这限制了度量型元学习在灵活领域场景中的适用性。",
+      "source_unit_id": "unit:8:5209",
+      "source_fragment_id": "unit:8:5209:fragment:1",
+      "source_quote": "当任务领域差异较大时，单一统一度量未必能跨任务有效，这限制了度量型元学习在灵活领域场景中的适用性 [E:arxiv:1904.03014:abstract:claim:d2ef600b4458]。",
+      "source_start": 5228,
+      "source_end": 5326,
+      "section": "已有证据支持的局限",
+      "evidence_ids": [
+        "arxiv:1904.03014:abstract:claim:d2ef600b4458"
+      ],
+      "local_error": null,
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_41",
+      "kind": "scientific",
+      "claim_text": "距离度量学习方法在基类与新类之间存在域偏移时会遇到困难。",
+      "source_unit_id": "unit:8:5209",
+      "source_fragment_id": "unit:8:5209:fragment:2",
+      "source_quote": "距离度量学习方法在基类与新类之间存在域偏移时会遇到困难；",
+      "source_start": 5327,
+      "source_end": 5355,
+      "section": "已有证据支持的局限",
+      "evidence_ids": [],
+      "local_error": "uncited_claim",
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_42",
+      "kind": "scientific",
+      "claim_text": "相关实验表明，现有少样本分类算法在基类和新类来自不同领域的实际设置中可能不及基线方法。",
+      "source_unit_id": "unit:8:5209",
+      "source_fragment_id": "unit:8:5209:fragment:3",
+      "source_quote": "相关实验表明，现有少样本分类算法在基类和新类来自不同领域的实际设置中可能不及基线方法 [E:arxiv:1904.04232:section:abstract:8:e517c42438f5:claim:80c301451784]。",
+      "source_start": 5355,
+      "source_end": 5470,
+      "section": "已有证据支持的局限",
+      "evidence_ids": [
+        "arxiv:1904.04232:section:abstract:8:e517c42438f5:claim:80c301451784"
+      ],
+      "local_error": null,
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_43",
+      "kind": "scientific",
+      "claim_text": "深度K-tuplet网络所回应的缺陷是，许多有效的度量型少样本方法关注查询与支持样本的特征相似性比较，却忽视通过训练样本关系学习强特征嵌入。",
+      "source_unit_id": "unit:8:5209",
+      "source_fragment_id": "unit:8:5209:fragment:4",
+      "source_quote": "深度K-tuplet网络所回应的缺陷是，许多有效的度量型少样本方法关注查询与支持样本的特征相似性比较，却忽视通过训练样本关系学习强特征嵌入 [E:arxiv:1907.03123:abstract:claim:3bee9c457d48]。",
+      "source_start": 5471,
+      "source_end": 5590,
+      "section": "已有证据支持的局限",
+      "evidence_ids": [
+        "arxiv:1907.03123:abstract:claim:3bee9c457d48"
+      ],
+      "local_error": null,
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_44",
+      "kind": "scientific",
+      "claim_text": "不确定性感知框架所处理的局限是，神经网络对不同查询—支持样本对给出的相似性具有不同不确定性。",
+      "source_unit_id": "unit:8:5209",
+      "source_fragment_id": "unit:8:5209:fragment:5",
+      "source_quote": "不确定性感知框架所处理的局限是，神经网络对不同查询—支持样本对给出的相似性具有不同不确定性；",
+      "source_start": 5591,
+      "source_end": 5637,
+      "section": "已有证据支持的局限",
+      "evidence_ids": [],
+      "local_error": "uncited_claim",
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_45",
+      "kind": "scientific",
+      "claim_text": "若不建模这种不确定性，有限样本提供的信息可能无法被充分利用。",
+      "source_unit_id": "unit:8:5209",
+      "source_fragment_id": "unit:8:5209:fragment:6",
+      "source_quote": "若不建模这种不确定性，有限样本提供的信息可能无法被充分利用 [E:arxiv:2010.04525:abstract:claim:9091a1fb4b38]。",
+      "source_start": 5637,
+      "source_end": 5716,
+      "section": "已有证据支持的局限",
+      "evidence_ids": [
+        "arxiv:2010.04525:abstract:claim:9091a1fb4b38"
+      ],
+      "local_error": null,
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_46",
+      "kind": "scientific",
+      "claim_text": "跨迁移学习与元学习社区的评估揭示了episodic approaches的一些限制，同时也揭示迁移学习自身不足，说明没有一种评估范式可以脱离数据规模、领域和协议单独占优。",
+      "source_unit_id": "unit:8:5209",
+      "source_fragment_id": "unit:8:5209:fragment:7",
+      "source_quote": "跨迁移学习与元学习社区的评估揭示了episodic approaches的一些限制，同时也揭示迁移学习自身不足，说明没有一种评估范式可以脱离数据规模、领域和协议单独占优 [E:arxiv:2104.02638:section:abstract:9:1354132472a1:claim:9a9927d8cdf8]。",
+      "source_start": 5717,
+      "source_end": 5874,
+      "section": "已有证据支持的局限",
+      "evidence_ids": [
+        "arxiv:2104.02638:section:abstract:9:1354132472a1:claim:9a9927d8cdf8"
+      ],
+      "local_error": null,
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_47",
+      "kind": "runtime_method",
+      "claim_text": "所选摘录支持对若干代表性度量学习机制进行定性比较，但多数论文摘要没有给出完整的逐方法准确率、方差、训练成本、推理时间和统一backbone设置。",
+      "source_unit_id": "unit:9:5889",
+      "source_fragment_id": "unit:9:5889:fragment:0",
+      "source_quote": "所选摘录支持对若干代表性度量学习机制进行定性比较，但多数论文摘要没有给出完整的逐方法准确率、方差、训练成本、推理时间和统一backbone设置 [E:arxiv:1904.04232:section:abstract:8:e517c42438f5:claim:80c301451784]。",
+      "source_start": 5889,
+      "source_end": 6033,
+      "section": "本综述材料边界",
+      "evidence_ids": [
+        "arxiv:1904.04232:section:abstract:8:e517c42438f5:claim:80c301451784"
+      ],
+      "local_error": null,
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_48",
+      "kind": "report_structure",
+      "claim_text": "因此，关于自然图像少样本分类中所有度量学习方法的统一数值排名、参数效率或计算效率，本报告只能依据已给出的基准结论作有限比较。",
+      "source_unit_id": "unit:9:5889",
+      "source_fragment_id": "unit:9:5889:fragment:1",
+      "source_quote": "因此，关于自然图像少样本分类中所有度量学习方法的统一数值排名、参数效率或计算效率，本报告只能依据已给出的基准结论作有限比较 [E:arxiv:2105.08149:abstract:claim:0158f2fb61fc]。",
+      "source_start": 6034,
+      "source_end": 6145,
+      "section": "本综述材料边界",
+      "evidence_ids": [
+        "arxiv:2105.08149:abstract:claim:0158f2fb61fc"
+      ],
+      "local_error": null,
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_49",
+      "kind": "report_structure",
+      "claim_text": "本综述不据所选材料的缺失推断整个研究领域不存在相关工作。",
+      "source_unit_id": "unit:9:5889",
+      "source_fragment_id": "unit:9:5889:fragment:2",
+      "source_quote": "本综述不据所选材料的缺失推断整个研究领域不存在相关工作。",
+      "source_start": 6146,
+      "source_end": 6174,
+      "section": "本综述材料边界",
+      "evidence_ids": [],
+      "local_error": null,
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_50",
+      "kind": "scientific",
+      "claim_text": "度量学习方法的共同基础是学习可比较的嵌入与距离，但性能改进来自不同环节：K-tuplet网络强调样本关系和判别性特征，SRL强调子空间结构，不确定性感知方法强调相似性可靠性，Proto-Triplet Loss与ICNN loss强调类内和类间距离约束。",
+      "source_unit_id": "unit:10:6183",
+      "source_fragment_id": "unit:10:6183:fragment:0",
+      "source_quote": "度量学习方法的共同基础是学习可比较的嵌入与距离，但性能改进来自不同环节：K-tuplet网络强调样本关系和判别性特征，SRL强调子空间结构，不确定性感知方法强调相似性可靠性，Proto-Triplet Loss与ICNN loss强调类内和类间距离约束 [E:arxiv:2010.04525:abstract:claim:9091a1fb4b38] [E:arxiv:1907.03123:abstract:claim:3bee9c457d48] [E:arxiv:2010.04525:page:1:block:5:claim:cc74c784a067] [E:arxiv:2305.09062:abstract:claim:f0bf6c6f0ef9] [E:arxiv:2305.09062:page:1:block:6:claim:422d4ac2023b]。",
+      "source_start": 6183,
+      "source_end": 6567,
+      "section": "结论",
+      "evidence_ids": [
+        "arxiv:2010.04525:abstract:claim:9091a1fb4b38",
+        "arxiv:1907.03123:abstract:claim:3bee9c457d48",
+        "arxiv:2010.04525:page:1:block:5:claim:cc74c784a067",
+        "arxiv:2305.09062:abstract:claim:f0bf6c6f0ef9",
+        "arxiv:2305.09062:page:1:block:6:claim:422d4ac2023b"
+      ],
+      "local_error": null,
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_51",
+      "kind": "scientific",
+      "claim_text": "在自然图像基准上，最稳妥的结论不是给出跨论文总排名，而是指出各方法分别在miniImageNet、MiniImageNet/TieredImageNet/CUB以及跨数据集未见类别评估中报告了优势或竞争力。",
+      "source_unit_id": "unit:10:6183",
+      "source_fragment_id": "unit:10:6183:fragment:1",
+      "source_quote": "在自然图像基准上，最稳妥的结论不是给出跨论文总排名，而是指出各方法分别在miniImageNet、MiniImageNet/TieredImageNet/CUB以及跨数据集未见类别评估中报告了优势或竞争力 [E:arxiv:1907.03123:abstract:claim:c67c6880df9f] [E:arxiv:1907.03123:abstract:claim:75a33a7689e3] [E:arxiv:2105.00379:abstract:claim:5a92b722e27b] [E:arxiv:2105.08149:page:1:block:9:claim:80ed82933082]。",
+      "source_start": 6568,
+      "source_end": 6873,
+      "section": "结论",
+      "evidence_ids": [
+        "arxiv:1907.03123:abstract:claim:c67c6880df9f",
+        "arxiv:1907.03123:abstract:claim:75a33a7689e3",
+        "arxiv:2105.00379:abstract:claim:5a92b722e27b",
+        "arxiv:2105.08149:page:1:block:9:claim:80ed82933082"
+      ],
+      "local_error": null,
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_52",
+      "kind": "scientific",
+      "claim_text": "与大规模迁移基线相比，度量学习的证据必须放在具体协议内理解。",
+      "source_unit_id": "unit:10:6183",
+      "source_fragment_id": "unit:10:6183:fragment:2",
+      "source_quote": "与大规模迁移基线相比，度量学习的证据必须放在具体协议内理解；",
+      "source_start": 6874,
+      "source_end": 6904,
+      "section": "结论",
+      "evidence_ids": [],
+      "local_error": "uncited_claim",
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_53",
+      "kind": "scientific",
+      "claim_text": "BiT在Meta-Dataset等跨方法族评估中表现强劲，而FewSAR中度量学习最佳准确率的结论只适用于少样本SAR图像分类。",
+      "source_unit_id": "unit:10:6183",
+      "source_fragment_id": "unit:10:6183:fragment:3",
+      "source_quote": "BiT在Meta-Dataset等跨方法族评估中表现强劲，而FewSAR中度量学习最佳准确率的结论只适用于少样本SAR图像分类 [E:arxiv:2104.02638:abstract:claim:56732debe647] [E:arxiv:2104.02638:section:abstract:45:924c867b4c98:claim:7e5b663ed774] [E:arxiv:2306.09592:abstract:claim:e56324677ded]。",
+      "source_start": 6904,
+      "source_end": 7139,
+      "section": "结论",
+      "evidence_ids": [
+        "arxiv:2104.02638:abstract:claim:56732debe647",
+        "arxiv:2104.02638:section:abstract:45:924c867b4c98:claim:7e5b663ed774",
+        "arxiv:2306.09592:abstract:claim:e56324677ded"
+      ],
+      "local_error": null,
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    },
+    {
+      "claim_id": "claim_54",
+      "kind": "scientific",
+      "claim_text": "未来比较应在相同backbone、shot/way设置、数据集划分、准确率统计和运行成本下复测，并专门纳入域偏移与任务领域差异，因为这些条件正是所选证据中反复出现的失效来源。",
+      "source_unit_id": "unit:10:6183",
+      "source_fragment_id": "unit:10:6183:fragment:4",
+      "source_quote": "未来比较应在相同backbone、shot/way设置、数据集划分、准确率统计和运行成本下复测，并专门纳入域偏移与任务领域差异，因为这些条件正是所选证据中反复出现的失效来源 [E:arxiv:1904.03014:abstract:claim:d2ef600b4458] [E:arxiv:1904.04232:section:abstract:8:e517c42438f5:claim:80c301451784] [E:arxiv:2105.08149:abstract:claim:0158f2fb61fc]。",
+      "source_start": 7140,
+      "source_end": 7397,
+      "section": "结论",
+      "evidence_ids": [
+        "arxiv:1904.03014:abstract:claim:d2ef600b4458",
+        "arxiv:1904.04232:section:abstract:8:e517c42438f5:claim:80c301451784",
+        "arxiv:2105.08149:abstract:claim:0158f2fb61fc"
+      ],
+      "local_error": null,
+      "status": "unverifiable",
+      "reason_code": "evaluation_incomplete",
+      "explanation": "Full scientific and global verification did not finish.",
+      "diagnostic_source": "survey-evaluation-v3"
+    }
+  ],
+  "original_analysis": {
+    "contract": "body-analysis-v1",
+    "status": "failed",
+    "sections": [
+      {
+        "section_key": "introduction",
+        "adequate": false,
+        "claim_ids": [],
+        "explanation": "The host-provided analysis_claim_ids_by_section maps no scientific claim IDs to the introduction section. Although the source units contain relevant background claims, they are not assigned to this section by the host ownership map, so no sourced scientific claims are available to establish analytical adequacy.",
+        "model_adequate": false,
+        "host_validation": {
+          "status": "failed",
+          "failure_codes": [
+            "analysis_semantics_inadequate",
+            "analysis_claims_missing"
+          ],
+          "allowed_claim_ids": []
+        }
+      },
+      {
+        "section_key": "taxonomy",
+        "adequate": false,
+        "claim_ids": [],
+        "explanation": "The host-provided analysis_claim_ids_by_section maps no scientific claim IDs to the taxonomy section. Although the source units contain classification criteria and boundary claims, they are not assigned to this section by the host ownership map, so no sourced scientific claims are available to establish analytical adequacy.",
+        "model_adequate": false,
+        "host_validation": {
+          "status": "failed",
+          "failure_codes": [
+            "analysis_semantics_inadequate",
+            "analysis_claims_missing"
+          ],
+          "allowed_claim_ids": []
+        }
+      },
+      {
+        "section_key": "methods",
+        "adequate": false,
+        "claim_ids": [],
+        "explanation": "The host-provided analysis_claim_ids_by_section maps no scientific claim IDs to the methods section. Although the source units contain mechanism and contribution claims for representative methods, they are not assigned to this section by the host ownership map, so no sourced scientific claims are available to establish analytical adequacy.",
+        "model_adequate": false,
+        "host_validation": {
+          "status": "failed",
+          "failure_codes": [
+            "analysis_semantics_inadequate",
+            "analysis_claims_missing"
+          ],
+          "allowed_claim_ids": []
+        }
+      },
+      {
+        "section_key": "experiments",
+        "adequate": false,
+        "claim_ids": [],
+        "explanation": "The host-provided analysis_claim_ids_by_section maps no scientific claim IDs to the experiments section. Although the source units contain benchmark result and comparability claims, they are not assigned to this section by the host ownership map, so no sourced scientific claims are available to establish analytical adequacy.",
+        "model_adequate": false,
+        "host_validation": {
+          "status": "failed",
+          "failure_codes": [
+            "analysis_semantics_inadequate",
+            "analysis_claims_missing"
+          ],
+          "allowed_claim_ids": []
+        }
+      },
+      {
+        "section_key": "open_problems",
+        "adequate": false,
+        "claim_ids": [],
+        "explanation": "The host-provided analysis_claim_ids_by_section maps no scientific claim IDs to the open_problems section. Although the source units contain concrete limitation claims, they are not assigned to this section by the host ownership map, so no sourced scientific claims are available to establish analytical adequacy.",
+        "model_adequate": false,
+        "host_validation": {
+          "status": "failed",
+          "failure_codes": [
+            "analysis_semantics_inadequate",
+            "analysis_claims_missing"
+          ],
+          "allowed_claim_ids": []
+        }
+      },
+      {
+        "section_key": "abstract",
+        "adequate": false,
+        "claim_ids": [
+          "claim_0",
+          "claim_1",
+          "claim_2",
+          "claim_3"
+        ],
+        "explanation": "The abstract concisely synthesizes the research question (metric learning for few-shot image classification), central findings (different improvement focuses across representative methods, reported benchmark advantages), and a key limitation (domain dependence of unified metrics, domain shift degradation, lack of consistent cross-paper protocols for unified ranking).",
+        "model_adequate": true,
+        "host_validation": {
+          "status": "failed",
+          "failure_codes": [
+            "analysis_claim_not_supported"
+          ],
+          "allowed_claim_ids": [
+            "claim_0",
+            "claim_1",
+            "claim_2",
+            "claim_3"
+          ]
+        }
+      },
+      {
+        "section_key": "conclusion",
+        "adequate": false,
+        "claim_ids": [
+          "claim_50",
+          "claim_51",
+          "claim_52",
+          "claim_53",
+          "claim_54"
+        ],
+        "explanation": "The conclusion answers the comparison question by identifying common foundations and distinct improvement dimensions, avoids an unsupported cross-paper ranking, explains protocol-bound interpretation and domain boundaries (BiT transfer baseline, SAR-specific result), and outlines future controlled comparison requirements with a different emphasis from the abstract.",
+        "model_adequate": true,
+        "host_validation": {
+          "status": "failed",
+          "failure_codes": [
+            "analysis_claim_not_supported"
+          ],
+          "allowed_claim_ids": [
+            "claim_50",
+            "claim_51",
+            "claim_52",
+            "claim_53",
+            "claim_54"
+          ]
+        }
+      }
+    ]
+  },
+  "scientific_outcome": "not_verified",
+  "provenance": {
+    "run_id": "stage-model-quality-20261018-001-pilot-few-shot-metric",
+    "artifact_sha256": "b2c9c98f3dc34cefdf8c98b3fa8d5abe374d00b656cfed025750da04f424f0e7",
+    "evaluation_version": "survey-evaluation-v3",
+    "source": "public_automated_failure_not_human_gold"
+  }
+}

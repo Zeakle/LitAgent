@@ -1,0 +1,286 @@
+{
+  "source_run_id": "received-native-20261018-001",
+  "original_fixture": "native-mixed-errors-real.json",
+  "binding": {
+    "version": "complete-native-unit-repair-v2",
+    "candidate_sha256": "556644fb79e80a27b51db3e343c2ff7ca54835a0f4da235c57ba4ab23539f196",
+    "fact_cards_sha256": "c06d1e2c1edd1f00aacda2ebd22662b9287fc36515c331ca8b39768c9de34636",
+    "targets": {
+      "u0": {
+        "path": "sections.introduction.first_block.additional_sentences.0",
+        "section_key": "introduction",
+        "original": {
+          "kind": "scientific",
+          "fact_card_ids": [
+            "f:ca210b9894268eda6a8dbd4f"
+          ],
+          "text": "在少样本图像分类中，深度度量学习是一条主要解决方案，其基本思想是在深度神经网络学习到的嵌入空间中，根据未见样本与少量已见样本的距离进行分类，以降低对少量训练图像过拟合的风险。",
+          "scope_notice_id": "none"
+        },
+        "allowed_fact_card_ids": [
+          "f:3b685d3e8053e24298fc5b59",
+          "f:8b348692dac84054d399c272",
+          "f:03555c46aea1f592b552e496",
+          "f:792ee54092d8d0487e45a9c7",
+          "f:c0531198d6f413bf8a34f481",
+          "f:a16563aa82f33be405066eac",
+          "f:a75a851f7e777a86d5436790",
+          "f:90a21881f3226d5b70a74000",
+          "f:b0863557d57761194e0bbc7d",
+          "f:d31899812db812bce14632df",
+          "f:829154fb27d6b58c1a07f404",
+          "f:21f3d74a63e45b284175d2dc"
+        ],
+        "reason_code": "strict_writing_out_of_scope_fact_card",
+        "must_remain_scientific": true
+      },
+      "u1": {
+        "path": "sections.methods.first_block.additional_sentences.1",
+        "section_key": "methods",
+        "original": {
+          "kind": "scientific",
+          "fact_card_ids": [
+            "f:b65c1cab497c60edb7f3eb44"
+          ],
+          "text": "SRL框架在局部CNN特征空间中用子空间表示图像，并以加权子空间距离衡量两幅图像的相似性，从而把基于度量学习的技术从向量表示扩展到子空间表示。",
+          "scope_notice_id": "none"
+        },
+        "allowed_fact_card_ids": [
+          "f:3b685d3e8053e24298fc5b59",
+          "f:8b348692dac84054d399c272",
+          "f:03555c46aea1f592b552e496",
+          "f:792ee54092d8d0487e45a9c7",
+          "f:d13f0ab6759228a3fd81bc84",
+          "f:a16563aa82f33be405066eac",
+          "f:a75a851f7e777a86d5436790",
+          "f:b0863557d57761194e0bbc7d",
+          "f:d31899812db812bce14632df",
+          "f:9082cf7ff926f08ef501f26a",
+          "f:829154fb27d6b58c1a07f404",
+          "f:5522e3586cae8f0f34a7fc8e"
+        ],
+        "reason_code": "strict_writing_out_of_scope_fact_card",
+        "must_remain_scientific": true
+      },
+      "u2": {
+        "path": "sections.methods.first_block.additional_sentences.2",
+        "section_key": "methods",
+        "original": {
+          "kind": "scientific",
+          "fact_card_ids": [
+            "f:b65c1cab497c60edb7f3eb44"
+          ],
+          "text": "当每个类别有K幅图像时，SRL使用prototypical subspace和discriminative subspace两类模板子空间聚合K-shot信息；相较全局向量表示，子空间表示可保留图像内的空间结构与多样性。",
+          "scope_notice_id": "none"
+        },
+        "allowed_fact_card_ids": [
+          "f:3b685d3e8053e24298fc5b59",
+          "f:8b348692dac84054d399c272",
+          "f:03555c46aea1f592b552e496",
+          "f:792ee54092d8d0487e45a9c7",
+          "f:d13f0ab6759228a3fd81bc84",
+          "f:a16563aa82f33be405066eac",
+          "f:a75a851f7e777a86d5436790",
+          "f:b0863557d57761194e0bbc7d",
+          "f:d31899812db812bce14632df",
+          "f:9082cf7ff926f08ef501f26a",
+          "f:829154fb27d6b58c1a07f404",
+          "f:5522e3586cae8f0f34a7fc8e"
+        ],
+        "reason_code": "strict_writing_out_of_scope_fact_card",
+        "must_remain_scientific": true
+      },
+      "u3": {
+        "path": "sections.methods.additional_blocks.0.first_sentence",
+        "section_key": "methods",
+        "original": {
+          "kind": "scientific",
+          "fact_card_ids": [
+            "f:bb0db5bdd41c770f69f90d7a"
+          ],
+          "text": "Proto-Triplet Loss与ICNN loss所针对的问题是，以往度量学习方法没有充分约束潜在空间性质以及不同类别在该空间中的可分性。",
+          "scope_notice_id": "none"
+        },
+        "allowed_fact_card_ids": [
+          "f:3b685d3e8053e24298fc5b59",
+          "f:8b348692dac84054d399c272",
+          "f:03555c46aea1f592b552e496",
+          "f:792ee54092d8d0487e45a9c7",
+          "f:d13f0ab6759228a3fd81bc84",
+          "f:a16563aa82f33be405066eac",
+          "f:a75a851f7e777a86d5436790",
+          "f:b0863557d57761194e0bbc7d",
+          "f:d31899812db812bce14632df",
+          "f:9082cf7ff926f08ef501f26a",
+          "f:829154fb27d6b58c1a07f404",
+          "f:5522e3586cae8f0f34a7fc8e"
+        ],
+        "reason_code": "strict_writing_out_of_scope_fact_card",
+        "must_remain_scientific": true
+      },
+      "u4": {
+        "path": "sections.experiments.additional_blocks.0.additional_sentences.0",
+        "section_key": "experiments",
+        "original": {
+          "kind": "gap",
+          "fact_card_ids": [],
+          "text": "所选证据没有提供深度K-tuplet network、SRL、DeepEMD、Proto-Triplet/ICNN损失和不确定性感知框架在同一backbone、同一episode划分、同一shot/way设置下的完整准确率、参数量、训练成本与推理成本对照表，因而不能据这些材料给出统一数值排名。",
+          "scope_notice_id": "evidence_limit"
+        },
+        "allowed_fact_card_ids": [
+          "f:8b348692dac84054d399c272",
+          "f:b65c1cab497c60edb7f3eb44",
+          "f:03555c46aea1f592b552e496",
+          "f:792ee54092d8d0487e45a9c7",
+          "f:a16563aa82f33be405066eac",
+          "f:b0863557d57761194e0bbc7d",
+          "f:d31899812db812bce14632df",
+          "f:9082cf7ff926f08ef501f26a",
+          "f:b959f9c133f75046cc9c2411",
+          "f:21f3d74a63e45b284175d2dc",
+          "f:4633c98ce4495b81022331e1",
+          "f:ac0d8a3cad6868d77c4ab368"
+        ],
+        "reason_code": "strict_writing_scope_notice_invalid",
+        "must_remain_scientific": false
+      },
+      "u5": {
+        "path": "sections.open_problems.first_block.additional_sentences.2",
+        "section_key": "open_problems",
+        "original": {
+          "kind": "scientific",
+          "fact_card_ids": [
+            "f:ac0d8a3cad6868d77c4ab368"
+          ],
+          "text": "FewSAR研究指出，SAR研究者常在自有数据集和实验设置上报告结果，缺少统一基准会降低结果比较效率；该证据支持SAR领域的评价问题，而非证明自然图像少样本分类也存在同样的基准缺失。",
+          "scope_notice_id": "none"
+        },
+        "allowed_fact_card_ids": [
+          "f:3b685d3e8053e24298fc5b59",
+          "f:8b348692dac84054d399c272",
+          "f:03555c46aea1f592b552e496",
+          "f:c0531198d6f413bf8a34f481",
+          "f:a75a851f7e777a86d5436790",
+          "f:90a21881f3226d5b70a74000",
+          "f:b0863557d57761194e0bbc7d",
+          "f:6b1078645743e4d4703df779",
+          "f:d31899812db812bce14632df",
+          "f:ca210b9894268eda6a8dbd4f",
+          "f:21f3d74a63e45b284175d2dc",
+          "f:bb0db5bdd41c770f69f90d7a"
+        ],
+        "reason_code": "strict_writing_out_of_scope_fact_card",
+        "must_remain_scientific": true
+      },
+      "u6": {
+        "path": "sections.open_problems.first_block.additional_sentences.3",
+        "section_key": "open_problems",
+        "original": {
+          "kind": "gap",
+          "fact_card_ids": [],
+          "text": "就本报告所选材料而言，仍缺少各度量学习方法在相同自然图像协议下的逐设置数值、统计显著性、训练资源和推理资源，因此开放问题应限定为 supplied evidence 无法完成统一成本—精度比较。",
+          "scope_notice_id": "evidence_limit"
+        },
+        "allowed_fact_card_ids": [
+          "f:3b685d3e8053e24298fc5b59",
+          "f:8b348692dac84054d399c272",
+          "f:03555c46aea1f592b552e496",
+          "f:c0531198d6f413bf8a34f481",
+          "f:a75a851f7e777a86d5436790",
+          "f:90a21881f3226d5b70a74000",
+          "f:b0863557d57761194e0bbc7d",
+          "f:6b1078645743e4d4703df779",
+          "f:d31899812db812bce14632df",
+          "f:ca210b9894268eda6a8dbd4f",
+          "f:21f3d74a63e45b284175d2dc",
+          "f:bb0db5bdd41c770f69f90d7a"
+        ],
+        "reason_code": "strict_writing_scope_notice_invalid",
+        "must_remain_scientific": false
+      }
+    },
+    "scope_notice_contract": "scope-notice-v1",
+    "language": "zh-CN",
+    "binding_sha256": "4b06bdc57918b26727dda175b9d8ccdc89dc99c34abb97eb7f4e74bc7940a189"
+  },
+  "response": "{\"can_repair\":true,\"patches\":{\"u0\":{\"text\":\"在少样本图像分类中，深度度量学习是一条主要解决方案；这类方法通过深度神经网络学习嵌入空间，并依据未见样本与少量已见样本的距离进行分类。\",\"kind\":\"scientific\",\"fact_card_ids\":[\"f:829154fb27d6b58c1a07f404\"],\"scope_notice_id\":\"none\"},\"u1\":{\"text\":\"深度K-tuplet network延续基于度量的少样本思路，在训练后提取适用于未见新类别的判别性特征，并可与非线性距离度量函数结合以完成分类。\",\"kind\":\"scientific\",\"fact_card_ids\":[\"f:792ee54092d8d0487e45a9c7\"],\"scope_notice_id\":\"none\"},\"u2\":{\"text\":\"在少样本分类任务中，基于度量的方法需要获得合适的数据表示与距离度量；DeepEMD不同于直接在图像级嵌入之间计算距离，而是强调利用判别性局部信息进行比较。\",\"kind\":\"scientific\",\"fact_card_ids\":[\"f:d31899812db812bce14632df\"],\"scope_notice_id\":\"none\"},\"u3\":{\"text\":\"在少样本分类任务中，基于度量的方法旨在获得合适的距离度量和数据表示，以计算图像之间的距离并据此完成比较与分类。\",\"kind\":\"scientific\",\"fact_card_ids\":[\"f:d31899812db812bce14632df\"],\"scope_notice_id\":\"none\"},\"u4\":{\"text\":\"\",\"kind\":\"gap\",\"fact_card_ids\":[],\"scope_notice_id\":\"evidence_limit\"},\"u5\":{\"text\":\"跨家族评价研究表明，片段式方法存在可被大规模Meta-Dataset评价进一步暴露的局限，同时迁移学习也有自身不足，因此不能把单一范式视为所有设置下的普遍最优解。\",\"kind\":\"scientific\",\"fact_card_ids\":[\"f:6b1078645743e4d4703df779\"],\"scope_notice_id\":\"none\"},\"u6\":{\"text\":\"\",\"kind\":\"gap\",\"fact_card_ids\":[],\"scope_notice_id\":\"evidence_limit\"}}}",
+  "diagnostics": [
+    {
+      "reason_code": "strict_writing_scope_notice_repeated",
+      "location": "open_problems.blocks.0.sentences.4",
+      "section_key": "open_problems",
+      "candidate_text": "",
+      "actual_fact_card_ids": [],
+      "raw_json_path": "sections.open_problems.first_block.additional_sentences.3"
+    },
+    {
+      "reason_code": "strict_writing_summary_binding_invalid",
+      "location": "abstract.blocks.0.sentences.4",
+      "section_key": "abstract",
+      "candidate_text": "由于所选研究的评价协议、数据集和报告指标不一致，且缺少统一的精度与成本对照，这些证据支持分场景比较而不能形成统一数值排名。",
+      "actual_fact_card_ids": [],
+      "actual_body_reference": null,
+      "actual_body_references": [
+        {
+          "section_key": "experiments",
+          "block_index": 1,
+          "sentence_index": 0
+        },
+        {
+          "section_key": "experiments",
+          "block_index": 1,
+          "sentence_index": 1
+        }
+      ],
+      "raw_json_path": "sections.abstract.first_block.additional_sentences.3"
+    },
+    {
+      "reason_code": "strict_writing_summary_binding_invalid",
+      "location": "conclusion.blocks.0.sentences.1",
+      "section_key": "conclusion",
+      "candidate_text": "若关注miniImageNet上的度量学习内部表现，深度K-tuplet network报告优于其他度量型方法，Proto-Triplet Loss与ICNN loss则报告2%的准确率提升，但这些结果来自不同论文且缺少同表复核。",
+      "actual_fact_card_ids": [],
+      "actual_body_reference": null,
+      "actual_body_references": [
+        {
+          "section_key": "experiments",
+          "block_index": 0,
+          "sentence_index": 0
+        },
+        {
+          "section_key": "experiments",
+          "block_index": 0,
+          "sentence_index": 3
+        },
+        {
+          "section_key": "experiments",
+          "block_index": 1,
+          "sentence_index": 1
+        }
+      ],
+      "raw_json_path": "sections.conclusion.first_block.additional_sentences.0"
+    },
+    {
+      "reason_code": "strict_writing_summary_binding_invalid",
+      "location": "conclusion.blocks.0.sentences.4",
+      "section_key": "conclusion",
+      "candidate_text": "未来若要回答哪种度量学习方法总体最优，需要在相同自然图像协议下报告逐设置准确率、统计显著性、参数量、训练成本和推理成本；现有 supplied evidence 只能支持有边界的分场景结论。",
+      "actual_fact_card_ids": [],
+      "actual_body_reference": null,
+      "actual_body_references": [
+        {
+          "section_key": "experiments",
+          "block_index": 1,
+          "sentence_index": 1
+        },
+        {
+          "section_key": "open_problems",
+          "block_index": 0,
+          "sentence_index": 4
+        }
+      ],
+      "raw_json_path": "sections.conclusion.first_block.additional_sentences.3"
+    }
+  ],
+  "provenance": "Known public Pro response; local rejection, no scientific assessment."
+}

@@ -13,15 +13,16 @@ const fs = require('node:fs'); const vm = require('node:vm'); const path = requi
  class Element {
   constructor() { this.events={}; this.children=[]; this.dataset={}; this.options=[]; this.value=''; this.hidden=false; this.checked=false; this.disabled=false; this.textContent=''; this.classList={add(){},remove(){}}; }
   addEventListener(name, fn) { this.events[name]=fn; } replaceChildren(...children) { this.children=children; }
-  append(...children) { this.children.push(...children); } setAttribute(){} querySelectorAll(){return [];} close() { this.open=false; } showModal(){this.open=true;} add(option){this.options.push(option);}
+  append(...children) { this.children.push(...children); } setAttribute(){} querySelectorAll(){return [];} close() { this.open=false; } showModal(){this.open=true;} add(option){this.options.push(option);} focus(){focused=this;}
  }
  const elements=new Map(); const $=id=>{if(!elements.has(id))elements.set(id,new Element());return elements.get(id);};
  $('#auto-audit-mode').options=['off','judge','judge_jev'].map(value=>({value,disabled:false})); $('#auto-audit-mode').value='off'; $('#auto-audit-max-versions').value='1';
  $('#query-input').value='offline fixture'; $('#report-language').value='en'; $('#review-structure').value='academic_v1'; $('#new-citation-style').value='ieee'; $('#human-review').checked=true;
+ const documentEvents={}; let focused=null; let activeDialog=null;
  const calls=[]; const caps={judge_available:true,jev_available:true,judge_model:'offline',jev_model:'jev-1.13.0',limits:{judge_calls:2,judge_max_output_tokens_per_call:16384,judge_timeout_seconds:180,jev:{max_requests:20,max_input_tokens:200000}}};
  const context={mode:'live',live_enabled:true,operation_token:'offline-operation-token',auto_audit_capabilities:caps};
  const sandbox=vm.createContext({
-   document:{querySelector:$,querySelectorAll:()=>[],createElement:()=>new Element(),getElementById:()=>null}, localStorage:{getItem:()=>null,setItem(){}},
+   document:{documentElement:{lang:''},addEventListener:(name,fn)=>{documentEvents[name]=fn;},querySelector:selector=>selector==='dialog[open]'?activeDialog:$(selector),querySelectorAll:()=>[],createElement:()=>new Element(),getElementById:()=>null}, localStorage:{getItem:()=>null,setItem(){}},
    location:{search:'',href:''},history:{replaceState(){}},URLSearchParams,AbortController,Option:function(label,value){this.textContent=label;this.value=String(value);},
    console,setTimeout,clearTimeout,fetch:async(url,options)=>{calls.push({url,options});return{ok:true,json:async()=>url==='/workbench/context'?context:url==='/survey'?{task_id:'offline-run'}:[]};},
  });
@@ -29,14 +30,20 @@ const fs = require('node:fs'); const vm = require('node:vm'); const path = requi
  const mocks={createWorkbenchStore:()=>({get:()=>state,subscribe(){},update:patch=>{state={...state,...patch};}}),createExecutionWorkspace:()=>({render(){},bind(){}}),
    evidenceMap:()=>new Map(),renderEvidenceList(){},renderExecutionInspector(){},renderHistory(){},renderQuality(){},locateReportDiagnostic:()=>false,renderReview(){},renderOutline(){},renderSearchRecords(){},renderReportDocument:()=>({headings:[]}),
    renderBenchmarkDetail(){},renderBenchmarkList(){},renderBenchmarkObservation(){},adaptArchiveView(){},adaptInteractiveView(){},chooseDefaultSection:()=> 'report',normalizeRunList:()=>[],bindFormatControls(){} };
- const real=new Set(['app.js','audit-controls.js','api-client.js','i18n.js']); const cache=new Map();
+ const real=new Set(['app.js','audit-controls.js','api-client.js','i18n.js','benchmark-controller.js']); const cache=new Map();
  async function load(filename) {
    if(cache.has(filename))return cache.get(filename);
    const module=real.has(filename)?new vm.SourceTextModule(fs.readFileSync(path.join(process.argv[1],filename),'utf8'),{context:sandbox,identifier:filename}):new vm.SyntheticModule(Object.keys(mocks),function(){for(const [name,value]of Object.entries(mocks))this.setExport(name,value);},{context:sandbox,identifier:filename});
    cache.set(filename,module); await module.link(specifier=>load(specifier.split('?')[0].replace('./',''))); return module;
  }
  await (await load('app.js')).evaluate(); await new Promise(resolve=>setImmediate(resolve));
+ if(sandbox.document.documentElement.lang!=='zh-CN')throw Error('initial document language must match UI');
  if(!$('#auto-audit-max-versions').disabled)throw Error('default-off budget must be disabled');
+ $('#sidebar-toggle').events.click(); activeDialog={};
+ documentEvents.keydown({key:'Escape',preventDefault(){throw Error('dialog Escape intercepted');}});
+ if($('#run-sidebar').dataset.open!=='true')throw Error('dialog dismissal closed sidebar');
+ activeDialog=null;let prevented=false;documentEvents.keydown({key:'Escape',preventDefault(){prevented=true;}});
+ if(!prevented||$('#run-sidebar').dataset.open!=='false'||!$('#sidebar-scrim').hidden||focused!==$('#sidebar-toggle'))throw Error('Escape must close sidebar and restore focus');
  $('#new-run-dialog').showModal();$('#dismiss-new-run').events.click();
  if($('#new-run-dialog').open||calls.some(call=>call.url==='/survey'))throw Error('closing new Survey must not submit a paid run');
  async function submit(){await $('#new-run-form').events.submit({preventDefault(){}});return calls.filter(call=>call.url==='/survey').at(-1);}

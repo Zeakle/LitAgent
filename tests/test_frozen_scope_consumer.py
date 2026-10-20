@@ -6,12 +6,12 @@ from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
+from model_config_helpers import load_legacy_mini_config as load_config
 from test_frozen_quality_repair import factories
 from test_frozen_repair_parent import parent
 from test_reference_occurrence_policy import bound
 from test_shared_evidence_scope import frozen, ledger
 
-from litagent.config import load_config
 from litagent.llm.client import LLMResponse, OpenAICompatibleClient
 from litagent.observability.context import get_task_id
 from litagent.runner import LitAgent

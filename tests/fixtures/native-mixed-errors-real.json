@@ -1,0 +1,2606 @@
+{
+  "provenance": "Public few-shot scientific sources and received Pro output; prepared-survey-20261017-003; offline regression, no scientific verdict.",
+  "candidate": "{\"title\":\"少样本图像分类中度量学习方法的比较\",\"sections\":{\"introduction\":{\"first_block\":{\"heading\":\"问题背景与综述范围\",\"type\":\"paragraph\",\"first_sentence\":{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:3b685d3e8053e24298fc5b59\"],\"text\":\"少样本分类的核心困难是少量有标签训练样本容易导致模型过拟合，因此已有研究将元学习、迁移学习和度量学习作为缓解该问题的主要路径。\",\"scope_notice_id\":\"none\"},\"additional_sentences\":[{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:ca210b9894268eda6a8dbd4f\"],\"text\":\"在少样本图像分类中，深度度量学习是一条主要解决方案，其基本思想是在深度神经网络学习到的嵌入空间中，根据未见样本与少量已见样本的距离进行分类，以降低对少量训练图像过拟合的风险。\",\"scope_notice_id\":\"none\"},{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:03555c46aea1f592b552e496\"],\"text\":\"本报告比较的度量学习方法主要面向由支持集和查询集构成的片段式任务，目标是学习可在这些集合之间进行相似性比较的度量。\",\"scope_notice_id\":\"none\"},{\"kind\":\"organization\",\"fact_card_ids\":[],\"text\":\"\",\"scope_notice_id\":\"review_scope\"}]},\"additional_blocks\":[]},\"taxonomy\":{\"first_block\":{\"heading\":\"按度量学习环节划分方法\",\"type\":\"paragraph\",\"first_sentence\":{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:829154fb27d6b58c1a07f404\"],\"text\":\"一篇覆盖2018年至2022年深度度量学习少样本图像分类方法的综述，按照度量学习的三个环节将方法划分为学习特征嵌入、学习类别表示和学习距离度量。\",\"scope_notice_id\":\"none\"},\"additional_sentences\":[{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:d31899812db812bce14632df\"],\"text\":\"在少样本分类任务中，基于度量的方法旨在获得合适的距离度量和数据表示，用图像之间的距离完成比较与分类。\",\"scope_notice_id\":\"none\"},{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:5522e3586cae8f0f34a7fc8e\"],\"text\":\"原型式度量学习通常依据特征相似性，在支持集中找到与查询样本最近的原型来确定类别。\",\"scope_notice_id\":\"none\"},{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:c0531198d6f413bf8a34f481\"],\"text\":\"在简化的“k-shot N-way”图像分类设置中，许多既有少样本方法可归入基于度量的元学习或基于优化的元学习，这说明度量学习与元学习训练范式存在交叉但不等同于所有少样本方法。\",\"scope_notice_id\":\"none\"}]},\"additional_blocks\":[{\"heading\":\"与迁移学习基线的边界\",\"type\":\"paragraph\",\"first_sentence\":{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:a16563aa82f33be405066eac\"],\"text\":\"BiT代表的大规模迁移学习通过精心工程化的大规模网络训练与微调，在大规模、多数据集基准上构成具有竞争力且稳健的少样本分类基线，但它不属于以学习支持集与查询集之间比较度量为核心的方法。\",\"scope_notice_id\":\"none\"},\"additional_sentences\":[{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:9082cf7ff926f08ef501f26a\"],\"text\":\"在Meta-Dataset上，大规模迁移方法BiT即使只在ImageNet上训练，平均表现也优于参与比较的方法；这一结论用于界定外部基线，而不能直接推出度量学习内部各方法的排序。\",\"scope_notice_id\":\"none\"}]}]},\"methods\":{\"first_block\":{\"heading\":\"代表性度量学习方法的机制\",\"type\":\"paragraph\",\"first_sentence\":{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:8b348692dac84054d399c272\"],\"text\":\"深度K-tuplet network针对既有度量型少样本方法偏重查询样本与支持样本的特征相似性、却忽视训练样本之间关系的问题，将经典triplet network扩展为深度K-tuplet network，并通过片段训练学习通用表示。\",\"scope_notice_id\":\"none\"},\"additional_sentences\":[{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:792ee54092d8d0487e45a9c7\"],\"text\":\"深度K-tuplet network训练后可为未见新类别提取判别性特征，并能与非线性距离度量函数结合以促进少样本分类。\",\"scope_notice_id\":\"none\"},{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:b65c1cab497c60edb7f3eb44\"],\"text\":\"SRL框架在局部CNN特征空间中用子空间表示图像，并以加权子空间距离衡量两幅图像的相似性，从而把基于度量学习的技术从向量表示扩展到子空间表示。\",\"scope_notice_id\":\"none\"},{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:b65c1cab497c60edb7f3eb44\"],\"text\":\"当每个类别有K幅图像时，SRL使用prototypical subspace和discriminative subspace两类模板子空间聚合K-shot信息；相较全局向量表示，子空间表示可保留图像内的空间结构与多样性。\",\"scope_notice_id\":\"none\"},{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:d31899812db812bce14632df\"],\"text\":\"DeepEMD强调使用判别性局部信息，不同于在图像级嵌入之间直接计算距离的方法，其机制围绕局部表示匹配来服务少样本分类。\",\"scope_notice_id\":\"none\"}]},\"additional_blocks\":[{\"heading\":\"嵌入约束与不确定性建模\",\"type\":\"paragraph\",\"first_sentence\":{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:bb0db5bdd41c770f69f90d7a\"],\"text\":\"Proto-Triplet Loss与ICNN loss所针对的问题是，以往度量学习方法没有充分约束潜在空间性质以及不同类别在该空间中的可分性。\",\"scope_notice_id\":\"none\"},\"additional_sentences\":[{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:03555c46aea1f592b552e496\"],\"text\":\"这两类损失通过关注少量样本之间的类内距离与类间距离来强调嵌入向量的重要性，其中Proto-Triplet Loss改造原始triplet loss以适应少样本场景，ICNN loss则依据类内与类间最近邻分数评估训练网络所得嵌入的质量。\",\"scope_notice_id\":\"none\"},{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:5522e3586cae8f0f34a7fc8e\"],\"text\":\"Uncertainty-Aware Few-Shot框架关注神经网络对不同查询—支持样本对计算相似性时的不确定性，把观察到的相似性转换为概率表示并纳入损失，再用图模型联合估计查询样本与支持集原型之间各样本对的不确定性。\",\"scope_notice_id\":\"none\"}]}]},\"experiments\":{\"first_block\":{\"heading\":\"数据集、评价设置与可比较结果\",\"type\":\"paragraph\",\"first_sentence\":{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:4633c98ce4495b81022331e1\"],\"text\":\"深度K-tuplet network在miniImageNet基准上的结果优于其他基于度量的少样本分类方法，但给定证据没有提供具体准确率数值。\",\"scope_notice_id\":\"none\"},\"additional_sentences\":[{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:792ee54092d8d0487e45a9c7\"],\"text\":\"在使用miniImageNet训练模型并在完全不同的Caltech-101、CUB-200、Stanford Dogs和Cars数据集上评估时，深度K-tuplet network显著优于先前方法，证据将其解释为对未见类别具有更强泛化能力。\",\"scope_notice_id\":\"none\"},{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:b65c1cab497c60edb7f3eb44\"],\"text\":\"SRL框架在MiniImageNet、TieredImageNet和Caltech-UCSD Birds-200-2011三个公开基准上验证，实验结果显示其相对于先前最先进方法具有竞争力或更优，但摘要证据未给出逐数据集数值。\",\"scope_notice_id\":\"none\"},{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:b959f9c133f75046cc9c2411\"],\"text\":\"Proto-Triplet Loss与ICNN loss在miniImagenNet基准上相较其他基于度量的少样本学习方法取得2%的准确率提升，证据将其归因于这些损失函数能让网络更好地泛化到此前未见类别。\",\"scope_notice_id\":\"none\"},{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:ac0d8a3cad6868d77c4ab368\"],\"text\":\"在FewSAR的少样本SAR图像分类统一设置下，度量学习方法在准确率上取得最佳结果；该结论来自SAR目标图像分类领域，不能直接外推到自然图像基准。\",\"scope_notice_id\":\"none\"}]},\"additional_blocks\":[{\"heading\":\"跨研究比较的限制\",\"type\":\"paragraph\",\"first_sentence\":{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:9082cf7ff926f08ef501f26a\"],\"text\":\"跨元学习与迁移学习家族的研究指出，不同家族的最先进进展长期主要在彼此隔离的评价规范中衡量，因此直接或彻底比较不同方法存在困难。\",\"scope_notice_id\":\"none\"},\"additional_sentences\":[{\"kind\":\"gap\",\"fact_card_ids\":[],\"text\":\"所选证据没有提供深度K-tuplet network、SRL、DeepEMD、Proto-Triplet/ICNN损失和不确定性感知框架在同一backbone、同一episode划分、同一shot/way设置下的完整准确率、参数量、训练成本与推理成本对照表，因而不能据这些材料给出统一数值排名。\",\"scope_notice_id\":\"evidence_limit\"}]}]},\"open_problems\":{\"first_block\":{\"heading\":\"方法局限与证据缺口\",\"type\":\"paragraph\",\"first_sentence\":{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:bb0db5bdd41c770f69f90d7a\"],\"text\":\"传统度量学习方法的一个具体不足是潜在空间性质和不同类别在潜在空间中的可分性未被充分强制，这正是类内与类间距离约束试图解决的问题。\",\"scope_notice_id\":\"none\"},\"additional_sentences\":[{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:6b1078645743e4d4703df779\"],\"text\":\"跨家族评价研究表明，片段式方法存在可被大规模Meta-Dataset评价进一步暴露的局限，同时迁移学习也有自身不足，因此不能把单一范式视为所有设置下的普遍最优解。\",\"scope_notice_id\":\"none\"},{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:b0863557d57761194e0bbc7d\"],\"text\":\"大规模视觉模型虽能很好迁移到常见分类基准和VTAB-1k，但同一研究也指出扩大规模并不会改善高度分布外Meta-Dataset任务上的性能，这为度量学习与迁移学习的比较保留了任务分布边界。\",\"scope_notice_id\":\"none\"},{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:ac0d8a3cad6868d77c4ab368\"],\"text\":\"FewSAR研究指出，SAR研究者常在自有数据集和实验设置上报告结果，缺少统一基准会降低结果比较效率；该证据支持SAR领域的评价问题，而非证明自然图像少样本分类也存在同样的基准缺失。\",\"scope_notice_id\":\"none\"},{\"kind\":\"gap\",\"fact_card_ids\":[],\"text\":\"就本报告所选材料而言，仍缺少各度量学习方法在相同自然图像协议下的逐设置数值、统计显著性、训练资源和推理资源，因此开放问题应限定为 supplied evidence 无法完成统一成本—精度比较。\",\"scope_notice_id\":\"evidence_limit\"}]},\"additional_blocks\":[]},\"abstract\":{\"first_block\":{\"heading\":\"\",\"type\":\"paragraph\",\"first_sentence\":{\"text\":\"少样本图像分类中的度量学习方法通过学习嵌入、类别表示或距离度量，使查询样本能够依据与支持样本或原型的相似性完成分类。\",\"body_references\":[{\"section_key\":\"taxonomy\",\"block_index\":0,\"sentence_index\":1},{\"section_key\":\"taxonomy\",\"block_index\":0,\"sentence_index\":2}]},\"additional_sentences\":[{\"text\":\"深度K-tuplet network通过挖掘训练样本之间的关系改进特征嵌入，并在miniImageNet以及跨Caltech-101、CUB-200、Stanford Dogs、Cars的泛化测试中报告优势。\",\"body_references\":[{\"section_key\":\"methods\",\"block_index\":0,\"sentence_index\":0},{\"section_key\":\"experiments\",\"block_index\":0,\"sentence_index\":1}]},{\"text\":\"SRL用局部CNN特征空间中的子空间和加权子空间距离表示并比较图像，在MiniImageNet、TieredImageNet和CUB上表现出竞争力或更优性能。\",\"body_references\":[{\"section_key\":\"methods\",\"block_index\":0,\"sentence_index\":2},{\"section_key\":\"experiments\",\"block_index\":0,\"sentence_index\":2}]},{\"text\":\"显式约束类内与类间距离的Proto-Triplet Loss和ICNN loss在miniImagenNet上相对其他度量型少样本方法报告2%的准确率提升。\",\"body_references\":[{\"section_key\":\"methods\",\"block_index\":1,\"sentence_index\":1},{\"section_key\":\"experiments\",\"block_index\":0,\"sentence_index\":3}]},{\"text\":\"由于所选研究的评价协议、数据集和报告指标不一致，且缺少统一的精度与成本对照，这些证据支持分场景比较而不能形成统一数值排名。\",\"body_references\":[{\"section_key\":\"experiments\",\"block_index\":1,\"sentence_index\":0},{\"section_key\":\"experiments\",\"block_index\":1,\"sentence_index\":1}]}]},\"additional_blocks\":[]},\"conclusion\":{\"first_block\":{\"heading\":\"\",\"type\":\"paragraph\",\"first_sentence\":{\"text\":\"比较这些方法时，更合理的结论是：度量学习内部的改进分别来自样本关系嵌入、子空间表示、局部判别信息匹配、类内/类间间隔约束以及相似性不确定性建模，而不是单一机制覆盖全部任务。\",\"body_references\":[{\"section_key\":\"methods\",\"block_index\":0,\"sentence_index\":0},{\"section_key\":\"methods\",\"block_index\":0,\"sentence_index\":2},{\"section_key\":\"methods\",\"block_index\":0,\"sentence_index\":4},{\"section_key\":\"methods\",\"block_index\":1,\"sentence_index\":1},{\"section_key\":\"methods\",\"block_index\":1,\"sentence_index\":2}]},\"additional_sentences\":[{\"text\":\"若关注miniImageNet上的度量学习内部表现，深度K-tuplet network报告优于其他度量型方法，Proto-Triplet Loss与ICNN loss则报告2%的准确率提升，但这些结果来自不同论文且缺少同表复核。\",\"body_references\":[{\"section_key\":\"experiments\",\"block_index\":0,\"sentence_index\":0},{\"section_key\":\"experiments\",\"block_index\":0,\"sentence_index\":3},{\"section_key\":\"experiments\",\"block_index\":1,\"sentence_index\":1}]},{\"text\":\"若关注跨数据集泛化，深度K-tuplet network在miniImageNet训练后于Caltech-101、CUB-200、Stanford Dogs和Cars上显著优于先前方法，SRL则在MiniImageNet、TieredImageNet和CUB上具有竞争力或更优表现。\",\"body_references\":[{\"section_key\":\"experiments\",\"block_index\":0,\"sentence_index\":1},{\"section_key\":\"experiments\",\"block_index\":0,\"sentence_index\":2}]},{\"text\":\"BiT等大规模迁移基线在Meta-Dataset等跨家族评价中具有竞争力，说明度量学习方法需要与强迁移基线比较，但这一外部证据不能替代度量学习方法之间的同协议排名。\",\"body_references\":[{\"section_key\":\"taxonomy\",\"block_index\":1,\"sentence_index\":0},{\"section_key\":\"taxonomy\",\"block_index\":1,\"sentence_index\":1},{\"section_key\":\"experiments\",\"block_index\":1,\"sentence_index\":0}]},{\"text\":\"未来若要回答哪种度量学习方法总体最优，需要在相同自然图像协议下报告逐设置准确率、统计显著性、参数量、训练成本和推理成本；现有 supplied evidence 只能支持有边界的分场景结论。\",\"body_references\":[{\"section_key\":\"experiments\",\"block_index\":1,\"sentence_index\":1},{\"section_key\":\"open_problems\",\"block_index\":0,\"sentence_index\":4}]}]},\"additional_blocks\":[]}}}",
+  "cards": {
+    "f:3b685d3e8053e24298fc5b59": {
+      "card_id": "f:3b685d3e8053e24298fc5b59",
+      "contract": "fact-card-v1",
+      "paper_id": "arxiv:2105.08149",
+      "evidence_id": "arxiv:2105.08149:page:1:block:9:claim:1d1c47d8d2c3",
+      "source_version": "v2",
+      "content_sha256": "ffe84831bb4ae36f7b1dd692fc736853ab65cd1d9b14eb1fe018bc250a99b99d",
+      "source_quote": "The biggest challenge in few-shot classification is a high risk of model overfitting to the few labeled training samples. To alleviate this problem, researchers have proposed various approaches, such as meta-learning methods, transfer learning methods, and metric learning methods. Meta-learning methods train a meta-learner on many different classification tasks to extract generalizable knowledge, which enables rapid learning on a new related task with few examples [7, 9]. Transfer learning methods presume shared knowledge between the source and target domains, and fine-tune the model trained on abundant source data to fit few labeled target samples [10, 11]. Metric learning methods learn feature embeddings [6] and/or distance measures (or inversely, similarity measures) [12] and classify an unseen sample based on its distance to",
+      "source_start": 0,
+      "source_end": 840,
+      "chunk_key": "page:1:block:9",
+      "page": 1,
+      "block_index": 9,
+      "source_locator": "paper=arxiv:2105.08149;chunk=page:1:block:9;section=abstract;page=1;block=9",
+      "bbox": [
+        70.73100280761719,
+        591.552734375,
+        523.5343017578125,
+        710.8558349609375
+      ],
+      "source_spans": [
+        {
+          "page": 1,
+          "block_index": 9,
+          "bbox": [
+            70.73100280761719,
+            591.552734375,
+            523.5343017578125,
+            710.8558349609375
+          ],
+          "start_char": 0,
+          "end_char": 840,
+          "raw_content_hash": "52b17f8c8618551e29bb773d4ca75412a28285436ca2246dffa095f3a39c41ca"
+        }
+      ],
+      "raw_content_hash": "805726e1ac0abaa3ea9d9e55b897b3ac89d220afa95979c07101385fdc94c979",
+      "content_scope": "selected_fulltext",
+      "finding_candidate": "To alleviate this problem, researchers have proposed various approaches, such as meta-learning methods, transfer learning methods, and metric learning methods.",
+      "semantic_status": "not_verified",
+      "method": "meta-learning methods, transfer learning methods, and metric learning methods",
+      "conditions": null,
+      "dataset": null,
+      "metric": null,
+      "value": null,
+      "unit": null,
+      "qualifiers": null,
+      "missing_fields": [
+        "conditions",
+        "dataset",
+        "metric",
+        "value",
+        "unit",
+        "qualifiers"
+      ]
+    },
+    "f:8b348692dac84054d399c272": {
+      "card_id": "f:8b348692dac84054d399c272",
+      "contract": "fact-card-v1",
+      "paper_id": "arxiv:1907.03123",
+      "evidence_id": "arxiv:1907.03123:abstract:claim:3bee9c457d48",
+      "source_version": "v2",
+      "content_sha256": "bbc803aec14ff7d89ee221236ec27f7e6938a8484773b680cc121ed4002bc5fd",
+      "source_quote": "The goal of few-shot learning is to recognize new visual concepts with just a few amount of labeled samples in each class. Recent effective metric-based few-shot approaches employ neural networks to learn a feature similarity comparison between query and support examples. However, the importance of feature embedding, i.e., exploring the relationship among training samples, is neglected. In this work, we present a simple yet powerful baseline for few-shot classification by emphasizing the importance of feature embedding. Specifically, we revisit the classical triplet network from deep metric learning, and extend it into a deep K-tuplet network for few-shot learning, utilizing the relationship among the input samples to learn a general representation learning via episode-training. Once trained, our network is able to extract discriminative features for unseen novel categories and can be seamlessly incorporated with a non-linear distance metric function to facilitate the few-shot classification. Our result on the miniImageNet benchmark outperforms other metric-based few-shot classification methods. More importantly, when evaluated on completely different datasets (Caltech-101, CUB-200, Stanford Dogs and Cars) using the model trained with miniImageNet, our method significantly outperforms prior methods, demonstrating its superior capability to generalize to unseen classes.",
+      "source_start": 0,
+      "source_end": 1391,
+      "chunk_key": "abstract",
+      "page": null,
+      "block_index": null,
+      "source_locator": "paper=arxiv:1907.03123;chunk=abstract;section=abstract;page=;block=",
+      "bbox": null,
+      "source_spans": [],
+      "raw_content_hash": "bbc803aec14ff7d89ee221236ec27f7e6938a8484773b680cc121ed4002bc5fd",
+      "content_scope": "abstract",
+      "finding_candidate": "Recent effective metric-based few-shot approaches employ neural networks to learn a feature similarity comparison between query and support examples. However, the importance of feature embedding, i.e., exploring the relationship among training samples, is neglected.",
+      "semantic_status": "not_verified",
+      "method": null,
+      "conditions": null,
+      "dataset": null,
+      "metric": null,
+      "value": null,
+      "unit": null,
+      "qualifiers": null,
+      "missing_fields": [
+        "method",
+        "conditions",
+        "dataset",
+        "metric",
+        "value",
+        "unit",
+        "qualifiers"
+      ]
+    },
+    "f:b65c1cab497c60edb7f3eb44": {
+      "card_id": "f:b65c1cab497c60edb7f3eb44",
+      "contract": "fact-card-v1",
+      "paper_id": "arxiv:2105.00379",
+      "evidence_id": "arxiv:2105.00379:abstract:claim:d5a42bca1404",
+      "source_version": "v2",
+      "content_sha256": "17576efae2193e4672982e69013647dca735a9b22d834e7a9839d9083b7f8ab5",
+      "source_quote": "In this paper, we propose a subspace representation learning (SRL) framework to tackle few-shot image classification tasks. It exploits a subspace in local CNN feature space to represent an image, and measures the similarity between two images according to a weighted subspace distance (WSD). When K images are available for each class, we develop two types of template subspaces to aggregate K-shot information: the prototypical subspace (PS) and the discriminative subspace (DS). Based on the SRL framework, we extend metric learning based techniques from vector to subspace representation. While most previous works adopted global vector representation, using subspace representation can effectively preserve the spatial structure, and diversity within an image. We demonstrate the effectiveness of the SRL framework on three public benchmark datasets: MiniImageNet, TieredImageNet and Caltech-UCSD Birds-200-2011 (CUB), and the experimental results illustrate competitive/superior performance of our method compared to the previous state-of-the-art.",
+      "source_start": 0,
+      "source_end": 1053,
+      "chunk_key": "abstract",
+      "page": null,
+      "block_index": null,
+      "source_locator": "paper=arxiv:2105.00379;chunk=abstract;section=abstract;page=;block=",
+      "bbox": null,
+      "source_spans": [],
+      "raw_content_hash": "17576efae2193e4672982e69013647dca735a9b22d834e7a9839d9083b7f8ab5",
+      "content_scope": "abstract",
+      "finding_candidate": "We demonstrate the effectiveness of the SRL framework on three public benchmark datasets: MiniImageNet, TieredImageNet and Caltech-UCSD Birds-200-2011 (CUB), and the experimental results illustrate competitive/superior performance of our method compared to the previous state-of-the-art.",
+      "semantic_status": "not_verified",
+      "method": "SRL framework",
+      "conditions": null,
+      "dataset": "MiniImageNet, TieredImageNet and Caltech-UCSD Birds-200-2011 (CUB)",
+      "metric": null,
+      "value": null,
+      "unit": null,
+      "qualifiers": "competitive/superior performance of our method compared to the previous state-of-the-art",
+      "missing_fields": [
+        "conditions",
+        "metric",
+        "value",
+        "unit"
+      ]
+    },
+    "f:03555c46aea1f592b552e496": {
+      "card_id": "f:03555c46aea1f592b552e496",
+      "contract": "fact-card-v1",
+      "paper_id": "arxiv:2305.09062",
+      "evidence_id": "arxiv:2305.09062:abstract:claim:dcc1e6a0ae7a",
+      "source_version": "v2",
+      "content_sha256": "3b7b29b93228cfb4d0bce8af40b9a1cde49576d318595eb3973e969cfd257e44",
+      "source_quote": "Few-shot learning is a challenging area of research that aims to learn new concepts with only a few labeled samples of data. Recent works based on metric-learning approaches leverage the meta-learning approach, which is encompassed by episodic tasks that make use a support (training) and query set (test) with the objective of learning a similarity comparison metric between those sets. Due to the lack of data, the learning process of the embedding network becomes an important part of the few-shot task. Previous works have addressed this problem using metric learning approaches, but the properties of the underlying latent space and the separability of the difference classes on it was not entirely enforced. In this work, we propose two different loss functions which consider the importance of the embedding vectors by looking at the intra-class and inter-class distance between the few data. The first loss function is the Proto-Triplet Loss, which is based on the original triplet loss with the modifications needed to better work on few-shot scenarios. The second loss function, which we dub ICNN loss is based on an inter and intra class nearest neighbors score, which help us to assess the quality of embeddings obtained from the trained network. Our results, obtained from a extensive experimental setup show a significant improvement in accuracy in the miniImagenNet benchmark compared to other metric-based few-shot learning methods by a margin of 2%, demonstrating the capability of these loss functions to allow the network to generalize better to previously unseen classes. In our experiments, we demonstrate competitive generalization capabilities to other domains, such as the Caltech CUB, Dogs and Cars datasets compared with the state of the art.",
+      "source_start": 0,
+      "source_end": 1768,
+      "chunk_key": "abstract",
+      "page": null,
+      "block_index": null,
+      "source_locator": "paper=arxiv:2305.09062;chunk=abstract;section=abstract;page=;block=",
+      "bbox": null,
+      "source_spans": [],
+      "raw_content_hash": "9961dedc92856c296031863156331e303d557b0b880cf7b883df198ad80b6f04",
+      "content_scope": "abstract",
+      "finding_candidate": "Recent works based on metric-learning approaches leverage the meta-learning approach, which is encompassed by episodic tasks that make use a support (training) and query set (test) with the objective of learning a similarity comparison metric between those sets.",
+      "semantic_status": "not_verified",
+      "method": "metric-learning approaches",
+      "conditions": "episodic tasks that make use a support (training) and query set (test)",
+      "dataset": null,
+      "metric": null,
+      "value": null,
+      "unit": null,
+      "qualifiers": "objective of learning a similarity comparison metric between those sets",
+      "missing_fields": [
+        "dataset",
+        "metric",
+        "value",
+        "unit"
+      ]
+    },
+    "f:792ee54092d8d0487e45a9c7": {
+      "card_id": "f:792ee54092d8d0487e45a9c7",
+      "contract": "fact-card-v1",
+      "paper_id": "arxiv:1907.03123",
+      "evidence_id": "arxiv:1907.03123:abstract:claim:76e8e57aa91c",
+      "source_version": "v2",
+      "content_sha256": "bbc803aec14ff7d89ee221236ec27f7e6938a8484773b680cc121ed4002bc5fd",
+      "source_quote": "The goal of few-shot learning is to recognize new visual concepts with just a few amount of labeled samples in each class. Recent effective metric-based few-shot approaches employ neural networks to learn a feature similarity comparison between query and support examples. However, the importance of feature embedding, i.e., exploring the relationship among training samples, is neglected. In this work, we present a simple yet powerful baseline for few-shot classification by emphasizing the importance of feature embedding. Specifically, we revisit the classical triplet network from deep metric learning, and extend it into a deep K-tuplet network for few-shot learning, utilizing the relationship among the input samples to learn a general representation learning via episode-training. Once trained, our network is able to extract discriminative features for unseen novel categories and can be seamlessly incorporated with a non-linear distance metric function to facilitate the few-shot classification. Our result on the miniImageNet benchmark outperforms other metric-based few-shot classification methods. More importantly, when evaluated on completely different datasets (Caltech-101, CUB-200, Stanford Dogs and Cars) using the model trained with miniImageNet, our method significantly outperforms prior methods, demonstrating its superior capability to generalize to unseen classes.",
+      "source_start": 0,
+      "source_end": 1391,
+      "chunk_key": "abstract",
+      "page": null,
+      "block_index": null,
+      "source_locator": "paper=arxiv:1907.03123;chunk=abstract;section=abstract;page=;block=",
+      "bbox": null,
+      "source_spans": [],
+      "raw_content_hash": "bbc803aec14ff7d89ee221236ec27f7e6938a8484773b680cc121ed4002bc5fd",
+      "content_scope": "abstract",
+      "finding_candidate": "when evaluated on completely different datasets (Caltech-101, CUB-200, Stanford Dogs and Cars) using the model trained with miniImageNet, our method significantly outperforms prior methods, demonstrating its superior capability to generalize to unseen classes.",
+      "semantic_status": "not_verified",
+      "method": "deep K-tuplet network",
+      "conditions": "using the model trained with miniImageNet",
+      "dataset": "Caltech-101, CUB-200, Stanford Dogs and Cars",
+      "metric": null,
+      "value": null,
+      "unit": null,
+      "qualifiers": "significantly outperforms prior methods, demonstrating its superior capability to generalize to unseen classes",
+      "missing_fields": [
+        "metric",
+        "value",
+        "unit"
+      ]
+    },
+    "f:c0531198d6f413bf8a34f481": {
+      "card_id": "f:c0531198d6f413bf8a34f481",
+      "contract": "fact-card-v1",
+      "paper_id": "arxiv:1904.03014",
+      "evidence_id": "arxiv:1904.03014:abstract:claim:668b92b6e867",
+      "source_version": "v2",
+      "content_sha256": "b9dc1b3b589c20bff47892a0820fab4334ad1c65c1b9067ae5ee21ec10e69691",
+      "source_quote": "Few-shot learning aims to learn classifiers for new classes with only a few training examples per class. Most existing few-shot learning approaches belong to either metric-based meta-learning or optimization-based meta-learning category, both of which have achieved successes in the simplified \"$k$-shot $N$-way\" image classification settings. Specifically, the optimization-based approaches train a meta-learner to predict the parameters of the task-specific classifiers. The task-specific classifiers are required to be homogeneous-structured to ease the parameter prediction, so the meta-learning approaches could only handle few-shot learning problems where the tasks share a uniform number of classes. The metric-based approaches learn one task-invariant metric for all the tasks. Even though the metric-learning approaches allow different numbers of classes, they require the tasks all coming from a similar domain such that there exists a uniform metric that could work across tasks. In this work, we propose a hybrid meta-learning model called Meta-Metric-Learner which combines the merits of both optimization- and metric-based approaches. Our meta-metric-learning approach consists of two components, a task-specific metric-based learner as a base model, and a meta-learner that learns and specifies the base model. Thus our model is able to handle flexible numbers of classes as well as generate more generalized metrics for classification across tasks. We test our approach in the standard \"$k$-shot $N$-way\" few-shot learning setting following previous works and a new realistic few-shot setting with flexible class numbers in both single-source form and multi-source forms. Experiments show that our approach can obtain superior performance in all settings.",
+      "source_start": 0,
+      "source_end": 1771,
+      "chunk_key": "abstract",
+      "page": null,
+      "block_index": null,
+      "source_locator": "paper=arxiv:1904.03014;chunk=abstract;section=abstract;page=;block=",
+      "bbox": null,
+      "source_spans": [],
+      "raw_content_hash": "b9dc1b3b589c20bff47892a0820fab4334ad1c65c1b9067ae5ee21ec10e69691",
+      "content_scope": "abstract",
+      "finding_candidate": "Most existing few-shot learning approaches belong to either metric-based meta-learning or optimization-based meta-learning category, both of which have achieved successes in the simplified \"$k$-shot $N$-way\" image classification settings.",
+      "semantic_status": "not_verified",
+      "method": "Most existing few-shot learning approaches",
+      "conditions": "simplified \"$k$-shot $N$-way\" image classification settings",
+      "dataset": null,
+      "metric": null,
+      "value": null,
+      "unit": null,
+      "qualifiers": "belong to either metric-based meta-learning or optimization-based meta-learning category",
+      "missing_fields": [
+        "dataset",
+        "metric",
+        "value",
+        "unit"
+      ]
+    },
+    "f:d13f0ab6759228a3fd81bc84": {
+      "card_id": "f:d13f0ab6759228a3fd81bc84",
+      "contract": "fact-card-v1",
+      "paper_id": "arxiv:2105.08149",
+      "evidence_id": "arxiv:2105.08149:page:1:block:9:claim:77c5e2b3dab5",
+      "source_version": "v2",
+      "content_sha256": "ffe84831bb4ae36f7b1dd692fc736853ab65cd1d9b14eb1fe018bc250a99b99d",
+      "source_quote": "The biggest challenge in few-shot classification is a high risk of model overfitting to the few labeled training samples. To alleviate this problem, researchers have proposed various approaches, such as meta-learning methods, transfer learning methods, and metric learning methods. Meta-learning methods train a meta-learner on many different classification tasks to extract generalizable knowledge, which enables rapid learning on a new related task with few examples [7, 9]. Transfer learning methods presume shared knowledge between the source and target domains, and fine-tune the model trained on abundant source data to fit few labeled target samples [10, 11]. Metric learning methods learn feature embeddings [6] and/or distance measures (or inversely, similarity measures) [12] and classify an unseen sample based on its distance to",
+      "source_start": 0,
+      "source_end": 840,
+      "chunk_key": "page:1:block:9",
+      "page": 1,
+      "block_index": 9,
+      "source_locator": "paper=arxiv:2105.08149;chunk=page:1:block:9;section=abstract;page=1;block=9",
+      "bbox": [
+        70.73100280761719,
+        591.552734375,
+        523.5343017578125,
+        710.8558349609375
+      ],
+      "source_spans": [
+        {
+          "page": 1,
+          "block_index": 9,
+          "bbox": [
+            70.73100280761719,
+            591.552734375,
+            523.5343017578125,
+            710.8558349609375
+          ],
+          "start_char": 0,
+          "end_char": 840,
+          "raw_content_hash": "52b17f8c8618551e29bb773d4ca75412a28285436ca2246dffa095f3a39c41ca"
+        }
+      ],
+      "raw_content_hash": "805726e1ac0abaa3ea9d9e55b897b3ac89d220afa95979c07101385fdc94c979",
+      "content_scope": "selected_fulltext",
+      "finding_candidate": "Transfer learning methods presume shared knowledge between the source and target domains, and fine-tune the model trained on abundant source data to fit few labeled target samples [10, 11].",
+      "semantic_status": "not_verified",
+      "method": "Transfer learning methods",
+      "conditions": "presume shared knowledge between the source and target domains, and fine-tune the model trained on abundant source data to fit few labeled target samples",
+      "dataset": null,
+      "metric": null,
+      "value": null,
+      "unit": null,
+      "qualifiers": null,
+      "missing_fields": [
+        "dataset",
+        "metric",
+        "value",
+        "unit",
+        "qualifiers"
+      ]
+    },
+    "f:a16563aa82f33be405066eac": {
+      "card_id": "f:a16563aa82f33be405066eac",
+      "contract": "fact-card-v1",
+      "paper_id": "arxiv:2104.02638",
+      "evidence_id": "arxiv:2104.02638:section:abstract:45:924c867b4c98:claim:2f45f1bb6641",
+      "source_version": "v2",
+      "content_sha256": "6957578ba03e41f37468d7e0cd3370390882b390f5c237e64bb0efb412091add",
+      "source_quote": "e individual image duplicates appear unimportant, domain coverage is, and large-scale datasets are more likely to cover more domains. 5. Conclusion We introduce a few-shot classification evaluation protocol called VTAB+MD which aims to facilitate exchanging and comparing ideas between the transfer learning and few-shot classification communities. Our extensive evaluation of recent competitive approaches show that a carefully engi-neered training and fine-tuning of large scale networks (as exemplified by BiT) is a remarkably competitive and robust baseline for few-shot classification, and that this approach generalizes across large-scale, multi-dataset benchmarks.",
+      "source_start": 0,
+      "source_end": 671,
+      "chunk_key": "section:abstract:45:924c867b4c98",
+      "page": 8,
+      "block_index": 24,
+      "source_locator": "paper=arxiv:2104.02638;chunk=section:abstract:45:924c867b4c98;section=abstract;page=8;block=24",
+      "bbox": [
+        307.0820007324219,
+        295.0104064941406,
+        542.1118774414062,
+        448.3348693847656
+      ],
+      "source_spans": [
+        {
+          "page": 8,
+          "block_index": 24,
+          "bbox": [
+            307.0820007324219,
+            295.0104064941406,
+            542.1118774414062,
+            448.3348693847656
+          ],
+          "start_char": 639,
+          "end_char": 772,
+          "raw_content_hash": "9735f06fea3cdb5f69206ba4240ee3de8076c7652448b02e6c48f68022cb1e0d"
+        },
+        {
+          "page": 8,
+          "block_index": 25,
+          "bbox": [
+            307.44000244140625,
+            465.3411560058594,
+            376.5291137695313,
+            477.2963562011719
+          ],
+          "start_char": 0,
+          "end_char": 13,
+          "raw_content_hash": "a1934c069bb4aff171a56cccc1370092174317fb3c82bd2d396e6f87384bd79a"
+        },
+        {
+          "page": 8,
+          "block_index": 26,
+          "bbox": [
+            306.97198486328125,
+            486.2705383300781,
+            543.0934448242188,
+            591.9380493164062
+          ],
+          "start_char": 0,
+          "end_char": 523,
+          "raw_content_hash": "37346b73bdcffece30613a241c18c31c3b35d1c062a597381ee62fe0ac9e8a71"
+        }
+      ],
+      "raw_content_hash": "f13d353bb8cc31284eaa41cd94fde59c09445c1efcf3a3ae6b8fa81a1170e29d",
+      "content_scope": "selected_fulltext",
+      "finding_candidate": "Our extensive evaluation of recent competitive approaches show that a carefully engineered training and fine-tuning of large scale networks (as exemplified by BiT) is a remarkably competitive and robust baseline for few-shot classification, and that this approach generalizes across large-scale, multi-dataset benchmarks.",
+      "semantic_status": "not_verified",
+      "method": "BiT",
+      "conditions": null,
+      "dataset": "large-scale, multi-dataset benchmarks",
+      "metric": null,
+      "value": null,
+      "unit": null,
+      "qualifiers": "remarkably competitive and robust baseline for few-shot classification",
+      "missing_fields": [
+        "conditions",
+        "metric",
+        "value",
+        "unit"
+      ]
+    },
+    "f:a75a851f7e777a86d5436790": {
+      "card_id": "f:a75a851f7e777a86d5436790",
+      "contract": "fact-card-v1",
+      "paper_id": "arxiv:1904.04232",
+      "evidence_id": "arxiv:1904.04232:section:abstract:8:e517c42438f5:claim:a4e28e41c08c",
+      "source_version": "v2",
+      "content_sha256": "81ec70185d7903920c5f9a6b3c4a52f6710fa133836b82c71fa40ce20844a136",
+      "source_quote": "aining examples for novel classes, our experiments show that these methods have difficulty in handling domain shifts between base and novel classes. Distance metric learning based methods address the few-shot classification problem by “learn-ing to compare”. The intuition is that if a model can determine the similarity of two images, it can classify an unseen input image with the labeled instances Koch et al. (2015). To learn a sophisticated comparison models, meta-learning based methods make their prediction conditioned on distance or 1https://github.com/wyharveychen/CloserLookFewShot metric to few labeled instances during the training process. Examples of distance metrics include cosine similarity Vinyals et al. (2016), Euclidean distance to class-mean representation Snell et al. (2017), CNN-based relation module Sung et al. (2018), ridge regression Bertinetto et al. (2019), and graph neural network Garcia & Bruna (2018). In this paper, we compare the performance of three distance metric learning methods.",
+      "source_start": 0,
+      "source_end": 1022,
+      "chunk_key": "section:abstract:8:e517c42438f5",
+      "page": 2,
+      "block_index": 9,
+      "source_locator": "paper=arxiv:1904.04232;chunk=section:abstract:8:e517c42438f5;section=abstract;page=2;block=9",
+      "bbox": [
+        107.9999771118164,
+        552.0720825195312,
+        504.00384521484375,
+        660.755615234375
+      ],
+      "source_spans": [
+        {
+          "page": 2,
+          "block_index": 9,
+          "bbox": [
+            107.9999771118164,
+            552.0720825195312,
+            504.00384521484375,
+            660.755615234375
+          ],
+          "start_char": 767,
+          "end_char": 915,
+          "raw_content_hash": "8322fb4b11fc8582f86acf1db3576fe73d93d0ed4619d3ea926dbea7a4816d85"
+        },
+        {
+          "page": 2,
+          "block_index": 10,
+          "bbox": [
+            108.00001525878906,
+            669.238037109375,
+            504.0032348632813,
+            712.1685791015625
+          ],
+          "start_char": 0,
+          "end_char": 392,
+          "raw_content_hash": "e3102163e4e581a853c2e4dd29c78298bc30f58b11475e1f84c9971d4ca08f10"
+        },
+        {
+          "page": 2,
+          "block_index": 11,
+          "bbox": [
+            120.15399932861328,
+            721.318115234375,
+            387.75140380859375,
+            731.5693359375
+          ],
+          "start_char": 0,
+          "end_char": 50,
+          "raw_content_hash": "3095a0f0b6f0d1cb87e8a1ff1358b98f9d0cd17e78370be113240caf7110715d"
+        },
+        {
+          "page": 3,
+          "block_index": 1,
+          "bbox": [
+            108.0,
+            84.26844787597656,
+            504.0033264160156,
+            159.98495483398438
+          ],
+          "start_char": 0,
+          "end_char": 429,
+          "raw_content_hash": "b4c9d6ec166693f384e303296ddcc64762292515e472f912177864d29e4584dc"
+        }
+      ],
+      "raw_content_hash": "64c5b7264c70113241748a0cada1b6db520ed049bbcccfcb0860ff88dec62404",
+      "content_scope": "selected_fulltext",
+      "finding_candidate": "Distance metric learning based methods address the few-shot classification problem by “learn-ing to compare”.",
+      "semantic_status": "not_verified",
+      "method": "Distance metric learning based methods",
+      "conditions": null,
+      "dataset": null,
+      "metric": null,
+      "value": null,
+      "unit": null,
+      "qualifiers": null,
+      "missing_fields": [
+        "conditions",
+        "dataset",
+        "metric",
+        "value",
+        "unit",
+        "qualifiers"
+      ]
+    },
+    "f:90a21881f3226d5b70a74000": {
+      "card_id": "f:90a21881f3226d5b70a74000",
+      "contract": "fact-card-v1",
+      "paper_id": "arxiv:1711.06025",
+      "evidence_id": "arxiv:1711.06025:section:abstract:4:b851ec357ca4:claim:1360d4ceb01a",
+      "source_version": "v2",
+      "content_sha256": "8872716bd279be9f00a6593056d2f42cbbaa8a86a784d372920592d893a71c97",
+      "source_quote": "le in the form of a class de-scription (c.f., single exemplar image in one-shot), making data insufficiency for gradient-based learning a challenge. While promising, most existing few-shot learning ap-proaches either require complex inference mechanisms [23, 9], complex recurrent neural network (RNN) architectures [39, 32], or fine-tuning the target problem [10, 29]. Our approach is most related to others that aim to train an effec-tive metric for one-shot learning [39, 36, 20]. Where they focus on the learning of the transferrable embedding and pre-define a fixed metric (e.g., as Euclidean [36]), we fur-ther aim to learn a transferrable deep metric for comparing the relation between images (few-shot learning), or between images and class descriptions (zero-shot learning). By ex-pressing the inductive bias of a deeper solution (multiple non-linear learned stages at both embedding and relation modules), we make it easier to learn a generalisable solu-tion to the problem.",
+      "source_start": 0,
+      "source_end": 984,
+      "chunk_key": "section:abstract:4:b851ec357ca4",
+      "page": 1,
+      "block_index": 10,
+      "source_locator": "paper=arxiv:1711.06025;chunk=section:abstract:4:b851ec357ca4;section=abstract;page=1;block=10",
+      "bbox": [
+        308.8620300292969,
+        244.4353179931641,
+        545.1151123046875,
+        457.6357421875
+      ],
+      "source_spans": [
+        {
+          "page": 1,
+          "block_index": 10,
+          "bbox": [
+            308.8620300292969,
+            244.4353179931641,
+            545.1151123046875,
+            457.6357421875
+          ],
+          "start_char": 908,
+          "end_char": 1056,
+          "raw_content_hash": "29ad4f72f1363fc285c51d57be43ac9bae21ccc40d7e8b857ffb0e5e59950318"
+        },
+        {
+          "page": 1,
+          "block_index": 11,
+          "bbox": [
+            308.8620300292969,
+            461.9851379394531,
+            545.1151733398438,
+            639.3196411132812
+          ],
+          "start_char": 0,
+          "end_char": 835,
+          "raw_content_hash": "3c877b6edba10c1b5f90794261912cc1055fbcce8508c1353981e0f2a9404087"
+        }
+      ],
+      "raw_content_hash": "82fc145eb50b67dcfab6cb2edbc2fb17081f6576a2ac58402520b4090672991b",
+      "content_scope": "selected_fulltext",
+      "finding_candidate": "Our approach is most related to others that aim to train an effective metric for one-shot learning [39, 36, 20]. Where they focus on the learning of the transferrable embedding and pre-define a fixed metric (e.g., as Euclidean [36]), we further aim to learn a transferrable deep metric for comparing the relation between images (few-shot learning), or between images and class descriptions (zero-shot learning).",
+      "semantic_status": "not_verified",
+      "method": null,
+      "conditions": null,
+      "dataset": null,
+      "metric": null,
+      "value": null,
+      "unit": null,
+      "qualifiers": null,
+      "missing_fields": [
+        "method",
+        "conditions",
+        "dataset",
+        "metric",
+        "value",
+        "unit",
+        "qualifiers"
+      ]
+    },
+    "f:b0863557d57761194e0bbc7d": {
+      "card_id": "f:b0863557d57761194e0bbc7d",
+      "contract": "fact-card-v1",
+      "paper_id": "arxiv:2104.02638",
+      "evidence_id": "arxiv:2104.02638:section:abstract:9:1354132472a1:claim:cf6297377d7d",
+      "source_version": "v2",
+      "content_sha256": "b164610a74c6e6d2ce21baeb3fc9882d4347bc8ea48f07d50425029e795228bb",
+      "source_quote": "ns-fer with few datapoints. In computer vision, learning with few datapoints is, perhaps, more commonly addressed with semi-supervised learning (e.g. (Sohn et al., 2020)), how-ever (Kolesnikov et al., 2020) show that large vision models transfer well to popular classification benchmarks (Ima-geNet, CIFAR, etc.) and VTAB-1k. Several recent papers report that well-tuned transfer learn-ing baselines are competitive with more complex few-shot classification approaches (Chen et al., 2019; Dhillon et al., 2020; Chen et al., 2020b; Tian et al., 2020). Our work adds to these observations by applying an established few-shot classification evaluation protocol (Meta-Dataset) to large scale (both in terms of data and capacity) transfer learners. Doing so highlights some limitations of episodic approaches in a new way, and also reveals where transfer learning falls short. 2.2. Episodic approaches to few-shot classification",
+      "source_start": 0,
+      "source_end": 923,
+      "chunk_key": "section:abstract:9:1354132472a1",
+      "page": 2,
+      "block_index": 11,
+      "source_locator": "paper=arxiv:2104.02638;chunk=section:abstract:9:1354132472a1;section=abstract;page=2;block=11",
+      "bbox": [
+        307.0820007324219,
+        69.41102600097656,
+        543.0936889648438,
+        318.5340881347656
+      ],
+      "source_spans": [
+        {
+          "page": 2,
+          "block_index": 11,
+          "bbox": [
+            307.0820007324219,
+            69.41102600097656,
+            543.0936889648438,
+            318.5340881347656
+          ],
+          "start_char": 881,
+          "end_char": 1206,
+          "raw_content_hash": "81f97f8167900fc7947a48b378cb2d70460f6bc7aaaaca06a92db1ddc258d6f9"
+        },
+        {
+          "page": 2,
+          "block_index": 12,
+          "bbox": [
+            307.44000244140625,
+            326.4432678222656,
+            543.1796875,
+            444.0630798339844
+          ],
+          "start_char": 0,
+          "end_char": 545,
+          "raw_content_hash": "7280499ab7d4d6db7548d430a17b2b1e54db441e34605ad8b6ab55871f02697b"
+        },
+        {
+          "page": 2,
+          "block_index": 13,
+          "bbox": [
+            307.44000244140625,
+            459.14251708984375,
+            518.4180297851562,
+            469.1051025390625
+          ],
+          "start_char": 0,
+          "end_char": 51,
+          "raw_content_hash": "7f628a5655208ef86ae9df6c57e1a2769b51348c85cc40944b409997e8685e56"
+        }
+      ],
+      "raw_content_hash": "e6b7da4378cc2a1b3ff18e7cb968434420bbdae6d9d4a02aa536bd2f9879c9c5",
+      "content_scope": "selected_fulltext",
+      "finding_candidate": "large vision models transfer well to popular classification benchmarks (ImageNet, CIFAR, etc.) and VTAB-1k.",
+      "semantic_status": "not_verified",
+      "method": "large vision models",
+      "conditions": null,
+      "dataset": null,
+      "metric": null,
+      "value": null,
+      "unit": null,
+      "qualifiers": "transfer well",
+      "missing_fields": [
+        "conditions",
+        "dataset",
+        "metric",
+        "value",
+        "unit"
+      ]
+    },
+    "f:6b1078645743e4d4703df779": {
+      "card_id": "f:6b1078645743e4d4703df779",
+      "contract": "fact-card-v1",
+      "paper_id": "arxiv:2104.02638",
+      "evidence_id": "arxiv:2104.02638:section:abstract:9:1354132472a1:claim:e2c306351c78",
+      "source_version": "v2",
+      "content_sha256": "b164610a74c6e6d2ce21baeb3fc9882d4347bc8ea48f07d50425029e795228bb",
+      "source_quote": "ns-fer with few datapoints. In computer vision, learning with few datapoints is, perhaps, more commonly addressed with semi-supervised learning (e.g. (Sohn et al., 2020)), how-ever (Kolesnikov et al., 2020) show that large vision models transfer well to popular classification benchmarks (Ima-geNet, CIFAR, etc.) and VTAB-1k. Several recent papers report that well-tuned transfer learn-ing baselines are competitive with more complex few-shot classification approaches (Chen et al., 2019; Dhillon et al., 2020; Chen et al., 2020b; Tian et al., 2020). Our work adds to these observations by applying an established few-shot classification evaluation protocol (Meta-Dataset) to large scale (both in terms of data and capacity) transfer learners. Doing so highlights some limitations of episodic approaches in a new way, and also reveals where transfer learning falls short. 2.2. Episodic approaches to few-shot classification",
+      "source_start": 0,
+      "source_end": 923,
+      "chunk_key": "section:abstract:9:1354132472a1",
+      "page": 2,
+      "block_index": 11,
+      "source_locator": "paper=arxiv:2104.02638;chunk=section:abstract:9:1354132472a1;section=abstract;page=2;block=11",
+      "bbox": [
+        307.0820007324219,
+        69.41102600097656,
+        543.0936889648438,
+        318.5340881347656
+      ],
+      "source_spans": [
+        {
+          "page": 2,
+          "block_index": 11,
+          "bbox": [
+            307.0820007324219,
+            69.41102600097656,
+            543.0936889648438,
+            318.5340881347656
+          ],
+          "start_char": 881,
+          "end_char": 1206,
+          "raw_content_hash": "81f97f8167900fc7947a48b378cb2d70460f6bc7aaaaca06a92db1ddc258d6f9"
+        },
+        {
+          "page": 2,
+          "block_index": 12,
+          "bbox": [
+            307.44000244140625,
+            326.4432678222656,
+            543.1796875,
+            444.0630798339844
+          ],
+          "start_char": 0,
+          "end_char": 545,
+          "raw_content_hash": "7280499ab7d4d6db7548d430a17b2b1e54db441e34605ad8b6ab55871f02697b"
+        },
+        {
+          "page": 2,
+          "block_index": 13,
+          "bbox": [
+            307.44000244140625,
+            459.14251708984375,
+            518.4180297851562,
+            469.1051025390625
+          ],
+          "start_char": 0,
+          "end_char": 51,
+          "raw_content_hash": "7f628a5655208ef86ae9df6c57e1a2769b51348c85cc40944b409997e8685e56"
+        }
+      ],
+      "raw_content_hash": "e6b7da4378cc2a1b3ff18e7cb968434420bbdae6d9d4a02aa536bd2f9879c9c5",
+      "content_scope": "selected_fulltext",
+      "finding_candidate": "Doing so highlights some limitations of episodic approaches in a new way, and also reveals where transfer learning falls short.",
+      "semantic_status": "not_verified",
+      "method": "episodic approaches",
+      "conditions": null,
+      "dataset": null,
+      "metric": null,
+      "value": null,
+      "unit": null,
+      "qualifiers": null,
+      "missing_fields": [
+        "conditions",
+        "dataset",
+        "metric",
+        "value",
+        "unit",
+        "qualifiers"
+      ]
+    },
+    "f:d31899812db812bce14632df": {
+      "card_id": "f:d31899812db812bce14632df",
+      "contract": "fact-card-v1",
+      "paper_id": "arxiv:2003.06777",
+      "evidence_id": "arxiv:2003.06777:section:unknown:24:938efba2b112:claim:22408849d50b",
+      "source_version": "v2",
+      "content_sha256": "eed09feed412add3fa4073437693301232ddbebdfe18988b4b255d9bc2ab5591",
+      "source_quote": "inimize xij Xm i=1 Xk j=1 cijxij subject to xij ⩾0, i = 1, ..., m, j = 1, ..., k j=1 xij = si, i = 1, ...m Xm i=1 xij = dj, j = 1, ...k (1) The roles of suppliers and demanders can be switched without affecting the total transportation cost. Here si and dj are also called the weights of the nodes, which controls the total matching flows generated by each node. EMD seeks an optimal matching ̃X between suppliers and demanders such that the overall matching cost can be minimized. The global optimal matching flows ̃X can be achieved by solving a Linear Programming problem. 4.2 EMD for Few-Shot Classification In the few-shot classification task, metric-based methods aim to find a good distance metric and data representations to compute the distance between images, which are used to compare images for classification. Different from the previ-ous methods [1], [2] that perform distance computation be-tween the image-level embeddings, our approach advocates the use of discriminative local information. The intuition is that as the goal of few-shot learning is to undertake the",
+      "source_start": 0,
+      "source_end": 1082,
+      "chunk_key": "section:unknown:24:938efba2b112",
+      "page": 4,
+      "block_index": 47,
+      "source_locator": "paper=arxiv:2003.06777;chunk=section:unknown:24:938efba2b112;section=unknown;page=4;block=47",
+      "bbox": [
+        346.6629943847656,
+        451.89111328125,
+        386.5629577636719,
+        461.39111328125
+      ],
+      "source_spans": [
+        {
+          "page": 4,
+          "block_index": 47,
+          "bbox": [
+            346.6629943847656,
+            451.89111328125,
+            386.5629577636719,
+            461.39111328125
+          ],
+          "start_char": 1,
+          "end_char": 8,
+          "raw_content_hash": "5fa8599c1cbbce92b203a217c221d35f4b96a958f67208aee8c5e6e516539947"
+        },
+        {
+          "page": 4,
+          "block_index": 48,
+          "bbox": [
+            361.16400146484375,
+            459.1057739257813,
+            371.2710266113281,
+            466.6402893066406
+          ],
+          "start_char": 0,
+          "end_char": 3,
+          "raw_content_hash": "a73e2077747ba7043ab76ac975b74f3bbf46a72ba3687dd3de8950becf873ec7"
+        },
+        {
+          "page": 4,
+          "block_index": 49,
+          "bbox": [
+            398.3280029296875,
+            445.6257629394531,
+            419.1214294433594,
+            458.4692687988281
+          ],
+          "start_char": 0,
+          "end_char": 2,
+          "raw_content_hash": "9ce91dddb8504cb3d7f1d6e2feed16701d2ef5e0d3bcfc519afaab442c268a66"
+        },
+        {
+          "page": 4,
+          "block_index": 50,
+          "bbox": [
+            412.0499877929687,
+            458.86175537109375,
+            424.9600830078125,
+            465.8355712890625
+          ],
+          "start_char": 0,
+          "end_char": 3,
+          "raw_content_hash": "85682626adde06d422a5d7768f5cfc11f60fd880ade9a7513fd7296f818e152b"
+        },
+        {
+          "page": 4,
+          "block_index": 51,
+          "bbox": [
+            427.114990234375,
+            445.6257629394531,
+            445.070068359375,
+            458.4692687988281
+          ],
+          "start_char": 0,
+          "end_char": 2,
+          "raw_content_hash": "5ae86a92219f6714701518da0e5fe36c92276cab73d4a7f76fa0b92268d7faea"
+        },
+        {
+          "page": 4,
+          "block_index": 52,
+          "bbox": [
+            440.83697509765625,
+            450.9179382324219,
+            479.9200134277344,
+            466.488525390625
+          ],
+          "start_char": 0,
+          "end_char": 10,
+          "raw_content_hash": "2f8c95ef6cf559c2067b711c4ef49a53a992247348df259301230e3b453c9a70"
+        },
+        {
+          "page": 4,
+          "block_index": 53,
+          "bbox": [
+            346.6629943847656,
+            468.9339904785156,
+            529.0350341796875,
+            481.4515380859375
+          ],
+          "start_char": 0,
+          "end_char": 47,
+          "raw_content_hash": "9110e8820d4463e4758c3445e7011e27eeec21decd38f9c08f71d9e21514b426"
+        },
+        {
+          "page": 4,
+          "block_index": 55,
+          "bbox": [
+            398.3280029296875,
+            489.46490478515625,
+            514.9103393554688,
+            517.4962158203125
+          ],
+          "start_char": 0,
+          "end_char": 28,
+          "raw_content_hash": "528d812495ba40c85b8948744d79b3ca2adcbd1198b4e6d4dde4f813356db546"
+        },
+        {
+          "page": 4,
+          "block_index": 56,
+          "bbox": [
+            412.0499877929687,
+            509.94390869140625,
+            513.109619140625,
+            525.5144653320312
+          ],
+          "start_char": 0,
+          "end_char": 25,
+          "raw_content_hash": "f08e4feb6a40d687cc9b5f46ec9a31d075f531cfca048e5b43d9fe5e4e6ef40a"
+        },
+        {
+          "page": 4,
+          "block_index": 57,
+          "bbox": [
+            552.9229736328125,
+            480.4630126953125,
+            564.0,
+            489.9630126953125
+          ],
+          "start_char": 0,
+          "end_char": 3,
+          "raw_content_hash": "a25805d1e3b0d0da1525d6a459eba04eb98ce7688677364137eb05d00606092d"
+        },
+        {
+          "page": 4,
+          "block_index": 58,
+          "bbox": [
+            311.99993896484375,
+            531.0910034179688,
+            564.0037841796875,
+            621.718994140625
+          ],
+          "start_char": 0,
+          "end_char": 435,
+          "raw_content_hash": "ca655f9842d40b82d5e938bf3f251b65b7c60e0261547f0d9684585e4c9cf7ab"
+        },
+        {
+          "page": 4,
+          "block_index": 59,
+          "bbox": [
+            311.99993896484375,
+            640.682373046875,
+            480.5870666503906,
+            650.182373046875
+          ],
+          "start_char": 0,
+          "end_char": 35,
+          "raw_content_hash": "0aafc175623e9dec6563f14609f422aa3bde3332eb6e99b9351c7d23f3996ad8"
+        },
+        {
+          "page": 4,
+          "block_index": 60,
+          "bbox": [
+            311.99993896484375,
+            656.5829467773438,
+            563.9970092773438,
+            746.8629760742188
+          ],
+          "start_char": 0,
+          "end_char": 470,
+          "raw_content_hash": "931efd9d53042a489a91122c802dce6c4675131aaea873ab99b5c64034afd66b"
+        }
+      ],
+      "raw_content_hash": "d303a36443f37d5d7e5760e8b05145dcc221cc1ab8f43e6aa29a9f6a8ed469ef",
+      "content_scope": "selected_fulltext",
+      "finding_candidate": "In the few-shot classification task, metric-based methods aim to find a good distance metric and data representations to compute the distance between images, which are used to compare images for classification.",
+      "semantic_status": "not_verified",
+      "method": "metric-based methods",
+      "conditions": "few-shot classification task",
+      "dataset": null,
+      "metric": null,
+      "value": null,
+      "unit": null,
+      "qualifiers": "aim to find a good distance metric and data representations to compute the distance between images, which are used to compare images for classification",
+      "missing_fields": [
+        "dataset",
+        "metric",
+        "value",
+        "unit"
+      ],
+      "document_subject": "DeepEMD"
+    },
+    "f:9082cf7ff926f08ef501f26a": {
+      "card_id": "f:9082cf7ff926f08ef501f26a",
+      "contract": "fact-card-v1",
+      "paper_id": "arxiv:2104.02638",
+      "evidence_id": "arxiv:2104.02638:abstract:claim:62bf30382590",
+      "source_version": "v2",
+      "content_sha256": "3a07a3ed9383b07164452159a1c92268095c4c2114f9d20d34b1e6d3030354c2",
+      "source_quote": "Meta and transfer learning are two successful families of approaches to few-shot learning. Despite highly related goals, state-of-the-art advances in each family are measured largely in isolation of each other. As a result of diverging evaluation norms, a direct or thorough comparison of different approaches is challenging. To bridge this gap, we perform a cross-family study of the best transfer and meta learners on both a large-scale meta-learning benchmark (Meta-Dataset, MD), and a transfer learning benchmark (Visual Task Adaptation Benchmark, VTAB). We find that, on average, large-scale transfer methods (Big Transfer, BiT) outperform competing approaches on MD, even when trained only on ImageNet. In contrast, meta-learning approaches struggle to compete on VTAB when trained and validated on MD. However, BiT is not without limitations, and pushing for scale does not improve performance on highly out-of-distribution MD tasks. In performing this study, we reveal a number of discrepancies in evaluation norms and study some of these in light of the performance gap. We hope that this work facilitates sharing of insights from each community, and accelerates progress on few-shot learning.",
+      "source_start": 0,
+      "source_end": 1202,
+      "chunk_key": "abstract",
+      "page": null,
+      "block_index": null,
+      "source_locator": "paper=arxiv:2104.02638;chunk=abstract;section=abstract;page=;block=",
+      "bbox": null,
+      "source_spans": [],
+      "raw_content_hash": "3a07a3ed9383b07164452159a1c92268095c4c2114f9d20d34b1e6d3030354c2",
+      "content_scope": "abstract",
+      "finding_candidate": "We find that, on average, large-scale transfer methods (Big Transfer, BiT) outperform competing approaches on MD, even when trained only on ImageNet.",
+      "semantic_status": "not_verified",
+      "method": "Big Transfer, BiT",
+      "conditions": "trained only on ImageNet",
+      "dataset": "MD",
+      "metric": null,
+      "value": null,
+      "unit": null,
+      "qualifiers": null,
+      "missing_fields": [
+        "metric",
+        "value",
+        "unit",
+        "qualifiers"
+      ]
+    },
+    "f:b959f9c133f75046cc9c2411": {
+      "card_id": "f:b959f9c133f75046cc9c2411",
+      "contract": "fact-card-v1",
+      "paper_id": "arxiv:2305.09062",
+      "evidence_id": "arxiv:2305.09062:abstract:claim:0b90d27cd84e",
+      "source_version": "v2",
+      "content_sha256": "3b7b29b93228cfb4d0bce8af40b9a1cde49576d318595eb3973e969cfd257e44",
+      "source_quote": "Few-shot learning is a challenging area of research that aims to learn new concepts with only a few labeled samples of data. Recent works based on metric-learning approaches leverage the meta-learning approach, which is encompassed by episodic tasks that make use a support (training) and query set (test) with the objective of learning a similarity comparison metric between those sets. Due to the lack of data, the learning process of the embedding network becomes an important part of the few-shot task. Previous works have addressed this problem using metric learning approaches, but the properties of the underlying latent space and the separability of the difference classes on it was not entirely enforced. In this work, we propose two different loss functions which consider the importance of the embedding vectors by looking at the intra-class and inter-class distance between the few data. The first loss function is the Proto-Triplet Loss, which is based on the original triplet loss with the modifications needed to better work on few-shot scenarios. The second loss function, which we dub ICNN loss is based on an inter and intra class nearest neighbors score, which help us to assess the quality of embeddings obtained from the trained network. Our results, obtained from a extensive experimental setup show a significant improvement in accuracy in the miniImagenNet benchmark compared to other metric-based few-shot learning methods by a margin of 2%, demonstrating the capability of these loss functions to allow the network to generalize better to previously unseen classes. In our experiments, we demonstrate competitive generalization capabilities to other domains, such as the Caltech CUB, Dogs and Cars datasets compared with the state of the art.",
+      "source_start": 0,
+      "source_end": 1768,
+      "chunk_key": "abstract",
+      "page": null,
+      "block_index": null,
+      "source_locator": "paper=arxiv:2305.09062;chunk=abstract;section=abstract;page=;block=",
+      "bbox": null,
+      "source_spans": [],
+      "raw_content_hash": "9961dedc92856c296031863156331e303d557b0b880cf7b883df198ad80b6f04",
+      "content_scope": "abstract",
+      "finding_candidate": "Our results, obtained from a extensive experimental setup show a significant improvement in accuracy in the miniImagenNet benchmark compared to other metric-based few-shot learning methods by a margin of 2%, demonstrating the capability of these loss functions to allow the network to generalize better to previously unseen classes.",
+      "semantic_status": "not_verified",
+      "method": "these loss functions",
+      "conditions": "extensive experimental setup",
+      "dataset": "miniImagenNet benchmark",
+      "metric": "accuracy",
+      "value": "2%",
+      "unit": "margin",
+      "qualifiers": null,
+      "missing_fields": [
+        "qualifiers"
+      ]
+    },
+    "f:ca210b9894268eda6a8dbd4f": {
+      "card_id": "f:ca210b9894268eda6a8dbd4f",
+      "contract": "fact-card-v1",
+      "paper_id": "arxiv:2105.08149",
+      "evidence_id": "arxiv:2105.08149:abstract:claim:544ec3b8e199",
+      "source_version": "v2",
+      "content_sha256": "d7a1a172794e42027ec9bec3e43b106f75cc0af60e87ac13896fde8fe8987343",
+      "source_quote": "Few-shot image classification is a challenging problem that aims to achieve the human level of recognition based only on a small number of training images. One main solution to few-shot image classification is deep metric learning. These methods, by classifying unseen samples according to their distances to few seen samples in an embedding space learned by powerful deep neural networks, can avoid overfitting to few training images in few-shot image classification and have achieved the state-of-the-art performance. In this paper, we provide an up-to-date review of deep metric learning methods for few-shot image classification from 2018 to 2022 and categorize them into three groups according to three stages of metric learning, namely learning feature embeddings, learning class representations, and learning distance measures. With this taxonomy, we identify the novelties of different methods and problems they face. We conclude this review with a discussion on current challenges and future trends in few-shot image classification.",
+      "source_start": 0,
+      "source_end": 1041,
+      "chunk_key": "abstract",
+      "page": null,
+      "block_index": null,
+      "source_locator": "paper=arxiv:2105.08149;chunk=abstract;section=abstract;page=;block=",
+      "bbox": null,
+      "source_spans": [],
+      "raw_content_hash": "d7a1a172794e42027ec9bec3e43b106f75cc0af60e87ac13896fde8fe8987343",
+      "content_scope": "abstract",
+      "finding_candidate": "One main solution to few-shot image classification is deep metric learning.",
+      "semantic_status": "not_verified",
+      "method": "deep metric learning",
+      "conditions": null,
+      "dataset": null,
+      "metric": null,
+      "value": null,
+      "unit": null,
+      "qualifiers": null,
+      "missing_fields": [
+        "conditions",
+        "dataset",
+        "metric",
+        "value",
+        "unit",
+        "qualifiers"
+      ]
+    },
+    "f:829154fb27d6b58c1a07f404": {
+      "card_id": "f:829154fb27d6b58c1a07f404",
+      "contract": "fact-card-v1",
+      "paper_id": "arxiv:2105.08149",
+      "evidence_id": "arxiv:2105.08149:abstract:claim:207142546196",
+      "source_version": "v2",
+      "content_sha256": "d7a1a172794e42027ec9bec3e43b106f75cc0af60e87ac13896fde8fe8987343",
+      "source_quote": "Few-shot image classification is a challenging problem that aims to achieve the human level of recognition based only on a small number of training images. One main solution to few-shot image classification is deep metric learning. These methods, by classifying unseen samples according to their distances to few seen samples in an embedding space learned by powerful deep neural networks, can avoid overfitting to few training images in few-shot image classification and have achieved the state-of-the-art performance. In this paper, we provide an up-to-date review of deep metric learning methods for few-shot image classification from 2018 to 2022 and categorize them into three groups according to three stages of metric learning, namely learning feature embeddings, learning class representations, and learning distance measures. With this taxonomy, we identify the novelties of different methods and problems they face. We conclude this review with a discussion on current challenges and future trends in few-shot image classification.",
+      "source_start": 0,
+      "source_end": 1041,
+      "chunk_key": "abstract",
+      "page": null,
+      "block_index": null,
+      "source_locator": "paper=arxiv:2105.08149;chunk=abstract;section=abstract;page=;block=",
+      "bbox": null,
+      "source_spans": [],
+      "raw_content_hash": "d7a1a172794e42027ec9bec3e43b106f75cc0af60e87ac13896fde8fe8987343",
+      "content_scope": "abstract",
+      "finding_candidate": "In this paper, we provide an up-to-date review of deep metric learning methods for few-shot image classification from 2018 to 2022 and categorize them into three groups according to three stages of metric learning, namely learning feature embeddings, learning class representations, and learning distance measures.",
+      "semantic_status": "not_verified",
+      "method": "deep metric learning methods for few-shot image classification",
+      "conditions": "from 2018 to 2022",
+      "dataset": null,
+      "metric": null,
+      "value": null,
+      "unit": null,
+      "qualifiers": null,
+      "missing_fields": [
+        "dataset",
+        "metric",
+        "value",
+        "unit",
+        "qualifiers"
+      ]
+    },
+    "f:21f3d74a63e45b284175d2dc": {
+      "card_id": "f:21f3d74a63e45b284175d2dc",
+      "contract": "fact-card-v1",
+      "paper_id": "arxiv:1711.06025",
+      "evidence_id": "arxiv:1711.06025:section:abstract:12:43376954155c:claim:ff0773aa292d",
+      "source_version": "v2",
+      "content_sha256": "78d72a04eef8f36b14d10870558dbd7caa870b2707e9a21b5a311f7805296c35",
+      "source_quote": "ent problem.). Compared to [20, 36], this can be seen as providing a learnable rather than fixed metric, or non-linear rather than linear classifier. Compared to [20] we benefit from an episodic training strat-egy with an end-to-end manner from scratch, and compared to [32] we avoid the complexity of set-to-set RNN embed-ding of the sample-set, and simply rely on pooling [33]. Zero-Shot Learning Our approach is designed for few- shot learning, but elegantly spans the space into zero-shot learning (ZSL) by modifying the sample branch to input a single category description rather than single training im-age. When applied to ZSL our architecture is related to methods that learn to align images and category embed-dings and perform recognition by predicting if an image and category embedding pair match [11, 3, 43, 46]. Sim-ilarly to the case with the prior metric-based few-shot ap-proaches, most of these apply a fixed manually defined sim-ilarity metric or linear classifier after combining the image and category embedding.",
+      "source_start": 0,
+      "source_end": 1033,
+      "chunk_key": "section:abstract:12:43376954155c",
+      "page": 2,
+      "block_index": 8,
+      "source_locator": "paper=arxiv:1711.06025;chunk=section:abstract:12:43376954155c;section=abstract;page=2;block=8",
+      "bbox": [
+        308.86199951171875,
+        518.5775146484375,
+        545.1151123046875,
+        695.9130859375
+      ],
+      "source_spans": [
+        {
+          "page": 2,
+          "block_index": 8,
+          "bbox": [
+            308.86199951171875,
+            518.5775146484375,
+            545.1151123046875,
+            695.9130859375
+          ],
+          "start_char": 494,
+          "end_char": 873,
+          "raw_content_hash": "136cb134b17664c417db1baeda331fa49daa39660195ea479e9e9dd9854d97ae"
+        },
+        {
+          "page": 2,
+          "block_index": 9,
+          "bbox": [
+            308.86199951171875,
+            703.3546142578125,
+            545.1128540039062,
+            713.4081420898438
+          ],
+          "start_char": 0,
+          "end_char": 52,
+          "raw_content_hash": "fff10bab26158246b3035ed4f2e834e51ad9363df72412775556c9106dc10bb3"
+        },
+        {
+          "page": 3,
+          "block_index": 0,
+          "bbox": [
+            50.11199951171875,
+            74.40748596191406,
+            286.3651123046875,
+            251.7422790527344
+          ],
+          "start_char": 0,
+          "end_char": 600,
+          "raw_content_hash": "b1afe1ee61999a4230764fa37d012d171e0d496d84d0f42e1c893b469b38ed8a"
+        }
+      ],
+      "raw_content_hash": "c0c789496cf755cc708fd5992cf2b63ecd55c8ab7816a607f52c59a0453a6767",
+      "content_scope": "selected_fulltext",
+      "finding_candidate": "Similarly to the case with the prior metric-based few-shot approaches, most of these apply a fixed manually defined similarity metric or linear classifier after combining the image and category embedding.",
+      "semantic_status": "not_verified",
+      "method": null,
+      "conditions": "after combining the image and category embedding",
+      "dataset": null,
+      "metric": null,
+      "value": null,
+      "unit": null,
+      "qualifiers": null,
+      "missing_fields": [
+        "method",
+        "dataset",
+        "metric",
+        "value",
+        "unit",
+        "qualifiers"
+      ]
+    },
+    "f:5522e3586cae8f0f34a7fc8e": {
+      "card_id": "f:5522e3586cae8f0f34a7fc8e",
+      "contract": "fact-card-v1",
+      "paper_id": "arxiv:2010.04525",
+      "evidence_id": "arxiv:2010.04525:abstract:claim:9091a1fb4b38",
+      "source_version": "v2",
+      "content_sha256": "d85cb9cf386214c553601342955c9b10d4a65aaac5f4f910580481385f85c554",
+      "source_quote": "Few-shot image classification learns to recognize new categories from limited labelled data. Metric learning based approaches have been widely investigated, where a query sample is classified by finding the nearest prototype from the support set based on their feature similarities. A neural network has different uncertainties on its calculated similarities of different pairs. Understanding and modeling the uncertainty on the similarity could promote the exploitation of limited samples in few-shot optimization. In this work, we propose Uncertainty-Aware Few-Shot framework for image classification by modeling uncertainty of the similarities of query-support pairs and performing uncertainty-aware optimization. Particularly, we exploit such uncertainty by converting observed similarities to probabilistic representations and incorporate them to the loss for more effective optimization. In order to jointly consider the similarities between a query and the prototypes in a support set, a graph-based model is utilized to estimate the uncertainty of the pairs. Extensive experiments show our proposed method brings significant improvements on top of a strong baseline and achieves the state-of-the-art performance.",
+      "source_start": 0,
+      "source_end": 1220,
+      "chunk_key": "abstract",
+      "page": null,
+      "block_index": null,
+      "source_locator": "paper=arxiv:2010.04525;chunk=abstract;section=abstract;page=;block=",
+      "bbox": null,
+      "source_spans": [],
+      "raw_content_hash": "d85cb9cf386214c553601342955c9b10d4a65aaac5f4f910580481385f85c554",
+      "content_scope": "abstract",
+      "finding_candidate": "Metric learning based approaches have been widely investigated, where a query sample is classified by finding the nearest prototype from the support set based on their feature similarities.",
+      "semantic_status": "not_verified",
+      "method": "Metric learning based approaches",
+      "conditions": null,
+      "dataset": null,
+      "metric": null,
+      "value": null,
+      "unit": null,
+      "qualifiers": null,
+      "missing_fields": [
+        "conditions",
+        "dataset",
+        "metric",
+        "value",
+        "unit",
+        "qualifiers"
+      ]
+    },
+    "f:4633c98ce4495b81022331e1": {
+      "card_id": "f:4633c98ce4495b81022331e1",
+      "contract": "fact-card-v1",
+      "paper_id": "arxiv:1907.03123",
+      "evidence_id": "arxiv:1907.03123:abstract:claim:57337d0c6cff",
+      "source_version": "v2",
+      "content_sha256": "bbc803aec14ff7d89ee221236ec27f7e6938a8484773b680cc121ed4002bc5fd",
+      "source_quote": "The goal of few-shot learning is to recognize new visual concepts with just a few amount of labeled samples in each class. Recent effective metric-based few-shot approaches employ neural networks to learn a feature similarity comparison between query and support examples. However, the importance of feature embedding, i.e., exploring the relationship among training samples, is neglected. In this work, we present a simple yet powerful baseline for few-shot classification by emphasizing the importance of feature embedding. Specifically, we revisit the classical triplet network from deep metric learning, and extend it into a deep K-tuplet network for few-shot learning, utilizing the relationship among the input samples to learn a general representation learning via episode-training. Once trained, our network is able to extract discriminative features for unseen novel categories and can be seamlessly incorporated with a non-linear distance metric function to facilitate the few-shot classification. Our result on the miniImageNet benchmark outperforms other metric-based few-shot classification methods. More importantly, when evaluated on completely different datasets (Caltech-101, CUB-200, Stanford Dogs and Cars) using the model trained with miniImageNet, our method significantly outperforms prior methods, demonstrating its superior capability to generalize to unseen classes.",
+      "source_start": 0,
+      "source_end": 1391,
+      "chunk_key": "abstract",
+      "page": null,
+      "block_index": null,
+      "source_locator": "paper=arxiv:1907.03123;chunk=abstract;section=abstract;page=;block=",
+      "bbox": null,
+      "source_spans": [],
+      "raw_content_hash": "bbc803aec14ff7d89ee221236ec27f7e6938a8484773b680cc121ed4002bc5fd",
+      "content_scope": "abstract",
+      "finding_candidate": "Our result on the miniImageNet benchmark outperforms other metric-based few-shot classification methods.",
+      "semantic_status": "not_verified",
+      "method": "deep K-tuplet network",
+      "conditions": null,
+      "dataset": "miniImageNet benchmark",
+      "metric": null,
+      "value": null,
+      "unit": null,
+      "qualifiers": "outperforms other metric-based few-shot classification methods",
+      "missing_fields": [
+        "conditions",
+        "metric",
+        "value",
+        "unit"
+      ]
+    },
+    "f:bb0db5bdd41c770f69f90d7a": {
+      "card_id": "f:bb0db5bdd41c770f69f90d7a",
+      "contract": "fact-card-v1",
+      "paper_id": "arxiv:2305.09062",
+      "evidence_id": "arxiv:2305.09062:abstract:claim:938d1931004e",
+      "source_version": "v2",
+      "content_sha256": "3b7b29b93228cfb4d0bce8af40b9a1cde49576d318595eb3973e969cfd257e44",
+      "source_quote": "Few-shot learning is a challenging area of research that aims to learn new concepts with only a few labeled samples of data. Recent works based on metric-learning approaches leverage the meta-learning approach, which is encompassed by episodic tasks that make use a support (training) and query set (test) with the objective of learning a similarity comparison metric between those sets. Due to the lack of data, the learning process of the embedding network becomes an important part of the few-shot task. Previous works have addressed this problem using metric learning approaches, but the properties of the underlying latent space and the separability of the difference classes on it was not entirely enforced. In this work, we propose two different loss functions which consider the importance of the embedding vectors by looking at the intra-class and inter-class distance between the few data. The first loss function is the Proto-Triplet Loss, which is based on the original triplet loss with the modifications needed to better work on few-shot scenarios. The second loss function, which we dub ICNN loss is based on an inter and intra class nearest neighbors score, which help us to assess the quality of embeddings obtained from the trained network. Our results, obtained from a extensive experimental setup show a significant improvement in accuracy in the miniImagenNet benchmark compared to other metric-based few-shot learning methods by a margin of 2%, demonstrating the capability of these loss functions to allow the network to generalize better to previously unseen classes. In our experiments, we demonstrate competitive generalization capabilities to other domains, such as the Caltech CUB, Dogs and Cars datasets compared with the state of the art.",
+      "source_start": 0,
+      "source_end": 1768,
+      "chunk_key": "abstract",
+      "page": null,
+      "block_index": null,
+      "source_locator": "paper=arxiv:2305.09062;chunk=abstract;section=abstract;page=;block=",
+      "bbox": null,
+      "source_spans": [],
+      "raw_content_hash": "9961dedc92856c296031863156331e303d557b0b880cf7b883df198ad80b6f04",
+      "content_scope": "abstract",
+      "finding_candidate": "Previous works have addressed this problem using metric learning approaches, but the properties of the underlying latent space and the separability of the difference classes on it was not entirely enforced.",
+      "semantic_status": "not_verified",
+      "method": "metric learning approaches",
+      "conditions": null,
+      "dataset": null,
+      "metric": null,
+      "value": null,
+      "unit": null,
+      "qualifiers": "properties of the underlying latent space and the separability of the difference classes on it was not entirely enforced",
+      "missing_fields": [
+        "conditions",
+        "dataset",
+        "metric",
+        "value",
+        "unit"
+      ]
+    },
+    "f:bb743711bd7402669cb20fcd": {
+      "card_id": "f:bb743711bd7402669cb20fcd",
+      "contract": "fact-card-v1",
+      "paper_id": "arxiv:2010.04525",
+      "evidence_id": "arxiv:2010.04525:page:1:block:5:claim:cc74c784a067",
+      "source_version": "v2",
+      "content_sha256": "1b031e5291dfaab0d505f83f938e2de861e701491a89ea41f2736770dffd24c4",
+      "source_quote": "Few-shot image classification learns to recognize new categories from limited labelled data. Metric learning based approaches have been widely inves-tigated, where a query sample is classified by find-ing the nearest prototype from the support set based on their feature similarities. A neural network has different uncertainties on its calculated similarities of different pairs. Understanding and modeling the uncertainty on the similarity could promote the ex-ploitation of limited samples in few-shot optimiza-tion. In this work, we propose Uncertainty-Aware Few-Shot framework for image classification by modeling uncertainty of the similarities of query-support pairs and performing uncertainty-aware op-timization. Particularly, we exploit such uncer-tainty by converting observed similarities to proba-bilistic representations and incorporate them to the loss for more effective optimization. In order to jointly consider the similarities between a query and the prototypes in a support set, a graph-based model is utilized to estimate the uncertainty of the pairs. Extensive experiments show our proposed method brings significant improvements on top of a strong baseline and achieves the state-of-the-art performance.",
+      "source_start": 0,
+      "source_end": 1227,
+      "chunk_key": "page:1:block:5",
+      "page": 1,
+      "block_index": 5,
+      "source_locator": "paper=arxiv:2010.04525;chunk=page:1:block:5;section=abstract;page=1;block=5",
+      "bbox": [
+        73.92505645751953,
+        237.17347717285156,
+        277.0724792480469,
+        510.1497497558594
+      ],
+      "source_spans": [
+        {
+          "page": 1,
+          "block_index": 5,
+          "bbox": [
+            73.92505645751953,
+            237.17347717285156,
+            277.0724792480469,
+            510.1497497558594
+          ],
+          "start_char": 0,
+          "end_char": 1227,
+          "raw_content_hash": "fcbf715167190f5bd6d252b8eb705428d3c4ed03ad52454ee11989a952d490a5"
+        }
+      ],
+      "raw_content_hash": "1d20627d2dbdae79bdd3edae6e6bf89621dbe62be7e0bc24424b9c594c325373",
+      "content_scope": "selected_fulltext",
+      "finding_candidate": "Metric learning based approaches have been widely investigated, where a query sample is classified by finding the nearest prototype from the support set based on their feature similarities.",
+      "semantic_status": "not_verified",
+      "method": "Metric learning based approaches",
+      "conditions": null,
+      "dataset": null,
+      "metric": null,
+      "value": null,
+      "unit": null,
+      "qualifiers": null,
+      "missing_fields": [
+        "conditions",
+        "dataset",
+        "metric",
+        "value",
+        "unit",
+        "qualifiers"
+      ]
+    },
+    "f:ac0d8a3cad6868d77c4ab368": {
+      "card_id": "f:ac0d8a3cad6868d77c4ab368",
+      "contract": "fact-card-v1",
+      "paper_id": "arxiv:2306.09592",
+      "evidence_id": "arxiv:2306.09592:abstract:claim:2448c6361d48",
+      "source_version": "v2",
+      "content_sha256": "a5311114cf4daf5f62ca48eadc39b084c8eaa58e56d104fb0c283593f203b89a",
+      "source_quote": "Few-shot learning (FSL) is one of the significant and hard problems in the field of image classification. However, in contrast to the rapid development of the visible light dataset, the progress in SAR target image classification is much slower. The lack of unified benchmark is a key reason for this phenomenon, which may be severely overlooked by the current literature. The researchers of SAR target image classification always report their new results on their own datasets and experimental setup. It leads to inefficiency in result comparison and impedes the further progress of this area. Motivated by this observation, we propose a novel few-shot SAR image classification benchmark (FewSAR) to address this issue. FewSAR consists of an open-source Python code library of 15 classic methods in three categories for few-shot SAR image classification. It provides an accessible and customizable testbed for different few-shot SAR image classification task. To further understanding the performance of different few-shot methods, we establish evaluation protocols and conduct extensive experiments within the benchmark. By analyzing the quantitative results and runtime under the same setting, we observe that the accuracy of metric learning methods can achieve the best results. Meta-learning methods and fine-tuning methods perform poorly on few-shot SAR images, which is primarily due to the bias of existing datasets. We believe that FewSAR will open up a new avenue for future research and development, on real-world challenges at the intersection of SAR image classification and few-shot deep learning. We will provide our code for the proposed FewSAR at https://github.com/solarlee/FewSAR.",
+      "source_start": 0,
+      "source_end": 1699,
+      "chunk_key": "abstract",
+      "page": null,
+      "block_index": null,
+      "source_locator": "paper=arxiv:2306.09592;chunk=abstract;section=abstract;page=;block=",
+      "bbox": null,
+      "source_spans": [],
+      "raw_content_hash": "a5311114cf4daf5f62ca48eadc39b084c8eaa58e56d104fb0c283593f203b89a",
+      "content_scope": "abstract",
+      "finding_candidate": "By analyzing the quantitative results and runtime under the same setting, we observe that the accuracy of metric learning methods can achieve the best results.",
+      "semantic_status": "not_verified",
+      "method": "metric learning methods",
+      "conditions": "under the same setting",
+      "dataset": null,
+      "metric": "accuracy",
+      "value": "best results",
+      "unit": null,
+      "qualifiers": null,
+      "missing_fields": [
+        "dataset",
+        "unit",
+        "qualifiers"
+      ],
+      "document_subject": "FewSAR"
+    }
+  },
+  "selection": {
+    "section_evidence_ids": {
+      "abstract": [
+        "arxiv:2105.08149:page:1:block:9:claim:1d1c47d8d2c3",
+        "arxiv:1907.03123:abstract:claim:3bee9c457d48",
+        "arxiv:2105.00379:abstract:claim:d5a42bca1404",
+        "arxiv:2305.09062:abstract:claim:dcc1e6a0ae7a",
+        "arxiv:1907.03123:abstract:claim:76e8e57aa91c",
+        "arxiv:1904.03014:abstract:claim:668b92b6e867",
+        "arxiv:2105.08149:page:1:block:9:claim:77c5e2b3dab5",
+        "arxiv:2104.02638:section:abstract:45:924c867b4c98:claim:2f45f1bb6641",
+        "arxiv:1904.04232:section:abstract:8:e517c42438f5:claim:a4e28e41c08c",
+        "arxiv:1711.06025:section:abstract:4:b851ec357ca4:claim:1360d4ceb01a",
+        "arxiv:2104.02638:section:abstract:9:1354132472a1:claim:cf6297377d7d",
+        "arxiv:2104.02638:section:abstract:9:1354132472a1:claim:e2c306351c78",
+        "arxiv:2003.06777:section:unknown:24:938efba2b112:claim:22408849d50b",
+        "arxiv:2104.02638:abstract:claim:62bf30382590",
+        "arxiv:2305.09062:abstract:claim:0b90d27cd84e",
+        "arxiv:2105.08149:abstract:claim:544ec3b8e199",
+        "arxiv:2105.08149:abstract:claim:207142546196",
+        "arxiv:1711.06025:section:abstract:12:43376954155c:claim:ff0773aa292d",
+        "arxiv:2010.04525:abstract:claim:9091a1fb4b38",
+        "arxiv:1907.03123:abstract:claim:57337d0c6cff",
+        "arxiv:2305.09062:abstract:claim:938d1931004e",
+        "arxiv:2010.04525:page:1:block:5:claim:cc74c784a067",
+        "arxiv:2306.09592:abstract:claim:2448c6361d48"
+      ],
+      "introduction": [
+        "arxiv:2105.08149:page:1:block:9:claim:1d1c47d8d2c3",
+        "arxiv:1907.03123:abstract:claim:3bee9c457d48",
+        "arxiv:2305.09062:abstract:claim:dcc1e6a0ae7a",
+        "arxiv:1907.03123:abstract:claim:76e8e57aa91c",
+        "arxiv:1904.03014:abstract:claim:668b92b6e867",
+        "arxiv:2104.02638:section:abstract:45:924c867b4c98:claim:2f45f1bb6641",
+        "arxiv:1904.04232:section:abstract:8:e517c42438f5:claim:a4e28e41c08c",
+        "arxiv:1711.06025:section:abstract:4:b851ec357ca4:claim:1360d4ceb01a",
+        "arxiv:2104.02638:section:abstract:9:1354132472a1:claim:cf6297377d7d",
+        "arxiv:2003.06777:section:unknown:24:938efba2b112:claim:22408849d50b",
+        "arxiv:2105.08149:abstract:claim:207142546196",
+        "arxiv:1711.06025:section:abstract:12:43376954155c:claim:ff0773aa292d"
+      ],
+      "taxonomy": [
+        "arxiv:2105.08149:page:1:block:9:claim:1d1c47d8d2c3",
+        "arxiv:1907.03123:abstract:claim:3bee9c457d48",
+        "arxiv:2305.09062:abstract:claim:dcc1e6a0ae7a",
+        "arxiv:1904.03014:abstract:claim:668b92b6e867",
+        "arxiv:2104.02638:section:abstract:45:924c867b4c98:claim:2f45f1bb6641",
+        "arxiv:2104.02638:section:abstract:9:1354132472a1:claim:cf6297377d7d",
+        "arxiv:2003.06777:section:unknown:24:938efba2b112:claim:22408849d50b",
+        "arxiv:2104.02638:abstract:claim:62bf30382590",
+        "arxiv:2105.08149:abstract:claim:207142546196",
+        "arxiv:1711.06025:section:abstract:12:43376954155c:claim:ff0773aa292d",
+        "arxiv:2010.04525:abstract:claim:9091a1fb4b38",
+        "arxiv:2010.04525:page:1:block:5:claim:cc74c784a067"
+      ],
+      "methods": [
+        "arxiv:2105.08149:page:1:block:9:claim:1d1c47d8d2c3",
+        "arxiv:1907.03123:abstract:claim:3bee9c457d48",
+        "arxiv:2305.09062:abstract:claim:dcc1e6a0ae7a",
+        "arxiv:1907.03123:abstract:claim:76e8e57aa91c",
+        "arxiv:2105.08149:page:1:block:9:claim:77c5e2b3dab5",
+        "arxiv:2104.02638:section:abstract:45:924c867b4c98:claim:2f45f1bb6641",
+        "arxiv:1904.04232:section:abstract:8:e517c42438f5:claim:a4e28e41c08c",
+        "arxiv:2104.02638:section:abstract:9:1354132472a1:claim:cf6297377d7d",
+        "arxiv:2003.06777:section:unknown:24:938efba2b112:claim:22408849d50b",
+        "arxiv:2104.02638:abstract:claim:62bf30382590",
+        "arxiv:2105.08149:abstract:claim:207142546196",
+        "arxiv:2010.04525:abstract:claim:9091a1fb4b38"
+      ],
+      "experiments": [
+        "arxiv:1907.03123:abstract:claim:3bee9c457d48",
+        "arxiv:2105.00379:abstract:claim:d5a42bca1404",
+        "arxiv:2305.09062:abstract:claim:dcc1e6a0ae7a",
+        "arxiv:1907.03123:abstract:claim:76e8e57aa91c",
+        "arxiv:2104.02638:section:abstract:45:924c867b4c98:claim:2f45f1bb6641",
+        "arxiv:2104.02638:section:abstract:9:1354132472a1:claim:cf6297377d7d",
+        "arxiv:2003.06777:section:unknown:24:938efba2b112:claim:22408849d50b",
+        "arxiv:2104.02638:abstract:claim:62bf30382590",
+        "arxiv:2305.09062:abstract:claim:0b90d27cd84e",
+        "arxiv:1711.06025:section:abstract:12:43376954155c:claim:ff0773aa292d",
+        "arxiv:1907.03123:abstract:claim:57337d0c6cff",
+        "arxiv:2306.09592:abstract:claim:2448c6361d48"
+      ],
+      "open_problems": [
+        "arxiv:2105.08149:page:1:block:9:claim:1d1c47d8d2c3",
+        "arxiv:1907.03123:abstract:claim:3bee9c457d48",
+        "arxiv:2305.09062:abstract:claim:dcc1e6a0ae7a",
+        "arxiv:1904.03014:abstract:claim:668b92b6e867",
+        "arxiv:1904.04232:section:abstract:8:e517c42438f5:claim:a4e28e41c08c",
+        "arxiv:1711.06025:section:abstract:4:b851ec357ca4:claim:1360d4ceb01a",
+        "arxiv:2104.02638:section:abstract:9:1354132472a1:claim:cf6297377d7d",
+        "arxiv:2104.02638:section:abstract:9:1354132472a1:claim:e2c306351c78",
+        "arxiv:2003.06777:section:unknown:24:938efba2b112:claim:22408849d50b",
+        "arxiv:2105.08149:abstract:claim:544ec3b8e199",
+        "arxiv:1711.06025:section:abstract:12:43376954155c:claim:ff0773aa292d",
+        "arxiv:2305.09062:abstract:claim:938d1931004e"
+      ],
+      "conclusion": [
+        "arxiv:2105.08149:page:1:block:9:claim:1d1c47d8d2c3",
+        "arxiv:1907.03123:abstract:claim:3bee9c457d48",
+        "arxiv:2105.00379:abstract:claim:d5a42bca1404",
+        "arxiv:2305.09062:abstract:claim:dcc1e6a0ae7a",
+        "arxiv:1907.03123:abstract:claim:76e8e57aa91c",
+        "arxiv:1904.03014:abstract:claim:668b92b6e867",
+        "arxiv:2105.08149:page:1:block:9:claim:77c5e2b3dab5",
+        "arxiv:2104.02638:section:abstract:45:924c867b4c98:claim:2f45f1bb6641",
+        "arxiv:1904.04232:section:abstract:8:e517c42438f5:claim:a4e28e41c08c",
+        "arxiv:1711.06025:section:abstract:4:b851ec357ca4:claim:1360d4ceb01a",
+        "arxiv:2104.02638:section:abstract:9:1354132472a1:claim:cf6297377d7d",
+        "arxiv:2104.02638:section:abstract:9:1354132472a1:claim:e2c306351c78",
+        "arxiv:2003.06777:section:unknown:24:938efba2b112:claim:22408849d50b",
+        "arxiv:2104.02638:abstract:claim:62bf30382590",
+        "arxiv:2305.09062:abstract:claim:0b90d27cd84e",
+        "arxiv:2105.08149:abstract:claim:544ec3b8e199",
+        "arxiv:2105.08149:abstract:claim:207142546196",
+        "arxiv:1711.06025:section:abstract:12:43376954155c:claim:ff0773aa292d",
+        "arxiv:2010.04525:abstract:claim:9091a1fb4b38",
+        "arxiv:1907.03123:abstract:claim:57337d0c6cff",
+        "arxiv:2305.09062:abstract:claim:938d1931004e",
+        "arxiv:2010.04525:page:1:block:5:claim:cc74c784a067",
+        "arxiv:2306.09592:abstract:claim:2448c6361d48"
+      ]
+    }
+  },
+  "repair_response": "{\"can_repair\":true,\"patches\":{\"u0\":{\"text\":\"跨元学习与迁移学习家族的研究明确指出，由于不同家族的评价规范相互分离，不同方法之间的直接或彻底比较存在困难；因此，本节只能分别报告深度K-tuplet network、SRL、Proto-Triplet/ICNN损失和FewSAR中度量学习方法在各自协议下的结果，不能把这些跨论文结果合并为统一数值排名。\",\"kind\":\"scientific\",\"fact_card_ids\":[\"f:9082cf7ff926f08ef501f26a\",\"f:4633c98ce4495b81022331e1\",\"f:b65c1cab497c60edb7f3eb44\",\"f:b959f9c133f75046cc9c2411\",\"f:ac0d8a3cad6868d77c4ab368\"],\"scope_notice_id\":\"none\"},\"u1\":{\"text\":\"传统度量学习方法的一个具体限制是，潜在空间性质以及不同类别在该空间中的可分性没有被充分强制；这一限制解释了为什么需要通过类内与类间距离约束来改进嵌入质量。\",\"kind\":\"scientific\",\"fact_card_ids\":[\"f:bb0db5bdd41c770f69f90d7a\"],\"scope_notice_id\":\"none\"}}}",
+  "repair_binding": {
+    "version": "bound-native-unit-repair-v1",
+    "candidate_sha256": "556644fb79e80a27b51db3e343c2ff7ca54835a0f4da235c57ba4ab23539f196",
+    "fact_cards_sha256": "c06d1e2c1edd1f00aacda2ebd22662b9287fc36515c331ca8b39768c9de34636",
+    "targets": {
+      "u0": {
+        "path": "sections.experiments.additional_blocks.0.additional_sentences.0",
+        "section_key": "experiments",
+        "original": {
+          "kind": "gap",
+          "fact_card_ids": [],
+          "text": "所选证据没有提供深度K-tuplet network、SRL、DeepEMD、Proto-Triplet/ICNN损失和不确定性感知框架在同一backbone、同一episode划分、同一shot/way设置下的完整准确率、参数量、训练成本与推理成本对照表，因而不能据这些材料给出统一数值排名。",
+          "scope_notice_id": "evidence_limit"
+        },
+        "allowed_fact_card_ids": [
+          "f:8b348692dac84054d399c272",
+          "f:b65c1cab497c60edb7f3eb44",
+          "f:03555c46aea1f592b552e496",
+          "f:792ee54092d8d0487e45a9c7",
+          "f:a16563aa82f33be405066eac",
+          "f:b0863557d57761194e0bbc7d",
+          "f:d31899812db812bce14632df",
+          "f:9082cf7ff926f08ef501f26a",
+          "f:b959f9c133f75046cc9c2411",
+          "f:21f3d74a63e45b284175d2dc",
+          "f:4633c98ce4495b81022331e1",
+          "f:ac0d8a3cad6868d77c4ab368"
+        ]
+      },
+      "u1": {
+        "path": "sections.open_problems.first_block.additional_sentences.3",
+        "section_key": "open_problems",
+        "original": {
+          "kind": "gap",
+          "fact_card_ids": [],
+          "text": "就本报告所选材料而言，仍缺少各度量学习方法在相同自然图像协议下的逐设置数值、统计显著性、训练资源和推理资源，因此开放问题应限定为 supplied evidence 无法完成统一成本—精度比较。",
+          "scope_notice_id": "evidence_limit"
+        },
+        "allowed_fact_card_ids": [
+          "f:3b685d3e8053e24298fc5b59",
+          "f:8b348692dac84054d399c272",
+          "f:03555c46aea1f592b552e496",
+          "f:c0531198d6f413bf8a34f481",
+          "f:a75a851f7e777a86d5436790",
+          "f:90a21881f3226d5b70a74000",
+          "f:b0863557d57761194e0bbc7d",
+          "f:6b1078645743e4d4703df779",
+          "f:d31899812db812bce14632df",
+          "f:ca210b9894268eda6a8dbd4f",
+          "f:21f3d74a63e45b284175d2dc",
+          "f:bb0db5bdd41c770f69f90d7a"
+        ]
+      }
+    },
+    "scope_notice_contract": "scope-notice-v1",
+    "language": "zh-CN",
+    "binding_sha256": "e2f12df860eebc651ff8c423c5ddc11ab3a7819f79876f28ee525fc502279d81"
+  },
+  "selected_items": {
+    "arxiv:2105.08149:page:1:block:9:claim:1d1c47d8d2c3": {
+      "evidence_id": "arxiv:2105.08149:page:1:block:9:claim:1d1c47d8d2c3",
+      "paper_id": "arxiv:2105.08149",
+      "paper_title": "Deep Metric Learning for Few-Shot Image Classification: A Review of Recent Developments",
+      "text": "To alleviate this problem, researchers have proposed various approaches, such as meta-learning methods, transfer learning methods, and metric learning methods.",
+      "source_locator": "paper=arxiv:2105.08149;chunk=page:1:block:9;section=abstract;page=1;block=9",
+      "confidence": 0.95,
+      "claim_text": "To alleviate this problem, researchers have proposed various approaches, such as meta-learning methods, transfer learning methods, and metric learning methods.",
+      "supporting_text": "The biggest challenge in few-shot classification is a high risk of model overfitting to the few labeled training samples. To alleviate this problem, researchers have proposed various approaches, such as meta-learning methods, transfer learning methods, and metric learning methods. Meta-learning methods train a meta-learner on many different classification tasks to extract generalizable knowledge, which enables rapid learning on a new related task with few examples [7, 9]. Transfer learning methods presume shared knowledge between the source and target domains, and fine-tune the model trained on abundant source data to fit few labeled target samples [10, 11]. Metric learning methods learn feature embeddings [6] and/or distance measures (or inversely, similarity measures) [12] and classify an unseen sample based on its distance to",
+      "content_scope": "selected_fulltext",
+      "chunk_key": "page:1:block:9",
+      "section": "abstract",
+      "page": 1,
+      "block_index": 9,
+      "bbox": [
+        70.73100280761719,
+        591.552734375,
+        523.5343017578125,
+        710.8558349609375
+      ],
+      "source_spans": [
+        {
+          "page": 1,
+          "block_index": 9,
+          "bbox": [
+            70.73100280761719,
+            591.552734375,
+            523.5343017578125,
+            710.8558349609375
+          ],
+          "start_char": 0,
+          "end_char": 840,
+          "raw_content_hash": "52b17f8c8618551e29bb773d4ca75412a28285436ca2246dffa095f3a39c41ca"
+        }
+      ],
+      "content_hash": "ffe84831bb4ae36f7b1dd692fc736853ab65cd1d9b14eb1fe018bc250a99b99d",
+      "raw_content_hash": "805726e1ac0abaa3ea9d9e55b897b3ac89d220afa95979c07101385fdc94c979",
+      "evidence_version": "v2",
+      "fact_fields": {
+        "method": "meta-learning methods, transfer learning methods, and metric learning methods",
+        "qualifiers": "to alleviate the problem of high risk of model overfitting to the few labeled training samples"
+      },
+      "record_identity": "source_fields_v1"
+    },
+    "arxiv:1907.03123:abstract:claim:3bee9c457d48": {
+      "evidence_id": "arxiv:1907.03123:abstract:claim:3bee9c457d48",
+      "paper_id": "arxiv:1907.03123",
+      "paper_title": "Revisiting Metric Learning for Few-Shot Image Classification",
+      "text": "Recent effective metric-based few-shot approaches employ neural networks to learn a feature similarity comparison between query and support examples. However, the importance of feature embedding, i.e., exploring the relationship among training samples, is neglected.",
+      "source_locator": "paper=arxiv:1907.03123;chunk=abstract;section=abstract;page=;block=",
+      "confidence": 0.98,
+      "claim_text": "Recent effective metric-based few-shot approaches employ neural networks to learn a feature similarity comparison between query and support examples. However, the importance of feature embedding, i.e., exploring the relationship among training samples, is neglected.",
+      "supporting_text": "The goal of few-shot learning is to recognize new visual concepts with just a few amount of labeled samples in each class. Recent effective metric-based few-shot approaches employ neural networks to learn a feature similarity comparison between query and support examples. However, the importance of feature embedding, i.e., exploring the relationship among training samples, is neglected. In this work, we present a simple yet powerful baseline for few-shot classification by emphasizing the importance of feature embedding. Specifically, we revisit the classical triplet network from deep metric learning, and extend it into a deep K-tuplet network for few-shot learning, utilizing the relationship among the input samples to learn a general representation learning via episode-training. Once trained, our network is able to extract discriminative features for unseen novel categories and can be seamlessly incorporated with a non-linear distance metric function to facilitate the few-shot classification. Our result on the miniImageNet benchmark outperforms other metric-based few-shot classification methods. More importantly, when evaluated on completely different datasets (Caltech-101, CUB-200, Stanford Dogs and Cars) using the model trained with miniImageNet, our method significantly outperforms prior methods, demonstrating its superior capability to generalize to unseen classes.",
+      "content_scope": "abstract",
+      "chunk_key": "abstract",
+      "section": "abstract",
+      "page": null,
+      "block_index": null,
+      "bbox": null,
+      "source_spans": [],
+      "content_hash": "bbc803aec14ff7d89ee221236ec27f7e6938a8484773b680cc121ed4002bc5fd",
+      "raw_content_hash": "bbc803aec14ff7d89ee221236ec27f7e6938a8484773b680cc121ed4002bc5fd",
+      "evidence_version": "v2",
+      "fact_fields": {},
+      "record_identity": "source_fields_v1"
+    },
+    "arxiv:2105.00379:abstract:claim:d5a42bca1404": {
+      "evidence_id": "arxiv:2105.00379:abstract:claim:d5a42bca1404",
+      "paper_id": "arxiv:2105.00379",
+      "paper_title": "Subspace Representation Learning for Few-shot Image Classification",
+      "text": "We demonstrate the effectiveness of the SRL framework on three public benchmark datasets: MiniImageNet, TieredImageNet and Caltech-UCSD Birds-200-2011 (CUB), and the experimental results illustrate competitive/superior performance of our method compared to the previous state-of-the-art.",
+      "source_locator": "paper=arxiv:2105.00379;chunk=abstract;section=abstract;page=;block=",
+      "confidence": 1.0,
+      "claim_text": "We demonstrate the effectiveness of the SRL framework on three public benchmark datasets: MiniImageNet, TieredImageNet and Caltech-UCSD Birds-200-2011 (CUB), and the experimental results illustrate competitive/superior performance of our method compared to the previous state-of-the-art.",
+      "supporting_text": "In this paper, we propose a subspace representation learning (SRL) framework to tackle few-shot image classification tasks. It exploits a subspace in local CNN feature space to represent an image, and measures the similarity between two images according to a weighted subspace distance (WSD). When K images are available for each class, we develop two types of template subspaces to aggregate K-shot information: the prototypical subspace (PS) and the discriminative subspace (DS). Based on the SRL framework, we extend metric learning based techniques from vector to subspace representation. While most previous works adopted global vector representation, using subspace representation can effectively preserve the spatial structure, and diversity within an image. We demonstrate the effectiveness of the SRL framework on three public benchmark datasets: MiniImageNet, TieredImageNet and Caltech-UCSD Birds-200-2011 (CUB), and the experimental results illustrate competitive/superior performance of our method compared to the previous state-of-the-art.",
+      "content_scope": "abstract",
+      "chunk_key": "abstract",
+      "section": "abstract",
+      "page": null,
+      "block_index": null,
+      "bbox": null,
+      "source_spans": [],
+      "content_hash": "17576efae2193e4672982e69013647dca735a9b22d834e7a9839d9083b7f8ab5",
+      "raw_content_hash": "17576efae2193e4672982e69013647dca735a9b22d834e7a9839d9083b7f8ab5",
+      "evidence_version": "v2",
+      "fact_fields": {
+        "method": "SRL framework",
+        "dataset": "MiniImageNet, TieredImageNet and Caltech-UCSD Birds-200-2011 (CUB)",
+        "qualifiers": "competitive/superior performance of our method compared to the previous state-of-the-art"
+      },
+      "record_identity": "source_fields_v1"
+    },
+    "arxiv:2305.09062:abstract:claim:dcc1e6a0ae7a": {
+      "evidence_id": "arxiv:2305.09062:abstract:claim:dcc1e6a0ae7a",
+      "paper_id": "arxiv:2305.09062",
+      "paper_title": "SuSana Distancia is all you need: Enforcing class separability in metric\n  learning via two novel distance-based loss functions for few-shot image\n  classification",
+      "text": "Recent works based on metric-learning approaches leverage the meta-learning approach, which is encompassed by episodic tasks that make use a support (training) and query set (test) with the objective of learning a similarity comparison metric between those sets.",
+      "source_locator": "paper=arxiv:2305.09062;chunk=abstract;section=abstract;page=;block=",
+      "confidence": 1.0,
+      "claim_text": "Recent works based on metric-learning approaches leverage the meta-learning approach, which is encompassed by episodic tasks that make use a support (training) and query set (test) with the objective of learning a similarity comparison metric between those sets.",
+      "supporting_text": "Few-shot learning is a challenging area of research that aims to learn new concepts with only a few labeled samples of data. Recent works based on metric-learning approaches leverage the meta-learning approach, which is encompassed by episodic tasks that make use a support (training) and query set (test) with the objective of learning a similarity comparison metric between those sets. Due to the lack of data, the learning process of the embedding network becomes an important part of the few-shot task. Previous works have addressed this problem using metric learning approaches, but the properties of the underlying latent space and the separability of the difference classes on it was not entirely enforced. In this work, we propose two different loss functions which consider the importance of the embedding vectors by looking at the intra-class and inter-class distance between the few data. The first loss function is the Proto-Triplet Loss, which is based on the original triplet loss with the modifications needed to better work on few-shot scenarios. The second loss function, which we dub ICNN loss is based on an inter and intra class nearest neighbors score, which help us to assess the quality of embeddings obtained from the trained network. Our results, obtained from a extensive experimental setup show a significant improvement in accuracy in the miniImagenNet benchmark compared to other metric-based few-shot learning methods by a margin of 2%, demonstrating the capability of these loss functions to allow the network to generalize better to previously unseen classes. In our experiments, we demonstrate competitive generalization capabilities to other domains, such as the Caltech CUB, Dogs and Cars datasets compared with the state of the art.",
+      "content_scope": "abstract",
+      "chunk_key": "abstract",
+      "section": "abstract",
+      "page": null,
+      "block_index": null,
+      "bbox": null,
+      "source_spans": [],
+      "content_hash": "3b7b29b93228cfb4d0bce8af40b9a1cde49576d318595eb3973e969cfd257e44",
+      "raw_content_hash": "9961dedc92856c296031863156331e303d557b0b880cf7b883df198ad80b6f04",
+      "evidence_version": "v2",
+      "fact_fields": {
+        "method": "metric-learning approaches",
+        "conditions": "episodic tasks that make use a support (training) and query set (test)",
+        "qualifiers": "objective of learning a similarity comparison metric between those sets"
+      },
+      "record_identity": "source_fields_v1"
+    },
+    "arxiv:1907.03123:abstract:claim:76e8e57aa91c": {
+      "evidence_id": "arxiv:1907.03123:abstract:claim:76e8e57aa91c",
+      "paper_id": "arxiv:1907.03123",
+      "paper_title": "Revisiting Metric Learning for Few-Shot Image Classification",
+      "text": "when evaluated on completely different datasets (Caltech-101, CUB-200, Stanford Dogs and Cars) using the model trained with miniImageNet, our method significantly outperforms prior methods, demonstrating its superior capability to generalize to unseen classes.",
+      "source_locator": "paper=arxiv:1907.03123;chunk=abstract;section=abstract;page=;block=",
+      "confidence": 0.97,
+      "claim_text": "when evaluated on completely different datasets (Caltech-101, CUB-200, Stanford Dogs and Cars) using the model trained with miniImageNet, our method significantly outperforms prior methods, demonstrating its superior capability to generalize to unseen classes.",
+      "supporting_text": "The goal of few-shot learning is to recognize new visual concepts with just a few amount of labeled samples in each class. Recent effective metric-based few-shot approaches employ neural networks to learn a feature similarity comparison between query and support examples. However, the importance of feature embedding, i.e., exploring the relationship among training samples, is neglected. In this work, we present a simple yet powerful baseline for few-shot classification by emphasizing the importance of feature embedding. Specifically, we revisit the classical triplet network from deep metric learning, and extend it into a deep K-tuplet network for few-shot learning, utilizing the relationship among the input samples to learn a general representation learning via episode-training. Once trained, our network is able to extract discriminative features for unseen novel categories and can be seamlessly incorporated with a non-linear distance metric function to facilitate the few-shot classification. Our result on the miniImageNet benchmark outperforms other metric-based few-shot classification methods. More importantly, when evaluated on completely different datasets (Caltech-101, CUB-200, Stanford Dogs and Cars) using the model trained with miniImageNet, our method significantly outperforms prior methods, demonstrating its superior capability to generalize to unseen classes.",
+      "content_scope": "abstract",
+      "chunk_key": "abstract",
+      "section": "abstract",
+      "page": null,
+      "block_index": null,
+      "bbox": null,
+      "source_spans": [],
+      "content_hash": "bbc803aec14ff7d89ee221236ec27f7e6938a8484773b680cc121ed4002bc5fd",
+      "raw_content_hash": "bbc803aec14ff7d89ee221236ec27f7e6938a8484773b680cc121ed4002bc5fd",
+      "evidence_version": "v2",
+      "fact_fields": {
+        "method": "deep K-tuplet network",
+        "conditions": "using the model trained with miniImageNet",
+        "dataset": "Caltech-101, CUB-200, Stanford Dogs and Cars",
+        "qualifiers": "significantly outperforms prior methods, demonstrating its superior capability to generalize to unseen classes"
+      },
+      "record_identity": "source_fields_v1"
+    },
+    "arxiv:1904.03014:abstract:claim:668b92b6e867": {
+      "evidence_id": "arxiv:1904.03014:abstract:claim:668b92b6e867",
+      "paper_id": "arxiv:1904.03014",
+      "paper_title": "A Hybrid Approach with Optimization and Metric-based Meta-Learner for Few-Shot Learning",
+      "text": "Most existing few-shot learning approaches belong to either metric-based meta-learning or optimization-based meta-learning category, both of which have achieved successes in the simplified \"$k$-shot $N$-way\" image classification settings.",
+      "source_locator": "paper=arxiv:1904.03014;chunk=abstract;section=abstract;page=;block=",
+      "confidence": 1.0,
+      "claim_text": "Most existing few-shot learning approaches belong to either metric-based meta-learning or optimization-based meta-learning category, both of which have achieved successes in the simplified \"$k$-shot $N$-way\" image classification settings.",
+      "supporting_text": "Few-shot learning aims to learn classifiers for new classes with only a few training examples per class. Most existing few-shot learning approaches belong to either metric-based meta-learning or optimization-based meta-learning category, both of which have achieved successes in the simplified \"$k$-shot $N$-way\" image classification settings. Specifically, the optimization-based approaches train a meta-learner to predict the parameters of the task-specific classifiers. The task-specific classifiers are required to be homogeneous-structured to ease the parameter prediction, so the meta-learning approaches could only handle few-shot learning problems where the tasks share a uniform number of classes. The metric-based approaches learn one task-invariant metric for all the tasks. Even though the metric-learning approaches allow different numbers of classes, they require the tasks all coming from a similar domain such that there exists a uniform metric that could work across tasks. In this work, we propose a hybrid meta-learning model called Meta-Metric-Learner which combines the merits of both optimization- and metric-based approaches. Our meta-metric-learning approach consists of two components, a task-specific metric-based learner as a base model, and a meta-learner that learns and specifies the base model. Thus our model is able to handle flexible numbers of classes as well as generate more generalized metrics for classification across tasks. We test our approach in the standard \"$k$-shot $N$-way\" few-shot learning setting following previous works and a new realistic few-shot setting with flexible class numbers in both single-source form and multi-source forms. Experiments show that our approach can obtain superior performance in all settings.",
+      "content_scope": "abstract",
+      "chunk_key": "abstract",
+      "section": "abstract",
+      "page": null,
+      "block_index": null,
+      "bbox": null,
+      "source_spans": [],
+      "content_hash": "b9dc1b3b589c20bff47892a0820fab4334ad1c65c1b9067ae5ee21ec10e69691",
+      "raw_content_hash": "b9dc1b3b589c20bff47892a0820fab4334ad1c65c1b9067ae5ee21ec10e69691",
+      "evidence_version": "v2",
+      "fact_fields": {
+        "method": "Most existing few-shot learning approaches",
+        "conditions": "simplified \"$k$-shot $N$-way\" image classification settings",
+        "qualifiers": "belong to either metric-based meta-learning or optimization-based meta-learning category"
+      },
+      "record_identity": "source_fields_v1"
+    },
+    "arxiv:2105.08149:page:1:block:9:claim:77c5e2b3dab5": {
+      "evidence_id": "arxiv:2105.08149:page:1:block:9:claim:77c5e2b3dab5",
+      "paper_id": "arxiv:2105.08149",
+      "paper_title": "Deep Metric Learning for Few-Shot Image Classification: A Review of Recent Developments",
+      "text": "Transfer learning methods presume shared knowledge between the source and target domains, and fine-tune the model trained on abundant source data to fit few labeled target samples [10, 11].",
+      "source_locator": "paper=arxiv:2105.08149;chunk=page:1:block:9;section=abstract;page=1;block=9",
+      "confidence": 0.9,
+      "claim_text": "Transfer learning methods presume shared knowledge between the source and target domains, and fine-tune the model trained on abundant source data to fit few labeled target samples [10, 11].",
+      "supporting_text": "The biggest challenge in few-shot classification is a high risk of model overfitting to the few labeled training samples. To alleviate this problem, researchers have proposed various approaches, such as meta-learning methods, transfer learning methods, and metric learning methods. Meta-learning methods train a meta-learner on many different classification tasks to extract generalizable knowledge, which enables rapid learning on a new related task with few examples [7, 9]. Transfer learning methods presume shared knowledge between the source and target domains, and fine-tune the model trained on abundant source data to fit few labeled target samples [10, 11]. Metric learning methods learn feature embeddings [6] and/or distance measures (or inversely, similarity measures) [12] and classify an unseen sample based on its distance to",
+      "content_scope": "selected_fulltext",
+      "chunk_key": "page:1:block:9",
+      "section": "abstract",
+      "page": 1,
+      "block_index": 9,
+      "bbox": [
+        70.73100280761719,
+        591.552734375,
+        523.5343017578125,
+        710.8558349609375
+      ],
+      "source_spans": [
+        {
+          "page": 1,
+          "block_index": 9,
+          "bbox": [
+            70.73100280761719,
+            591.552734375,
+            523.5343017578125,
+            710.8558349609375
+          ],
+          "start_char": 0,
+          "end_char": 840,
+          "raw_content_hash": "52b17f8c8618551e29bb773d4ca75412a28285436ca2246dffa095f3a39c41ca"
+        }
+      ],
+      "content_hash": "ffe84831bb4ae36f7b1dd692fc736853ab65cd1d9b14eb1fe018bc250a99b99d",
+      "raw_content_hash": "805726e1ac0abaa3ea9d9e55b897b3ac89d220afa95979c07101385fdc94c979",
+      "evidence_version": "v2",
+      "fact_fields": {
+        "method": "Transfer learning methods",
+        "conditions": "presume shared knowledge between the source and target domains, and fine-tune the model trained on abundant source data to fit few labeled target samples"
+      },
+      "record_identity": "source_fields_v1"
+    },
+    "arxiv:2104.02638:section:abstract:45:924c867b4c98:claim:2f45f1bb6641": {
+      "evidence_id": "arxiv:2104.02638:section:abstract:45:924c867b4c98:claim:2f45f1bb6641",
+      "paper_id": "arxiv:2104.02638",
+      "paper_title": "Comparing Transfer and Meta Learning Approaches on a Unified Few-Shot Classification Benchmark",
+      "text": "Our extensive evaluation of recent competitive approaches show that a carefully engineered training and fine-tuning of large scale networks (as exemplified by BiT) is a remarkably competitive and robust baseline for few-shot classification, and that this approach generalizes across large-scale, multi-dataset benchmarks.",
+      "source_locator": "paper=arxiv:2104.02638;chunk=section:abstract:45:924c867b4c98;section=abstract;page=8;block=24",
+      "confidence": 1.0,
+      "claim_text": "Our extensive evaluation of recent competitive approaches show that a carefully engineered training and fine-tuning of large scale networks (as exemplified by BiT) is a remarkably competitive and robust baseline for few-shot classification, and that this approach generalizes across large-scale, multi-dataset benchmarks.",
+      "supporting_text": "e individual image duplicates appear unimportant, domain coverage is, and large-scale datasets are more likely to cover more domains. 5. Conclusion We introduce a few-shot classification evaluation protocol called VTAB+MD which aims to facilitate exchanging and comparing ideas between the transfer learning and few-shot classification communities. Our extensive evaluation of recent competitive approaches show that a carefully engi-neered training and fine-tuning of large scale networks (as exemplified by BiT) is a remarkably competitive and robust baseline for few-shot classification, and that this approach generalizes across large-scale, multi-dataset benchmarks.",
+      "content_scope": "selected_fulltext",
+      "chunk_key": "section:abstract:45:924c867b4c98",
+      "section": "abstract",
+      "page": 8,
+      "block_index": 24,
+      "bbox": [
+        307.0820007324219,
+        295.0104064941406,
+        542.1118774414062,
+        448.3348693847656
+      ],
+      "source_spans": [
+        {
+          "page": 8,
+          "block_index": 24,
+          "bbox": [
+            307.0820007324219,
+            295.0104064941406,
+            542.1118774414062,
+            448.3348693847656
+          ],
+          "start_char": 639,
+          "end_char": 772,
+          "raw_content_hash": "9735f06fea3cdb5f69206ba4240ee3de8076c7652448b02e6c48f68022cb1e0d"
+        },
+        {
+          "page": 8,
+          "block_index": 25,
+          "bbox": [
+            307.44000244140625,
+            465.3411560058594,
+            376.5291137695313,
+            477.2963562011719
+          ],
+          "start_char": 0,
+          "end_char": 13,
+          "raw_content_hash": "a1934c069bb4aff171a56cccc1370092174317fb3c82bd2d396e6f87384bd79a"
+        },
+        {
+          "page": 8,
+          "block_index": 26,
+          "bbox": [
+            306.97198486328125,
+            486.2705383300781,
+            543.0934448242188,
+            591.9380493164062
+          ],
+          "start_char": 0,
+          "end_char": 523,
+          "raw_content_hash": "37346b73bdcffece30613a241c18c31c3b35d1c062a597381ee62fe0ac9e8a71"
+        }
+      ],
+      "content_hash": "6957578ba03e41f37468d7e0cd3370390882b390f5c237e64bb0efb412091add",
+      "raw_content_hash": "f13d353bb8cc31284eaa41cd94fde59c09445c1efcf3a3ae6b8fa81a1170e29d",
+      "evidence_version": "v2",
+      "fact_fields": {
+        "method": "BiT",
+        "conditions": "carefully engineered training and fine-tuning of large scale networks",
+        "dataset": "large-scale, multi-dataset benchmarks",
+        "qualifiers": "remarkably competitive and robust baseline for few-shot classification"
+      },
+      "record_identity": "source_fields_v1"
+    },
+    "arxiv:1904.04232:section:abstract:8:e517c42438f5:claim:a4e28e41c08c": {
+      "evidence_id": "arxiv:1904.04232:section:abstract:8:e517c42438f5:claim:a4e28e41c08c",
+      "paper_id": "arxiv:1904.04232",
+      "paper_title": "A Closer Look at Few-shot Classification",
+      "text": "Distance metric learning based methods address the few-shot classification problem by “learn-ing to compare”.",
+      "source_locator": "paper=arxiv:1904.04232;chunk=section:abstract:8:e517c42438f5;section=abstract;page=2;block=9",
+      "confidence": 0.95,
+      "claim_text": "Distance metric learning based methods address the few-shot classification problem by “learn-ing to compare”.",
+      "supporting_text": "aining examples for novel classes, our experiments show that these methods have difficulty in handling domain shifts between base and novel classes. Distance metric learning based methods address the few-shot classification problem by “learn-ing to compare”. The intuition is that if a model can determine the similarity of two images, it can classify an unseen input image with the labeled instances Koch et al. (2015). To learn a sophisticated comparison models, meta-learning based methods make their prediction conditioned on distance or 1https://github.com/wyharveychen/CloserLookFewShot metric to few labeled instances during the training process. Examples of distance metrics include cosine similarity Vinyals et al. (2016), Euclidean distance to class-mean representation Snell et al. (2017), CNN-based relation module Sung et al. (2018), ridge regression Bertinetto et al. (2019), and graph neural network Garcia & Bruna (2018). In this paper, we compare the performance of three distance metric learning methods.",
+      "content_scope": "selected_fulltext",
+      "chunk_key": "section:abstract:8:e517c42438f5",
+      "section": "abstract",
+      "page": 2,
+      "block_index": 9,
+      "bbox": [
+        107.9999771118164,
+        552.0720825195312,
+        504.00384521484375,
+        660.755615234375
+      ],
+      "source_spans": [
+        {
+          "page": 2,
+          "block_index": 9,
+          "bbox": [
+            107.9999771118164,
+            552.0720825195312,
+            504.00384521484375,
+            660.755615234375
+          ],
+          "start_char": 767,
+          "end_char": 915,
+          "raw_content_hash": "8322fb4b11fc8582f86acf1db3576fe73d93d0ed4619d3ea926dbea7a4816d85"
+        },
+        {
+          "page": 2,
+          "block_index": 10,
+          "bbox": [
+            108.00001525878906,
+            669.238037109375,
+            504.0032348632813,
+            712.1685791015625
+          ],
+          "start_char": 0,
+          "end_char": 392,
+          "raw_content_hash": "e3102163e4e581a853c2e4dd29c78298bc30f58b11475e1f84c9971d4ca08f10"
+        },
+        {
+          "page": 2,
+          "block_index": 11,
+          "bbox": [
+            120.15399932861328,
+            721.318115234375,
+            387.75140380859375,
+            731.5693359375
+          ],
+          "start_char": 0,
+          "end_char": 50,
+          "raw_content_hash": "3095a0f0b6f0d1cb87e8a1ff1358b98f9d0cd17e78370be113240caf7110715d"
+        },
+        {
+          "page": 3,
+          "block_index": 1,
+          "bbox": [
+            108.0,
+            84.26844787597656,
+            504.0033264160156,
+            159.98495483398438
+          ],
+          "start_char": 0,
+          "end_char": 429,
+          "raw_content_hash": "b4c9d6ec166693f384e303296ddcc64762292515e472f912177864d29e4584dc"
+        }
+      ],
+      "content_hash": "81ec70185d7903920c5f9a6b3c4a52f6710fa133836b82c71fa40ce20844a136",
+      "raw_content_hash": "64c5b7264c70113241748a0cada1b6db520ed049bbcccfcb0860ff88dec62404",
+      "evidence_version": "v2",
+      "fact_fields": {
+        "method": "Distance metric learning based methods",
+        "value": "address the few-shot classification problem by “learning to compare”"
+      },
+      "record_identity": "source_fields_v1"
+    },
+    "arxiv:1711.06025:section:abstract:4:b851ec357ca4:claim:1360d4ceb01a": {
+      "evidence_id": "arxiv:1711.06025:section:abstract:4:b851ec357ca4:claim:1360d4ceb01a",
+      "paper_id": "arxiv:1711.06025",
+      "paper_title": "Learning to Compare: Relation Network for Few-Shot Learning",
+      "text": "Our approach is most related to others that aim to train an effective metric for one-shot learning [39, 36, 20]. Where they focus on the learning of the transferrable embedding and pre-define a fixed metric (e.g., as Euclidean [36]), we further aim to learn a transferrable deep metric for comparing the relation between images (few-shot learning), or between images and class descriptions (zero-shot learning).",
+      "source_locator": "paper=arxiv:1711.06025;chunk=section:abstract:4:b851ec357ca4;section=abstract;page=1;block=10",
+      "confidence": 1.0,
+      "claim_text": "Our approach is most related to others that aim to train an effective metric for one-shot learning [39, 36, 20]. Where they focus on the learning of the transferrable embedding and pre-define a fixed metric (e.g., as Euclidean [36]), we further aim to learn a transferrable deep metric for comparing the relation between images (few-shot learning), or between images and class descriptions (zero-shot learning).",
+      "supporting_text": "le in the form of a class de-scription (c.f., single exemplar image in one-shot), making data insufficiency for gradient-based learning a challenge. While promising, most existing few-shot learning ap-proaches either require complex inference mechanisms [23, 9], complex recurrent neural network (RNN) architectures [39, 32], or fine-tuning the target problem [10, 29]. Our approach is most related to others that aim to train an effec-tive metric for one-shot learning [39, 36, 20]. Where they focus on the learning of the transferrable embedding and pre-define a fixed metric (e.g., as Euclidean [36]), we fur-ther aim to learn a transferrable deep metric for comparing the relation between images (few-shot learning), or between images and class descriptions (zero-shot learning). By ex-pressing the inductive bias of a deeper solution (multiple non-linear learned stages at both embedding and relation modules), we make it easier to learn a generalisable solu-tion to the problem.",
+      "content_scope": "selected_fulltext",
+      "chunk_key": "section:abstract:4:b851ec357ca4",
+      "section": "abstract",
+      "page": 1,
+      "block_index": 10,
+      "bbox": [
+        308.8620300292969,
+        244.4353179931641,
+        545.1151123046875,
+        457.6357421875
+      ],
+      "source_spans": [
+        {
+          "page": 1,
+          "block_index": 10,
+          "bbox": [
+            308.8620300292969,
+            244.4353179931641,
+            545.1151123046875,
+            457.6357421875
+          ],
+          "start_char": 908,
+          "end_char": 1056,
+          "raw_content_hash": "29ad4f72f1363fc285c51d57be43ac9bae21ccc40d7e8b857ffb0e5e59950318"
+        },
+        {
+          "page": 1,
+          "block_index": 11,
+          "bbox": [
+            308.8620300292969,
+            461.9851379394531,
+            545.1151733398438,
+            639.3196411132812
+          ],
+          "start_char": 0,
+          "end_char": 835,
+          "raw_content_hash": "3c877b6edba10c1b5f90794261912cc1055fbcce8508c1353981e0f2a9404087"
+        }
+      ],
+      "content_hash": "8872716bd279be9f00a6593056d2f42cbbaa8a86a784d372920592d893a71c97",
+      "raw_content_hash": "82fc145eb50b67dcfab6cb2edbc2fb17081f6576a2ac58402520b4090672991b",
+      "evidence_version": "v2",
+      "fact_fields": {
+        "method": "Relation Network (RN)",
+        "qualifiers": "learn a transferrable deep metric for comparing the relation between images (few-shot learning), or between images and class descriptions (zero-shot learning), in contrast to prior approaches that focus on transferrable embedding and pre-define a fixed metric"
+      },
+      "record_identity": "source_fields_v1"
+    },
+    "arxiv:2104.02638:section:abstract:9:1354132472a1:claim:cf6297377d7d": {
+      "evidence_id": "arxiv:2104.02638:section:abstract:9:1354132472a1:claim:cf6297377d7d",
+      "paper_id": "arxiv:2104.02638",
+      "paper_title": "Comparing Transfer and Meta Learning Approaches on a Unified Few-Shot Classification Benchmark",
+      "text": "large vision models transfer well to popular classification benchmarks (ImageNet, CIFAR, etc.) and VTAB-1k.",
+      "source_locator": "paper=arxiv:2104.02638;chunk=section:abstract:9:1354132472a1;section=abstract;page=2;block=11",
+      "confidence": 1.0,
+      "claim_text": "large vision models transfer well to popular classification benchmarks (ImageNet, CIFAR, etc.) and VTAB-1k.",
+      "supporting_text": "ns-fer with few datapoints. In computer vision, learning with few datapoints is, perhaps, more commonly addressed with semi-supervised learning (e.g. (Sohn et al., 2020)), how-ever (Kolesnikov et al., 2020) show that large vision models transfer well to popular classification benchmarks (Ima-geNet, CIFAR, etc.) and VTAB-1k. Several recent papers report that well-tuned transfer learn-ing baselines are competitive with more complex few-shot classification approaches (Chen et al., 2019; Dhillon et al., 2020; Chen et al., 2020b; Tian et al., 2020). Our work adds to these observations by applying an established few-shot classification evaluation protocol (Meta-Dataset) to large scale (both in terms of data and capacity) transfer learners. Doing so highlights some limitations of episodic approaches in a new way, and also reveals where transfer learning falls short. 2.2. Episodic approaches to few-shot classification",
+      "content_scope": "selected_fulltext",
+      "chunk_key": "section:abstract:9:1354132472a1",
+      "section": "abstract",
+      "page": 2,
+      "block_index": 11,
+      "bbox": [
+        307.0820007324219,
+        69.41102600097656,
+        543.0936889648438,
+        318.5340881347656
+      ],
+      "source_spans": [
+        {
+          "page": 2,
+          "block_index": 11,
+          "bbox": [
+            307.0820007324219,
+            69.41102600097656,
+            543.0936889648438,
+            318.5340881347656
+          ],
+          "start_char": 881,
+          "end_char": 1206,
+          "raw_content_hash": "81f97f8167900fc7947a48b378cb2d70460f6bc7aaaaca06a92db1ddc258d6f9"
+        },
+        {
+          "page": 2,
+          "block_index": 12,
+          "bbox": [
+            307.44000244140625,
+            326.4432678222656,
+            543.1796875,
+            444.0630798339844
+          ],
+          "start_char": 0,
+          "end_char": 545,
+          "raw_content_hash": "7280499ab7d4d6db7548d430a17b2b1e54db441e34605ad8b6ab55871f02697b"
+        },
+        {
+          "page": 2,
+          "block_index": 13,
+          "bbox": [
+            307.44000244140625,
+            459.14251708984375,
+            518.4180297851562,
+            469.1051025390625
+          ],
+          "start_char": 0,
+          "end_char": 51,
+          "raw_content_hash": "7f628a5655208ef86ae9df6c57e1a2769b51348c85cc40944b409997e8685e56"
+        }
+      ],
+      "content_hash": "b164610a74c6e6d2ce21baeb3fc9882d4347bc8ea48f07d50425029e795228bb",
+      "raw_content_hash": "e6b7da4378cc2a1b3ff18e7cb968434420bbdae6d9d4a02aa536bd2f9879c9c5",
+      "evidence_version": "v2",
+      "fact_fields": {
+        "method": "large vision models",
+        "dataset": "ImageNet, CIFAR, etc. and VTAB-1k",
+        "qualifiers": "transfer well"
+      },
+      "record_identity": "source_fields_v1"
+    },
+    "arxiv:2104.02638:section:abstract:9:1354132472a1:claim:e2c306351c78": {
+      "evidence_id": "arxiv:2104.02638:section:abstract:9:1354132472a1:claim:e2c306351c78",
+      "paper_id": "arxiv:2104.02638",
+      "paper_title": "Comparing Transfer and Meta Learning Approaches on a Unified Few-Shot Classification Benchmark",
+      "text": "Doing so highlights some limitations of episodic approaches in a new way, and also reveals where transfer learning falls short.",
+      "source_locator": "paper=arxiv:2104.02638;chunk=section:abstract:9:1354132472a1;section=abstract;page=2;block=11",
+      "confidence": 1.0,
+      "claim_text": "Doing so highlights some limitations of episodic approaches in a new way, and also reveals where transfer learning falls short.",
+      "supporting_text": "ns-fer with few datapoints. In computer vision, learning with few datapoints is, perhaps, more commonly addressed with semi-supervised learning (e.g. (Sohn et al., 2020)), how-ever (Kolesnikov et al., 2020) show that large vision models transfer well to popular classification benchmarks (Ima-geNet, CIFAR, etc.) and VTAB-1k. Several recent papers report that well-tuned transfer learn-ing baselines are competitive with more complex few-shot classification approaches (Chen et al., 2019; Dhillon et al., 2020; Chen et al., 2020b; Tian et al., 2020). Our work adds to these observations by applying an established few-shot classification evaluation protocol (Meta-Dataset) to large scale (both in terms of data and capacity) transfer learners. Doing so highlights some limitations of episodic approaches in a new way, and also reveals where transfer learning falls short. 2.2. Episodic approaches to few-shot classification",
+      "content_scope": "selected_fulltext",
+      "chunk_key": "section:abstract:9:1354132472a1",
+      "section": "abstract",
+      "page": 2,
+      "block_index": 11,
+      "bbox": [
+        307.0820007324219,
+        69.41102600097656,
+        543.0936889648438,
+        318.5340881347656
+      ],
+      "source_spans": [
+        {
+          "page": 2,
+          "block_index": 11,
+          "bbox": [
+            307.0820007324219,
+            69.41102600097656,
+            543.0936889648438,
+            318.5340881347656
+          ],
+          "start_char": 881,
+          "end_char": 1206,
+          "raw_content_hash": "81f97f8167900fc7947a48b378cb2d70460f6bc7aaaaca06a92db1ddc258d6f9"
+        },
+        {
+          "page": 2,
+          "block_index": 12,
+          "bbox": [
+            307.44000244140625,
+            326.4432678222656,
+            543.1796875,
+            444.0630798339844
+          ],
+          "start_char": 0,
+          "end_char": 545,
+          "raw_content_hash": "7280499ab7d4d6db7548d430a17b2b1e54db441e34605ad8b6ab55871f02697b"
+        },
+        {
+          "page": 2,
+          "block_index": 13,
+          "bbox": [
+            307.44000244140625,
+            459.14251708984375,
+            518.4180297851562,
+            469.1051025390625
+          ],
+          "start_char": 0,
+          "end_char": 51,
+          "raw_content_hash": "7f628a5655208ef86ae9df6c57e1a2769b51348c85cc40944b409997e8685e56"
+        }
+      ],
+      "content_hash": "b164610a74c6e6d2ce21baeb3fc9882d4347bc8ea48f07d50425029e795228bb",
+      "raw_content_hash": "e6b7da4378cc2a1b3ff18e7cb968434420bbdae6d9d4a02aa536bd2f9879c9c5",
+      "evidence_version": "v2",
+      "fact_fields": {
+        "method": "episodic approaches",
+        "qualifiers": "highlights some limitations in a new way"
+      },
+      "record_identity": "source_fields_v1"
+    },
+    "arxiv:2003.06777:section:unknown:24:938efba2b112:claim:22408849d50b": {
+      "evidence_id": "arxiv:2003.06777:section:unknown:24:938efba2b112:claim:22408849d50b",
+      "paper_id": "arxiv:2003.06777",
+      "paper_title": "DeepEMD: Differentiable Earth Mover's Distance for Few-Shot Learning",
+      "text": "In the few-shot classification task, metric-based methods aim to find a good distance metric and data representations to compute the distance between images, which are used to compare images for classification.",
+      "source_locator": "paper=arxiv:2003.06777;chunk=section:unknown:24:938efba2b112;section=unknown;page=4;block=47",
+      "confidence": 1.0,
+      "claim_text": "In the few-shot classification task, metric-based methods aim to find a good distance metric and data representations to compute the distance between images, which are used to compare images for classification.",
+      "supporting_text": "inimize xij Xm i=1 Xk j=1 cijxij subject to xij ⩾0, i = 1, ..., m, j = 1, ..., k j=1 xij = si, i = 1, ...m Xm i=1 xij = dj, j = 1, ...k (1) The roles of suppliers and demanders can be switched without affecting the total transportation cost. Here si and dj are also called the weights of the nodes, which controls the total matching flows generated by each node. EMD seeks an optimal matching ̃X between suppliers and demanders such that the overall matching cost can be minimized. The global optimal matching flows ̃X can be achieved by solving a Linear Programming problem. 4.2 EMD for Few-Shot Classification In the few-shot classification task, metric-based methods aim to find a good distance metric and data representations to compute the distance between images, which are used to compare images for classification. Different from the previ-ous methods [1], [2] that perform distance computation be-tween the image-level embeddings, our approach advocates the use of discriminative local information. The intuition is that as the goal of few-shot learning is to undertake the",
+      "content_scope": "selected_fulltext",
+      "chunk_key": "section:unknown:24:938efba2b112",
+      "section": "unknown",
+      "page": 4,
+      "block_index": 47,
+      "bbox": [
+        346.6629943847656,
+        451.89111328125,
+        386.5629577636719,
+        461.39111328125
+      ],
+      "source_spans": [
+        {
+          "page": 4,
+          "block_index": 47,
+          "bbox": [
+            346.6629943847656,
+            451.89111328125,
+            386.5629577636719,
+            461.39111328125
+          ],
+          "start_char": 1,
+          "end_char": 8,
+          "raw_content_hash": "5fa8599c1cbbce92b203a217c221d35f4b96a958f67208aee8c5e6e516539947"
+        },
+        {
+          "page": 4,
+          "block_index": 48,
+          "bbox": [
+            361.16400146484375,
+            459.1057739257813,
+            371.2710266113281,
+            466.6402893066406
+          ],
+          "start_char": 0,
+          "end_char": 3,
+          "raw_content_hash": "a73e2077747ba7043ab76ac975b74f3bbf46a72ba3687dd3de8950becf873ec7"
+        },
+        {
+          "page": 4,
+          "block_index": 49,
+          "bbox": [
+            398.3280029296875,
+            445.6257629394531,
+            419.1214294433594,
+            458.4692687988281
+          ],
+          "start_char": 0,
+          "end_char": 2,
+          "raw_content_hash": "9ce91dddb8504cb3d7f1d6e2feed16701d2ef5e0d3bcfc519afaab442c268a66"
+        },
+        {
+          "page": 4,
+          "block_index": 50,
+          "bbox": [
+            412.0499877929687,
+            458.86175537109375,
+            424.9600830078125,
+            465.8355712890625
+          ],
+          "start_char": 0,
+          "end_char": 3,
+          "raw_content_hash": "85682626adde06d422a5d7768f5cfc11f60fd880ade9a7513fd7296f818e152b"
+        },
+        {
+          "page": 4,
+          "block_index": 51,
+          "bbox": [
+            427.114990234375,
+            445.6257629394531,
+            445.070068359375,
+            458.4692687988281
+          ],
+          "start_char": 0,
+          "end_char": 2,
+          "raw_content_hash": "5ae86a92219f6714701518da0e5fe36c92276cab73d4a7f76fa0b92268d7faea"
+        },
+        {
+          "page": 4,
+          "block_index": 52,
+          "bbox": [
+            440.83697509765625,
+            450.9179382324219,
+            479.9200134277344,
+            466.488525390625
+          ],
+          "start_char": 0,
+          "end_char": 10,
+          "raw_content_hash": "2f8c95ef6cf559c2067b711c4ef49a53a992247348df259301230e3b453c9a70"
+        },
+        {
+          "page": 4,
+          "block_index": 53,
+          "bbox": [
+            346.6629943847656,
+            468.9339904785156,
+            529.0350341796875,
+            481.4515380859375
+          ],
+          "start_char": 0,
+          "end_char": 47,
+          "raw_content_hash": "9110e8820d4463e4758c3445e7011e27eeec21decd38f9c08f71d9e21514b426"
+        },
+        {
+          "page": 4,
+          "block_index": 55,
+          "bbox": [
+            398.3280029296875,
+            489.46490478515625,
+            514.9103393554688,
+            517.4962158203125
+          ],
+          "start_char": 0,
+          "end_char": 28,
+          "raw_content_hash": "528d812495ba40c85b8948744d79b3ca2adcbd1198b4e6d4dde4f813356db546"
+        },
+        {
+          "page": 4,
+          "block_index": 56,
+          "bbox": [
+            412.0499877929687,
+            509.94390869140625,
+            513.109619140625,
+            525.5144653320312
+          ],
+          "start_char": 0,
+          "end_char": 25,
+          "raw_content_hash": "f08e4feb6a40d687cc9b5f46ec9a31d075f531cfca048e5b43d9fe5e4e6ef40a"
+        },
+        {
+          "page": 4,
+          "block_index": 57,
+          "bbox": [
+            552.9229736328125,
+            480.4630126953125,
+            564.0,
+            489.9630126953125
+          ],
+          "start_char": 0,
+          "end_char": 3,
+          "raw_content_hash": "a25805d1e3b0d0da1525d6a459eba04eb98ce7688677364137eb05d00606092d"
+        },
+        {
+          "page": 4,
+          "block_index": 58,
+          "bbox": [
+            311.99993896484375,
+            531.0910034179688,
+            564.0037841796875,
+            621.718994140625
+          ],
+          "start_char": 0,
+          "end_char": 435,
+          "raw_content_hash": "ca655f9842d40b82d5e938bf3f251b65b7c60e0261547f0d9684585e4c9cf7ab"
+        },
+        {
+          "page": 4,
+          "block_index": 59,
+          "bbox": [
+            311.99993896484375,
+            640.682373046875,
+            480.5870666503906,
+            650.182373046875
+          ],
+          "start_char": 0,
+          "end_char": 35,
+          "raw_content_hash": "0aafc175623e9dec6563f14609f422aa3bde3332eb6e99b9351c7d23f3996ad8"
+        },
+        {
+          "page": 4,
+          "block_index": 60,
+          "bbox": [
+            311.99993896484375,
+            656.5829467773438,
+            563.9970092773438,
+            746.8629760742188
+          ],
+          "start_char": 0,
+          "end_char": 470,
+          "raw_content_hash": "931efd9d53042a489a91122c802dce6c4675131aaea873ab99b5c64034afd66b"
+        }
+      ],
+      "content_hash": "eed09feed412add3fa4073437693301232ddbebdfe18988b4b255d9bc2ab5591",
+      "raw_content_hash": "d303a36443f37d5d7e5760e8b05145dcc221cc1ab8f43e6aa29a9f6a8ed469ef",
+      "evidence_version": "v2",
+      "fact_fields": {
+        "method": "metric-based methods",
+        "conditions": "few-shot classification task",
+        "qualifiers": "aim to find a good distance metric and data representations to compute the distance between images, which are used to compare images for classification"
+      },
+      "record_identity": "source_fields_v1"
+    },
+    "arxiv:2104.02638:abstract:claim:62bf30382590": {
+      "evidence_id": "arxiv:2104.02638:abstract:claim:62bf30382590",
+      "paper_id": "arxiv:2104.02638",
+      "paper_title": "Comparing Transfer and Meta Learning Approaches on a Unified Few-Shot Classification Benchmark",
+      "text": "We find that, on average, large-scale transfer methods (Big Transfer, BiT) outperform competing approaches on MD, even when trained only on ImageNet.",
+      "source_locator": "paper=arxiv:2104.02638;chunk=abstract;section=abstract;page=;block=",
+      "confidence": 1.0,
+      "claim_text": "We find that, on average, large-scale transfer methods (Big Transfer, BiT) outperform competing approaches on MD, even when trained only on ImageNet.",
+      "supporting_text": "Meta and transfer learning are two successful families of approaches to few-shot learning. Despite highly related goals, state-of-the-art advances in each family are measured largely in isolation of each other. As a result of diverging evaluation norms, a direct or thorough comparison of different approaches is challenging. To bridge this gap, we perform a cross-family study of the best transfer and meta learners on both a large-scale meta-learning benchmark (Meta-Dataset, MD), and a transfer learning benchmark (Visual Task Adaptation Benchmark, VTAB). We find that, on average, large-scale transfer methods (Big Transfer, BiT) outperform competing approaches on MD, even when trained only on ImageNet. In contrast, meta-learning approaches struggle to compete on VTAB when trained and validated on MD. However, BiT is not without limitations, and pushing for scale does not improve performance on highly out-of-distribution MD tasks. In performing this study, we reveal a number of discrepancies in evaluation norms and study some of these in light of the performance gap. We hope that this work facilitates sharing of insights from each community, and accelerates progress on few-shot learning.",
+      "content_scope": "abstract",
+      "chunk_key": "abstract",
+      "section": "abstract",
+      "page": null,
+      "block_index": null,
+      "bbox": null,
+      "source_spans": [],
+      "content_hash": "3a07a3ed9383b07164452159a1c92268095c4c2114f9d20d34b1e6d3030354c2",
+      "raw_content_hash": "3a07a3ed9383b07164452159a1c92268095c4c2114f9d20d34b1e6d3030354c2",
+      "evidence_version": "v2",
+      "fact_fields": {
+        "method": "Big Transfer, BiT",
+        "conditions": "trained only on ImageNet",
+        "dataset": "MD",
+        "qualifiers": "on average, outperform competing approaches"
+      },
+      "record_identity": "source_fields_v1"
+    },
+    "arxiv:2305.09062:abstract:claim:0b90d27cd84e": {
+      "evidence_id": "arxiv:2305.09062:abstract:claim:0b90d27cd84e",
+      "paper_id": "arxiv:2305.09062",
+      "paper_title": "SuSana Distancia is all you need: Enforcing class separability in metric\n  learning via two novel distance-based loss functions for few-shot image\n  classification",
+      "text": "Our results, obtained from a extensive experimental setup show a significant improvement in accuracy in the miniImagenNet benchmark compared to other metric-based few-shot learning methods by a margin of 2%, demonstrating the capability of these loss functions to allow the network to generalize better to previously unseen classes.",
+      "source_locator": "paper=arxiv:2305.09062;chunk=abstract;section=abstract;page=;block=",
+      "confidence": 1.0,
+      "claim_text": "Our results, obtained from a extensive experimental setup show a significant improvement in accuracy in the miniImagenNet benchmark compared to other metric-based few-shot learning methods by a margin of 2%, demonstrating the capability of these loss functions to allow the network to generalize better to previously unseen classes.",
+      "supporting_text": "Few-shot learning is a challenging area of research that aims to learn new concepts with only a few labeled samples of data. Recent works based on metric-learning approaches leverage the meta-learning approach, which is encompassed by episodic tasks that make use a support (training) and query set (test) with the objective of learning a similarity comparison metric between those sets. Due to the lack of data, the learning process of the embedding network becomes an important part of the few-shot task. Previous works have addressed this problem using metric learning approaches, but the properties of the underlying latent space and the separability of the difference classes on it was not entirely enforced. In this work, we propose two different loss functions which consider the importance of the embedding vectors by looking at the intra-class and inter-class distance between the few data. The first loss function is the Proto-Triplet Loss, which is based on the original triplet loss with the modifications needed to better work on few-shot scenarios. The second loss function, which we dub ICNN loss is based on an inter and intra class nearest neighbors score, which help us to assess the quality of embeddings obtained from the trained network. Our results, obtained from a extensive experimental setup show a significant improvement in accuracy in the miniImagenNet benchmark compared to other metric-based few-shot learning methods by a margin of 2%, demonstrating the capability of these loss functions to allow the network to generalize better to previously unseen classes. In our experiments, we demonstrate competitive generalization capabilities to other domains, such as the Caltech CUB, Dogs and Cars datasets compared with the state of the art.",
+      "content_scope": "abstract",
+      "chunk_key": "abstract",
+      "section": "abstract",
+      "page": null,
+      "block_index": null,
+      "bbox": null,
+      "source_spans": [],
+      "content_hash": "3b7b29b93228cfb4d0bce8af40b9a1cde49576d318595eb3973e969cfd257e44",
+      "raw_content_hash": "9961dedc92856c296031863156331e303d557b0b880cf7b883df198ad80b6f04",
+      "evidence_version": "v2",
+      "fact_fields": {
+        "method": "these loss functions",
+        "conditions": "extensive experimental setup",
+        "dataset": "miniImagenNet benchmark",
+        "metric": "accuracy",
+        "value": "2%",
+        "unit": "margin",
+        "qualifiers": "compared to other metric-based few-shot learning methods; demonstrating the capability of these loss functions to allow the network to generalize better to previously unseen classes"
+      },
+      "record_identity": "source_fields_v1"
+    },
+    "arxiv:2105.08149:abstract:claim:544ec3b8e199": {
+      "evidence_id": "arxiv:2105.08149:abstract:claim:544ec3b8e199",
+      "paper_id": "arxiv:2105.08149",
+      "paper_title": "Deep Metric Learning for Few-Shot Image Classification: A Review of Recent Developments",
+      "text": "One main solution to few-shot image classification is deep metric learning.",
+      "source_locator": "paper=arxiv:2105.08149;chunk=abstract;section=abstract;page=;block=",
+      "confidence": 0.95,
+      "claim_text": "One main solution to few-shot image classification is deep metric learning.",
+      "supporting_text": "Few-shot image classification is a challenging problem that aims to achieve the human level of recognition based only on a small number of training images. One main solution to few-shot image classification is deep metric learning. These methods, by classifying unseen samples according to their distances to few seen samples in an embedding space learned by powerful deep neural networks, can avoid overfitting to few training images in few-shot image classification and have achieved the state-of-the-art performance. In this paper, we provide an up-to-date review of deep metric learning methods for few-shot image classification from 2018 to 2022 and categorize them into three groups according to three stages of metric learning, namely learning feature embeddings, learning class representations, and learning distance measures. With this taxonomy, we identify the novelties of different methods and problems they face. We conclude this review with a discussion on current challenges and future trends in few-shot image classification.",
+      "content_scope": "abstract",
+      "chunk_key": "abstract",
+      "section": "abstract",
+      "page": null,
+      "block_index": null,
+      "bbox": null,
+      "source_spans": [],
+      "content_hash": "d7a1a172794e42027ec9bec3e43b106f75cc0af60e87ac13896fde8fe8987343",
+      "raw_content_hash": "d7a1a172794e42027ec9bec3e43b106f75cc0af60e87ac13896fde8fe8987343",
+      "evidence_version": "v2",
+      "fact_fields": {
+        "method": "deep metric learning"
+      },
+      "record_identity": "source_fields_v1"
+    },
+    "arxiv:2105.08149:abstract:claim:207142546196": {
+      "evidence_id": "arxiv:2105.08149:abstract:claim:207142546196",
+      "paper_id": "arxiv:2105.08149",
+      "paper_title": "Deep Metric Learning for Few-Shot Image Classification: A Review of Recent Developments",
+      "text": "In this paper, we provide an up-to-date review of deep metric learning methods for few-shot image classification from 2018 to 2022 and categorize them into three groups according to three stages of metric learning, namely learning feature embeddings, learning class representations, and learning distance measures.",
+      "source_locator": "paper=arxiv:2105.08149;chunk=abstract;section=abstract;page=;block=",
+      "confidence": 0.95,
+      "claim_text": "In this paper, we provide an up-to-date review of deep metric learning methods for few-shot image classification from 2018 to 2022 and categorize them into three groups according to three stages of metric learning, namely learning feature embeddings, learning class representations, and learning distance measures.",
+      "supporting_text": "Few-shot image classification is a challenging problem that aims to achieve the human level of recognition based only on a small number of training images. One main solution to few-shot image classification is deep metric learning. These methods, by classifying unseen samples according to their distances to few seen samples in an embedding space learned by powerful deep neural networks, can avoid overfitting to few training images in few-shot image classification and have achieved the state-of-the-art performance. In this paper, we provide an up-to-date review of deep metric learning methods for few-shot image classification from 2018 to 2022 and categorize them into three groups according to three stages of metric learning, namely learning feature embeddings, learning class representations, and learning distance measures. With this taxonomy, we identify the novelties of different methods and problems they face. We conclude this review with a discussion on current challenges and future trends in few-shot image classification.",
+      "content_scope": "abstract",
+      "chunk_key": "abstract",
+      "section": "abstract",
+      "page": null,
+      "block_index": null,
+      "bbox": null,
+      "source_spans": [],
+      "content_hash": "d7a1a172794e42027ec9bec3e43b106f75cc0af60e87ac13896fde8fe8987343",
+      "raw_content_hash": "d7a1a172794e42027ec9bec3e43b106f75cc0af60e87ac13896fde8fe8987343",
+      "evidence_version": "v2",
+      "fact_fields": {
+        "method": "deep metric learning methods for few-shot image classification",
+        "conditions": "from 2018 to 2022",
+        "qualifiers": "categorized into three groups according to three stages of metric learning, namely learning feature embeddings, learning class representations, and learning distance measures"
+      },
+      "record_identity": "source_fields_v1"
+    },
+    "arxiv:1711.06025:section:abstract:12:43376954155c:claim:ff0773aa292d": {
+      "evidence_id": "arxiv:1711.06025:section:abstract:12:43376954155c:claim:ff0773aa292d",
+      "paper_id": "arxiv:1711.06025",
+      "paper_title": "Learning to Compare: Relation Network for Few-Shot Learning",
+      "text": "Similarly to the case with the prior metric-based few-shot approaches, most of these apply a fixed manually defined similarity metric or linear classifier after combining the image and category embedding.",
+      "source_locator": "paper=arxiv:1711.06025;chunk=section:abstract:12:43376954155c;section=abstract;page=2;block=8",
+      "confidence": 1.0,
+      "claim_text": "Similarly to the case with the prior metric-based few-shot approaches, most of these apply a fixed manually defined similarity metric or linear classifier after combining the image and category embedding.",
+      "supporting_text": "ent problem.). Compared to [20, 36], this can be seen as providing a learnable rather than fixed metric, or non-linear rather than linear classifier. Compared to [20] we benefit from an episodic training strat-egy with an end-to-end manner from scratch, and compared to [32] we avoid the complexity of set-to-set RNN embed-ding of the sample-set, and simply rely on pooling [33]. Zero-Shot Learning Our approach is designed for few- shot learning, but elegantly spans the space into zero-shot learning (ZSL) by modifying the sample branch to input a single category description rather than single training im-age. When applied to ZSL our architecture is related to methods that learn to align images and category embed-dings and perform recognition by predicting if an image and category embedding pair match [11, 3, 43, 46]. Sim-ilarly to the case with the prior metric-based few-shot ap-proaches, most of these apply a fixed manually defined sim-ilarity metric or linear classifier after combining the image and category embedding.",
+      "content_scope": "selected_fulltext",
+      "chunk_key": "section:abstract:12:43376954155c",
+      "section": "abstract",
+      "page": 2,
+      "block_index": 8,
+      "bbox": [
+        308.86199951171875,
+        518.5775146484375,
+        545.1151123046875,
+        695.9130859375
+      ],
+      "source_spans": [
+        {
+          "page": 2,
+          "block_index": 8,
+          "bbox": [
+            308.86199951171875,
+            518.5775146484375,
+            545.1151123046875,
+            695.9130859375
+          ],
+          "start_char": 494,
+          "end_char": 873,
+          "raw_content_hash": "136cb134b17664c417db1baeda331fa49daa39660195ea479e9e9dd9854d97ae"
+        },
+        {
+          "page": 2,
+          "block_index": 9,
+          "bbox": [
+            308.86199951171875,
+            703.3546142578125,
+            545.1128540039062,
+            713.4081420898438
+          ],
+          "start_char": 0,
+          "end_char": 52,
+          "raw_content_hash": "fff10bab26158246b3035ed4f2e834e51ad9363df72412775556c9106dc10bb3"
+        },
+        {
+          "page": 3,
+          "block_index": 0,
+          "bbox": [
+            50.11199951171875,
+            74.40748596191406,
+            286.3651123046875,
+            251.7422790527344
+          ],
+          "start_char": 0,
+          "end_char": 600,
+          "raw_content_hash": "b1afe1ee61999a4230764fa37d012d171e0d496d84d0f42e1c893b469b38ed8a"
+        }
+      ],
+      "content_hash": "78d72a04eef8f36b14d10870558dbd7caa870b2707e9a21b5a311f7805296c35",
+      "raw_content_hash": "c0c789496cf755cc708fd5992cf2b63ecd55c8ab7816a607f52c59a0453a6767",
+      "evidence_version": "v2",
+      "fact_fields": {
+        "method": "most prior ZSL methods",
+        "conditions": "after combining the image and category embedding",
+        "qualifiers": "apply a fixed manually defined similarity metric or linear classifier"
+      },
+      "record_identity": "source_fields_v1"
+    },
+    "arxiv:2010.04525:abstract:claim:9091a1fb4b38": {
+      "evidence_id": "arxiv:2010.04525:abstract:claim:9091a1fb4b38",
+      "paper_id": "arxiv:2010.04525",
+      "paper_title": "Uncertainty-Aware Few-Shot Image Classification",
+      "text": "Metric learning based approaches have been widely investigated, where a query sample is classified by finding the nearest prototype from the support set based on their feature similarities.",
+      "source_locator": "paper=arxiv:2010.04525;chunk=abstract;section=abstract;page=;block=",
+      "confidence": 1.0,
+      "claim_text": "Metric learning based approaches have been widely investigated, where a query sample is classified by finding the nearest prototype from the support set based on their feature similarities.",
+      "supporting_text": "Few-shot image classification learns to recognize new categories from limited labelled data. Metric learning based approaches have been widely investigated, where a query sample is classified by finding the nearest prototype from the support set based on their feature similarities. A neural network has different uncertainties on its calculated similarities of different pairs. Understanding and modeling the uncertainty on the similarity could promote the exploitation of limited samples in few-shot optimization. In this work, we propose Uncertainty-Aware Few-Shot framework for image classification by modeling uncertainty of the similarities of query-support pairs and performing uncertainty-aware optimization. Particularly, we exploit such uncertainty by converting observed similarities to probabilistic representations and incorporate them to the loss for more effective optimization. In order to jointly consider the similarities between a query and the prototypes in a support set, a graph-based model is utilized to estimate the uncertainty of the pairs. Extensive experiments show our proposed method brings significant improvements on top of a strong baseline and achieves the state-of-the-art performance.",
+      "content_scope": "abstract",
+      "chunk_key": "abstract",
+      "section": "abstract",
+      "page": null,
+      "block_index": null,
+      "bbox": null,
+      "source_spans": [],
+      "content_hash": "d85cb9cf386214c553601342955c9b10d4a65aaac5f4f910580481385f85c554",
+      "raw_content_hash": "d85cb9cf386214c553601342955c9b10d4a65aaac5f4f910580481385f85c554",
+      "evidence_version": "v2",
+      "fact_fields": {
+        "method": "Metric learning based approaches"
+      },
+      "record_identity": "source_fields_v1"
+    },
+    "arxiv:1907.03123:abstract:claim:57337d0c6cff": {
+      "evidence_id": "arxiv:1907.03123:abstract:claim:57337d0c6cff",
+      "paper_id": "arxiv:1907.03123",
+      "paper_title": "Revisiting Metric Learning for Few-Shot Image Classification",
+      "text": "Our result on the miniImageNet benchmark outperforms other metric-based few-shot classification methods.",
+      "source_locator": "paper=arxiv:1907.03123;chunk=abstract;section=abstract;page=;block=",
+      "confidence": 0.97,
+      "claim_text": "Our result on the miniImageNet benchmark outperforms other metric-based few-shot classification methods.",
+      "supporting_text": "The goal of few-shot learning is to recognize new visual concepts with just a few amount of labeled samples in each class. Recent effective metric-based few-shot approaches employ neural networks to learn a feature similarity comparison between query and support examples. However, the importance of feature embedding, i.e., exploring the relationship among training samples, is neglected. In this work, we present a simple yet powerful baseline for few-shot classification by emphasizing the importance of feature embedding. Specifically, we revisit the classical triplet network from deep metric learning, and extend it into a deep K-tuplet network for few-shot learning, utilizing the relationship among the input samples to learn a general representation learning via episode-training. Once trained, our network is able to extract discriminative features for unseen novel categories and can be seamlessly incorporated with a non-linear distance metric function to facilitate the few-shot classification. Our result on the miniImageNet benchmark outperforms other metric-based few-shot classification methods. More importantly, when evaluated on completely different datasets (Caltech-101, CUB-200, Stanford Dogs and Cars) using the model trained with miniImageNet, our method significantly outperforms prior methods, demonstrating its superior capability to generalize to unseen classes.",
+      "content_scope": "abstract",
+      "chunk_key": "abstract",
+      "section": "abstract",
+      "page": null,
+      "block_index": null,
+      "bbox": null,
+      "source_spans": [],
+      "content_hash": "bbc803aec14ff7d89ee221236ec27f7e6938a8484773b680cc121ed4002bc5fd",
+      "raw_content_hash": "bbc803aec14ff7d89ee221236ec27f7e6938a8484773b680cc121ed4002bc5fd",
+      "evidence_version": "v2",
+      "fact_fields": {
+        "method": "deep K-tuplet network",
+        "dataset": "miniImageNet benchmark",
+        "qualifiers": "outperforms other metric-based few-shot classification methods"
+      },
+      "record_identity": "source_fields_v1"
+    },
+    "arxiv:2305.09062:abstract:claim:938d1931004e": {
+      "evidence_id": "arxiv:2305.09062:abstract:claim:938d1931004e",
+      "paper_id": "arxiv:2305.09062",
+      "paper_title": "SuSana Distancia is all you need: Enforcing class separability in metric\n  learning via two novel distance-based loss functions for few-shot image\n  classification",
+      "text": "Previous works have addressed this problem using metric learning approaches, but the properties of the underlying latent space and the separability of the difference classes on it was not entirely enforced.",
+      "source_locator": "paper=arxiv:2305.09062;chunk=abstract;section=abstract;page=;block=",
+      "confidence": 1.0,
+      "claim_text": "Previous works have addressed this problem using metric learning approaches, but the properties of the underlying latent space and the separability of the difference classes on it was not entirely enforced.",
+      "supporting_text": "Few-shot learning is a challenging area of research that aims to learn new concepts with only a few labeled samples of data. Recent works based on metric-learning approaches leverage the meta-learning approach, which is encompassed by episodic tasks that make use a support (training) and query set (test) with the objective of learning a similarity comparison metric between those sets. Due to the lack of data, the learning process of the embedding network becomes an important part of the few-shot task. Previous works have addressed this problem using metric learning approaches, but the properties of the underlying latent space and the separability of the difference classes on it was not entirely enforced. In this work, we propose two different loss functions which consider the importance of the embedding vectors by looking at the intra-class and inter-class distance between the few data. The first loss function is the Proto-Triplet Loss, which is based on the original triplet loss with the modifications needed to better work on few-shot scenarios. The second loss function, which we dub ICNN loss is based on an inter and intra class nearest neighbors score, which help us to assess the quality of embeddings obtained from the trained network. Our results, obtained from a extensive experimental setup show a significant improvement in accuracy in the miniImagenNet benchmark compared to other metric-based few-shot learning methods by a margin of 2%, demonstrating the capability of these loss functions to allow the network to generalize better to previously unseen classes. In our experiments, we demonstrate competitive generalization capabilities to other domains, such as the Caltech CUB, Dogs and Cars datasets compared with the state of the art.",
+      "content_scope": "abstract",
+      "chunk_key": "abstract",
+      "section": "abstract",
+      "page": null,
+      "block_index": null,
+      "bbox": null,
+      "source_spans": [],
+      "content_hash": "3b7b29b93228cfb4d0bce8af40b9a1cde49576d318595eb3973e969cfd257e44",
+      "raw_content_hash": "9961dedc92856c296031863156331e303d557b0b880cf7b883df198ad80b6f04",
+      "evidence_version": "v2",
+      "fact_fields": {
+        "method": "metric learning approaches",
+        "qualifiers": "properties of the underlying latent space and the separability of the difference classes on it was not entirely enforced"
+      },
+      "record_identity": "source_fields_v1"
+    },
+    "arxiv:2010.04525:page:1:block:5:claim:cc74c784a067": {
+      "evidence_id": "arxiv:2010.04525:page:1:block:5:claim:cc74c784a067",
+      "paper_id": "arxiv:2010.04525",
+      "paper_title": "Uncertainty-Aware Few-Shot Image Classification",
+      "text": "Metric learning based approaches have been widely investigated, where a query sample is classified by finding the nearest prototype from the support set based on their feature similarities.",
+      "source_locator": "paper=arxiv:2010.04525;chunk=page:1:block:5;section=abstract;page=1;block=5",
+      "confidence": 1.0,
+      "claim_text": "Metric learning based approaches have been widely investigated, where a query sample is classified by finding the nearest prototype from the support set based on their feature similarities.",
+      "supporting_text": "Few-shot image classification learns to recognize new categories from limited labelled data. Metric learning based approaches have been widely inves-tigated, where a query sample is classified by find-ing the nearest prototype from the support set based on their feature similarities. A neural network has different uncertainties on its calculated similarities of different pairs. Understanding and modeling the uncertainty on the similarity could promote the ex-ploitation of limited samples in few-shot optimiza-tion. In this work, we propose Uncertainty-Aware Few-Shot framework for image classification by modeling uncertainty of the similarities of query-support pairs and performing uncertainty-aware op-timization. Particularly, we exploit such uncer-tainty by converting observed similarities to proba-bilistic representations and incorporate them to the loss for more effective optimization. In order to jointly consider the similarities between a query and the prototypes in a support set, a graph-based model is utilized to estimate the uncertainty of the pairs. Extensive experiments show our proposed method brings significant improvements on top of a strong baseline and achieves the state-of-the-art performance.",
+      "content_scope": "selected_fulltext",
+      "chunk_key": "page:1:block:5",
+      "section": "abstract",
+      "page": 1,
+      "block_index": 5,
+      "bbox": [
+        73.92505645751953,
+        237.17347717285156,
+        277.0724792480469,
+        510.1497497558594
+      ],
+      "source_spans": [
+        {
+          "page": 1,
+          "block_index": 5,
+          "bbox": [
+            73.92505645751953,
+            237.17347717285156,
+            277.0724792480469,
+            510.1497497558594
+          ],
+          "start_char": 0,
+          "end_char": 1227,
+          "raw_content_hash": "fcbf715167190f5bd6d252b8eb705428d3c4ed03ad52454ee11989a952d490a5"
+        }
+      ],
+      "content_hash": "1b031e5291dfaab0d505f83f938e2de861e701491a89ea41f2736770dffd24c4",
+      "raw_content_hash": "1d20627d2dbdae79bdd3edae6e6bf89621dbe62be7e0bc24424b9c594c325373",
+      "evidence_version": "v2",
+      "fact_fields": {
+        "method": "Metric learning based approaches"
+      },
+      "record_identity": "source_fields_v1"
+    },
+    "arxiv:2306.09592:abstract:claim:2448c6361d48": {
+      "evidence_id": "arxiv:2306.09592:abstract:claim:2448c6361d48",
+      "paper_id": "arxiv:2306.09592",
+      "paper_title": "FewSAR: A Few-shot SAR Image Classification Benchmark",
+      "text": "By analyzing the quantitative results and runtime under the same setting, we observe that the accuracy of metric learning methods can achieve the best results.",
+      "source_locator": "paper=arxiv:2306.09592;chunk=abstract;section=abstract;page=;block=",
+      "confidence": 1.0,
+      "claim_text": "By analyzing the quantitative results and runtime under the same setting, we observe that the accuracy of metric learning methods can achieve the best results.",
+      "supporting_text": "Few-shot learning (FSL) is one of the significant and hard problems in the field of image classification. However, in contrast to the rapid development of the visible light dataset, the progress in SAR target image classification is much slower. The lack of unified benchmark is a key reason for this phenomenon, which may be severely overlooked by the current literature. The researchers of SAR target image classification always report their new results on their own datasets and experimental setup. It leads to inefficiency in result comparison and impedes the further progress of this area. Motivated by this observation, we propose a novel few-shot SAR image classification benchmark (FewSAR) to address this issue. FewSAR consists of an open-source Python code library of 15 classic methods in three categories for few-shot SAR image classification. It provides an accessible and customizable testbed for different few-shot SAR image classification task. To further understanding the performance of different few-shot methods, we establish evaluation protocols and conduct extensive experiments within the benchmark. By analyzing the quantitative results and runtime under the same setting, we observe that the accuracy of metric learning methods can achieve the best results. Meta-learning methods and fine-tuning methods perform poorly on few-shot SAR images, which is primarily due to the bias of existing datasets. We believe that FewSAR will open up a new avenue for future research and development, on real-world challenges at the intersection of SAR image classification and few-shot deep learning. We will provide our code for the proposed FewSAR at https://github.com/solarlee/FewSAR.",
+      "content_scope": "abstract",
+      "chunk_key": "abstract",
+      "section": "abstract",
+      "page": null,
+      "block_index": null,
+      "bbox": null,
+      "source_spans": [],
+      "content_hash": "a5311114cf4daf5f62ca48eadc39b084c8eaa58e56d104fb0c283593f203b89a",
+      "raw_content_hash": "a5311114cf4daf5f62ca48eadc39b084c8eaa58e56d104fb0c283593f203b89a",
+      "evidence_version": "v2",
+      "fact_fields": {
+        "method": "metric learning methods",
+        "conditions": "under the same setting",
+        "metric": "accuracy",
+        "value": "best results"
+      },
+      "record_identity": "source_fields_v1"
+    }
+  },
+  "query": "Compare metric-learning approaches for few-shot image classification.",
+  "coverage_requirements": [
+    {
+      "requirement_id": "question",
+      "kind": "question",
+      "text": "Compare metric-learning approaches for few-shot image classification."
+    },
+    {
+      "requirement_id": "requirement:04188598f309",
+      "kind": "literal",
+      "text": "metric-learning approaches"
+    },
+    {
+      "requirement_id": "requirement:e1aa36686d67",
+      "kind": "literal",
+      "text": "few-shot image classification"
+    }
+  ]
+}

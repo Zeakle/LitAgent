@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import FastAPI, Header, HTTPException, Request, Response
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -43,6 +43,12 @@ from litagent.observability.recorder import (
 )
 from litagent.observability.tracing import LangFuseTracer
 from litagent.orchestrator.scheduler import CancellationToken
+from litagent.presentation import (
+    PresentationBenchmarkArchive,
+    PresentationRepository,
+    PresentationService,
+    presentation_enabled,
+)
 from litagent.report_audit import ReportAuditService
 from litagent.report_export import LocalReportExporter
 from litagent.report_render import (
@@ -68,6 +74,8 @@ logger = get_logger("api")
 
 def _benchmark_archive() -> SurveyBenchmarkArchive:
     """Allow tests to inject a read-only archive without exposing a path parameter."""
+    if presentation_enabled():
+        return PresentationBenchmarkArchive()
     return getattr(app.state, "benchmark_archive", None) or SurveyBenchmarkArchive()
 
 
@@ -214,6 +222,15 @@ async def _shutdown_owned_tasks(application: FastAPI) -> None:
 async def lifespan(application: FastAPI):
     """Initialize stable runtime state and close every owned task on shutdown."""
     application.state.config = load_config()
+    if presentation_enabled():
+        application.state.flow_repository = PresentationRepository()
+        application.state.flow_archive_index = {
+            a["run_id"]: a for a in application.state.flow_repository.list()
+        }
+        application.state.interactive_service = PresentationService()
+        application.state.report_audit_service = None
+        yield
+        return
     application.state.survey_semaphore = asyncio.Semaphore(
         application.state.config.api.max_concurrent_surveys
     )
@@ -253,7 +270,9 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.state.tasks: dict[str, SurveyTaskEntry | dict[str, Any]] = {}
-app.state.flow_repository = ArchiveRepository()
+app.state.flow_repository = (
+    PresentationRepository() if presentation_enabled() else ArchiveRepository()
+)
 app.state.flow_runs: dict[str, SurveyTaskEntry] = {}
 app.state.flow_samples = load_bundled_samples()
 app.state.flow_archive_index = {
@@ -261,10 +280,21 @@ app.state.flow_archive_index = {
 }
 app.state.config = None
 app.state.survey_semaphore = None
-app.state.interactive_repository = SqliteReviewRepository()
+app.state.interactive_repository = (
+    None if presentation_enabled() else SqliteReviewRepository()
+)
 app.state.interactive_service = None
 app.state.operation_token = secrets.token_urlsafe(24)
 app.state.report_audit_service = None
+
+
+@app.middleware("http")
+async def presentation_boundary(request: Request, call_next):
+    """Block every mutation before validation or any executor can be initialized."""
+    if presentation_enabled() and request.method not in {"GET", "HEAD"}:
+        return JSONResponse({"detail": "presentation_read_only"}, status_code=403)
+    return await call_next(request)
+
 
 app.mount(
     "/static",
@@ -291,6 +321,8 @@ def _runtime_semaphore() -> asyncio.Semaphore:
 
 async def _interactive_service() -> InteractiveRunService:
     """Return the durable service, initializing it for direct ASGI tests."""
+    if presentation_enabled():
+        return PresentationService()
     if app.state.interactive_service is None:
         app.state.interactive_service = InteractiveRunService(
             _runtime_config(),
@@ -735,14 +767,28 @@ async def get_workbench_context():
     """Return local UI capabilities and the same-origin mutation token."""
     mode = os.getenv("LITAGENT_DEMO_MODE", "live").lower()
     live_enabled = mode == "live"
-    audit_service = app.state.report_audit_service or ReportAuditService(
-        app.state.config or load_config()
+    config = app.state.config or load_config()
+    audit_service = (
+        None
+        if presentation_enabled()
+        else app.state.report_audit_service or ReportAuditService(config)
     )
     return {
         "schema_version": 1,
         "operation_token": app.state.operation_token,
-        "mode": "live" if live_enabled else "offline",
+        "mode": (
+            "presentation"
+            if presentation_enabled()
+            else "live" if live_enabled else "offline"
+        ),
         "live_enabled": live_enabled,
+        "model_routing": {
+            "version": "stage-model-routing-v1",
+            **{
+                stage: config.llm.model_for(stage)
+                for stage in ("extraction", "generation", "evaluation")
+            },
+        },
         "report_languages": ["zh-CN", "en"],
         "export_formats": ["md", "pdf", "docx"],
         "format_capabilities": format_capabilities(),
@@ -766,7 +812,17 @@ async def get_workbench_context():
             "jev_input_tokens": 200000,
             "jev_requests": 20,
         },
-        "auto_audit_capabilities": audit_service.capabilities(),
+        "auto_audit_capabilities": (
+            audit_service.capabilities()
+            if audit_service
+            else {
+                "judge_available": False,
+                "jev_available": False,
+                "judge_model": "—",
+                "jev_model": "—",
+                "reason": "presentation_read_only",
+            }
+        ),
     }
 
 
@@ -1025,9 +1081,20 @@ def _audit_snapshot_from_source(
 ) -> dict:
     """Freeze version-owned input without rendering or reading a newer report."""
     metadata = report.get("metadata") or {}
-    generation = (metadata.get("config_summary") or artifact.get("config") or {}).get(
-        "llm"
-    ) or {}
+    archived_report = artifact.get("report") or {}
+    same_archived_body = (
+        artifact.get("run_id") == version.run_id
+        and (archived_report.get("metadata") or {}).get("report_revision", 1)
+        == version.revision
+        and archived_report.get("survey") == report.get("survey")
+    )
+    # Pending recorder configuration is not an immutable generation record.
+    summary = (
+        metadata.get("config_summary")
+        or (artifact.get("config") if same_archived_body else {})
+        or {}
+    )
+    generation = (summary.get("effective") or summary).get("llm") or {}
     # Reconstructed observation timestamps are not evidence. Excluding them keeps
     # identical pending versions deduplicated even after local event replay.
     source_nodes = {
@@ -1041,7 +1108,8 @@ def _audit_snapshot_from_source(
     }
     return {
         "generation_provider": {
-            "model": generation.get("model"),
+            "model": (generation.get("model_routing") or {}).get("generation")
+            or generation.get("model"),
             "origin": generation.get("origin") or generation.get("base_url"),
         },
         "source_run_id": version.run_id,
@@ -1109,6 +1177,21 @@ async def _submit_automatic_artifact(artifact: dict, options: RunOptions) -> Non
 @app.get("/survey/{task_id}/versions/{revision}/audits")
 async def list_report_audits(task_id: str, revision: int):
     """Expose capabilities and attempts for exactly one available report version."""
+    if presentation_enabled():
+        try:
+            version, _, _, _ = await _resolve_formatting_source(task_id, revision)
+        except (KeyError, ValueError) as exc:
+            raise HTTPException(404, "report_revision_not_found") from exc
+        return {
+            "audits": [],
+            "source_report_sha256": version.content_sha256,
+            "capabilities": {
+                "judge_available": False,
+                "jev_available": False,
+                "judge_model": "—",
+                "jev_model": "—",
+            },
+        }
     snapshot = await _report_audit_snapshot(task_id, revision)
     result = await (await _report_audit_service()).list(task_id, revision)
     quality_audit = _benchmark_archive().automatic_audit(task_id, revision)
@@ -1123,6 +1206,8 @@ async def list_report_audits(task_id: str, revision: int):
 @app.get("/survey/{task_id}/versions/{revision}/audits/dry-run")
 async def dry_run_report_audit(task_id: str, revision: int, include_jev: bool = False):
     """Report credential and input gates without creating tasks or provider calls."""
+    if presentation_enabled():
+        raise HTTPException(403, "presentation_read_only")
     snapshot = await _report_audit_snapshot(task_id, revision)
     return (await _report_audit_service()).dry_run(snapshot, include_jev=include_jev)
 
@@ -1161,6 +1246,8 @@ async def start_report_audit(
 @app.get("/survey/{task_id}/versions/{revision}/audits/{audit_id}")
 async def get_report_audit(task_id: str, revision: int, audit_id: str):
     """Read one immutable-version audit; never fall back to another revision."""
+    if presentation_enabled():
+        raise HTTPException(404, "audit_not_found")
     try:
         quality_audit = _benchmark_archive().automatic_audit(task_id, revision)
         if quality_audit and quality_audit["audit_id"] == audit_id:
@@ -1290,6 +1377,14 @@ async def flow_demo_page():
     return FileResponse(FLOW_DEMO_STATIC)
 
 
+@app.get("/presentation", include_in_schema=False)
+async def presentation_page():
+    """Show the packaged measurements and their explicit interpretation limits."""
+    from litagent.presentation import PUBLIC_ROOT
+
+    return FileResponse(PUBLIC_ROOT / "index.html")
+
+
 @app.post("/flow-demo/runs", status_code=201)
 async def create_flow_demo():
     """Start the fixed live query through the shared survey task owner."""
@@ -1416,6 +1511,7 @@ async def get_flow_demo_view(run_id: str, citation_style: CitationStyle | None =
         )
         view["format_capabilities"] = format_capabilities()
         view["citation_style"] = style
+        view["presentation"] = presentation_enabled()
         return view
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
