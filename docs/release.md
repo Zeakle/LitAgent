@@ -52,3 +52,8 @@ not permission to lower strict scientific support or alter historical results.
 - macOS verification does not by itself prove Linux/Windows operation.
 
 [Current verified status and bounded protocol outcome](release-status.md).
+
+The later explicit reliability request opened a separate capped three-observation
+attempt at commit `aa0ade7`. It stopped after its first protocol failure; it did not
+replay the earlier protocol grant or expand into the formal matrix. See the
+[bounded trial evidence](../benchmarks/survey/results/survey-reliability-20261020-001/README.md).

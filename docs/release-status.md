@@ -2,7 +2,7 @@
 
 ## Verified locally
 
-- Default offline regression: **3719 passed, 25 deselected** (8 deprecation warnings).
+- Default offline regression: **3727 passed, 25 deselected** (8 deprecation warnings).
 - Python 3.11.15 / Node 24.14.0 on macOS; direct dependency constraints install in
   a fresh virtual environment with no broken requirements (`pip check`).
 - Clean source snapshot has no `.env` or private `artifacts`; presentation health
@@ -46,3 +46,17 @@ The original failure replay and retrieval measurements remain separately identif
 
 Remote Linux CI and release/tag publication are only complete after actual GitHub
 results are available. Local macOS tests do not substitute for that result.
+
+## Subsequent bounded reliability trial
+
+Commit `aa0ade7` removes duplicated analytical instructions and contradictory
+writing/display order in new array requests; source text, schema and gates remain.
+A fresh three-domain attempt ran **1/3** before its technical stop: **27 requests /
+128,392 tokens**, complete usage. Pro returned invalid JSON at offset **7879**
+(line 1, column 7880), finish `stop`, 3,185 output tokens below the 20,000 cap.
+Evaluation did not run; ViT/NeRF and all formal cases remain unrun. No retries or
+extra attempts were issued. These fixes do not establish scientific reliability.
+
+[Reproducible result and public four-format exports](../benchmarks/survey/results/survey-reliability-20261020-001/README.md).
+The packaged presentation remains an explicitly frozen earlier diagnostic replay;
+the new local workbench Benchmark is available under `survey-reliability-20261020-001`.
