@@ -60,6 +60,10 @@ class PresentationService:
         """Let the existing version resolver use packaged archive records."""
         raise KeyError(run_id)
 
+    async def get_view(self, run_id: str, **kwargs):
+        """Return the normal missing-interactive-run response without private lookup."""
+        raise KeyError(run_id)
+
     async def get_version(self, run_id: str, revision: int, **kwargs):
         """Preserve the existing archive fallback and exact revision checks."""
         raise KeyError(run_id)

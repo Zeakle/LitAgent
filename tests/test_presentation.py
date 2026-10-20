@@ -109,7 +109,7 @@ with ExitStack() as stack:
         for path in ("/survey", "/flow-demo/runs", "/survey/x/review/decision", "/survey/x/versions/1/audits", "/survey/x/versions/1/audits/y/cancel"):
             assert client.post(path, json={}).status_code == 403, path
         assert client.delete("/survey/x").status_code == 403
-        for path in ("/flow-demo/runs/private/view", "/survey/private/versions/1/audits", "/survey/private/export?revision=1&format=md"):
+        for path in ("/flow-demo/runs/private/view", "/survey/private/view", "/survey/private/versions/1/audits", "/survey/private/export?revision=1&format=md"):
             assert client.get(path).status_code == 404, path
         view = client.get("/flow-demo/runs/sample-ready/view").json()
         assert view["summary"]["publishable"] is True
