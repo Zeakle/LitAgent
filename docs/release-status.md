@@ -158,3 +158,28 @@ reused. The development service was reloaded and checked healthy with no active
 Survey. The frozen presentation and previous result pages remain unchanged.
 Live Survey is still experimental, formal cases remain **0/15**, and Phase 14.5
 remains in progress pending real semantic validation.
+
+## Typed-body bounded validation · 2026-10-21
+
+Executor `5bc7e7f` inherits both previous protocol charges and the same complete
+few-shot evidence. Default offline regression: **3872 passed / 25 deselected**;
+final related tests: **56 passed**, including 13 added cases. Two of these cases
+were added after default collection and are covered by the final related run.
+
+The real v4 attempt sent **one Pro request / 22,428 tokens** (18,913 input +
+3,515 output), complete usage, finish `stop`, no retries. Raw JSON and schema
+passed; a read-only replay of the preserved response identifies **seven compound
+citation-scope errors**. The complete repair reservation **106,977** exceeds the
+inherited writing-stage remainder **100,849**, so no repair request or summary
+was sent. Reviewer and Evaluation did not run. No scientific acceptance or
+improvement in reliability is inferred.
+
+The parent family now totals 30 requests / 199,151 tokens; all historical charges,
+failures and unknown usage holds remain. LangFuse readback has one generation
+with empty I/O and 22,428 tokens, plus the completed survey observation marked
+unverified / not delivered. Its outer parent is absent from the returned list;
+this is not represented as a verified complete trace tree.
+
+[Immutable identity, budget stop, read-only diagnostics and four public formats](../benchmarks/survey/results/typed-body-validation-20261021-001/README.md).
+No retrieval, extraction, Judge, Jev or formal 15-case run was added. Live Survey
+remains experimental; Phase 14.5 remains in progress.
