@@ -108,7 +108,7 @@ async def test_received_sdk_skips_body_preserves_attempts_and_never_replays(
         packet = json.loads(request.content)
         sent.append(packet)
         name = packet["response_format"]["json_schema"]["name"]
-        assert name in {"native_body_repair_v7_refs", "grounded_summaries_v2_refs"}
+        assert name in {"native_body_repair_v7_refs", "grounded_summaries_v3_layout"}
         if fault == "cancel":
             raise asyncio.CancelledError()
         value = (
@@ -282,7 +282,7 @@ async def test_received_three_hop_executor_counts_only_new_repair_summary(
         packet = json.loads(request.content)
         sent.append(packet)
         name = packet["response_format"]["json_schema"]["name"]
-        assert name in {"native_body_repair_v7_refs", "grounded_summaries_v2_refs"}
+        assert name in {"native_body_repair_v7_refs", "grounded_summaries_v3_layout"}
         value = (
             provider_repair(
                 {"can_repair": True, "patches": {"u0": patch}}, m["input"]["cards"]

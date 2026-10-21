@@ -2,7 +2,7 @@
 
 ## Verified locally
 
-- Default offline regression: **3964 passed, 25 deselected** (8 deprecation warnings).
+- Default offline regression: **3990 passed, 25 deselected** (8 deprecation warnings).
 - Python 3.11.15 / Node 24.14.0 on macOS; direct dependency constraints install in
   a fresh virtual environment with no broken requirements (`pip check`).
 - Clean source snapshot has no `.env` or private `artifacts`; presentation health
@@ -340,3 +340,42 @@ requests / 3,342,081 known tokens**, preserving 1,003,467 older unknown holds an
 31 initial Survey rounds. Next work is offline alignment of summary fields and
 host constraints, plus the latest remaining-stage budget. Live Survey remains
 experimental; Phase 14.5 remains in progress.
+
+
+## Host-managed summary layout · offline repair, 2026-10-22
+
+Staged contract `native-body-summary-v8` uses `grounded_summaries_v3_layout`.
+The provider returns only paragraph indices, scientific text and actual body-unit
+dependencies. The host derives empty headings and paragraph type from the complete
+report schema and shared summary rules. Each section allows at most two paragraphs
+and six sentence units; the existing total capacity, prose-length and scientific
+gates remain. Text, dependency order, sources and frozen body are preserved.
+The layout and its SHA are recorded with the summary projection. Old v1/v2 codecs
+remain explicit, single-stage identity is unchanged, and retired paid executors
+reject v8 pending a separate accounting migration.
+
+The actual previous four/three-block layout is retained as a redacted structural
+regression: the old native contract accepts it while the complete compiler rejects
+it; it is never sanitized into a successful historical result. New tests cover
+Chinese/English, layout limits, metadata injection, ordering, reference drift,
+complete canonical compilation and SDK response persistence/no replay. Existing
+Synthesis/Reviewer/Evaluation tests retain the unsupported-science counterexample.
+
+Default offline regression: **3990 passed / 25 deselected**, eight warnings,
+including 26 new cases. The earlier run recorded three stale request-count assertions
+in added SDK fixtures and a sandbox loopback bind error; both are preserved in
+local acceptance logs. After fixing the count table, the complete suite passed in
+an environment allowing the controlled localhost test. Eleven Python files passed
+Black/isort and diff checks. Nine historical protection maps and Plan SHA remain
+unchanged. No UI/export code changed; no new browser visual acceptance is claimed.
+
+No paid request was issued. With all 50 body units, 22 cards, 15 complete sources
+and the unchanged 20,000 output reserve, the v8 request reserves **67,622 tokens**.
+The latest writing balance is **55,840**, leaving a deficit of **11,782**. The actual
+budget consumer rejects it without changing the ledger. Parent totals stay
+**244,160 tokens / 33 requests**; history stays **615 requests / 3,342,081 known
+tokens**, with the older 1,003,467 unknown hold preserved. The immutable 8006 result
+continues to show the real failure, not this offline repair as a live success.
+Further lossless encoding and reconciliation of the latest paid tip are required
+before another bounded continuation. Reviewer/Evaluation have not run on a new
+real report; live Survey remains experimental and Phase 14.5 stays in progress.

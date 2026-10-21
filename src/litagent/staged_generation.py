@@ -27,6 +27,7 @@ from litagent.native_wire import (
     unique,
 )
 from litagent.quality import (
+    SUMMARY_RULES,
     NativeGroundedReport,
     _validate_grounded_language,
     _writing_scopes,
@@ -36,12 +37,13 @@ from litagent.quality import (
 from litagent.report_audit import atomic_json, digest
 from litagent.writing_passages import compile_passage_report
 
-CONTRACT = "native-body-summary-v7"
+CONTRACT = "native-body-summary-v8"
 CARD_REFERENCE_CONTRACT = "section-card-refs-v1"
 BODY_REPAIR_WIRE = "body-repair-card-aliases-v1"
 RECEIVED_BODY_CONTRACT = "received-typed-body-v1"
 SUMMARY_REFERENCE_CONTRACT = "summary-body-refs-v1"
 SUMMARY_TABLE_CONTRACT = "summary-body-table-v1"
+SUMMARY_LAYOUT_CONTRACT = "host-summary-layout-v1"
 FROZEN_BODY_CONTRACT = "received-repaired-body-v1"
 SUMMARY_COLUMNS = [
     "body_ref",
@@ -759,7 +761,37 @@ def summary_reference_binding(body):
     return binding
 
 
-def _summary_refs_schema(binding):
+def summary_layout(response_format, rules):
+    """Derive fixed summary metadata from the trusted complete report contract."""
+    if rules != SUMMARY_RULES:
+        raise ValueError("staged_summary_rules_invalid")
+    try:
+        schema = inline_local_schema(response_format["json_schema"]["schema"])
+        sections = schema["properties"]["sections"]["properties"]
+        for key in ("abstract", "conclusion"):
+            block = sections[key]["properties"]["blocks"]["items"]["properties"]
+            if block["heading"] != {"type": "string", "const": ""} or block["type"] != {
+                "type": "string",
+                "const": rules["block_type"],
+            }:
+                raise ValueError("staged_summary_layout_invalid")
+    except (KeyError, TypeError) as exc:
+        raise ValueError("staged_summary_layout_invalid") from exc
+    return _fixed_summary_layout()
+
+
+def _fixed_summary_layout():
+    """Use the same limits as canonical summary readability validation."""
+    return {
+        "contract": SUMMARY_LAYOUT_CONTRACT,
+        "heading": "",
+        "type": SUMMARY_RULES["block_type"],
+        "max_blocks": SUMMARY_RULES["max_blocks"],
+        "max_sentence_units": SUMMARY_RULES["max_sentence_units"],
+    }
+
+
+def _summary_refs_schema(binding, *, layout=None):
     """Keep native objects closed and retain the original six-premise limit."""
     capacity = 128 - binding["body_unit_count"]
     row = {
@@ -783,6 +815,15 @@ def _summary_refs_schema(binding):
         "required": ["block_index", "heading", "type", "text", "body_refs"],
         "additionalProperties": False,
     }
+    limit = capacity - 1
+    if layout is not None:
+        if layout != _fixed_summary_layout():
+            raise ValueError("staged_summary_layout_invalid")
+        # Fixed metadata belongs to the host; old v2 responses remain explicit.
+        del row["properties"]["heading"], row["properties"]["type"]
+        row["required"] = list(row["properties"])
+        row["properties"]["block_index"]["maximum"] = layout["max_blocks"] - 1
+        limit = min(limit, layout["max_sentence_units"])
     return {
         "type": "object",
         "properties": {
@@ -790,7 +831,7 @@ def _summary_refs_schema(binding):
                 "type": "array",
                 "items": copy.deepcopy(row),
                 "minItems": 1,
-                "maxItems": capacity - 1,
+                "maxItems": limit,
             }
             for key in ("abstract", "conclusion")
         },
@@ -799,8 +840,9 @@ def _summary_refs_schema(binding):
     }
 
 
-def encode_summaries(summaries, binding):
+def encode_summaries(summaries, binding, *, layout=None):
     """Encode only provider dependency fields, never scientific prose."""
+    schema = _summary_refs_schema(binding, layout=layout)
     closed(summaries, {"sections"})
     closed(summaries["sections"], {"abstract", "conclusion"})
     lookup = {digest(ref): key for key, ref in binding["units"].items()}
@@ -810,6 +852,11 @@ def encode_summaries(summaries, binding):
         rows = []
         for bi, block in enumerate(section["blocks"]):
             closed(block, {"heading", "type", "sentences"})
+            if layout is not None and (
+                block["heading"] != layout.get("heading")
+                or block["type"] != layout.get("type")
+            ):
+                raise ValueError("staged_summary_block_metadata_invalid")
             for unit in block["sentences"]:
                 closed(unit, {"text", "body_references"})
                 try:
@@ -825,16 +872,18 @@ def encode_summaries(summaries, binding):
                         "body_refs": refs,
                     }
                 )
+                if layout is not None:
+                    del rows[-1]["heading"], rows[-1]["type"]
         result[key] = rows
-    Draft202012Validator(_summary_refs_schema(binding)).validate(result)
+    Draft202012Validator(schema).validate(result)
     return result
 
 
-def decode_summaries(rows, binding, *, body):
+def decode_summaries(rows, binding, *, body, layout=None):
     """Restore exact original premises and reject mutated bodies or sparse blocks."""
     if binding != summary_reference_binding(body):
         raise ValueError("staged_summary_binding_invalid")
-    Draft202012Validator(_summary_refs_schema(binding)).validate(rows)
+    Draft202012Validator(_summary_refs_schema(binding, layout=layout)).validate(rows)
     if sum(len(part) for part in rows.values()) > 128 - binding["body_unit_count"]:
         raise ValueError("staged_generation_summary_capacity_unavailable")
     result = {"sections": {}}
@@ -842,14 +891,14 @@ def decode_summaries(rows, binding, *, body):
         blocks = []
         for row in rows[key]:
             bi = row["block_index"]
+            heading = layout["heading"] if layout is not None else row["heading"]
+            block_type = layout["type"] if layout is not None else row["type"]
             if bi == len(blocks):
-                blocks.append(
-                    {"heading": row["heading"], "type": row["type"], "sentences": []}
-                )
+                blocks.append({"heading": heading, "type": block_type, "sentences": []})
             elif bi != len(blocks) - 1:
                 raise ValueError("staged_summary_row_order_invalid")
             block = blocks[bi]
-            if block["heading"] != row["heading"] or block["type"] != row["type"]:
+            if block["heading"] != heading or block["type"] != block_type:
                 raise ValueError("staged_summary_block_metadata_invalid")
             block["sentences"].append(
                 {
@@ -967,7 +1016,14 @@ def restore_summary_input(packet, binding, *, body):
 
 
 def prepare_summary_request(
-    body, body_units, messages, response_format, *, short_refs=False, compact_body=False
+    body,
+    body_units,
+    messages,
+    response_format,
+    *,
+    short_refs=False,
+    compact_body=False,
+    host_layout=False,
 ):
     """Send frozen prose and complete sources for every actually used body card."""
     original = json.loads(messages[1]["content"])
@@ -1014,6 +1070,8 @@ def prepare_summary_request(
     }
     if compact_body and not short_refs:
         raise ValueError("staged_summary_table_requires_short_refs")
+    if host_layout and not short_refs:
+        raise ValueError("staged_summary_layout_requires_short_refs")
     instruction = SUMMARY_INSTRUCTION
     name = "grounded_summaries_v1"
     if short_refs:
@@ -1047,6 +1105,21 @@ def prepare_summary_request(
             "Do not output sections/blocks/sentences wrappers, fixed notices "
             "or a reference dump. Keep both sections within remaining_unit_capacity."
         )
+        if host_layout:
+            layout = summary_layout(response_format, packet["summary_rules"])
+            packet["summary_layout"] = layout
+            schema = _summary_refs_schema(binding, layout=layout)
+            name = "grounded_summaries_v3_layout"
+            instruction = instruction.replace(
+                "Each row has block_index, heading, type, text, body_refs. Start blocks at "
+                "zero, advance consecutively, and repeat unchanged heading/type within a "
+                "block.",
+                "Each row has only block_index, text, body_refs. The host supplies "
+                "empty headings and paragraph type. Start block_index at zero, advance "
+                "consecutively, and use at most summary_layout.max_blocks paragraphs "
+                "and summary_layout.max_sentence_units rows per section. Never output "
+                "heading or type fields.",
+            )
         if compact_body:
             packet["frozen_body"] = compact_summary_body(packet["frozen_body"], binding)
             del packet["body_unit_index"]
@@ -1528,6 +1601,7 @@ async def generate_staged_report(
         short_summaries = CONTRACT in {
             "native-body-summary-v6",
             "native-body-summary-v7",
+            "native-body-summary-v8",
         }
         prepared, rf = prepare_summary_request(
             body,
@@ -1535,10 +1609,16 @@ async def generate_staged_report(
             messages,
             response_format,
             short_refs=short_summaries,
-            compact_body=CONTRACT == "native-body-summary-v7",
+            compact_body=CONTRACT
+            in {"native-body-summary-v7", "native-body-summary-v8"},
+            host_layout=CONTRACT == "native-body-summary-v8",
         )
         if short_summaries:
             state["summary_reference_binding"] = summary_reference_binding(body)
+            if CONTRACT == "native-body-summary-v8":
+                state["summary_layout"] = summary_layout(
+                    response_format, json.loads(messages[1]["content"])["summary_rules"]
+                )
             atomic_json(path, state)
         part, raw = "summaries", ""
         raw = await call(part, prepared, rf)
@@ -1546,7 +1626,10 @@ async def generate_staged_report(
         Draft202012Validator(rf["json_schema"]["schema"]).validate(summaries)
         if short_summaries:
             summaries = decode_summaries(
-                summaries, state["summary_reference_binding"], body=body
+                summaries,
+                state["summary_reference_binding"],
+                body=body,
+                layout=state.get("summary_layout"),
             )
             state["steps"][part]["restored_summary_sha256"] = digest(summaries)
             state["summary_reference_projection"] = {
@@ -1555,6 +1638,11 @@ async def generate_staged_report(
                 "raw_response_sha256": state["steps"][part]["raw_response_sha256"],
                 "canonical_summary_sha256": digest(summaries),
             }
+            if "summary_layout" in state:
+                state["summary_reference_projection"].update(
+                    layout_contract=SUMMARY_LAYOUT_CONTRACT,
+                    layout_sha256=digest(state["summary_layout"]),
+                )
             atomic_json(path, state)
         combined = {
             "title": body["title"],

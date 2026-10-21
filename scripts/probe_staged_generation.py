@@ -673,13 +673,14 @@ async def execute(root, m, config, budget, *, received_body=None, frozen_body=No
                     or body.get("thinking") != {"type": "disabled"}
                     or body["response_format"]["json_schema"]["name"]
                     not in (
-                        {"grounded_summaries_v2_refs"}
+                        {"grounded_summaries_v2_refs", "grounded_summaries_v3_layout"}
                         if frozen_body is not None
                         else (
                             {
                                 "native_body_repair_v7_refs",
                                 "grounded_summaries_v1",
                                 "grounded_summaries_v2_refs",
+                                "grounded_summaries_v3_layout",
                             }
                             if received_body is not None
                             else {
@@ -688,6 +689,7 @@ async def execute(root, m, config, budget, *, received_body=None, frozen_body=No
                                 "grounded_body_v4_typed",
                                 "grounded_summaries_v1",
                                 "grounded_summaries_v2_refs",
+                                "grounded_summaries_v3_layout",
                                 *(
                                     {
                                         "native_body_repair_v6",

@@ -379,7 +379,7 @@ async def test_real_reviewer_to_whole_revision_uses_explicit_array_wire(
                         ),
                     )
                 else:
-                    assert name == "grounded_summaries_v2_refs"
+                    assert name == "grounded_summaries_v3_layout"
                     value = {
                         "sections": {
                             key: value["sections"][key]

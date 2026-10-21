@@ -57,10 +57,10 @@ def provider_body(body, cards, language="en", selection=None):
 
 def provider_summaries(value, request):
     """Encode only a simulated provider reply for the requested summary contract."""
-    if (
-        request["response_format"]["json_schema"]["name"]
-        != "grounded_summaries_v2_refs"
-    ):
+    if request["response_format"]["json_schema"]["name"] not in {
+        "grounded_summaries_v2_refs",
+        "grounded_summaries_v3_layout",
+    }:
         return copy.deepcopy(value)
     from litagent.staged_generation import (
         encode_summaries,
@@ -72,7 +72,9 @@ def provider_summaries(value, request):
     body = packet["frozen_body"]
     if "summary_input_contract" in packet:
         body = expand_summary_body(body)
-    return encode_summaries(value, summary_reference_binding(body))
+    return encode_summaries(
+        value, summary_reference_binding(body), layout=packet.get("summary_layout")
+    )
 
 
 def provider_repair(value, cards):
@@ -246,6 +248,9 @@ def test_received_7393_failure_remains_rejected_without_closing_repair():
         "body_empty",
         "body_order",
         "summary_json",
+        "summary_heading",
+        "summary_blocks",
+        "summary_units",
         "body_mutation",
         "unknown_usage",
         "cancel",
@@ -282,7 +287,7 @@ async def test_real_sdk_partitions_and_failures_never_replay(tmp_path, fault):
         assert name == (
             "grounded_body_v4_typed"
             if len(calls) == 1
-            else "grounded_summaries_v2_refs"
+            else "grounded_summaries_v3_layout"
         )
         journal = next(tmp_path.glob("*.generation-*.json"))
         persisted = json.loads(journal.read_text())
@@ -300,6 +305,13 @@ async def test_real_sdk_partitions_and_failures_never_replay(tmp_path, fault):
             content["methods"][0]["block_index"] = 2
         if fault == "body_mutation" and len(calls) == 2:
             content["methods"] = body["sections"]["methods"]
+        if len(calls) == 2:
+            if fault == "summary_heading":
+                content["abstract"][0]["heading"] = "摘要"
+            elif fault == "summary_blocks":
+                content["abstract"][0]["block_index"] = 2
+            elif fault == "summary_units":
+                content["abstract"] *= 7
         malformed = fault == "body_json" or (
             fault == "summary_json" and len(calls) == 2
         )
@@ -358,6 +370,9 @@ async def test_real_sdk_partitions_and_failures_never_replay(tmp_path, fault):
                 "body_empty": (SchemaError, "non-empty"),
                 "body_order": (BodyRowError, "flat_body_block_order_invalid"),
                 "summary_json": (json.JSONDecodeError, None),
+                "summary_heading": (SchemaError, "Additional properties"),
+                "summary_blocks": (SchemaError, "maximum"),
+                "summary_units": (SchemaError, "too long"),
                 "body_mutation": (SchemaError, "Additional properties"),
                 "unknown_usage": (ValueError, "strict_usage_incomplete"),
                 "cancel": (asyncio.CancelledError, None),
@@ -389,6 +404,8 @@ async def test_real_sdk_partitions_and_failures_never_replay(tmp_path, fault):
                 next(tmp_path.glob("*.generation-*.json")).read_text()
             )
             assert persisted["summary_reference_binding"] == expected_binding
+            assert projection["layout_contract"] == "host-summary-layout-v1"
+            assert projection["layout_sha256"] == digest(persisted["summary_layout"])
             assert (
                 projection["raw_response_sha256"]
                 == persisted["steps"]["summaries"]["raw_response_sha256"]
@@ -415,11 +432,35 @@ async def test_real_sdk_partitions_and_failures_never_replay(tmp_path, fault):
             )
             assert diagnostic["phase"] == "initial/body"
             assert artifact == before
+        if fault in {"summary_heading", "summary_blocks", "summary_units"}:
+            journal = json.loads(next(tmp_path.glob("*.generation-*.json")).read_text())
+            assert journal["error_phase"] == "summaries"
+            assert journal["steps"]["summaries"]["status"] == "response_received"
+            if fault == "summary_heading":
+                assert (
+                    json.loads(journal["steps"]["summaries"]["raw_response"])[
+                        "abstract"
+                    ][0]["heading"]
+                    == "摘要"
+                )
+            assert budget.snapshot()["requests_sent"] == 2
         count = len(calls)
         assert count == (
             0
             if fault == "budget"
-            else 2 if fault in {None, "summary_json", "body_mutation"} else 1
+            else (
+                2
+                if fault
+                in {
+                    None,
+                    "summary_json",
+                    "summary_heading",
+                    "summary_blocks",
+                    "summary_units",
+                    "body_mutation",
+                }
+                else 1
+            )
         )
         with pytest.raises(ValueError, match="staged_generation_restart_no_replay"):
             await generate_staged_report(client, messages, rf, **kwargs)
@@ -566,7 +607,7 @@ async def test_actual_human_revision_uses_two_parts_and_never_commits_body_mutat
         assert len(calls) == 2
         assert [p["response_format"]["json_schema"]["name"] for p in calls] == [
             "grounded_body_v4_typed",
-            "grounded_summaries_v2_refs",
+            "grounded_summaries_v3_layout",
         ]
         assert not outcome["committed"] and outcome["error_type"] == "ValidationError"
         assert returned == report == before

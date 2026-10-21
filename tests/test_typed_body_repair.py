@@ -238,7 +238,7 @@ async def test_real_sdk_repairs_share_attempts_then_freeze_before_summary(
         name = payload["response_format"]["json_schema"]["name"]
         if name == "grounded_body_v4_typed":
             value = body_wire
-        elif name == "grounded_summaries_v2_refs":
+        elif name == "grounded_summaries_v3_layout":
             assert state["attempts"][-1]["status"] == "completed"
             value = provider_summaries(summaries, payload)
         else:
@@ -351,7 +351,7 @@ async def test_real_sdk_repairs_share_attempts_then_freeze_before_summary(
                 await generate_staged_report(client, messages, rf, **kwargs)
             assert all(
                 c["response_format"]["json_schema"]["name"]
-                != "grounded_summaries_v2_refs"
+                != "grounded_summaries_v3_layout"
                 for c in calls
             )
             assert len(calls) == (1 if fault == "exhausted" else 2)
@@ -427,7 +427,7 @@ async def test_synthesis_repair_reviewer_and_actual_v3_evaluator_share_frozen_so
                     }
                 },
             }
-        elif name == "grounded_summaries_v2_refs":
+        elif name == "grounded_summaries_v3_layout":
             value = provider_summaries(summaries, p)
         elif len(requests) == 4:
             value = {

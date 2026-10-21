@@ -216,12 +216,12 @@ def test_new_contract_retains_single_identity_and_paid_guards_stay_closed(
     from scripts import probe_received_body as received
     from scripts import probe_staged_generation as probe
 
-    assert CONTRACT == "native-body-summary-v7"
+    assert CONTRACT == "native-body-summary-v8"
     single = RunOptions(quality_policy="strict_auto_v2", body_quality="analysis_v1")
     staged = single.model_copy(update={"generation_strategy": "body_summary_v1"})
     before_single = single.fingerprint()
     before_staged = staged.fingerprint()
-    monkeypatch.setattr(staged_generation, "CONTRACT", "native-body-summary-v6")
+    monkeypatch.setattr(staged_generation, "CONTRACT", "native-body-summary-v7")
     assert single.fingerprint() == before_single
     assert staged.fingerprint() != before_staged
     assert probe.TYPED_CONTRACT == "native-body-summary-v4"

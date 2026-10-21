@@ -129,6 +129,11 @@ async def summary_prepared(received_prepared, monkeypatch):
         atomic_json(tip / "manifest.json", m)
         result = await received.run(tip, live=True)
         assert result["new_requests"] == 2 and result["status"] == "failed_no_replay"
+    # This fixture verifies the historical v7 executor, whose grant stays closed
+    # to the new output contract until its own accounting migration is implemented.
+    monkeypatch.setattr(staged, "CONTRACT", "native-body-summary-v7")
+    monkeypatch.setattr(probe, "CONTRACT", "native-body-summary-v7")
+    monkeypatch.setattr(frozen, "CONTRACT", "native-body-summary-v7")
     monkeypatch.setattr(frozen, "load_config", probe.load_config)
     root = tip.parent / "frozen-summary"
     manifest = frozen.prepare(root, Path(m["parent"]), tip)

@@ -329,7 +329,11 @@ async def accounted(prepared, monkeypatch):
         content = (
             provider_summaries(summaries, packet)
             if packet["response_format"]["json_schema"]["name"]
-            in {"grounded_summaries_v1", "grounded_summaries_v2_refs"}
+            in {
+                "grounded_summaries_v1",
+                "grounded_summaries_v2_refs",
+                "grounded_summaries_v3_layout",
+            }
             else provider_body(body, cards)
         )
         return httpx.Response(
@@ -623,7 +627,12 @@ async def test_typed_grant_inherits_two_hops_and_runs_bounded_sdk(
             raise asyncio.CancelledError()
         value = (
             provider_summaries(summaries, packet)
-            if name in {"grounded_summaries_v1", "grounded_summaries_v2_refs"}
+            if name
+            in {
+                "grounded_summaries_v1",
+                "grounded_summaries_v2_refs",
+                "grounded_summaries_v3_layout",
+            }
             else (
                 {"can_repair": True, "patches": {"u0": patch}}
                 if name == "native_body_repair_v7_refs"
