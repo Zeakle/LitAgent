@@ -2,7 +2,7 @@
 
 ## Verified locally
 
-- Default offline regression: **3939 passed, 25 deselected** (8 deprecation warnings).
+- Default offline regression: **3964 passed, 25 deselected** (8 deprecation warnings).
 - Python 3.11.15 / Node 24.14.0 on macOS; direct dependency constraints install in
   a fresh virtual environment with no broken requirements (`pip check`).
 - Clean source snapshot has no `.env` or private `artifacts`; presentation health
@@ -292,3 +292,51 @@ tokens and 1,003,467 older unknown holds. Retired paid executors reject v6 until
 latest accounting and an independently bounded execution identity are wired.
 Next work is further lossless input encoding and then bounded live validation;
 Phase 14.5 remains in progress, and live Survey remains experimental.
+
+
+## Compact frozen-body summary observation · 2026-10-22
+
+At `22c578d`, staged contract `native-body-summary-v7` encodes every frozen body
+unit once in an explicit position table, including scientific `bN` selectors.
+Complete sources, text, conditions, identity mappings and all 50 body units remain
+exactly recoverable. Full reservation decreases **72,317 → 67,555**, retaining the
+20,000 output reserve, versus a writing-stage balance of 67,576. The **21** headroom
+applies only to this exact frozen input. No source or budget gate was weakened.
+
+A new summary-only executor reconciles the complete receipt chain through the
+previous received-body attempt, reapplies its original repair proof, and retains
+the one completed repair attempt. A versioned host-body envelope records the
+canonical body and provenance; it is never represented as a new provider response.
+The executor permits one summary call, zero initial-body/repair calls and no retries.
+
+Offline validation: **3964 passed / 25 deselected** (8 warnings), including 25 new
+cases; 186 related cases passed before four additions included in the full run.
+Seven Python files passed Black/isort and staged diff checks. Eight protection
+maps remain valid. The prior map's 11 active source paths are checked against their
+recorded `3c90c4e` Git bytes; private immutable files remain checked at their original
+paths. No historical manifest or protection map was rewritten.
+
+The bounded real call used **10,954 input + 782 output = 11,736 tokens**,
+finish `stop`, complete usage, 17.458 seconds, zero retries. Its JSON and native
+summary schema passed. Full array-report assembly then failed `schema_const` at
+`sections.abstract.blocks.0.heading`: the new summary schema allowed a nonempty
+heading while the original complete schema requires an empty string. Read-only
+replay finds seven such heading errors. The model also emitted four/three blocks
+against the existing two-block rule. These additional replay findings do not
+rewrite the original first-error event or terminal receipt.
+
+This exposes a remaining producer/consumer constraint gap. No field was erased,
+no response was patched, and no extra paid attempt was sent. Reviewer/Evaluation
+did not run; science remains unverified and the report is not deliverable.
+
+[Immutable summary result and four public formats](../benchmarks/survey/results/frozen-summary-protocol-20261022-001/README.md).
+Desktop/390px bilingual text, keyboard inspection, zero overflow and console errors
+were verified. The new static result uses 8006; 8005 and earlier artifacts remain
+unchanged. LangFuse readback has one generation / 11,736 tokens with empty generation
+I/O and an unverified terminal survey span; its outer parent is not in the response.
+
+Parent totals are now **33 requests / 244,160 tokens**. History is **615 model
+requests / 3,342,081 known tokens**, preserving 1,003,467 older unknown holds and
+31 initial Survey rounds. Next work is offline alignment of summary fields and
+host constraints, plus the latest remaining-stage budget. Live Survey remains
+experimental; Phase 14.5 remains in progress.

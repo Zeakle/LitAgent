@@ -1,0 +1,275 @@
+{
+  "run_id": "frozen-summary-protocol-20261022-001",
+  "source_commit": "22c578d04386a7e1e95b2dce1ea74f767e723bbc",
+  "binding": "6aaf99902a9acb714814b0d7b6896b16535226f4c742fdda21bb28310739f77d",
+  "contract": "native-body-summary-v7",
+  "execution_contract": "frozen-summary-protocol-v1",
+  "status": "failed_no_replay",
+  "error_type": "ValueError",
+  "error_code": "array_wire_contract_invalid",
+  "error_phase": "summaries",
+  "scientific_verdict": "not_evaluated",
+  "publishable": false,
+  "checks": [
+    {
+      "check": "frozen_body_integrity",
+      "status": "passed",
+      "paths": [
+        "2f144af560e5d2e29dc3c7e4f50b0d68501b33a0f5ebfc67bb46d5d6493ebd49"
+      ]
+    },
+    {
+      "check": "full_original_sources",
+      "status": "passed",
+      "paths": [
+        "50 body units; 48 scientific units; 22 cards; 15 complete sources retained"
+      ]
+    },
+    {
+      "check": "new_body_requests",
+      "status": "none",
+      "paths": []
+    },
+    {
+      "check": "new_repair_requests",
+      "status": "none",
+      "paths": []
+    },
+    {
+      "check": "summaries_json",
+      "status": "passed",
+      "paths": []
+    },
+    {
+      "check": "summaries_schema",
+      "status": "passed",
+      "paths": []
+    },
+    {
+      "check": "local_report_compilation",
+      "status": "failed",
+      "paths": []
+    },
+    {
+      "check": "reviewer",
+      "status": "not_run",
+      "paths": []
+    },
+    {
+      "check": "evaluation",
+      "status": "not_run",
+      "paths": []
+    },
+    {
+      "check": "judge",
+      "status": "not_run",
+      "paths": []
+    },
+    {
+      "check": "jev",
+      "status": "not_run",
+      "paths": []
+    },
+    {
+      "check": "scientific_acceptance",
+      "status": "not_evaluated",
+      "paths": []
+    },
+    {
+      "check": "delivery",
+      "status": "blocked",
+      "paths": []
+    },
+    {
+      "check": "assembly_constraint",
+      "status": "failed",
+      "paths": [
+        "schema_const",
+        "sections.abstract.blocks.0.heading"
+      ]
+    }
+  ],
+  "frozen_body": {
+    "contract": "received-repaired-body-v1",
+    "body_sha256": "2f144af560e5d2e29dc3c7e4f50b0d68501b33a0f5ebfc67bb46d5d6493ebd49",
+    "source_binding": "98acf828d08d7e6ed068ca5ce0a6933375c9e01064175554a4d4b7675f2e0218",
+    "source_checkpoint_sha256": "2cd6078ff9eec3de5a239c194d97e81ce60c60bf587aca5419540ce2792a52f0",
+    "repair_proof_sha256": "d5da17ce39bbfe887cb3a1c617669d58815935c7d2cfa4c281177005e7613176",
+    "sha256": "1af09bc105ac7f1cb0a80c04339c6949ea850a2e0f34ef42683f43585fc8334b"
+  },
+  "stage_raw_sha256": {
+    "summaries": "c0843a466821294e521b1ea12969dc2ae0a3184a58cbadb0d1a13f22c96af091"
+  },
+  "requests": 1,
+  "tokens": 11736,
+  "unknown_hold": 0,
+  "usage_complete": true,
+  "usage": [
+    {
+      "model": "doubao-seed-2-1-pro-260915",
+      "actual_model": "doubao-seed-2-1-pro-260915",
+      "prompt_tokens": 10954,
+      "completion_tokens": 782,
+      "total_tokens": 11736,
+      "usage_available": true,
+      "finish_reason": "stop",
+      "elapsed_ms": 17458
+    }
+  ],
+  "new_allowance": {
+    "requests": 1,
+    "tokens": 120000,
+    "output_per_call": 20000,
+    "retries": 0
+  },
+  "preflight": {
+    "reservation": 67555,
+    "remaining_stage": 67576,
+    "headroom": 21,
+    "fixed_input_only": true
+  },
+  "parent_plus_probe": {
+    "schema_version": 1,
+    "max_tokens": 500000,
+    "warn_ratio": 0.8,
+    "used_tokens": 244160,
+    "call_count": 33,
+    "warned": false,
+    "strict_policy": "staged-budget-v1",
+    "strict_phase": 1,
+    "requests_sent": 33,
+    "phase_usage": [
+      98267,
+      145893,
+      0
+    ],
+    "usage_uncertain": false,
+    "halt_on_unknown_usage": true,
+    "stop_reason": null
+  },
+  "cumulative": {
+    "initial_generation_rounds": 31,
+    "model_requests": 615,
+    "model_known_tokens": 3342081,
+    "model_unknown_conservative_tokens": 1003467,
+    "jev_requests": 67,
+    "jev_conservative_input_tokens": 756769,
+    "judge_requests": 0,
+    "jev_usage_complete": false
+  },
+  "inherited_repair_attempts": 1,
+  "new_repairs": 0,
+  "human_calibration": "unverified",
+  "trace_readback": {
+    "trace_id": "16cd48934c5a279e794846176ed9f543",
+    "observations": 2,
+    "generations": 1,
+    "known_tokens": 11736,
+    "generation_io_empty": true,
+    "survey_lifecycle_recorded": true,
+    "survey_parent_in_readback": false,
+    "whole_trace_tree_verified": false,
+    "scientific_verdict": "not_evaluated",
+    "trace_url": "http://localhost:3000/project/litagent-local-project/traces/16cd48934c5a279e794846176ed9f543"
+  },
+  "assembly_replay": {
+    "derived_readonly": true,
+    "raw_response_sha256": "c0843a466821294e521b1ea12969dc2ae0a3184a58cbadb0d1a13f22c96af091",
+    "assembly_schema_errors": [
+      {
+        "validator": "const",
+        "path": [
+          "sections",
+          "abstract",
+          "blocks",
+          0,
+          "heading"
+        ],
+        "expected": "",
+        "actual": "摘要"
+      },
+      {
+        "validator": "const",
+        "path": [
+          "sections",
+          "abstract",
+          "blocks",
+          1,
+          "heading"
+        ],
+        "expected": "",
+        "actual": "摘要"
+      },
+      {
+        "validator": "const",
+        "path": [
+          "sections",
+          "abstract",
+          "blocks",
+          2,
+          "heading"
+        ],
+        "expected": "",
+        "actual": "摘要"
+      },
+      {
+        "validator": "const",
+        "path": [
+          "sections",
+          "abstract",
+          "blocks",
+          3,
+          "heading"
+        ],
+        "expected": "",
+        "actual": "摘要"
+      },
+      {
+        "validator": "const",
+        "path": [
+          "sections",
+          "conclusion",
+          "blocks",
+          0,
+          "heading"
+        ],
+        "expected": "",
+        "actual": "结论"
+      },
+      {
+        "validator": "const",
+        "path": [
+          "sections",
+          "conclusion",
+          "blocks",
+          1,
+          "heading"
+        ],
+        "expected": "",
+        "actual": "结论"
+      },
+      {
+        "validator": "const",
+        "path": [
+          "sections",
+          "conclusion",
+          "blocks",
+          2,
+          "heading"
+        ],
+        "expected": "",
+        "actual": "结论"
+      }
+    ],
+    "summary_shape": {
+      "abstract": {
+        "units": 4,
+        "blocks": 4
+      },
+      "conclusion": {
+        "units": 3,
+        "blocks": 3
+      }
+    }
+  }
+}

@@ -1,0 +1,276 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>冻结正文摘要验证 / Frozen-body summary</title><style>*{box-sizing:border-box}body{margin:0;background:#f0f4f6;color:#19303c;font:16px/1.6 system-ui}main{max-width:1080px;margin:auto;padding:30px 20px}h1{font-size:clamp(24px,5vw,38px);line-height:1.25}.notice{padding:20px;background:#fff4dc;border-left:5px solid #9a6411}.cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin:24px 0}.card,section{padding:20px;background:white;border:1px solid #d5e0e5;border-radius:12px;margin-bottom:20px}.card strong{display:block;font-size:30px;overflow-wrap:anywhere}small{color:#536a76}table{width:100%;border-collapse:collapse}th,td{text-align:left;vertical-align:top;padding:12px 8px;border-bottom:1px solid #d5e0e5;overflow-wrap:anywhere;font-size:14px}th{width:39%}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}summary{cursor:pointer;padding:12px}a{display:inline-block;padding:8px;color:#006d89}:focus-visible{outline:3px solid #006d89;outline-offset:3px}@media(max-width:600px){main{padding:24px 14px}.cards{grid-template-columns:1fr;gap:0}section{padding:14px}th,td{font-size:12px;padding:10px 4px}}</style><main><h1>冻结正文后的单次摘要验证<br><small>One summary on the frozen body</small></h1><div class="notice"><strong>摘要协议通过，完整组装失败；科学未核验，仍不可交付。 / Summary protocol passed, report assembly failed; science is unverified, not deliverable.</strong><p>摘要 JSON 和原生 schema 已通过；组装因摘要 heading 必须为空而拒绝。 / Summary JSON/schema passed; assembly rejected a nonempty heading. 复用已修正文，仅验证摘要。没有重发初稿、检索、提取或修复；完整来源保留。 / Reused the repaired frozen body, with full sources. Only one summary request was allowed.</p><p>终态 / Terminal: failed_no_replay · ValueError</p></div><div class="cards"><div class="card"><strong>1</strong><small>新增摘要请求 / New summary calls</small></div><div class="card"><strong>11,736</strong><small>已知 tokens / Known usage · 未知占额 / Unknown hold 0</small></div><div class="card"><strong>0</strong><small>新增正文或修复 / New body or repair calls</small></div></div><section><h2>分层结果 / Results by layer</h2><table><caption>本地协议与科学验收分别展示 / Local protocol and science</caption><thead><tr><th>检查 / Check</th><th>状态 / Status</th><th>定位 / Location</th></tr></thead><tbody><tr><th scope="row">冻结正文身份 / Frozen body identity</th><td>通过 / Passed</td><td>2f144af560e5d2e29dc3c7e4f50b0d68501b33a0f5ebfc67bb46d5d6493ebd49</td></tr><tr><th scope="row">完整材料 / Complete materials</th><td>通过 / Passed</td><td>50 body units; 48 scientific units; 22 cards; 15 complete sources retained</td></tr><tr><th scope="row">新增正文请求 / New body calls</th><td>无 / None</td><td>—</td></tr><tr><th scope="row">新增修复 / New repairs</th><td>无 / None</td><td>—</td></tr><tr><th scope="row">摘要 JSON / Summary JSON</th><td>通过 / Passed</td><td>—</td></tr><tr><th scope="row">摘要 schema / Summary schema</th><td>通过 / Passed</td><td>—</td></tr><tr><th scope="row">完整本地编译 / Full local compilation</th><td>失败 / Failed</td><td>—</td></tr><tr><th scope="row">reviewer</th><td>未运行 / Not run</td><td>—</td></tr><tr><th scope="row">evaluation</th><td>未运行 / Not run</td><td>—</td></tr><tr><th scope="row">judge</th><td>未运行 / Not run</td><td>—</td></tr><tr><th scope="row">jev</th><td>未运行 / Not run</td><td>—</td></tr><tr><th scope="row">科学验收 / Scientific acceptance</th><td>未核验 / Not evaluated</td><td>—</td></tr><tr><th scope="row">交付 / Delivery</th><td>已阻止 / Blocked</td><td>—</td></tr><tr><th scope="row">组装契约冲突 / Assembly constraint</th><td>失败 / Failed</td><td>schema_const; sections.abstract.blocks.0.heading</td></tr></tbody></table></section><section><h2>预算与身份 / Accounting and identity</h2><p>新增最多1请求 / 120000tokens / 20000输出 / 零重试。原500000/64和阶段限制继续生效。</p><p>完整预留67555，发送前阶段余额67576、余21，仅限本份固定输入。继承修复次数1，本次修复0。</p><p>父族 33 请求 / 244,160 tokens；历史 615 请求 / 3,342,081 已知，旧未知 1,003,467 保留。</p><details><summary>查看源码、SHA、诊断及用量 / Inspect identity and usage</summary><pre>{
+  &quot;run_id&quot;: &quot;frozen-summary-protocol-20261022-001&quot;,
+  &quot;source_commit&quot;: &quot;22c578d04386a7e1e95b2dce1ea74f767e723bbc&quot;,
+  &quot;binding&quot;: &quot;6aaf99902a9acb714814b0d7b6896b16535226f4c742fdda21bb28310739f77d&quot;,
+  &quot;contract&quot;: &quot;native-body-summary-v7&quot;,
+  &quot;execution_contract&quot;: &quot;frozen-summary-protocol-v1&quot;,
+  &quot;status&quot;: &quot;failed_no_replay&quot;,
+  &quot;error_type&quot;: &quot;ValueError&quot;,
+  &quot;error_code&quot;: &quot;array_wire_contract_invalid&quot;,
+  &quot;error_phase&quot;: &quot;summaries&quot;,
+  &quot;scientific_verdict&quot;: &quot;not_evaluated&quot;,
+  &quot;publishable&quot;: false,
+  &quot;checks&quot;: [
+    {
+      &quot;check&quot;: &quot;frozen_body_integrity&quot;,
+      &quot;status&quot;: &quot;passed&quot;,
+      &quot;paths&quot;: [
+        &quot;2f144af560e5d2e29dc3c7e4f50b0d68501b33a0f5ebfc67bb46d5d6493ebd49&quot;
+      ]
+    },
+    {
+      &quot;check&quot;: &quot;full_original_sources&quot;,
+      &quot;status&quot;: &quot;passed&quot;,
+      &quot;paths&quot;: [
+        &quot;50 body units; 48 scientific units; 22 cards; 15 complete sources retained&quot;
+      ]
+    },
+    {
+      &quot;check&quot;: &quot;new_body_requests&quot;,
+      &quot;status&quot;: &quot;none&quot;,
+      &quot;paths&quot;: []
+    },
+    {
+      &quot;check&quot;: &quot;new_repair_requests&quot;,
+      &quot;status&quot;: &quot;none&quot;,
+      &quot;paths&quot;: []
+    },
+    {
+      &quot;check&quot;: &quot;summaries_json&quot;,
+      &quot;status&quot;: &quot;passed&quot;,
+      &quot;paths&quot;: []
+    },
+    {
+      &quot;check&quot;: &quot;summaries_schema&quot;,
+      &quot;status&quot;: &quot;passed&quot;,
+      &quot;paths&quot;: []
+    },
+    {
+      &quot;check&quot;: &quot;local_report_compilation&quot;,
+      &quot;status&quot;: &quot;failed&quot;,
+      &quot;paths&quot;: []
+    },
+    {
+      &quot;check&quot;: &quot;reviewer&quot;,
+      &quot;status&quot;: &quot;not_run&quot;,
+      &quot;paths&quot;: []
+    },
+    {
+      &quot;check&quot;: &quot;evaluation&quot;,
+      &quot;status&quot;: &quot;not_run&quot;,
+      &quot;paths&quot;: []
+    },
+    {
+      &quot;check&quot;: &quot;judge&quot;,
+      &quot;status&quot;: &quot;not_run&quot;,
+      &quot;paths&quot;: []
+    },
+    {
+      &quot;check&quot;: &quot;jev&quot;,
+      &quot;status&quot;: &quot;not_run&quot;,
+      &quot;paths&quot;: []
+    },
+    {
+      &quot;check&quot;: &quot;scientific_acceptance&quot;,
+      &quot;status&quot;: &quot;not_evaluated&quot;,
+      &quot;paths&quot;: []
+    },
+    {
+      &quot;check&quot;: &quot;delivery&quot;,
+      &quot;status&quot;: &quot;blocked&quot;,
+      &quot;paths&quot;: []
+    },
+    {
+      &quot;check&quot;: &quot;assembly_constraint&quot;,
+      &quot;status&quot;: &quot;failed&quot;,
+      &quot;paths&quot;: [
+        &quot;schema_const&quot;,
+        &quot;sections.abstract.blocks.0.heading&quot;
+      ]
+    }
+  ],
+  &quot;frozen_body&quot;: {
+    &quot;contract&quot;: &quot;received-repaired-body-v1&quot;,
+    &quot;body_sha256&quot;: &quot;2f144af560e5d2e29dc3c7e4f50b0d68501b33a0f5ebfc67bb46d5d6493ebd49&quot;,
+    &quot;source_binding&quot;: &quot;98acf828d08d7e6ed068ca5ce0a6933375c9e01064175554a4d4b7675f2e0218&quot;,
+    &quot;source_checkpoint_sha256&quot;: &quot;2cd6078ff9eec3de5a239c194d97e81ce60c60bf587aca5419540ce2792a52f0&quot;,
+    &quot;repair_proof_sha256&quot;: &quot;d5da17ce39bbfe887cb3a1c617669d58815935c7d2cfa4c281177005e7613176&quot;,
+    &quot;sha256&quot;: &quot;1af09bc105ac7f1cb0a80c04339c6949ea850a2e0f34ef42683f43585fc8334b&quot;
+  },
+  &quot;stage_raw_sha256&quot;: {
+    &quot;summaries&quot;: &quot;c0843a466821294e521b1ea12969dc2ae0a3184a58cbadb0d1a13f22c96af091&quot;
+  },
+  &quot;requests&quot;: 1,
+  &quot;tokens&quot;: 11736,
+  &quot;unknown_hold&quot;: 0,
+  &quot;usage_complete&quot;: true,
+  &quot;usage&quot;: [
+    {
+      &quot;model&quot;: &quot;doubao-seed-2-1-pro-260915&quot;,
+      &quot;actual_model&quot;: &quot;doubao-seed-2-1-pro-260915&quot;,
+      &quot;prompt_tokens&quot;: 10954,
+      &quot;completion_tokens&quot;: 782,
+      &quot;total_tokens&quot;: 11736,
+      &quot;usage_available&quot;: true,
+      &quot;finish_reason&quot;: &quot;stop&quot;,
+      &quot;elapsed_ms&quot;: 17458
+    }
+  ],
+  &quot;new_allowance&quot;: {
+    &quot;requests&quot;: 1,
+    &quot;tokens&quot;: 120000,
+    &quot;output_per_call&quot;: 20000,
+    &quot;retries&quot;: 0
+  },
+  &quot;preflight&quot;: {
+    &quot;reservation&quot;: 67555,
+    &quot;remaining_stage&quot;: 67576,
+    &quot;headroom&quot;: 21,
+    &quot;fixed_input_only&quot;: true
+  },
+  &quot;parent_plus_probe&quot;: {
+    &quot;schema_version&quot;: 1,
+    &quot;max_tokens&quot;: 500000,
+    &quot;warn_ratio&quot;: 0.8,
+    &quot;used_tokens&quot;: 244160,
+    &quot;call_count&quot;: 33,
+    &quot;warned&quot;: false,
+    &quot;strict_policy&quot;: &quot;staged-budget-v1&quot;,
+    &quot;strict_phase&quot;: 1,
+    &quot;requests_sent&quot;: 33,
+    &quot;phase_usage&quot;: [
+      98267,
+      145893,
+      0
+    ],
+    &quot;usage_uncertain&quot;: false,
+    &quot;halt_on_unknown_usage&quot;: true,
+    &quot;stop_reason&quot;: null
+  },
+  &quot;cumulative&quot;: {
+    &quot;initial_generation_rounds&quot;: 31,
+    &quot;model_requests&quot;: 615,
+    &quot;model_known_tokens&quot;: 3342081,
+    &quot;model_unknown_conservative_tokens&quot;: 1003467,
+    &quot;jev_requests&quot;: 67,
+    &quot;jev_conservative_input_tokens&quot;: 756769,
+    &quot;judge_requests&quot;: 0,
+    &quot;jev_usage_complete&quot;: false
+  },
+  &quot;inherited_repair_attempts&quot;: 1,
+  &quot;new_repairs&quot;: 0,
+  &quot;human_calibration&quot;: &quot;unverified&quot;,
+  &quot;trace_readback&quot;: {
+    &quot;trace_id&quot;: &quot;16cd48934c5a279e794846176ed9f543&quot;,
+    &quot;observations&quot;: 2,
+    &quot;generations&quot;: 1,
+    &quot;known_tokens&quot;: 11736,
+    &quot;generation_io_empty&quot;: true,
+    &quot;survey_lifecycle_recorded&quot;: true,
+    &quot;survey_parent_in_readback&quot;: false,
+    &quot;whole_trace_tree_verified&quot;: false,
+    &quot;scientific_verdict&quot;: &quot;not_evaluated&quot;,
+    &quot;trace_url&quot;: &quot;http://localhost:3000/project/litagent-local-project/traces/16cd48934c5a279e794846176ed9f543&quot;
+  },
+  &quot;assembly_replay&quot;: {
+    &quot;derived_readonly&quot;: true,
+    &quot;raw_response_sha256&quot;: &quot;c0843a466821294e521b1ea12969dc2ae0a3184a58cbadb0d1a13f22c96af091&quot;,
+    &quot;assembly_schema_errors&quot;: [
+      {
+        &quot;validator&quot;: &quot;const&quot;,
+        &quot;path&quot;: [
+          &quot;sections&quot;,
+          &quot;abstract&quot;,
+          &quot;blocks&quot;,
+          0,
+          &quot;heading&quot;
+        ],
+        &quot;expected&quot;: &quot;&quot;,
+        &quot;actual&quot;: &quot;摘要&quot;
+      },
+      {
+        &quot;validator&quot;: &quot;const&quot;,
+        &quot;path&quot;: [
+          &quot;sections&quot;,
+          &quot;abstract&quot;,
+          &quot;blocks&quot;,
+          1,
+          &quot;heading&quot;
+        ],
+        &quot;expected&quot;: &quot;&quot;,
+        &quot;actual&quot;: &quot;摘要&quot;
+      },
+      {
+        &quot;validator&quot;: &quot;const&quot;,
+        &quot;path&quot;: [
+          &quot;sections&quot;,
+          &quot;abstract&quot;,
+          &quot;blocks&quot;,
+          2,
+          &quot;heading&quot;
+        ],
+        &quot;expected&quot;: &quot;&quot;,
+        &quot;actual&quot;: &quot;摘要&quot;
+      },
+      {
+        &quot;validator&quot;: &quot;const&quot;,
+        &quot;path&quot;: [
+          &quot;sections&quot;,
+          &quot;abstract&quot;,
+          &quot;blocks&quot;,
+          3,
+          &quot;heading&quot;
+        ],
+        &quot;expected&quot;: &quot;&quot;,
+        &quot;actual&quot;: &quot;摘要&quot;
+      },
+      {
+        &quot;validator&quot;: &quot;const&quot;,
+        &quot;path&quot;: [
+          &quot;sections&quot;,
+          &quot;conclusion&quot;,
+          &quot;blocks&quot;,
+          0,
+          &quot;heading&quot;
+        ],
+        &quot;expected&quot;: &quot;&quot;,
+        &quot;actual&quot;: &quot;结论&quot;
+      },
+      {
+        &quot;validator&quot;: &quot;const&quot;,
+        &quot;path&quot;: [
+          &quot;sections&quot;,
+          &quot;conclusion&quot;,
+          &quot;blocks&quot;,
+          1,
+          &quot;heading&quot;
+        ],
+        &quot;expected&quot;: &quot;&quot;,
+        &quot;actual&quot;: &quot;结论&quot;
+      },
+      {
+        &quot;validator&quot;: &quot;const&quot;,
+        &quot;path&quot;: [
+          &quot;sections&quot;,
+          &quot;conclusion&quot;,
+          &quot;blocks&quot;,
+          2,
+          &quot;heading&quot;
+        ],
+        &quot;expected&quot;: &quot;&quot;,
+        &quot;actual&quot;: &quot;结论&quot;
+      }
+    ],
+    &quot;summary_shape&quot;: {
+      &quot;abstract&quot;: {
+        &quot;units&quot;: 4,
+        &quot;blocks&quot;: 4
+      },
+      &quot;conclusion&quot;: {
+        &quot;units&quot;: 3,
+        &quot;blocks&quot;: 3
+      }
+    }
+  }
+}
+</pre></details></section><section><h2>解释边界 / Interpretation</h2><p>未运行Reviewer/Evaluation/Judge/Jev，无人工金标准，不提供准确率。协议完成不代表科学支持；报告不可交付，Phase14.5保持in_progress，正式15题未运行。</p><p>No scientific reliability or delivery claim is made. Historical failures remain immutable.</p><a href="benchmark.json">JSON</a><a href="benchmark.csv">CSV</a><a href="benchmark.md">Markdown</a></section></main></html>
