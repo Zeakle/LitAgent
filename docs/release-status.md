@@ -2,7 +2,7 @@
 
 ## Verified locally
 
-- Default offline regression: **3861 passed, 25 deselected** (8 deprecation warnings).
+- Default offline regression: **3897 passed, 25 deselected** (8 deprecation warnings).
 - Python 3.11.15 / Node 24.14.0 on macOS; direct dependency constraints install in
   a fresh virtual environment with no broken requirements (`pip check`).
 - Clean source snapshot has no `.env` or private `artifacts`; presentation health
@@ -183,3 +183,33 @@ this is not represented as a verified complete trace tree.
 [Immutable identity, budget stop, read-only diagnostics and four public formats](../benchmarks/survey/results/typed-body-validation-20261021-001/README.md).
 No retrieval, extraction, Judge, Jev or formal 15-case run was added. Live Survey
 remains experimental; Phase 14.5 remains in progress.
+
+## Offline body-repair correction · 2026-10-21
+
+The new staged contract `native-body-summary-v5` preserves the initial writing
+diagnostics before repair budget checks. A refusal records the original response
+and candidate SHA, body problems and independent budget failure, while spending
+zero repair attempts. Trace metadata includes only problem codes and counts.
+
+The versioned repair wire replaces repeated ledger IDs with reversible `cN`
+references and uses a body-specific prompt. Full sources, prose, card identities
+and section permissions remain exactly recoverable. Known sibling schema references
+are explicitly expanded; every native object field is required, and each target
+allows at most three additional scientific units. Original v6 repair consumers
+and single-stage identities retain their existing behavior.
+
+For the immutable failed few-shot input, full-source reservation is **97,555**
+versus **106,977** previously, including the unchanged **20,000** output reserve.
+The writing stage has 100,849 remaining and the old grant had 97,572: this fixed
+input fits by only **17** against the tighter bound. It does not establish a
+margin for different inputs; every future call must be checked again. No failed
+attempt was resumed or overwritten, and no paid call was added.
+
+Offline validation: **3897 passed / 25 deselected** (8 warnings), **145 related
+cases**, including 23 additions; the explicit v4/v5 identity check was strengthened
+and passed separately. The real SDK transport chain through repair, Reviewer and
+Evaluation is exercised with external responses controlled. A validly formatted
+but unsupported scientific claim still blocks strict acceptance. These are
+engineering regressions, not human calibration or evidence of live reliability.
+The v5 paid probe remains closed pending a separately frozen execution/accounting
+migration. Phase 14.5 remains in progress; the 8004 result retains its real failure.
