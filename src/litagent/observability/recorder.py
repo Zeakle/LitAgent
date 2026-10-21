@@ -104,6 +104,7 @@ class RedactingTraceHook:
         "candidate_sha256",
         "contract_version",
         "diagnostic_count",
+        "body_failure_codes",
         "run_id",
         "binding",
         "accepted_count",

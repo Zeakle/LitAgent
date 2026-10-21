@@ -55,6 +55,16 @@ def provider_body(body, cards, language="en", selection=None):
     )
 
 
+def provider_repair(value, cards):
+    """Encode only provider reference slots; production code owns restoration."""
+    result = copy.deepcopy(value)
+    aliases = {cid: f"c{i}" for i, cid in enumerate(sorted(cards), 1)}
+    for patch in result["patches"].values():
+        for unit in [patch, *patch.get("additional_units", [])]:
+            unit["fact_card_ids"] = [aliases[cid] for cid in unit["fact_card_ids"]]
+    return result
+
+
 @pytest.mark.parametrize("language", ["en", "zh-CN"])
 def test_body_and_summary_retain_exact_sources_and_frozen_prose(language):
     cards = facts()

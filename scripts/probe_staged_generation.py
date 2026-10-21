@@ -649,7 +649,7 @@ async def run(root, *, live=False):
                         "grounded_body_v4_typed",
                         "grounded_summaries_v1",
                         *(
-                            {"native_body_repair_v6"}
+                            {"native_body_repair_v6", "native_body_repair_v7_refs"}
                             if m["version"] == TYPED_VERSION
                             else set()
                         ),

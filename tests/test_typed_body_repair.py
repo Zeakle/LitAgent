@@ -13,7 +13,7 @@ from jsonschema import Draft202012Validator, ValidationError
 from openai import AsyncOpenAI
 from test_body_analysis import analysis_document
 from test_native_array_integration import request
-from test_staged_native_generation import provider_body, split
+from test_staged_native_generation import provider_body, provider_repair, split
 from test_writing_passages import facts
 
 from litagent.llm.client import OpenAICompatibleClient
@@ -28,6 +28,7 @@ from litagent.quality import (
     prepare_native_repair_request,
     render_grounded_report,
     save_targeted_repairs,
+    strict_acceptance,
     targeted_repair_state,
 )
 from litagent.safety.budget import CostBudget
@@ -236,7 +237,7 @@ async def test_real_sdk_repairs_share_attempts_then_freeze_before_summary(
             assert state["attempts"][-1]["status"] == "completed"
             value = summaries
         else:
-            assert name == "native_body_repair_v6"
+            assert name == "native_body_repair_v7_refs"
             assert (
                 json.loads(path.read_text())["state"]["attempts"][-1]["status"]
                 == "started_no_replay"
@@ -260,6 +261,8 @@ async def test_real_sdk_repairs_share_attempts_then_freeze_before_summary(
                     scope_notice_id="evidence_limit",
                 )
             value = {"can_repair": True, "patches": {"u0": patch}}
+        if name == "native_body_repair_v7_refs":
+            value = provider_repair(value, cards)
         reply = {
             "id": "sdk-offline",
             "object": "chat.completion",
@@ -370,7 +373,7 @@ async def test_real_sdk_repairs_share_attempts_then_freeze_before_summary(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("invalid_global", [False, True])
+@pytest.mark.parametrize("invalid_global", [False, True, "unsupported_science"])
 async def test_synthesis_repair_reviewer_and_actual_v3_evaluator_share_frozen_sources(
     tmp_path, invalid_global
 ):
@@ -390,10 +393,14 @@ async def test_synthesis_repair_reviewer_and_actual_v3_evaluator_share_frozen_so
 
     cards = facts()
     document = analysis_document(cards)
+    if invalid_global == "unsupported_science":
+        document["sections"]["methods"]["first_block"]["first_sentence"][
+            "text"
+        ] = "EViT improves speed by 50%, while an unrelated DeiT-B setting improves speed by 70%."
     body, summaries = split(document)
     selection = source_selection(cards)
     requests = []
-    evaluator = BatchLLM(incomplete_global=invalid_global)
+    evaluator = BatchLLM(incomplete_global=invalid_global is True)
 
     async def send(request):
         p = json.loads(request.content)
@@ -402,7 +409,7 @@ async def test_synthesis_repair_reviewer_and_actual_v3_evaluator_share_frozen_so
         if name == "grounded_body_v4_typed":
             value = provider_body(body, cards, selection=selection)
             value["methods"][0]["fact_card_refs"] = []
-        elif name == "native_body_repair_v6":
+        elif name == "native_body_repair_v7_refs":
             value = {
                 "can_repair": True,
                 "patches": {
@@ -432,6 +439,18 @@ async def test_synthesis_repair_reviewer_and_actual_v3_evaluator_share_frozen_so
                 p["messages"], response_format=p.get("response_format")
             )
             value = json.loads(result.content)
+            if invalid_global == "unsupported_science" and value.get("decisions"):
+                decision = value["decisions"][0]
+                decision.update(
+                    status="unsupported",
+                    reason_code="insufficient_support",
+                    support_basis=[],
+                )
+                decision["aspect_checks"][0].update(
+                    supported=False,
+                    support_ids=[],
+                    explanation="Controlled unsupported premise, despite valid punctuation.",
+                )
             if "analyses" in p.get("response_format", {}).get("json_schema", {}).get(
                 "schema", {}
             ).get("properties", {}):
@@ -466,6 +485,8 @@ async def test_synthesis_repair_reviewer_and_actual_v3_evaluator_share_frozen_so
                     }
                     for key in ROLES
                 ]
+        if name == "native_body_repair_v7_refs":
+            value = provider_repair(value, cards)
         return httpx.Response(
             200,
             json={
@@ -561,7 +582,7 @@ async def test_synthesis_repair_reviewer_and_actual_v3_evaluator_share_frozen_so
             },
         )
         assert context["evidence_snapshot_sha256"] == result["evidence_snapshot_sha256"]
-        if invalid_global:
+        if invalid_global is True:
             with pytest.raises(ScopedEvaluationError):
                 await evaluate_scoped(
                     llm=lite,
@@ -576,8 +597,15 @@ async def test_synthesis_repair_reviewer_and_actual_v3_evaluator_share_frozen_so
                 context=context,
                 config=EvalConfig(),
             )
-            assert assessment["coverage"]["complete"]
             assert assessment["factual_claim_count"] > 0
+            if invalid_global == "unsupported_science":
+                assert assessment["stages"]["global_check"] == "completed"
+                assert any(
+                    row["status"] == "unsupported" for row in assessment["assertions"]
+                )
+                assert strict_acceptance(assessment)["status"] == "failed"
+            else:
+                assert assessment["coverage"]["complete"]
         assert len(evaluator.calls) >= 3
         assert [p["model"] for p in requests[:4]] == ["pro", "pro", "pro", "lite"]
         assert all(p["model"] == "lite" for p in requests[4:])

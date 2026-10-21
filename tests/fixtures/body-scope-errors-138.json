@@ -1,0 +1,79 @@
+{
+  "raw_response_sha256": "80f8ca0b1643074889caf0148590bcb03a0d512713792da807fe02d408ef59da",
+  "scope": "Local citation-scope regression only; not scientific gold labels or source evidence.",
+  "cases": [
+    {
+      "reason_code": "strict_writing_unit_citation_scope_ambiguous",
+      "location": "experiments.blocks.0.sentences.0",
+      "section_key": "experiments",
+      "candidate_text": "深度K-tuplet网络在miniImageNet基准上的结果优于其他度量式少样本分类方法；同一模型在miniImageNet上训练后，在Caltech-101、CUB-200、Stanford Dogs和Cars这些完全不同数据集上的评估也显著优于先前方法，论文将其解释为对未见类别具有更强泛化能力。",
+      "actual_fact_card_ids": [
+        "f:e11d3cf02758fcf3f2a16f6c"
+      ],
+      "raw_json_path": "sections.experiments.first_block.first_sentence"
+    },
+    {
+      "reason_code": "strict_writing_unit_citation_scope_ambiguous",
+      "location": "experiments.blocks.1.sentences.2",
+      "section_key": "experiments",
+      "candidate_text": "FewSAR基准在统一协议和相同设置下比较少样本SAR目标图像分类方法，结果显示度量学习方法的准确率可以取得最好结果，而元学习和微调方法表现较差；该结论适用于SAR图像基准，不能直接外推到自然图像少样本分类。",
+      "actual_fact_card_ids": [
+        "f:2e505b612094052dbb517227"
+      ],
+      "raw_json_path": "sections.experiments.additional_blocks.0.additional_sentences.1"
+    },
+    {
+      "reason_code": "strict_writing_unit_citation_scope_ambiguous",
+      "location": "open_problems.blocks.0.sentences.0",
+      "section_key": "open_problems",
+      "candidate_text": "传统任务不变度量的核心限制是它允许任务具有不同类别数，却要求任务来自相似域，以便存在一个可跨任务工作的统一度量；这正是Meta-Metric-Learner试图通过任务特定度量和元学习器结合来缓解的问题。",
+      "actual_fact_card_ids": [
+        "f:99a0bc4eb8ca29742bbb1185"
+      ],
+      "raw_json_path": "sections.open_problems.first_block.first_sentence"
+    },
+    {
+      "reason_code": "strict_writing_unit_citation_scope_ambiguous",
+      "location": "open_problems.blocks.1.sentences.1",
+      "section_key": "open_problems",
+      "candidate_text": "相似性分数并非同等可靠，查询—支持对的相似性可能受神经网络不确定性影响；不确定性感知框架通过把观测相似性转换为概率表示并进行不确定性感知优化来利用有限样本，但所选材料没有给出与其他方法完全统一的成本—精度比较。",
+      "actual_fact_card_ids": [
+        "f:fdabcb9e3f851c624386a527"
+      ],
+      "raw_json_path": "sections.open_problems.additional_blocks.0.additional_sentences.0"
+    },
+    {
+      "reason_code": "strict_writing_unit_citation_scope_ambiguous",
+      "location": "open_problems.blocks.2.sentences.0",
+      "section_key": "open_problems",
+      "candidate_text": "嵌入空间的类内紧凑性和类间可分性若没有被显式约束，少样本嵌入网络可能学不到充分可分的潜在空间；Proto-Triplet Loss和ICNN loss通过类内、类间距离或近邻分数约束改进嵌入，但2%准确率提升的报告来自miniImagenNet实验。",
+      "actual_fact_card_ids": [
+        "f:1fbbfefb2aa56703ec380fff"
+      ],
+      "raw_json_path": "sections.open_problems.additional_blocks.1.first_sentence"
+    },
+    {
+      "reason_code": "strict_writing_unit_citation_scope_ambiguous",
+      "location": "open_problems.blocks.2.sentences.1",
+      "section_key": "open_problems",
+      "candidate_text": "深度K-tuplet网络强调训练样本关系和特征嵌入的重要性，说明仅设计查询—支持相似性比较而忽视嵌入学习会限制少样本泛化；不过其跨域证据是在miniImageNet训练后迁移到Caltech-101、CUB-200、Stanford Dogs和Cars的特定设置下获得的。",
+      "actual_fact_card_ids": [
+        "f:5f30847627a87481a58405c1"
+      ],
+      "raw_json_path": "sections.open_problems.additional_blocks.1.additional_sentences.0"
+    },
+    {
+      "reason_code": "strict_writing_unit_citation_scope_ambiguous",
+      "location": "open_problems.blocks.3.sentences.1",
+      "section_key": "open_problems",
+      "candidate_text": "因此，后续比较至少需要统一数据集、N-way K-shot episode、backbone、训练预算和评价指标，并分别报告自然图像、细粒度图像和SAR等跨域条件；这是由当前所选证据中协议不一致和适用域不同所界定的比较需求，而不是对整个研究领域是否已有相关工作的判断。",
+      "actual_fact_card_ids": [
+        "f:f50df9a395e956d178a8f0f4",
+        "f:5b8ef491cd668f3dea9a7334",
+        "f:5f30847627a87481a58405c1",
+        "f:1fbbfefb2aa56703ec380fff"
+      ],
+      "raw_json_path": "sections.open_problems.additional_blocks.2.additional_sentences.0"
+    }
+  ]
+}

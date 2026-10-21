@@ -12,7 +12,7 @@ import pytest_asyncio
 from openai import AsyncOpenAI
 from test_body_analysis import analysis_document
 from test_complete_native_repair import source_selection
-from test_staged_native_generation import provider_body, split
+from test_staged_native_generation import provider_body, provider_repair, split
 from test_writing_passages import facts
 
 from litagent import staged_generation
@@ -575,6 +575,8 @@ async def typed_accounted(accounted, monkeypatch):
         atomic_json(previous / "manifest.json", manifest)
         assert (await probe.run(previous, live=True))["status"] == "protocol_completed"
     monkeypatch.setattr(probe, "ACCOUNTED_CONTRACT", "native-body-summary-v3")
+    # Explicit MockTransport harness only; production v5 remains closed.
+    monkeypatch.setattr(probe, "TYPED_CONTRACT", probe.CONTRACT)
     root = previous.parent / "typed"
     current = probe.prepare(root, previous.parent / "parent", previous)
     assert len(calls) == 4
@@ -615,11 +617,11 @@ async def test_typed_grant_inherits_two_hops_and_runs_bounded_sdk(
             if name == "grounded_summaries_v1"
             else (
                 {"can_repair": True, "patches": {"u0": patch}}
-                if name == "native_body_repair_v6"
+                if name == "native_body_repair_v7_refs"
                 else wire
             )
         )
-        if name == "native_body_repair_v6":
+        if name == "native_body_repair_v7_refs":
             state = json.loads((root / "generation.json").read_text())["state"]
             assert len(state["attempts"]) == 1
             assert state["attempts"][0]["status"] == "started_no_replay"
@@ -628,6 +630,8 @@ async def test_typed_grant_inherits_two_hops_and_runs_bounded_sdk(
                 repair_packet["sources"]
                 == json.loads(manifest["input"]["messages"][1]["content"])["sources"]
             )
+        if name == "native_body_repair_v7_refs":
+            value = provider_repair(value, manifest["input"]["cards"])
         result = {
             "id": "typed-offline",
             "object": "chat.completion",
