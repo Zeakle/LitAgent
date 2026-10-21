@@ -2,7 +2,7 @@
 
 ## Verified locally
 
-- Default offline regression: **3798 passed, 25 deselected** (8 deprecation warnings).
+- Default offline regression: **3861 passed, 25 deselected** (8 deprecation warnings).
 - Python 3.11.15 / Node 24.14.0 on macOS; direct dependency constraints install in
   a fresh virtual environment with no broken requirements (`pip check`).
 - Clean source snapshot has no `.env` or private `artifacts`; presentation health
@@ -12,7 +12,7 @@
 - Built-in synthetic source ID corrected; bibliography contains the cited fixture
   rather than returning HTTP 200 with an empty reference list.
 
-## Bounded real protocol: failed; no further paid runs
+## Initial bounded real protocol: historical failure and stop
 
 Full frozen input from the latest failed Survey, 21 selected cards with complete
 source text. One Pro request with lossless inline schema, 120k total cap / 20k
@@ -99,7 +99,7 @@ separate. The live trace has one redacted generation but lacks its root terminal
 span; the executor now emits an explicitly unverified completion for future runs.
 The live trace was not rewritten. Final offline regression remains 3773 passed.
 
-## Chapter-scoped short references · offline candidate
+## Chapter-scoped short references · historical offline candidate
 
 `native-body-summary-v3` asks the model for short chapter-prefixed references;
 the host restores the exact stable fact-card IDs before ordinary validation.
@@ -113,3 +113,48 @@ reservation is 90,505 versus the previous 95,603; this is not actual token savin
 or a measured quality improvement. No new paid request was issued. The older paid
 protocol CLI refuses the new contract until the latest accounting lineage is wired.
 The previous real trial and its failures remain unchanged.
+
+## Short-reference live observation · 2026-10-21
+
+At `519e433`, `native-body-summary-v3` produced valid JSON and passed its reference
+schema on the same frozen public few-shot input. One Pro call used 18,682 input +
+3,788 output = **22,470 tokens**, complete usage, zero retries. Host validation
+then rejected 12 writing-contract issues: five invalid scope notices, three
+scientific units without cards, and four ambiguous compound citation scopes.
+Summary, Reviewer, Evaluation, Judge and Jev did not run; the report was not
+delivered. These are local contract diagnostics, not 12 confirmed scientific errors.
+
+[Public observation and original response SHA](../benchmarks/survey/results/short-card-protocol-20261021-001/README.md).
+Its four result formats agree. Desktop/390px bilingual text, keyboard error/identity
+expansion, zero console errors and no overflow were checked. LangFuse readback has
+one generation / 22,470 tokens with empty generation I/O and an explicitly
+unverified root terminal span. Earlier trace and visual limitations remain recorded.
+The parent family is now 29 requests / 176,723 tokens; cumulative history is 611
+model requests / 3,274,644 known tokens, retaining 1,003,467 older unknown holds.
+Protocol probes do not add initial Survey observations.
+
+## Typed body and bounded repairs · current offline validation
+
+At `840c699`, `native-body-summary-v4` limits scientific rows to nonempty
+chapter-authorized references. Optional notices select catalog IDs at explicit
+positions; the host supplies their fixed text. Body validation can now consume the
+existing shared maximum of two located repairs before freezing summaries. All
+non-target units and sources remain protected; no-progress candidates, newly
+duplicated findings, invalid responses, unknown usage, cancellation and restarts
+fail closed. Failure locations bind the actual body or repair response SHA.
+
+**3861 default tests and 173 related tests passed**, including 36 new cases and a
+real SDK consumer chain through Synthesis, Reviewer, Runner context and Evaluation
+v3, with external responses controlled by fixtures. Scientific and global negative
+cases still block completion. All 12 original diagnostics remain reproducible.
+The complete 12-target repair reservation is 113,867 with 20,000 output tokens
+reserved, below the unchanged 117,964 context ceiling; full sources, original
+candidate and permissions are preserved. This is a conservative reservation,
+not measured token savings or scientific quality improvement.
+
+This revision made **zero paid calls**. The v4 paid probe remains disabled until a
+new bounded executor inherits the latest receipt above; an older budget cannot be
+reused. The development service was reloaded and checked healthy with no active
+Survey. The frozen presentation and previous result pages remain unchanged.
+Live Survey is still experimental, formal cases remain **0/15**, and Phase 14.5
+remains in progress pending real semantic validation.
