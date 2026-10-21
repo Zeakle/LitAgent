@@ -658,13 +658,18 @@ async def execute(root, m, config, budget, *, received_body=None):
                     or body.get("thinking") != {"type": "disabled"}
                     or body["response_format"]["json_schema"]["name"]
                     not in (
-                        {"native_body_repair_v7_refs", "grounded_summaries_v1"}
+                        {
+                            "native_body_repair_v7_refs",
+                            "grounded_summaries_v1",
+                            "grounded_summaries_v2_refs",
+                        }
                         if received_body is not None
                         else {
                             "grounded_body_v2_rows",
                             "grounded_body_v3_refs",
                             "grounded_body_v4_typed",
                             "grounded_summaries_v1",
+                            "grounded_summaries_v2_refs",
                             *(
                                 {"native_body_repair_v6", "native_body_repair_v7_refs"}
                                 if m["version"] == TYPED_VERSION

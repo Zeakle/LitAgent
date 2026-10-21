@@ -55,6 +55,19 @@ def provider_body(body, cards, language="en", selection=None):
     )
 
 
+def provider_summaries(value, request):
+    """Encode only a simulated provider reply for the requested summary contract."""
+    if (
+        request["response_format"]["json_schema"]["name"]
+        != "grounded_summaries_v2_refs"
+    ):
+        return copy.deepcopy(value)
+    from litagent.staged_generation import encode_summaries, summary_reference_binding
+
+    packet = json.loads(request["messages"][1]["content"])
+    return encode_summaries(value, summary_reference_binding(packet["frozen_body"]))
+
+
 def provider_repair(value, cards):
     """Encode only provider reference slots; production code owns restoration."""
     result = copy.deepcopy(value)
@@ -260,7 +273,9 @@ async def test_real_sdk_partitions_and_failures_never_replay(tmp_path, fault):
         assert value["model"] == "pro-offline" and value["max_tokens"] == 20000
         name = value["response_format"]["json_schema"]["name"]
         assert name == (
-            "grounded_body_v4_typed" if len(calls) == 1 else "grounded_summaries_v1"
+            "grounded_body_v4_typed"
+            if len(calls) == 1
+            else "grounded_summaries_v2_refs"
         )
         journal = next(tmp_path.glob("*.generation-*.json"))
         persisted = json.loads(journal.read_text())
@@ -268,14 +283,16 @@ async def test_real_sdk_partitions_and_failures_never_replay(tmp_path, fault):
         if fault == "cancel":
             raise asyncio.CancelledError()
         content = copy.deepcopy(
-            provider_body(body, cards) if len(calls) == 1 else summaries
+            provider_body(body, cards)
+            if len(calls) == 1
+            else provider_summaries(summaries, value)
         )
         if fault == "body_empty":
             content["methods"] = []
         if fault == "body_order":
             content["methods"][0]["block_index"] = 2
         if fault == "body_mutation" and len(calls) == 2:
-            content["sections"]["methods"] = body["sections"]["methods"]
+            content["methods"] = body["sections"]["methods"]
         malformed = fault == "body_json" or (
             fault == "summary_json" and len(calls) == 2
         )
@@ -354,6 +371,21 @@ async def test_real_sdk_partitions_and_failures_never_replay(tmp_path, fault):
             assert proof["transport"] == "host_assembled_stages"
             assert proof["scientific_verdict"] == "not_evaluated"
             assert set(proof["stage_response_sha256"]) == {"body", "summaries"}
+            from litagent.report_audit import digest
+            from litagent.staged_generation import summary_reference_binding
+
+            expected_binding = summary_reference_binding(body)
+            projection = proof["summary_reference_projection"]
+            assert projection["binding_sha256"] == expected_binding["sha256"]
+            assert projection["canonical_summary_sha256"] == digest(summaries)
+            persisted = json.loads(
+                next(tmp_path.glob("*.generation-*.json")).read_text()
+            )
+            assert persisted["summary_reference_binding"] == expected_binding
+            assert (
+                projection["raw_response_sha256"]
+                == persisted["steps"]["summaries"]["raw_response_sha256"]
+            )
             assert proof["body_row_projection"]["positions"]
         if fault == "body_order":
             from litagent.demo import project_flow_demo_view
@@ -448,10 +480,12 @@ async def test_actual_human_revision_uses_two_parts_and_never_commits_body_mutat
         calls.append(packet)
         assert packet["model"] == "pro-offline"
         output = copy.deepcopy(
-            provider_body(body, cards) if len(calls) == 1 else summaries
+            provider_body(body, cards)
+            if len(calls) == 1
+            else provider_summaries(summaries, json.loads(req.content))
         )
         if len(calls) == 2:
-            output["sections"]["methods"] = body["sections"]["methods"]
+            output["methods"] = body["sections"]["methods"]
         return httpx.Response(
             200,
             json={
@@ -525,7 +559,7 @@ async def test_actual_human_revision_uses_two_parts_and_never_commits_body_mutat
         assert len(calls) == 2
         assert [p["response_format"]["json_schema"]["name"] for p in calls] == [
             "grounded_body_v4_typed",
-            "grounded_summaries_v1",
+            "grounded_summaries_v2_refs",
         ]
         assert not outcome["committed"] and outcome["error_type"] == "ValidationError"
         assert returned == report == before

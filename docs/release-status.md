@@ -2,7 +2,7 @@
 
 ## Verified locally
 
-- Default offline regression: **3916 passed, 25 deselected** (8 deprecation warnings).
+- Default offline regression: **3939 passed, 25 deselected** (8 deprecation warnings).
 - Python 3.11.15 / Node 24.14.0 on macOS; direct dependency constraints install in
   a fresh virtual environment with no broken requirements (`pip check`).
 - Clean source snapshot has no `.env` or private `artifacts`; presentation health
@@ -251,3 +251,44 @@ were checked. The new result is served separately on 8005; 8004 remains unchange
 Live Survey remains experimental. Next work is offline summary-wire diagnosis;
 no new initial body generation, paid replay or formal suite was triggered.
 Phase 14.5 remains in progress.
+
+
+## Offline summary reference wire · 2026-10-22
+
+`native-body-summary-v6` uses `grounded_summaries_v2_refs` for new staged runs.
+The model returns flat abstract/conclusion sentence rows and short `bN` selectors;
+the host restores exact original scientific body coordinates. Only scientific
+units with actual cards enter the menu. Complete source records, prose, conditions,
+position order and permissions remain; repeated input card identities use reversible
+`cN` keys. The local binding retains original identities and body SHA. Provider
+bytes and restored-summary SHA are stored independently. Legacy v1 summary
+transport remains explicit; single-stage fingerprints retain their semantics.
+
+The real malformed summary is replayed read-only at its original EOF. Public tests
+contain a same-character-length projection with text values redacted, plus distinct
+projection and original-response SHA fields. They do not publish the complete raw
+model response or infer scientific correctness from the projected fixture.
+
+Offline regression: **3939 passed / 25 deselected** (8 warnings), including
+23 new cases. A related run passed 210 cases before the final additional premise
+limit check; the full run includes that check and stronger journal binding assertions.
+Real SDK test transports exercise Synthesis, repair, Reviewer and Evaluation without
+paid calls; valid formatting still does not waive unsupported scientific claims.
+Nine changed Python files pass Black/isort. Seven historical protection maps and
+Plan SHA remain unchanged. No new UI or visual pass is claimed; 8005 retains the
+real failed observation.
+
+The exact repaired body has 50 units, including 48 scientific units, 22 used cards
+and 15 complete sources. Full restoration equals the original host input. The
+initial flat directory reserved 75,833 tokens; reversible IDs/JSON whitespace
+reduction lowers this to **72,317**, retaining the **20,000 output reserve**. The
+latest writing-stage balance is only **67,576**: preflight remains blocked by
+**4,741**. Even the old v1 request (71,669) no longer fits. This is an input
+reservation measurement, not actual usage savings or evidence of model reliability.
+
+No paid replay, new generation or formal suite was started. Parent totals remain
+32 requests / 232,424 tokens; history remains 614 model requests / 3,330,345 known
+tokens and 1,003,467 older unknown holds. Retired paid executors reject v6 until
+latest accounting and an independently bounded execution identity are wired.
+Next work is further lossless input encoding and then bounded live validation;
+Phase 14.5 remains in progress, and live Survey remains experimental.

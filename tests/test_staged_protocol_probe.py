@@ -12,7 +12,12 @@ import pytest_asyncio
 from openai import AsyncOpenAI
 from test_body_analysis import analysis_document
 from test_complete_native_repair import source_selection
-from test_staged_native_generation import provider_body, provider_repair, split
+from test_staged_native_generation import (
+    provider_body,
+    provider_repair,
+    provider_summaries,
+    split,
+)
 from test_writing_passages import facts
 
 from litagent import staged_generation
@@ -193,7 +198,11 @@ async def test_sdk_calls_budget_no_replay_and_parent_preservation(
         )
         if fault == "cancel":
             raise asyncio.CancelledError()
-        content = provider_body(body, cards) if len(calls) == 1 else summaries
+        content = (
+            provider_body(body, cards)
+            if len(calls) == 1
+            else provider_summaries(summaries, packet)
+        )
         value = {
             "id": "offline",
             "object": "chat.completion",
@@ -318,9 +327,9 @@ async def accounted(prepared, monkeypatch):
         packet = json.loads(request.content)
         calls.append(packet)
         content = (
-            summaries
+            provider_summaries(summaries, packet)
             if packet["response_format"]["json_schema"]["name"]
-            == "grounded_summaries_v1"
+            in {"grounded_summaries_v1", "grounded_summaries_v2_refs"}
             else provider_body(body, cards)
         )
         return httpx.Response(
@@ -613,8 +622,8 @@ async def test_typed_grant_inherits_two_hops_and_runs_bounded_sdk(
         if fault == "cancel":
             raise asyncio.CancelledError()
         value = (
-            summaries
-            if name == "grounded_summaries_v1"
+            provider_summaries(summaries, packet)
+            if name in {"grounded_summaries_v1", "grounded_summaries_v2_refs"}
             else (
                 {"can_repair": True, "patches": {"u0": patch}}
                 if name == "native_body_repair_v7_refs"

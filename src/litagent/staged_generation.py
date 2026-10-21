@@ -36,10 +36,11 @@ from litagent.quality import (
 from litagent.report_audit import atomic_json, digest
 from litagent.writing_passages import compile_passage_report
 
-CONTRACT = "native-body-summary-v5"
+CONTRACT = "native-body-summary-v6"
 CARD_REFERENCE_CONTRACT = "section-card-refs-v1"
 BODY_REPAIR_WIRE = "body-repair-card-aliases-v1"
 RECEIVED_BODY_CONTRACT = "received-typed-body-v1"
+SUMMARY_REFERENCE_CONTRACT = "summary-body-refs-v1"
 SECTION_PREFIXES = dict(zip(BODY, ("i", "t", "m", "e", "o")))
 BODY_INSTRUCTION = """Write only the five academic body sections in the response schema.
 The host generates abstract/conclusion separately after freezing this body.
@@ -709,7 +710,149 @@ def validate_body_document(body, cards, structure, language, selection):
     return body, count
 
 
-def prepare_summary_request(body, body_units, messages, response_format):
+def summary_reference_binding(body):
+    """Bind scientific summary premises to exact immutable body coordinates."""
+    if not isinstance(body, dict) or set(body) != {"title", "sections"}:
+        raise ValueError("staged_summary_body_invalid")
+    canonical_from_array(body, body_only=True)
+    units, count = {}, 0
+    for key in BODY:
+        for bi, block in enumerate(body["sections"][key]["blocks"]):
+            for si, unit in enumerate(block["sentences"]):
+                count += 1
+                if unit["kind"] == "scientific" and unit["fact_card_ids"]:
+                    units[f"b{len(units)+1}"] = {
+                        "section_key": key,
+                        "block_index": bi,
+                        "sentence_index": si,
+                    }
+    if not units or count > 126:
+        raise ValueError("staged_generation_summary_capacity_unavailable")
+    used = {
+        cid
+        for section in body["sections"].values()
+        for block in section["blocks"]
+        for unit in block["sentences"]
+        for cid in unit["fact_card_ids"]
+    }
+    binding = {
+        "contract": SUMMARY_REFERENCE_CONTRACT,
+        "reading_cards": {f"c{i}": cid for i, cid in enumerate(sorted(used), 1)},
+        "body_sha256": digest(body),
+        "body_unit_count": count,
+        "units": units,
+    }
+    binding["sha256"] = digest(binding)
+    return binding
+
+
+def _summary_refs_schema(binding):
+    """Keep native objects closed and retain the original six-premise limit."""
+    capacity = 128 - binding["body_unit_count"]
+    row = {
+        "type": "object",
+        "properties": {
+            "block_index": {"type": "integer", "minimum": 0, "maximum": capacity - 1},
+            "heading": {"type": "string"},
+            "type": {"type": "string", "enum": ["paragraph", "list"]},
+            "text": {"type": "string", "minLength": 1},
+            "body_refs": {
+                "type": "array",
+                "items": {
+                    "type": "string",
+                    "enum": list(binding["units"]),
+                },
+                "minItems": 1,
+                "maxItems": 6,
+                "uniqueItems": True,
+            },
+        },
+        "required": ["block_index", "heading", "type", "text", "body_refs"],
+        "additionalProperties": False,
+    }
+    return {
+        "type": "object",
+        "properties": {
+            key: {
+                "type": "array",
+                "items": copy.deepcopy(row),
+                "minItems": 1,
+                "maxItems": capacity - 1,
+            }
+            for key in ("abstract", "conclusion")
+        },
+        "required": ["abstract", "conclusion"],
+        "additionalProperties": False,
+    }
+
+
+def encode_summaries(summaries, binding):
+    """Encode only provider dependency fields, never scientific prose."""
+    closed(summaries, {"sections"})
+    closed(summaries["sections"], {"abstract", "conclusion"})
+    lookup = {digest(ref): key for key, ref in binding["units"].items()}
+    result = {}
+    for key, section in summaries["sections"].items():
+        closed(section, {"blocks"})
+        rows = []
+        for bi, block in enumerate(section["blocks"]):
+            closed(block, {"heading", "type", "sentences"})
+            for unit in block["sentences"]:
+                closed(unit, {"text", "body_references"})
+                try:
+                    refs = [lookup[digest(ref)] for ref in unit["body_references"]]
+                except (KeyError, TypeError) as exc:
+                    raise ValueError("staged_summary_reference_invalid") from exc
+                rows.append(
+                    {
+                        "block_index": bi,
+                        "heading": block["heading"],
+                        "type": block["type"],
+                        "text": unit["text"],
+                        "body_refs": refs,
+                    }
+                )
+        result[key] = rows
+    Draft202012Validator(_summary_refs_schema(binding)).validate(result)
+    return result
+
+
+def decode_summaries(rows, binding, *, body):
+    """Restore exact original premises and reject mutated bodies or sparse blocks."""
+    if binding != summary_reference_binding(body):
+        raise ValueError("staged_summary_binding_invalid")
+    Draft202012Validator(_summary_refs_schema(binding)).validate(rows)
+    if sum(len(part) for part in rows.values()) > 128 - binding["body_unit_count"]:
+        raise ValueError("staged_generation_summary_capacity_unavailable")
+    result = {"sections": {}}
+    for key in ("abstract", "conclusion"):
+        blocks = []
+        for row in rows[key]:
+            bi = row["block_index"]
+            if bi == len(blocks):
+                blocks.append(
+                    {"heading": row["heading"], "type": row["type"], "sentences": []}
+                )
+            elif bi != len(blocks) - 1:
+                raise ValueError("staged_summary_row_order_invalid")
+            block = blocks[bi]
+            if block["heading"] != row["heading"] or block["type"] != row["type"]:
+                raise ValueError("staged_summary_block_metadata_invalid")
+            block["sentences"].append(
+                {
+                    "text": row["text"],
+                    "body_references": [
+                        copy.deepcopy(binding["units"][ref]) for ref in row["body_refs"]
+                    ],
+                }
+            )
+        result["sections"][key] = {"blocks": blocks}
+    return result
+
+
+def prepare_summary_request(
+    body, body_units, messages, response_format, *, short_refs=False
+):
     """Send frozen prose and complete sources for every actually used body card."""
     original = json.loads(messages[1]["content"])
     used = {
@@ -753,10 +896,51 @@ def prepare_summary_request(body, body_units, messages, response_format):
         "required": ["sections"],
         "additionalProperties": False,
     }
+    instruction = SUMMARY_INSTRUCTION
+    name = "grounded_summaries_v1"
+    if short_refs:
+        binding = summary_reference_binding(body)
+        if binding["body_unit_count"] != body_units:
+            raise ValueError("staged_summary_count_invalid")
+        by_id = {cid: ref for ref, cid in binding["reading_cards"].items()}
+        packet["frozen_body"] = _short_reference_fields(body, by_id)
+        packet["cards"] = {
+            ref: copy.deepcopy(cards[cid])
+            for ref, cid in binding["reading_cards"].items()
+        }
+        packet["body_unit_index"] = copy.deepcopy(binding["units"])
+        packet["summary_reference_contract"] = SUMMARY_REFERENCE_CONTRACT
+        schema = _summary_refs_schema(binding)
+        name = "grounded_summaries_v2_refs"
+        instruction = SUMMARY_INSTRUCTION.replace(
+            "body_references selecting actual scientific body units at their original\n"
+            "zero-based section_key/block_index/sentence_index. The host derives citations.",
+            "body_refs selecting exact bN keys from body_unit_index. Each key identifies\n"
+            "one scientific unit at its unchanged original location. The host restores\n"
+            "positions and derives citations. Never return coordinate objects or card IDs.",
+        ) + (
+            "\nReturn abstract and conclusion directly at the root as nonempty arrays. "
+            "Each row has block_index, heading, type, text, body_refs. Start blocks at "
+            "zero, advance consecutively, and repeat unchanged heading/type within a "
+            "block. Each text is an atomic scientific finding with 1-6 distinct body "
+            "premises. In frozen_body, fact_card_ids use cN reading keys into cards. "
+            "Original sources retain their complete identity metadata. Never output "
+            "cN or source metadata as summary references. "
+            "Do not output sections/blocks/sentences wrappers, fixed notices "
+            "or a reference dump. Keep both sections within remaining_unit_capacity."
+        )
     return [
-        {"role": "system", "content": SUMMARY_INSTRUCTION + APPLICABILITY_INSTRUCTION},
-        {"role": "user", "content": json.dumps(packet, ensure_ascii=False)},
-    ], _format(schema, "grounded_summaries_v1")
+        {"role": "system", "content": instruction + APPLICABILITY_INSTRUCTION},
+        {
+            "role": "user",
+            "content": json.dumps(
+                packet,
+                ensure_ascii=False,
+                **({"separators": (",", ":")} if short_refs else {}),
+            ),
+        },
+        *copy.deepcopy(messages[2:]),
+    ], _format(schema, name)
 
 
 def prepare_staged_body_repair(
@@ -1148,11 +1332,29 @@ async def generate_staged_report(
             )
         body_entry["status"] = "locally_repaired" if repaired_here else "locally_valid"
         atomic_json(path, state)
-        prepared, rf = prepare_summary_request(body, count, messages, response_format)
+        short_summaries = CONTRACT == "native-body-summary-v6"
+        prepared, rf = prepare_summary_request(
+            body, count, messages, response_format, short_refs=short_summaries
+        )
+        if short_summaries:
+            state["summary_reference_binding"] = summary_reference_binding(body)
+            atomic_json(path, state)
         part, raw = "summaries", ""
         raw = await call(part, prepared, rf)
         summaries = json.loads(raw, object_pairs_hook=unique)
         Draft202012Validator(rf["json_schema"]["schema"]).validate(summaries)
+        if short_summaries:
+            summaries = decode_summaries(
+                summaries, state["summary_reference_binding"], body=body
+            )
+            state["steps"][part]["restored_summary_sha256"] = digest(summaries)
+            state["summary_reference_projection"] = {
+                "contract": SUMMARY_REFERENCE_CONTRACT,
+                "binding_sha256": state["summary_reference_binding"]["sha256"],
+                "raw_response_sha256": state["steps"][part]["raw_response_sha256"],
+                "canonical_summary_sha256": digest(summaries),
+            }
+            atomic_json(path, state)
         combined = {
             "title": body["title"],
             "sections": {**body["sections"], **summaries["sections"]},
@@ -1172,6 +1374,10 @@ async def generate_staged_report(
             },
             body_row_projection=body_entry["projection"],
         )
+        if short_summaries:
+            proof["summary_reference_projection"] = copy.deepcopy(
+                state["summary_reference_projection"]
+            )
         if received_body is not None:
             proof["received_body"] = {
                 k: received_body[k]

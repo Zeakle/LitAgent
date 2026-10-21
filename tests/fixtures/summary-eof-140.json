@@ -1,0 +1,20 @@
+{
+  "version": "summary-eof-replay-v1",
+  "raw_response": "{\"sections\":{\"abstract\":{\"blocks\":[{\"heading\":\"\",\"type\":\"paragraph\",\"sentences\":[{\"text\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\",\"body_references\":[{\"section_key\":\"taxonomy\",\"block_index\":0,\"sentence_index\":0},{\"section_key\":\"taxonomy\",\"block_index\":0,\"sentence_index\":1}]},{\"text\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\",\"body_references\":[{\"section_key\":\"methods\",\"block_index\":0,\"sentence_index\":0},{\"section_key\":\"methods\",\"block_index\":1,\"sentence_index\":0},{\"section_key\":\"methods\",\"block_index\":2,\"sentence_index\":0},{\"section_key\":\"methods\",\"block_index\":3,\"sentence_index\":0}]},{\"text\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\",\"body_references\":[{\"section_key\":\"experiments\",\"block_index\":0,\"sentence_index\":0},{\"section_key\":\"experiments\",\"block_index\":0,\"sentence_index\":1},{\"section_key\":\"experiments\",\"block_index\":0,\"sentence_index\":2},{\"section_key\":\"experiments\",\"block_index\":0,\"sentence_index\":3}]},{\"text\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\",\"body_references\":[{\"section_key\":\"experiments\",\"block_index\":1,\"sentence_index\":2},{\"section_key\":\"experiments\",\"block_index\":1,\"sentence_index\":4},{\"section_key\":\"experiments\",\"block_index\":2,\"sentence_index\":2}]}]}]},\"conclusion\":{\"blocks\":[{\"heading\":\"\",\"type\":\"paragraph\",\"sentences\":[{\"text\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\",\"body_references\":[{\"section_key\":\"taxonomy\",\"block_index\":0,\"sentence_index\":1},{\"section_key\":\"methods\",\"block_index\":1,\"sentence_index\":1},{\"section_key\":\"methods\",\"block_index\":2,\"sentence_index\":1},{\"section_key\":\"methods\",\"block_index\":3,\"sentence_index\":1}]},{\"text\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\",\"body_references\":[{\"section_key\":\"experiments\",\"block_index\":0,\"sentence_index\":0},{\"section_key\":\"experiments\",\"block_index\":0,\"sentence_index\":2},{\"section_key\":\"experiments\",\"block_index\":0,\"sentence_index\":3},{\"section_key\":\"experiments\",\"block_index\":1,\"sentence_index\":0},{\"section_key\":\"experiments\",\"block_index\":1,\"sentence_index\":2}]},{\"text\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\",\"body_references\":[{\"section_key\":\"experiments\",\"block_index\":2,\"sentence_index\":2},{\"section_key\":\"open_problems\",\"block_index\":3,\"sentence_index\":1},{\"section_key\":\"open_problems\",\"block_index\":3,\"sentence_index\":2},{\"section_key\":\"open_problems\",\"block_index\":3,\"sentence_index\":3}]}]}]}}",
+  "raw_response_sha256": "cc9469a269ffa88da83ff3abf9dae8bde760cd8b2d927684ad731627d3accf53",
+  "source_binding": "98acf828d08d7e6ed068ca5ce0a6933375c9e01064175554a4d4b7675f2e0218",
+  "json_error": {
+    "offset": 2854,
+    "line": 1,
+    "column": 2855
+  },
+  "finish_reason": "stop",
+  "usage": {
+    "prompt_tokens": 13424,
+    "completion_tokens": 973,
+    "usage_available": true
+  },
+  "scientific_verdict": "not_evaluated",
+  "source_raw_response_sha256": "f69a74db0f1ac419f0384ce373bff6ba041233ee7f0a36394b8b3b8549f01b0b",
+  "projection": "text-values-redacted-same-length-v1"
+}

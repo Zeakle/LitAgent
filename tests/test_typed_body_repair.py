@@ -13,7 +13,12 @@ from jsonschema import Draft202012Validator, ValidationError
 from openai import AsyncOpenAI
 from test_body_analysis import analysis_document
 from test_native_array_integration import request
-from test_staged_native_generation import provider_body, provider_repair, split
+from test_staged_native_generation import (
+    provider_body,
+    provider_repair,
+    provider_summaries,
+    split,
+)
 from test_writing_passages import facts
 
 from litagent.llm.client import OpenAICompatibleClient
@@ -233,9 +238,9 @@ async def test_real_sdk_repairs_share_attempts_then_freeze_before_summary(
         name = payload["response_format"]["json_schema"]["name"]
         if name == "grounded_body_v4_typed":
             value = body_wire
-        elif name == "grounded_summaries_v1":
+        elif name == "grounded_summaries_v2_refs":
             assert state["attempts"][-1]["status"] == "completed"
-            value = summaries
+            value = provider_summaries(summaries, payload)
         else:
             assert name == "native_body_repair_v7_refs"
             assert (
@@ -345,7 +350,8 @@ async def test_real_sdk_repairs_share_attempts_then_freeze_before_summary(
             ):
                 await generate_staged_report(client, messages, rf, **kwargs)
             assert all(
-                c["response_format"]["json_schema"]["name"] != "grounded_summaries_v1"
+                c["response_format"]["json_schema"]["name"]
+                != "grounded_summaries_v2_refs"
                 for c in calls
             )
             assert len(calls) == (1 if fault == "exhausted" else 2)
@@ -421,8 +427,8 @@ async def test_synthesis_repair_reviewer_and_actual_v3_evaluator_share_frozen_so
                     }
                 },
             }
-        elif name == "grounded_summaries_v1":
-            value = summaries
+        elif name == "grounded_summaries_v2_refs":
+            value = provider_summaries(summaries, p)
         elif len(requests) == 4:
             value = {
                 "score": 0.9,

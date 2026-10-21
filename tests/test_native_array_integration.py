@@ -379,13 +379,16 @@ async def test_real_reviewer_to_whole_revision_uses_explicit_array_wire(
                         ),
                     )
                 else:
-                    assert name == "grounded_summaries_v1"
+                    assert name == "grounded_summaries_v2_refs"
                     value = {
                         "sections": {
                             key: value["sections"][key]
                             for key in ("abstract", "conclusion")
                         }
                     }
+                    from test_staged_native_generation import provider_summaries
+
+                    value = provider_summaries(value, packet)
             else:
                 assert name == "grounded_report_v23_arrays"
             content = json.dumps(value)

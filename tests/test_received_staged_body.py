@@ -12,7 +12,12 @@ import pytest_asyncio
 from openai import AsyncOpenAI
 from test_body_analysis import analysis_document
 from test_staged_body_diagnostics import repair_inputs
-from test_staged_native_generation import provider_body, provider_repair, split
+from test_staged_native_generation import (
+    provider_body,
+    provider_repair,
+    provider_summaries,
+    split,
+)
 from test_staged_protocol_probe import accounted, prepared
 
 from litagent import staged_generation as staged
@@ -103,13 +108,13 @@ async def test_received_sdk_skips_body_preserves_attempts_and_never_replays(
         packet = json.loads(request.content)
         sent.append(packet)
         name = packet["response_format"]["json_schema"]["name"]
-        assert name in {"native_body_repair_v7_refs", "grounded_summaries_v1"}
+        assert name in {"native_body_repair_v7_refs", "grounded_summaries_v2_refs"}
         if fault == "cancel":
             raise asyncio.CancelledError()
         value = (
             provider_repair(x["response"], x["cards"])
             if name == "native_body_repair_v7_refs"
-            else x["summaries"]
+            else provider_summaries(x["summaries"], packet)
         )
         if fault == "second_repair" and len(sent) == 1:
             value = copy.deepcopy(value)
@@ -249,6 +254,9 @@ async def received_prepared(accounted, monkeypatch):
         probe.prepare(tip, parent, prior)
         assert (await probe.run(tip, live=True))["status"] == "failed_no_replay"
     monkeypatch.setattr(received, "load_config", probe.load_config)
+    # Only this MockTransport harness opts into the new offline contract.
+    # The production v5 received-body executor remains closed to v6.
+    monkeypatch.setattr(received, "EXPECTED_CONTRACT", received.CONTRACT)
     root = prior.parent / "received"
     manifest = received.prepare(root, parent, tip)
     return root, manifest, tip, sent, summaries
@@ -274,13 +282,13 @@ async def test_received_three_hop_executor_counts_only_new_repair_summary(
         packet = json.loads(request.content)
         sent.append(packet)
         name = packet["response_format"]["json_schema"]["name"]
-        assert name in {"native_body_repair_v7_refs", "grounded_summaries_v1"}
+        assert name in {"native_body_repair_v7_refs", "grounded_summaries_v2_refs"}
         value = (
             provider_repair(
                 {"can_repair": True, "patches": {"u0": patch}}, m["input"]["cards"]
             )
             if len(sent) == 1
-            else summaries
+            else provider_summaries(summaries, packet)
         )
         return reply(value)
 
