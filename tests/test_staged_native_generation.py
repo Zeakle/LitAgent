@@ -62,10 +62,17 @@ def provider_summaries(value, request):
         != "grounded_summaries_v2_refs"
     ):
         return copy.deepcopy(value)
-    from litagent.staged_generation import encode_summaries, summary_reference_binding
+    from litagent.staged_generation import (
+        encode_summaries,
+        expand_summary_body,
+        summary_reference_binding,
+    )
 
     packet = json.loads(request["messages"][1]["content"])
-    return encode_summaries(value, summary_reference_binding(packet["frozen_body"]))
+    body = packet["frozen_body"]
+    if "summary_input_contract" in packet:
+        body = expand_summary_body(body)
+    return encode_summaries(value, summary_reference_binding(body))
 
 
 def provider_repair(value, cards):

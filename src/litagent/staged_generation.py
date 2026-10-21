@@ -36,11 +36,24 @@ from litagent.quality import (
 from litagent.report_audit import atomic_json, digest
 from litagent.writing_passages import compile_passage_report
 
-CONTRACT = "native-body-summary-v6"
+CONTRACT = "native-body-summary-v7"
 CARD_REFERENCE_CONTRACT = "section-card-refs-v1"
 BODY_REPAIR_WIRE = "body-repair-card-aliases-v1"
 RECEIVED_BODY_CONTRACT = "received-typed-body-v1"
 SUMMARY_REFERENCE_CONTRACT = "summary-body-refs-v1"
+SUMMARY_TABLE_CONTRACT = "summary-body-table-v1"
+FROZEN_BODY_CONTRACT = "received-repaired-body-v1"
+SUMMARY_COLUMNS = [
+    "body_ref",
+    "block_index",
+    "sentence_index",
+    "heading",
+    "type",
+    "kind",
+    "scope_notice_id",
+    "text",
+    "fact_card_ids",
+]
 SECTION_PREFIXES = dict(zip(BODY, ("i", "t", "m", "e", "o")))
 BODY_INSTRUCTION = """Write only the five academic body sections in the response schema.
 The host generates abstract/conclusion separately after freezing this body.
@@ -850,8 +863,111 @@ def decode_summaries(rows, binding, *, body):
     return result
 
 
+def compact_summary_body(body, binding):
+    """Encode every frozen unit once, with explicit positions and scientific refs."""
+    lookup = {digest(position): ref for ref, position in binding["units"].items()}
+    rows = {}
+    for key in BODY:
+        rows[key] = []
+        for bi, block in enumerate(body["sections"][key]["blocks"]):
+            for si, unit in enumerate(block["sentences"]):
+                position = {"section_key": key, "block_index": bi, "sentence_index": si}
+                rows[key].append(
+                    [
+                        lookup.get(digest(position), ""),
+                        bi,
+                        si,
+                        block["heading"],
+                        block["type"],
+                        unit["kind"],
+                        unit["scope_notice_id"],
+                        unit["text"],
+                        copy.deepcopy(unit["fact_card_ids"]),
+                    ]
+                )
+    return {"title": body["title"], "columns": list(SUMMARY_COLUMNS), "rows": rows}
+
+
+def expand_summary_body(table):
+    """Restore a complete body table without guessing positions or identities."""
+    closed(table, {"title", "columns", "rows"})
+    if table["columns"] != SUMMARY_COLUMNS:
+        raise ValueError("staged_summary_table_columns_invalid")
+    closed(table["rows"], BODY)
+    body = {"title": table["title"], "sections": {}}
+    references = {}
+    for key in BODY:
+        blocks = []
+        rows = table["rows"][key]
+        if not isinstance(rows, list) or not rows:
+            raise ValueError("staged_summary_table_rows_invalid")
+        for row in rows:
+            if not isinstance(row, list) or len(row) != len(SUMMARY_COLUMNS):
+                raise ValueError("staged_summary_table_row_invalid")
+            ref, bi, si, heading, kind, unit_kind, notice, text, ids = row
+            if type(bi) is not int or type(si) is not int or bi < 0 or si < 0:
+                raise ValueError("staged_summary_table_position_invalid")
+            if bi == len(blocks):
+                blocks.append({"heading": heading, "type": kind, "sentences": []})
+            elif bi != len(blocks) - 1:
+                raise ValueError("staged_summary_table_position_invalid")
+            block = blocks[bi]
+            if (
+                si != len(block["sentences"])
+                or heading != block["heading"]
+                or kind != block["type"]
+            ):
+                raise ValueError("staged_summary_table_position_invalid")
+            if not isinstance(ref, str):
+                raise ValueError("staged_summary_table_reference_invalid")
+            if ref:
+                if ref in references:
+                    raise ValueError("staged_summary_table_reference_invalid")
+                references[ref] = {
+                    "section_key": key,
+                    "block_index": bi,
+                    "sentence_index": si,
+                }
+            block["sentences"].append(
+                {
+                    "kind": unit_kind,
+                    "scope_notice_id": notice,
+                    "text": text,
+                    "fact_card_ids": copy.deepcopy(ids),
+                }
+            )
+        body["sections"][key] = {"blocks": blocks}
+    if summary_reference_binding(body)["units"] != references:
+        raise ValueError("staged_summary_table_reference_invalid")
+    return body
+
+
+def restore_summary_input(packet, binding, *, body):
+    """Prove lossless restoration against the original immutable host body."""
+    if (
+        binding != summary_reference_binding(body)
+        or packet.get("summary_input_contract") != SUMMARY_TABLE_CONTRACT
+    ):
+        raise ValueError("staged_summary_table_binding_invalid")
+    restored = copy.deepcopy(packet)
+    restored["frozen_body"] = _short_reference_fields(
+        expand_summary_body(packet["frozen_body"]), binding["reading_cards"]
+    )
+    if restored["frozen_body"] != body:
+        raise ValueError("staged_summary_table_body_changed")
+    if set(packet["cards"]) != set(binding["reading_cards"]):
+        raise ValueError("staged_summary_table_cards_invalid")
+    restored["cards"] = {
+        cid: copy.deepcopy(packet["cards"][ref])
+        for ref, cid in binding["reading_cards"].items()
+    }
+    restored["body_unit_index"] = copy.deepcopy(binding["units"])
+    del restored["summary_input_contract"]
+    return restored
+
+
 def prepare_summary_request(
-    body, body_units, messages, response_format, *, short_refs=False
+    body, body_units, messages, response_format, *, short_refs=False, compact_body=False
 ):
     """Send frozen prose and complete sources for every actually used body card."""
     original = json.loads(messages[1]["content"])
@@ -896,6 +1012,8 @@ def prepare_summary_request(
         "required": ["sections"],
         "additionalProperties": False,
     }
+    if compact_body and not short_refs:
+        raise ValueError("staged_summary_table_requires_short_refs")
     instruction = SUMMARY_INSTRUCTION
     name = "grounded_summaries_v1"
     if short_refs:
@@ -929,6 +1047,20 @@ def prepare_summary_request(
             "Do not output sections/blocks/sentences wrappers, fixed notices "
             "or a reference dump. Keep both sections within remaining_unit_capacity."
         )
+        if compact_body:
+            packet["frozen_body"] = compact_summary_body(packet["frozen_body"], binding)
+            del packet["body_unit_index"]
+            packet["summary_input_contract"] = SUMMARY_TABLE_CONTRACT
+            instruction = instruction.replace(
+                "selecting exact bN keys from body_unit_index",
+                "selecting exact bN values in frozen_body.rows, column body_ref",
+            ) + (
+                "\nFrozen body is a lossless table: columns defines every row's fields. "
+                "Each row retains its section, original block/sentence indices, heading, "
+                "type, kind, scope notice, exact text and actual reading-card keys. "
+                "Empty body_ref marks a non-scientific row; never select it. No row or "
+                "position may be inferred from neighboring rows. Sources remain complete."
+            )
     return [
         {"role": "system", "content": instruction + APPLICABILITY_INSTRUCTION},
         {
@@ -1133,6 +1265,35 @@ def validate_received_body(received, reference_binding):
     return received["raw_response"]
 
 
+def validate_frozen_body_input(value):
+    """Check a host-reconciled repaired-body envelope, never a provider response."""
+    if not isinstance(value, Mapping) or set(value) != {
+        "contract",
+        "body",
+        "body_sha256",
+        "source_binding",
+        "source_checkpoint_sha256",
+        "repair_proof_sha256",
+        "sha256",
+    }:
+        raise ValueError("staged_frozen_body_binding_invalid")
+    if (
+        value["contract"] != FROZEN_BODY_CONTRACT
+        or value["body_sha256"] != digest(value["body"])
+        or value["sha256"] != digest({k: v for k, v in value.items() if k != "sha256"})
+        or any(
+            not isinstance(value[k], str) or not re.fullmatch(r"[0-9a-f]{64}", value[k])
+            for k in (
+                "source_binding",
+                "source_checkpoint_sha256",
+                "repair_proof_sha256",
+            )
+        )
+    ):
+        raise ValueError("staged_frozen_body_binding_invalid")
+    return copy.deepcopy(value["body"])
+
+
 async def generate_staged_report(
     llm,
     messages,
@@ -1150,6 +1311,7 @@ async def generate_staged_report(
     generation_options=None,
     repair_state=None,
     received_body=None,
+    frozen_body=None,
 ):
     """Journal both bounded calls and merge only fully validated immutable parts."""
     if checkpoint_path is None:
@@ -1175,6 +1337,13 @@ async def generate_staged_report(
             generation_options,
         ]
     )
+    if received_body is not None and frozen_body is not None:
+        raise ValueError("staged_body_input_conflict")
+    if frozen_body is not None:
+        if repair_state is None:
+            raise ValueError("staged_frozen_body_repair_state_required")
+        validate_frozen_body_input(frozen_body)
+        identity = digest([identity, FROZEN_BODY_CONTRACT, frozen_body])
     if received_body is not None:
         if repair_state is None:
             raise ValueError("staged_received_body_repair_state_required")
@@ -1272,57 +1441,81 @@ async def generate_staged_report(
         _check_reference_schema(rf, binding)
         state["body_card_reference_binding"] = binding
         atomic_json(path, state)
-        if received_body is None:
-            raw = await call(part, prepared, rf)
-            body_entry = state["steps"]["body"]
-        else:
-            raw = validate_received_body(received_body, binding)
-            body_entry = copy.deepcopy(received_body)
-            body_entry["status"] = "received_input"
-            state["received_body"] = body_entry
-            atomic_json(path, state)
-        from litagent.quality import GroundedWritingError
-
-        try:
-            body, count = validate_body(
-                raw, rf, cards, structure, language, selection, collect_diagnostics=True
-            )
-        except GroundedWritingError as failure:
-            state["body_validation_failure"] = {
-                "candidate_sha256": failure.candidate_sha256,
-                "raw_response_sha256": body_entry["raw_response_sha256"],
-                "diagnostics": copy.deepcopy(failure.diagnostics),
-                "scientific_verdict": "not_evaluated",
-            }
-            # Preserve the writing cause even when a later budget or protocol
-            # error becomes the terminal failure. This does not authorize repair.
-            atomic_json(path, state)
-            if repair_state is None:
-                raise
-            body = expand_body(
-                decode_typed_body(
-                    json.loads(raw, object_pairs_hook=unique),
-                    binding,
-                    allow_empty_references=True,
-                )
-            )
-            body, count = await repair_staged_body(
-                body,
-                failure,
-                messages,
+        if frozen_body is not None:
+            body, count = validate_body_document(
+                validate_frozen_body_input(frozen_body),
                 cards,
                 structure,
                 language,
                 selection,
-                repair_state,
-                checkpoint_path,
-                call,
-                trace_hook,
-                parent_task_id,
-                llm,
-                max_tokens,
             )
+            body_entry = copy.deepcopy(frozen_body)
+            body_entry["status"] = "frozen_input"
+            state["frozen_body"] = body_entry
+            atomic_json(path, state)
+        else:
+            if received_body is None:
+                raw = await call(part, prepared, rf)
+                body_entry = state["steps"]["body"]
+            else:
+                raw = validate_received_body(received_body, binding)
+                body_entry = copy.deepcopy(received_body)
+                body_entry["status"] = "received_input"
+                state["received_body"] = body_entry
+                atomic_json(path, state)
+            from litagent.quality import GroundedWritingError
+
+            try:
+                body, count = validate_body(
+                    raw,
+                    rf,
+                    cards,
+                    structure,
+                    language,
+                    selection,
+                    collect_diagnostics=True,
+                )
+            except GroundedWritingError as failure:
+                state["body_validation_failure"] = {
+                    "candidate_sha256": failure.candidate_sha256,
+                    "raw_response_sha256": body_entry["raw_response_sha256"],
+                    "diagnostics": copy.deepcopy(failure.diagnostics),
+                    "scientific_verdict": "not_evaluated",
+                }
+                # Preserve the writing cause even when a later budget or protocol
+                # error becomes the terminal failure. This does not authorize repair.
+                atomic_json(path, state)
+                if repair_state is None:
+                    raise
+                body = expand_body(
+                    decode_typed_body(
+                        json.loads(raw, object_pairs_hook=unique),
+                        binding,
+                        allow_empty_references=True,
+                    )
+                )
+                body, count = await repair_staged_body(
+                    body,
+                    failure,
+                    messages,
+                    cards,
+                    structure,
+                    language,
+                    selection,
+                    repair_state,
+                    checkpoint_path,
+                    call,
+                    trace_hook,
+                    parent_task_id,
+                    llm,
+                    max_tokens,
+                )
         body_entry["projection"] = body_row_projection(body, binding, typed_units=True)
+        if frozen_body is not None:
+            body_entry["projection"].update(
+                transport="host_frozen_body",
+                frozen_body_sha256=frozen_body["body_sha256"],
+            )
         repaired_here = (
             repair_state is not None and len(repair_state["attempts"]) > repair_start
         )
@@ -1332,9 +1525,17 @@ async def generate_staged_report(
             )
         body_entry["status"] = "locally_repaired" if repaired_here else "locally_valid"
         atomic_json(path, state)
-        short_summaries = CONTRACT == "native-body-summary-v6"
+        short_summaries = CONTRACT in {
+            "native-body-summary-v6",
+            "native-body-summary-v7",
+        }
         prepared, rf = prepare_summary_request(
-            body, count, messages, response_format, short_refs=short_summaries
+            body,
+            count,
+            messages,
+            response_format,
+            short_refs=short_summaries,
+            compact_body=CONTRACT == "native-body-summary-v7",
         )
         if short_summaries:
             state["summary_reference_binding"] = summary_reference_binding(body)
@@ -1378,6 +1579,8 @@ async def generate_staged_report(
             proof["summary_reference_projection"] = copy.deepcopy(
                 state["summary_reference_projection"]
             )
+        if frozen_body is not None:
+            proof["frozen_body"] = {k: v for k, v in frozen_body.items() if k != "body"}
         if received_body is not None:
             proof["received_body"] = {
                 k: received_body[k]
