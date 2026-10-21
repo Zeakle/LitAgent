@@ -558,3 +558,212 @@ async def test_accounted_interruption_and_retired_parent_never_resend(accounted)
     with pytest.raises(ValueError, match="requires_accounting_migration"):
         await probe.run(retired, live=True)
     assert len(calls) == 2
+
+
+@pytest_asyncio.fixture
+async def typed_accounted(accounted, monkeypatch):
+    """Advance both historical protocol generations through the actual SDK."""
+    previous, manifest, _, calls = accounted
+    with monkeypatch.context() as historical:
+        historical.setattr(probe, "CONTRACT", "native-body-summary-v3")
+        historical.setattr(probe, "ACCOUNTED_CONTRACT", "native-body-summary-v3")
+        historical.setattr(staged_generation, "CONTRACT", "native-body-summary-v3")
+        manifest["contract"] = probe.CONTRACT
+        manifest["binding"] = digest(
+            {k: v for k, v in manifest.items() if k != "binding"}
+        )
+        atomic_json(previous / "manifest.json", manifest)
+        assert (await probe.run(previous, live=True))["status"] == "protocol_completed"
+    monkeypatch.setattr(probe, "ACCOUNTED_CONTRACT", "native-body-summary-v3")
+    root = previous.parent / "typed"
+    current = probe.prepare(root, previous.parent / "parent", previous)
+    assert len(calls) == 4
+    return root, current, previous, calls
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fault", [None, "repair", "usage", "json", "cancel"])
+async def test_typed_grant_inherits_two_hops_and_runs_bounded_sdk(
+    typed_accounted, monkeypatch, fault
+):
+    root, manifest, _, calls = typed_accounted
+    assert manifest["version"] == probe.TYPED_VERSION
+    assert manifest["requests"] == 4 and manifest["limit"] == 120000
+    assert manifest["input"]["parent_budget"]["used_tokens"] == 300
+    assert manifest["input"]["parent_budget"]["requests_sent"] == 5
+    assert manifest["input"]["historical"]["model_unknown_conservative_tokens"] == 73
+    protected = {p: probe.sha(Path(p)) for p in manifest["input"]["inputs"]}
+    original = analysis_document(manifest["input"]["cards"])
+    body, summaries = split(original)
+    wire = provider_body(body, manifest["input"]["cards"])
+    patch = {
+        **original["sections"]["methods"]["first_block"]["first_sentence"],
+        "additional_units": [],
+    }
+    if fault == "repair":
+        wire["methods"][0]["fact_card_refs"] = []
+    sent = []
+
+    async def transport(request):
+        packet = json.loads(request.content)
+        sent.append(packet)
+        name = packet["response_format"]["json_schema"]["name"]
+        if fault == "cancel":
+            raise asyncio.CancelledError()
+        value = (
+            summaries
+            if name == "grounded_summaries_v1"
+            else (
+                {"can_repair": True, "patches": {"u0": patch}}
+                if name == "native_body_repair_v6"
+                else wire
+            )
+        )
+        if name == "native_body_repair_v6":
+            state = json.loads((root / "generation.json").read_text())["state"]
+            assert len(state["attempts"]) == 1
+            assert state["attempts"][0]["status"] == "started_no_replay"
+            repair_packet = json.loads(packet["messages"][1]["content"])
+            assert (
+                repair_packet["sources"]
+                == json.loads(manifest["input"]["messages"][1]["content"])["sources"]
+            )
+        result = {
+            "id": "typed-offline",
+            "object": "chat.completion",
+            "created": 0,
+            "model": probe.MODELS["generation"],
+            "choices": [
+                {
+                    "index": 0,
+                    "finish_reason": "stop",
+                    "message": {
+                        "role": "assistant",
+                        "content": "{" if fault == "json" else json.dumps(value),
+                    },
+                }
+            ],
+        }
+        if fault != "usage":
+            result["usage"] = {
+                "prompt_tokens": 30,
+                "completion_tokens": 20,
+                "total_tokens": 50,
+            }
+        return httpx.Response(200, json=result)
+
+    monkeypatch.setattr(
+        client_module,
+        "AsyncOpenAI",
+        lambda **kw: AsyncOpenAI(
+            **kw,
+            http_client=httpx.AsyncClient(transport=httpx.MockTransport(transport)),
+        ),
+    )
+    assert (await probe.run(root))["body_reservation"] > 20000 and not sent
+    result = await probe.run(root, live=True)
+    assert result["status"] == (
+        "protocol_completed" if fault in {None, "repair"} else "failed_no_replay"
+    )
+    assert len(sent) == (3 if fault == "repair" else 2 if fault is None else 1)
+    assert result["new_requests"] == len(sent)
+    assert result["cumulative"]["model_requests"] == 5 + len(sent)
+    assert result["scientific_verdict"] == "not_evaluated"
+    assert (result["unknown_hold"] > 0) == (fault in {"usage", "cancel"})
+    assert await probe.run(root, live=True) == result
+    assert all(probe.sha(Path(p)) == h for p, h in protected.items())
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "fault", ["old_tip", "broken_chain", "receipt", "repair_reset", "grant"]
+)
+async def test_typed_preflight_rejects_old_or_changed_accounting(
+    typed_accounted, fault
+):
+    root, m, previous, calls = typed_accounted
+    if fault == "old_tip":
+        m["accounting_parent"] = str(previous.parent / "probe")
+    elif fault == "broken_chain":
+        value = json.loads((previous / "manifest.json").read_text())
+        value["accounting_parent"] = str(previous)
+        value["binding"] = digest({k: v for k, v in value.items() if k != "binding"})
+        atomic_json(previous / "manifest.json", value)
+    elif fault == "receipt":
+        value = json.loads((previous / "acceptance-summary.json").read_text())
+        value["budget"]["used_tokens"] -= 1
+        atomic_json(previous / "acceptance-summary.json", value)
+    elif fault == "repair_reset":
+        m["repair_state"]["run_id"] = "other"
+    else:
+        path = probe.REGISTRY / (
+            digest([m["input"]["parent_archive_sha256"], probe.ACCOUNTED_CONTRACT])
+            + ".json"
+        )
+        atomic_json(path, {"binding": "foreign", "root": str(previous)})
+    m["binding"] = digest({k: v for k, v in m.items() if k != "binding"})
+    atomic_json(root / "manifest.json", m)
+    with pytest.raises(ValueError):
+        await probe.run(root, live=True)
+    assert len(calls) == 4 and not (root / "state.json").exists()
+
+
+def test_typed_four_calls_still_use_parent_phase_and_token_limits():
+    b = probe.ProbeBudget()
+    b.configure_strict(halt_on_unknown_usage=True)
+    b.bind(4)
+    for _ in range(4):
+        b.begin_request()
+    with pytest.raises(ValueError, match="request_limit"):
+        b.begin_request()
+    with pytest.raises(ValueError, match="token_limit"):
+        b.reserve(120001)
+
+
+@pytest.mark.asyncio
+async def test_typed_interruption_holds_four_calls_and_never_replays(typed_accounted):
+    root, m, _, calls = typed_accounted
+    atomic_json(
+        root / "state.json",
+        {
+            "binding": m["binding"],
+            "status": "started_no_replay",
+            "new_known_tokens": 50,
+        },
+    )
+    result = await probe.run(root, live=True)
+    assert result["status"] == "interrupted_no_replay"
+    assert result["new_requests"] == 4
+    assert result["unknown_hold"] == 119950
+    assert result["cumulative"]["model_requests"] == 9
+    assert result["cumulative"]["model_unknown_conservative_tokens"] == 73 + 119950
+    assert await probe.run(root, live=True) == result
+    assert len(calls) == 4 and not (root / "events.jsonl").exists()
+
+
+def test_typed_repair_cannot_borrow_evaluation_reserve():
+    b = probe.ProbeBudget()
+    b.configure_strict(halt_on_unknown_usage=True)
+    snapshot = b.snapshot()
+    snapshot.update(
+        used_tokens=176723,
+        call_count=29,
+        requests_sent=29,
+        strict_phase=1,
+        phase_usage=[98267, 78456, 0],
+    )
+    b = probe.ProbeBudget.from_snapshot(snapshot)
+    b.bind(4)
+    token = probe.set_task_id("synthesis.protocol_conformance")
+    try:
+        b.reserve(91443)
+        b.release(91443)
+        # Charge known usage before reserving the complete repair input.
+        b.record(
+            {"prompt_tokens": 18682, "completion_tokens": 3788, "usage_available": True}
+        )
+        with pytest.raises(ValueError, match="token_limit"):
+            b.reserve(113867)
+        assert b.snapshot()["phase_usage"][2] == 0
+    finally:
+        probe.reset_task_id(token)

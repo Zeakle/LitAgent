@@ -24,8 +24,11 @@ from litagent.observability.tracing import LangFuseTracer
 from litagent.quality import (
     build_fact_cards,
     grounded_messages,
+    load_targeted_repairs,
     prepare_grounded_request,
     render_grounded_report,
+    save_targeted_repairs,
+    targeted_repair_state,
 )
 from litagent.report_audit import atomic_json, digest
 from litagent.safety.budget import CostBudget, strict_request_reservation
@@ -45,6 +48,9 @@ ARTIFACTS = Path("artifacts")
 LIVE_CONTRACT = "native-body-summary-v2"
 ACCOUNTED_VERSION = "frozen-staged-protocol-v2"
 ACCOUNTED_CONTRACT = "native-body-summary-v3"
+TYPED_VERSION = "frozen-staged-protocol-v3"
+TYPED_CONTRACT = "native-body-summary-v4"
+TYPED_REQUESTS = 4
 
 
 def runtime_identity():
@@ -185,8 +191,14 @@ def rebuild(parent):
     }
 
 
-def reconcile_accounting(inputs, accounting_parent):
-    """Advance one completed v2 receipt without refunding its paid calls."""
+def reconcile_accounting(
+    inputs,
+    accounting_parent,
+    *,
+    predecessor_version=VERSION,
+    predecessor_contract=LIVE_CONTRACT,
+):
+    """Advance one explicitly versioned receipt without refunding paid calls."""
     root = Path(accounting_parent).resolve()
     paths = [
         root / name
@@ -200,12 +212,12 @@ def reconcile_accounting(inputs, accounting_parent):
     m, state, receipt = [json.loads(p.read_text()) for p in paths[:3]]
     events = [json.loads(line) for line in paths[3].read_text().splitlines()]
     grant = REGISTRY / (
-        digest([inputs["parent_archive_sha256"], LIVE_CONTRACT]) + ".json"
+        digest([inputs["parent_archive_sha256"], predecessor_contract]) + ".json"
     )
     if (
         m["binding"] != digest({k: v for k, v in m.items() if k != "binding"})
-        or m["version"] != VERSION
-        or m["contract"] != LIVE_CONTRACT
+        or m["version"] != predecessor_version
+        or m["contract"] != predecessor_contract
         or m["root"] != str(root)
         or m["input"] != inputs
         or (m["limit"], m["requests"], m["output"]) != (LIMIT, REQUESTS, OUTPUT)
@@ -278,7 +290,7 @@ def reconcile_accounting(inputs, accounting_parent):
     journal = json.loads(journals[0].read_text())
     steps = list(journal["steps"].values())
     if (
-        journal["contract"] != LIVE_CONTRACT
+        journal["contract"] != predecessor_contract
         or journal["status"] not in {"failed_no_replay", "completed"}
         or (
             journal.get("budget")
@@ -333,10 +345,44 @@ def reconcile_accounting(inputs, accounting_parent):
 
 
 def frozen_inputs(parent, accounting_parent=None):
-    """Keep source reconstruction separate from the latest paid accounting tip."""
+    """Reconcile the fixed v2 then v3 chain before permitting a v4 allowance."""
     inputs = rebuild(parent)
+    if not accounting_parent:
+        return inputs
+    m = json.loads((Path(accounting_parent) / "manifest.json").read_text())
+    if (
+        m.get("version") == ACCOUNTED_VERSION
+        and m.get("contract") == ACCOUNTED_CONTRACT
+    ):
+        previous = Path(m["accounting_parent"])
+        prior = json.loads((previous / "manifest.json").read_text())
+        if (
+            m.get("parent") != str(parent.resolve())
+            or prior.get("version") != VERSION
+            or prior.get("contract") != LIVE_CONTRACT
+            or prior.get("accounting_parent")
+        ):
+            raise ValueError("staged_probe_accounting_chain_invalid")
+        inputs = reconcile_accounting(inputs, previous)
+        return reconcile_accounting(
+            inputs,
+            accounting_parent,
+            predecessor_version=ACCOUNTED_VERSION,
+            predecessor_contract=ACCOUNTED_CONTRACT,
+        )
+    return reconcile_accounting(inputs, accounting_parent)
+
+
+def typed_predecessor(accounting_parent):
+    """Require the latest completed v3 receipt for the new typed writer."""
+    if not accounting_parent:
+        return False
+    m = json.loads((Path(accounting_parent) / "manifest.json").read_text())
     return (
-        reconcile_accounting(inputs, accounting_parent) if accounting_parent else inputs
+        CONTRACT == TYPED_CONTRACT
+        and m.get("version") == ACCOUNTED_VERSION
+        and m.get("contract") == ACCOUNTED_CONTRACT
+        and bool(m.get("accounting_parent"))
     )
 
 
@@ -344,14 +390,19 @@ def prepare(root, parent, accounting_parent=None):
     """Freeze the exact root, original evidence, code and bounded new allowance."""
     config = load_config()
     check_models(config)
+    typed = typed_predecessor(accounting_parent)
     value = {
-        "version": ACCOUNTED_VERSION if accounting_parent else VERSION,
+        "version": (
+            TYPED_VERSION
+            if typed
+            else ACCOUNTED_VERSION if accounting_parent else VERSION
+        ),
         "contract": CONTRACT,
         "root": str(root.resolve()),
         "parent": str(parent.resolve()),
         "input": frozen_inputs(parent, accounting_parent),
         "limit": LIMIT,
-        "requests": REQUESTS,
+        "requests": TYPED_REQUESTS if typed else REQUESTS,
         "output": OUTPUT,
         "config": build_config_summary(config, "strict_auto_v2"),
         "runtime": runtime_identity(),
@@ -361,13 +412,22 @@ def prepare(root, parent, accounting_parent=None):
         "hashes": source_hashes(),
     }
     if accounting_parent:
-        if CONTRACT != ACCOUNTED_CONTRACT:
+        if CONTRACT != ACCOUNTED_CONTRACT and not typed:
             raise ValueError("staged_probe_new_contract_requires_accounting_migration")
         value["accounting_parent"] = str(accounting_parent.resolve())
         value["frozen_code"] = {
             str(Path("frozen-code") / Path(p).relative_to(Path.cwd())): h
             for p, h in value["hashes"].items()
         }
+    if typed:
+        value["repair_state"] = load_targeted_repairs(
+            root / "generation.json", root.name
+        )
+        # Freeze the shared allowance before any request; it is not reset on restart.
+        if value["repair_state"]["attempts"]:
+            raise ValueError("staged_probe_repair_state_not_initial")
+        if value["input"]["parent_budget"]["requests_sent"] + TYPED_REQUESTS > 64:
+            raise ValueError("staged_probe_parent_budget_invalid")
     value["binding"] = digest(value)
     root.mkdir(parents=True, exist_ok=False)
     for relative, h in value.get("frozen_code", {}).items():
@@ -386,13 +446,21 @@ def validate(root):
     m = json.loads((root / "manifest.json").read_text())
     config = load_config()
     check_models(config)
+    typed = typed_predecessor(m.get("accounting_parent"))
     if (
         m["binding"] != digest({k: v for k, v in m.items() if k != "binding"})
         or m["root"] != str(root.resolve())
         or m["version"]
-        != (ACCOUNTED_VERSION if m.get("accounting_parent") else VERSION)
+        != (
+            TYPED_VERSION
+            if typed
+            else ACCOUNTED_VERSION if m.get("accounting_parent") else VERSION
+        )
         or m["contract"] != CONTRACT
-        or (m["limit"], m["requests"], m["output"]) != (LIMIT, REQUESTS, OUTPUT)
+        or (m["limit"], m["requests"], m["output"])
+        != (LIMIT, TYPED_REQUESTS if typed else REQUESTS, OUTPUT)
+        or typed
+        and m.get("repair_state") != targeted_repair_state(None, root.name)
         or m["config"] != build_config_summary(config, "strict_auto_v2")
         or m["runtime"] != runtime_identity()
         or m["hashes"] != source_hashes()
@@ -403,7 +471,7 @@ def validate(root):
         or m["input"] != frozen_inputs(Path(m["parent"]), m.get("accounting_parent"))
         or bool(m.get("accounting_parent"))
         and (
-            m["contract"] != ACCOUNTED_CONTRACT
+            m["contract"] != (TYPED_CONTRACT if typed else ACCOUNTED_CONTRACT)
             or m.get("frozen_code")
             != {
                 str(Path("frozen-code") / Path(p).relative_to(Path.cwd())): h
@@ -420,10 +488,11 @@ def validate(root):
 
 
 class ProbeBudget(CostBudget):
-    """Add a two-call grant ceiling to the unchanged inherited Survey budget."""
+    """Add a version-bound call ceiling to the unchanged inherited Survey budget."""
 
-    def bind(self):
+    def bind(self, requests=REQUESTS):
         """Capture inherited usage once, before reserving any new request."""
+        self._probe_request_limit = requests
         self._probe_start = self.used
         self._probe_requests = self.snapshot()["requests_sent"]
 
@@ -435,7 +504,10 @@ class ProbeBudget(CostBudget):
 
     def begin_request(self):
         """Count a sent request against the same non-resettable parent budget."""
-        if self.snapshot()["requests_sent"] - self._probe_requests >= REQUESTS:
+        if (
+            self.snapshot()["requests_sent"] - self._probe_requests
+            >= self._probe_request_limit
+        ):
             raise ValueError("staged_probe_request_limit")
         return super().begin_request()
 
@@ -458,14 +530,18 @@ async def run(root, *, live=False):
         path = root / "manifest.json"
         manifest = json.loads(path.read_text()) if path.is_file() else {}
         if not (
-            CONTRACT == ACCOUNTED_CONTRACT
-            and manifest.get("version") == ACCOUNTED_VERSION
+            (
+                CONTRACT == ACCOUNTED_CONTRACT
+                and manifest.get("version") == ACCOUNTED_VERSION
+                or CONTRACT == TYPED_CONTRACT
+                and manifest.get("version") == TYPED_VERSION
+            )
             and manifest.get("accounting_parent")
         ):
             raise ValueError("staged_probe_new_contract_requires_accounting_migration")
     m, config = validate(root)
     budget = ProbeBudget.from_snapshot(m["input"]["parent_budget"])
-    budget.bind()
+    budget.bind(m["requests"])
     messages, rf = prepare_body_request(
         m["input"]["messages"], m["input"]["response_format"]
     )
@@ -483,7 +559,8 @@ async def run(root, *, live=False):
             "status": "planned",
             "binding": m["binding"],
             "limit": LIMIT,
-            "requests": REQUESTS,
+            "requests": m["requests"],
+            "parent_budget": m["input"]["parent_budget"],
             "body_reservation": reservation,
         }
     with suite_lock(root / "probe.lock"):
@@ -495,7 +572,7 @@ async def run(root, *, live=False):
             if state["status"] == "started_no_replay":
                 state.update(
                     status="interrupted_no_replay",
-                    new_requests=REQUESTS,
+                    new_requests=m["requests"],
                     unknown_hold=max(0, LIMIT - state.get("new_known_tokens", 0)),
                 )
             return save_receipt(root, m, state)
@@ -542,6 +619,10 @@ async def run(root, *, live=False):
         )
         owner = None
         inputs = m["input"]
+        repair_state = None
+        if m["version"] == TYPED_VERSION:
+            repair_state = m["repair_state"]
+            save_targeted_repairs(root / "generation.json", repair_state)
         token = set_task_id("synthesis.protocol_conformance")
         hook("survey.start", {"session_id": root.name, "query": "Protocol conformance"})
         try:
@@ -567,6 +648,11 @@ async def run(root, *, live=False):
                         "grounded_body_v3_refs",
                         "grounded_body_v4_typed",
                         "grounded_summaries_v1",
+                        *(
+                            {"native_body_repair_v6"}
+                            if m["version"] == TYPED_VERSION
+                            else set()
+                        ),
                     }
                 ):
                     raise ValueError("staged_probe_wire_invalid")
@@ -583,6 +669,7 @@ async def run(root, *, live=False):
                 checkpoint_path=root / "generation.json",
                 trace_hook=hook,
                 parent_task_id="protocol",
+                repair_state=repair_state,
                 generation_options={
                     "temperature": 0.1,
                     "extra_body": {"thinking": {"type": "disabled"}},
@@ -609,7 +696,9 @@ async def run(root, *, live=False):
                 local_report_sha256=hashlib.sha256(rendered.encode()).hexdigest(),
             )
         except BaseException as exc:
-            state.update(status="failed_no_replay", error_type=type(exc).__name__)
+            state.update(
+                status="failed_no_replay", error_type=type(exc).__name__, error=str(exc)
+            )
             if hasattr(exc, "diagnostics"):
                 state["diagnostics"] = exc.diagnostics
             if isinstance(exc, json.JSONDecodeError):
