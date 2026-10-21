@@ -565,6 +565,7 @@ async def run(root, *, live=False):
                     not in {
                         "grounded_body_v2_rows",
                         "grounded_body_v3_refs",
+                        "grounded_body_v4_typed",
                         "grounded_summaries_v1",
                     }
                 ):

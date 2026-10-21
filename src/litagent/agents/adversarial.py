@@ -397,6 +397,9 @@ class AdversarialReviewWorker(Worker):
                                         trace_hook=self._trace_hook,
                                         parent_task_id=task.task_id,
                                         stage=f"revision:{round_num+1}",
+                                        repair_state=synthesis_result.get(
+                                            "targeted_repair_state"
+                                        ),
                                         generation_options={
                                             k: v
                                             for k, v in kwargs.items()

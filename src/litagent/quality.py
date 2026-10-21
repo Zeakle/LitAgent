@@ -33,6 +33,7 @@ COMPLETE_NATIVE_REPAIR_LEGACY = "complete-native-unit-repair-v2"
 COMPLETE_NATIVE_REPAIR_V3 = "complete-native-unit-repair-v3"
 COMPLETE_NATIVE_REPAIR_V4 = "complete-native-unit-repair-v4"
 COMPLETE_NATIVE_REPAIR_CONTRACT = "complete-native-unit-repair-v5"
+STAGED_BODY_REPAIR_CONTRACT = "complete-native-body-repair-v6"
 SECTION_SOURCE_CONTRACT = "chapter-source-menu-v1"
 RECEIVED_NATIVE_CONTRACT = "received-native-draft-v1"
 TARGETED_REPAIR_CONTRACT = "shared-targeted-repair-limit-v1"
@@ -653,6 +654,7 @@ def prepare_native_repair_request(
     language: str,
     evidence_selection=None,
     previous_failure: Mapping | None = None,
+    body_only: bool = False,
 ) -> tuple[list[dict], dict, dict]:
     """Bind local body repairs and their summary dependencies to unchanged sources."""
     from litagent.workbench import language_instruction
@@ -666,6 +668,8 @@ def prepare_native_repair_request(
     )
 
     document = json.loads(candidate, object_pairs_hook=_unique_native_fields)
+    if body_only and set(document.get("sections", {})) != set(BODY_SECTION_KEYS):
+        raise ValueError("strict_native_repair_contract_invalid")
     packet = copy.deepcopy(json.loads(messages[1]["content"]))
     if "native_wire_contract" in packet:
         packet["input_native_wire_contract"] = packet.pop("native_wire_contract")
@@ -678,12 +682,16 @@ def prepare_native_repair_request(
         raise ValueError("strict_native_repair_contract_invalid")
     notice_mode = packet.get("writing_contract") in {NOTICE_VERSION, ANALYSIS_VERSION}
     complete_mode = packet.get("body_analysis_contract") == ANALYSIS_CONTRACT
+    if body_only and not complete_mode:
+        raise ValueError("strict_native_repair_contract_invalid")
     repairable = {
         "strict_writing_uncited_scientific_gap",
         "strict_writing_scope_notice_invalid",
     }
     if complete_mode:
         repairable.add("strict_writing_scope_notice_repeated")
+        if body_only:
+            repairable.add("strict_writing_passage_binding_invalid")
     if complete_mode and packet.get("unit_citation_scope_contract"):
         repairable.add("strict_writing_out_of_scope_fact_card")
         repairable.add("strict_writing_unit_citation_scope_ambiguous")
@@ -732,6 +740,10 @@ def prepare_native_repair_request(
         path = diagnostic.get("raw_json_path", "")
         unit = _native_unit(document, path)
         section = path.split(".")[1]
+        if diagnostic["reason_code"] == "strict_writing_passage_binding_invalid" and (
+            unit.get("kind") != "scientific" or unit.get("fact_card_ids") != []
+        ):
+            raise ValueError("strict_native_repair_diagnostic_invalid")
         if section not in BODY_SECTION_KEYS:
             # Summary repairs have their own field and selector contract below.
             if complete_mode and section in {"abstract", "conclusion"}:
@@ -761,6 +773,14 @@ def prepare_native_repair_request(
                 not in {
                     "strict_writing_out_of_scope_fact_card",
                     "strict_writing_unit_citation_scope_ambiguous",
+                    *(
+                        {
+                            "strict_writing_passage_binding_invalid",
+                            "strict_writing_scope_notice_invalid",
+                        }
+                        if body_only
+                        else set()
+                    ),
                 }
                 and (unit.get("kind") == "scientific" or unit.get("fact_card_ids"))
             )
@@ -773,7 +793,8 @@ def prepare_native_repair_request(
             **(
                 {
                     "reason_code": diagnostic["reason_code"],
-                    "must_remain_scientific": unit.get("kind") == "scientific",
+                    "must_remain_scientific": unit.get("kind") == "scientific"
+                    or (body_only and bool(unit.get("fact_card_ids"))),
                 }
                 if complete_mode
                 else {}
@@ -985,7 +1006,13 @@ def prepare_native_repair_request(
     )
     binding = {
         "version": (
-            COMPLETE_NATIVE_REPAIR_CONTRACT if complete_mode else NATIVE_REPAIR_CONTRACT
+            STAGED_BODY_REPAIR_CONTRACT
+            if body_only and complete_mode
+            else (
+                COMPLETE_NATIVE_REPAIR_CONTRACT
+                if complete_mode
+                else NATIVE_REPAIR_CONTRACT
+            )
         ),
         "candidate_sha256": hashlib.sha256(candidate.encode()).hexdigest(),
         "fact_cards_sha256": digest(cards),
@@ -1028,6 +1055,9 @@ def prepare_native_repair_request(
             if keyed[key].get("must_remain_scientific"):
                 unit_schema["properties"]["kind"]["enum"] = ["scientific"]
                 unit_schema["properties"]["scope_notice_id"]["enum"] = ["none"]
+                if body_only:
+                    unit_schema["properties"]["fact_card_ids"]["minItems"] = 1
+                    unit_schema["properties"]["text"]["minLength"] = 1
         binding.update(scope_notice_contract=SCOPE_NOTICE_CONTRACT, language=language)
     if complete_mode:
         for key, unit_schema in schema["properties"]["patches"]["properties"].items():
@@ -1167,15 +1197,37 @@ def prepare_native_repair_request(
         prepared[1]["content"] = json.dumps(
             packet, ensure_ascii=False, separators=(",", ":")
         )
+    if body_only:
+        # Body repairs cannot target summaries. Keep all original prose/sources,
+        # while permission enums remain authoritative in the native patch schema.
+        packet.pop("body_unit_catalog", None)
+        for target in packet["repair_targets"].values():
+            target.pop("allowed_fact_card_ids", None)
+            target.pop("allowed_scope_notice_ids", None)
+        packet["repair_permission_source"] = "native_patch_schema_enums"
+        prepared[0]["content"] += (
+            "\nBODY-ONLY REPAIR: there are no abstract/conclusion units or summary "
+            "targets yet. Do not create any. Each patch's native fact_card_ids enum "
+            "is its exact section permission; unchanged sources are not permission "
+            "to cite another section's card. The complete original candidate and "
+            "paper sources remain provided. Do not modify non-target units."
+        )
+        prepared[1]["content"] = json.dumps(
+            packet, ensure_ascii=False, separators=(",", ":")
+        )
     return (
         prepared,
         {
             "type": "json_schema",
             "json_schema": {
                 "name": (
-                    "native_unit_repair_v5"
-                    if complete_mode
-                    else "native_unit_repair_v1"
+                    "native_body_repair_v6"
+                    if body_only
+                    else (
+                        "native_unit_repair_v5"
+                        if complete_mode
+                        else "native_unit_repair_v1"
+                    )
                 ),
                 "strict": True,
                 "schema": schema,
@@ -1198,6 +1250,7 @@ def apply_native_repairs(
             COMPLETE_NATIVE_REPAIR_V3,
             COMPLETE_NATIVE_REPAIR_V4,
             COMPLETE_NATIVE_REPAIR_CONTRACT,
+            STAGED_BODY_REPAIR_CONTRACT,
         }
         or digest(expected) != binding.get("binding_sha256")
         or hashlib.sha256(candidate.encode()).hexdigest()
@@ -1220,7 +1273,10 @@ def apply_native_repairs(
         binding["targets"]
     ):
         raise ValueError("strict_native_repair_response_invalid")
-    if binding["version"] == COMPLETE_NATIVE_REPAIR_CONTRACT:
+    if binding["version"] in {
+        COMPLETE_NATIVE_REPAIR_CONTRACT,
+        STAGED_BODY_REPAIR_CONTRACT,
+    }:
         return _apply_native_unit_groups(candidate, document, result, binding, cards)
     for key, target in binding["targets"].items():
         original = _native_unit(patched, target["path"])

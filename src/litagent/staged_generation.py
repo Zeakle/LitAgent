@@ -17,7 +17,14 @@ from litagent.body_quality import (
     APPLICABILITY_INSTRUCTION,
     UNIT_CITATION_SCOPE_INSTRUCTION,
 )
-from litagent.native_wire import BODY, BODY_FIELDS, canonical_from_array, closed, unique
+from litagent.native_wire import (
+    BODY,
+    BODY_FIELDS,
+    array_from_native,
+    canonical_from_array,
+    closed,
+    unique,
+)
 from litagent.quality import (
     NativeGroundedReport,
     _validate_grounded_language,
@@ -28,7 +35,7 @@ from litagent.quality import (
 from litagent.report_audit import atomic_json, digest
 from litagent.writing_passages import compile_passage_report
 
-CONTRACT = "native-body-summary-v3"
+CONTRACT = "native-body-summary-v4"
 CARD_REFERENCE_CONTRACT = "section-card-refs-v1"
 SECTION_PREFIXES = dict(zip(BODY, ("i", "t", "m", "e", "o")))
 BODY_INSTRUCTION = """Write only the five academic body sections in the response schema.
@@ -54,9 +61,17 @@ Keep technical names and identifiers intact. Proposals with scientific premises
 still require evidence. Preserve reported coordinate dimensions and tuples rather
 than inventing numerical decompositions. Omit numerical taxonomy counts: the host
 counts actual list entries. More text or repeated facts do not establish coverage.
-For optional organization/gap notices use text="", fact_card_refs=[], and one exact
-scope_notice_catalog ID. Use each notice at most once; notices cannot answer core
-questions or replace scientific limitations. Do not write arbitrary notice prose.
+Every body array contains scientific units only. For optional host notices select
+scope_notices records containing section_key, after_row and scope_notice_id only.
+after_row is the zero-based SCIENTIFIC row in that section, not a block index.
+The host inserts its fixed catalog text after that row in the same block. Use each
+notice ID at most once globally, in body-section/after_row order, or return
+scope_notices=[]. Never submit notice
+prose or put scientific premises into this field. Notices do not answer core
+questions or replace source-backed limitations. Do not mention an unbound method.
+Split independent findings, contrasts and different experimental settings into
+separate scientific rows, each with its own actual supporting references. Never
+join independently testable clauses with a semicolon or merely remove punctuation.
 Return title and the five section keys directly at the JSON root. Each section
 is a nonempty array of sentence records, not nested blocks or sentences objects.
 Each record contains block_index, heading, type and the four unit fields. Start
@@ -230,7 +245,7 @@ def _short_body_packet(original, binding):
     return packet
 
 
-def prepare_body_request(messages, response_format):
+def prepare_body_request(messages, response_format, *, typed_units=True):
     """Retain complete inputs and permissions, requesting only five body sections."""
     schema = copy.deepcopy(response_format["json_schema"]["schema"])
     sections = schema["properties"]["sections"]
@@ -247,11 +262,18 @@ def prepare_body_request(messages, response_format):
     properties = {"title": schema["properties"]["title"]}
     for key in BODY:
         block = sections["properties"][key]["properties"]["blocks"]["items"]
+        if typed_units and not binding["section_cards"][key]:
+            raise BodyRowError("staged_body_section_sources_unavailable", [key])
         unit = block["properties"]["sentences"]["items"]
         closed(unit["properties"], BODY_FIELDS)
         row = copy.deepcopy(unit)
         references = row["properties"].pop("fact_card_ids")
         references["items"]["enum"] = list(binding["section_cards"][key])
+        if typed_units:
+            references["minItems"] = 1
+            row["properties"]["kind"]["enum"] = ["scientific"]
+            row["properties"]["scope_notice_id"]["enum"] = ["none"]
+            row["properties"]["text"]["minLength"] = 1
         row["properties"]["fact_card_refs"] = references
         row["properties"] = {
             "block_index": {"type": "integer", "minimum": 0, "maximum": 125},
@@ -265,6 +287,24 @@ def prepare_body_request(messages, response_format):
             "minItems": 1,
             "maxItems": 126,
             "items": row,
+        }
+    if typed_units:
+        properties["scope_notices"] = {
+            "type": "array",
+            "maxItems": len(original["scope_notice_catalog"]),
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["section_key", "after_row", "scope_notice_id"],
+                "properties": {
+                    "section_key": {"type": "string", "enum": list(BODY)},
+                    "after_row": {"type": "integer", "minimum": 0, "maximum": 125},
+                    "scope_notice_id": {
+                        "type": "string",
+                        "enum": list(original["scope_notice_catalog"]),
+                    },
+                },
+            },
         }
     schema = {
         "type": "object",
@@ -291,7 +331,9 @@ def prepare_body_request(messages, response_format):
     for message in messages[2:]:
         policy = _short_feedback(json.loads(message["content"]), by_id)
         prepared.append({**message, "content": json.dumps(policy, ensure_ascii=False)})
-    return prepared, _format(schema, "grounded_body_v3_refs")
+    return prepared, _format(
+        schema, "grounded_body_v4_typed" if typed_units else "grounded_body_v3_refs"
+    )
 
 
 class BodyRowError(ValueError):
@@ -368,6 +410,101 @@ def decode_body(rows, binding):
     return rows
 
 
+def encode_typed_body(body, binding):
+    """Separate host notices without dropping or reclassifying authored prose."""
+    rows = encode_body(body, binding)
+    result = {"title": rows["title"], "scope_notices": []}
+    for key in BODY:
+        result[key] = []
+        for ri, row in enumerate(rows[key]):
+            if row["kind"] == "scientific":
+                result[key].append(row)
+                continue
+            notice = row["scope_notice_id"]
+            if (
+                row["text"]
+                or row["fact_card_refs"]
+                or notice not in {"review_scope", "evidence_limit"}
+                or row["kind"]
+                != ("organization" if notice == "review_scope" else "gap")
+                or not result[key]
+                or any(
+                    row[f] != result[key][-1][f]
+                    for f in ("block_index", "heading", "type")
+                )
+            ):
+                raise BodyRowError("typed_body_notice_invalid", [key, ri])
+            result["scope_notices"].append(
+                {
+                    "section_key": key,
+                    "after_row": len(result[key]) - 1,
+                    "scope_notice_id": notice,
+                }
+            )
+    return result
+
+
+def decode_typed_body(rows, binding, *, allow_empty_references=False):
+    """Restore catalog-only notices at explicit scientific anchors, never guessing."""
+    closed(rows, {"title", *BODY, "scope_notices"})
+    notices = rows["scope_notices"]
+    if not isinstance(notices, list) or len(notices) > 2:
+        raise BodyRowError("typed_body_notice_invalid", ["scope_notices"])
+    grouped, used = {}, set()
+    previous_anchor = (-1, -1)
+    for ni, notice in enumerate(notices):
+        closed(notice, {"section_key", "after_row", "scope_notice_id"})
+        key, index, nid = (
+            notice["section_key"],
+            notice["after_row"],
+            notice["scope_notice_id"],
+        )
+        if (
+            not isinstance(key, str)
+            or key not in BODY
+            or type(index) is not int
+            or not isinstance(nid, str)
+            or nid not in {"review_scope", "evidence_limit"}
+            or nid in used
+            or not isinstance(rows[key], list)
+            or not 0 <= index < len(rows[key])
+        ):
+            raise BodyRowError("typed_body_notice_invalid", ["scope_notices", ni])
+        used.add(nid)
+        anchor = (BODY.index(key), index)
+        if anchor < previous_anchor:
+            raise BodyRowError("typed_body_notice_order_invalid", ["scope_notices", ni])
+        previous_anchor = anchor
+        grouped.setdefault((key, index), []).append(nid)
+    restored = {"title": rows["title"]}
+    for key in BODY:
+        if not isinstance(rows[key], list) or not rows[key]:
+            raise BodyRowError("flat_body_section_invalid", [key])
+        restored[key] = []
+        for ri, row in enumerate(rows[key]):
+            if (
+                not isinstance(row, dict)
+                or row.get("kind") != "scientific"
+                or row.get("scope_notice_id") != "none"
+                or (not row.get("fact_card_refs") and not allow_empty_references)
+                or not isinstance(row.get("text"), str)
+                or not row["text"].strip()
+            ):
+                raise BodyRowError("typed_body_scientific_invalid", [key, ri])
+            restored[key].append(copy.deepcopy(row))
+            for nid in grouped.get((key, ri), []):
+                restored[key].append(
+                    {
+                        **{f: row[f] for f in ("block_index", "heading", "type")},
+                        "text": "",
+                        "kind": "organization" if nid == "review_scope" else "gap",
+                        "fact_card_refs": [],
+                        "scope_notice_id": nid,
+                    }
+                )
+    return decode_body(restored, binding)
+
+
 def _check_reference_schema(response_format, binding):
     """Require native permissions to match independently reconstructed host scopes."""
     fields = response_format["json_schema"]["schema"]["properties"]
@@ -413,33 +550,41 @@ def expand_body(rows):
     return result
 
 
-def body_row_projection(body, binding=None):
+def body_row_projection(body, binding=None, *, typed_units=False):
     """Bind provider row indices to the unchanged canonical body coordinates."""
     _, projection = canonical_from_array(body, body_only=True)
     canonical_paths = {
         p["wire_path"]: p["canonical_path"] for p in projection["positions"]
     }
     positions = []
+    notice_index = 0
     for key in BODY:
         ri = 0
         for bi, block in enumerate(body["sections"][key]["blocks"]):
             for si, unit in enumerate(block["sentences"]):
                 array_path = f"sections.{key}.blocks.{bi}.sentences.{si}"
                 canonical = canonical_paths[array_path]
+                scientific = unit["kind"] == "scientific"
+                wire_path = f"{key}.{ri}"
+                if typed_units and not scientific:
+                    wire_path = f"scope_notices.{notice_index}"
+                    notice_index += 1
                 positions.append(
                     {
-                        "wire_path": f"{key}.{ri}",
+                        "wire_path": wire_path,
                         "array_path": array_path,
                         "canonical_path": canonical,
                         "unit_sha256": digest(unit),
                     }
                 )
-                ri += 1
+                ri += int(scientific or not typed_units)
     return {
         "contract": CONTRACT,
         "positions": positions,
         "wire_document_sha256": digest(
-            encode_body(body, binding) if binding else flatten_body(body)
+            encode_typed_body(body, binding)
+            if typed_units
+            else encode_body(body, binding) if binding else flatten_body(body)
         ),
         **({"card_reference_binding_sha256": binding["sha256"]} if binding else {}),
         "array_document_sha256": digest(body),
@@ -447,15 +592,51 @@ def body_row_projection(body, binding=None):
     }
 
 
-def validate_body(raw, response_format, cards, structure, language, selection):
+def validate_body(
+    raw,
+    response_format,
+    cards,
+    structure,
+    language,
+    selection,
+    *,
+    collect_diagnostics=False,
+):
     """Check local body contracts without fabricating summaries or scientific scores."""
     rows = json.loads(raw, object_pairs_hook=unique)
-    Draft202012Validator(response_format["json_schema"]["schema"]).validate(rows)
+    errors = list(
+        Draft202012Validator(response_format["json_schema"]["schema"]).iter_errors(rows)
+    )
+    # An empty scientific citation list is a located writing error, never a
+    # repaired or accepted schema violation. All other schema errors fail closed.
+    empty_cards_only = bool(errors) and all(
+        e.validator == "minItems"
+        and e.instance == []
+        and len(e.path) == 3
+        and e.path[0] in BODY
+        and e.path[2] == "fact_card_refs"
+        for e in errors
+    )
+    if errors and not (collect_diagnostics and empty_cards_only):
+        raise errors[0]
     binding = card_reference_binding(
         cards, _writing_scopes(cards, structure, language, selection)
     )
     _check_reference_schema(response_format, binding)
-    body = expand_body(decode_body(rows, binding))
+    body = expand_body(
+        decode_typed_body(
+            rows,
+            binding,
+            allow_empty_references=collect_diagnostics and empty_cards_only,
+        )
+        if response_format["json_schema"]["name"] == "grounded_body_v4_typed"
+        else decode_body(rows, binding)
+    )
+    return validate_body_document(body, cards, structure, language, selection)
+
+
+def validate_body_document(body, cards, structure, language, selection):
+    """Check all body units before freezing or generating any summary."""
     native, _ = canonical_from_array(body, body_only=True)
     compiled, _ = compile_passage_report(
         json.dumps(native, ensure_ascii=False),
@@ -557,10 +738,19 @@ async def generate_staged_report(
     stage="initial",
     max_tokens=20000,
     generation_options=None,
+    repair_state=None,
 ):
     """Journal both bounded calls and merge only fully validated immutable parts."""
     if checkpoint_path is None:
         raise ValueError("staged_generation_checkpoint_required")
+    if repair_state is not None:
+        from litagent.quality import load_targeted_repairs
+
+        if (
+            load_targeted_repairs(checkpoint_path, repair_state["run_id"])
+            != repair_state
+        ):
+            raise ValueError("strict_targeted_repair_checkpoint_conflict")
     identity = digest(
         [
             CONTRACT,
@@ -581,6 +771,7 @@ async def generate_staged_report(
         "input_sha256": identity,
         "status": "prepared",
         "steps": {},
+        "initial_repair_state_sha256": digest(repair_state),
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -591,8 +782,12 @@ async def generate_staged_report(
     except FileExistsError as exc:
         raise ValueError("staged_generation_restart_no_replay") from exc
 
-    async def call(part, prepared, rf):
+    active_part = "body"
+
+    async def call(part, prepared, rf, *, repair_entry=None):
         """Preserve provider bytes and charges before parsing or local checks."""
+        nonlocal active_part
+        active_part = part
         check_grounded_request_budget(
             llm,
             prepared,
@@ -625,6 +820,13 @@ async def generate_staged_report(
             finish_reason=response.finish_reason,
             model=response.model,
         )
+        if repair_entry is not None:
+            repair_entry.update(
+                usage=dict(response.usage),
+                response_sha256=entry["raw_response_sha256"],
+                actual_model=response.model,
+                finish_reason=response.finish_reason,
+            )
         budget = getattr(llm, "_cost_budget", None)
         if budget is not None:
             entry["budget"] = budget.snapshot()
@@ -640,6 +842,7 @@ async def generate_staged_report(
         return response.content
 
     part, raw = "body", ""
+    repair_start = len(repair_state["attempts"]) if repair_state is not None else 0
     try:
         prepared, rf = prepare_body_request(messages, response_format)
         binding = card_reference_binding(
@@ -649,9 +852,51 @@ async def generate_staged_report(
         state["body_card_reference_binding"] = binding
         atomic_json(path, state)
         raw = await call(part, prepared, rf)
-        body, count = validate_body(raw, rf, cards, structure, language, selection)
-        state["steps"][part]["projection"] = body_row_projection(body, binding)
-        state["steps"][part]["status"] = "locally_valid"
+        from litagent.quality import GroundedWritingError
+
+        try:
+            body, count = validate_body(
+                raw, rf, cards, structure, language, selection, collect_diagnostics=True
+            )
+        except GroundedWritingError as failure:
+            if repair_state is None:
+                raise
+            body = expand_body(
+                decode_typed_body(
+                    json.loads(raw, object_pairs_hook=unique),
+                    binding,
+                    allow_empty_references=True,
+                )
+            )
+            body, count = await repair_staged_body(
+                body,
+                failure,
+                messages,
+                cards,
+                structure,
+                language,
+                selection,
+                repair_state,
+                checkpoint_path,
+                call,
+                trace_hook,
+                parent_task_id,
+                llm,
+                max_tokens,
+            )
+        state["steps"][part]["projection"] = body_row_projection(
+            body, binding, typed_units=True
+        )
+        repaired_here = (
+            repair_state is not None and len(repair_state["attempts"]) > repair_start
+        )
+        if repaired_here:
+            state["steps"][part]["projection"].update(
+                transport="host_repaired_body", repair_state_sha256=digest(repair_state)
+            )
+        state["steps"][part]["status"] = (
+            "locally_repaired" if repaired_here else "locally_valid"
+        )
         atomic_json(path, state)
         prepared, rf = prepare_summary_request(body, count, messages, response_format)
         part, raw = "summaries", ""
@@ -693,6 +938,7 @@ async def generate_staged_report(
             status="failed_no_replay",
             error_type=type(exc).__name__,
             error_code=error_code,
+            error_phase=active_part,
         )
         if hasattr(exc, "diagnostics"):
             state["diagnostics"] = exc.diagnostics
@@ -705,7 +951,7 @@ async def generate_staged_report(
         if trace_hook:
             data = {
                 "task_id": parent_task_id,
-                "phase": f"{stage}/{part}",
+                "phase": f"{stage}/{active_part}",
                 "contract_version": CONTRACT,
                 "reason_code": "staged_generation_failed",
                 "subreason": (
@@ -715,8 +961,10 @@ async def generate_staged_report(
                 ),
                 "error_type": type(exc).__name__,
             }
-            if "raw_response" in state["steps"].get(part, {}):
-                data["candidate_sha256"] = state["steps"][part]["raw_response_sha256"]
+            if "raw_response" in state["steps"].get(active_part, {}):
+                data["candidate_sha256"] = state["steps"][active_part][
+                    "raw_response_sha256"
+                ]
             if isinstance(exc, json.JSONDecodeError):
                 data.update(
                     json_position=exc.pos, json_line=exc.lineno, json_column=exc.colno
@@ -728,3 +976,148 @@ async def generate_staged_report(
             except Exception:
                 pass
         raise
+
+
+async def repair_staged_body(
+    body,
+    failure,
+    messages,
+    cards,
+    structure,
+    language,
+    selection,
+    repair_state,
+    checkpoint_path,
+    call,
+    trace_hook,
+    parent_task_id,
+    llm,
+    max_tokens,
+):
+    """Spend only the existing shared attempts on complete, located body repairs."""
+    from collections import Counter
+
+    from litagent.quality import (
+        GroundedWritingError,
+        apply_native_repairs,
+        begin_targeted_repair,
+        emit_targeted_repair,
+        prepare_native_repair_request,
+        save_targeted_repairs,
+    )
+
+    native, _ = canonical_from_array(body, body_only=True)
+    candidate = json.dumps(native, ensure_ascii=False)
+    if failure.candidate_sha256 != hashlib.sha256(candidate.encode()).hexdigest():
+        raise ValueError("strict_native_repair_binding_invalid")
+    previous = None
+    while True:
+        prepared, schema, binding = prepare_native_repair_request(
+            messages,
+            candidate,
+            failure.diagnostics,
+            cards=cards,
+            structure=structure,
+            language=language,
+            evidence_selection=selection,
+            body_only=True,
+            previous_failure=previous,
+        )
+        check_grounded_request_budget(
+            llm,
+            prepared,
+            schema,
+            max_tokens=max_tokens,
+            trace_hook=trace_hook,
+            parent_task_id=parent_task_id,
+            stage="body_repair",
+        )
+        entry = begin_targeted_repair(
+            repair_state, "native_initial", digest([prepared, schema])
+        )
+        save_targeted_repairs(
+            checkpoint_path,
+            repair_state,
+            staged_body_candidate=candidate,
+            staged_body_binding=binding,
+            staged_body_diagnostics=failure.diagnostics,
+        )
+        emit_targeted_repair(trace_hook, repair_state, parent_task_id)
+        retry = False
+        try:
+            response = await call(
+                f"body_repair_{entry['index']}", prepared, schema, repair_entry=entry
+            )
+            artifact = {
+                "candidate": candidate,
+                "binding": binding,
+                "diagnostics": failure.diagnostics,
+                "response": response,
+            }
+            save_targeted_repairs(
+                checkpoint_path,
+                repair_state,
+                **{f"staged_body_attempt_{entry['index']}": artifact},
+            )
+            repaired, proof = apply_native_repairs(
+                candidate, response, binding, cards=cards
+            )
+            artifact.update(applied_candidate=repaired, repair_proof=proof)
+            entry["repair_proof"] = proof
+            save_targeted_repairs(
+                checkpoint_path,
+                repair_state,
+                **{f"staged_body_attempt_{entry['index']}": artifact},
+            )
+            if json.loads(repaired) == native:
+                raise ValueError("strict_native_repair_no_progress")
+            proposed = array_from_native(json.loads(repaired), body_only=True)
+
+            def repetitions(document):
+                """Detect newly added exact findings without merging conditions."""
+                return Counter(
+                    (k, re.sub(r"\s+", " ", u["text"]).strip())
+                    for k, section in document["sections"].items()
+                    for b in section["blocks"]
+                    for u in b["sentences"]
+                    if u["kind"] == "scientific"
+                )
+
+            old, new = repetitions(body), repetitions(proposed)
+            if any(n > max(1, old[key]) for key, n in new.items()):
+                raise ValueError("strict_native_repair_duplicate_content")
+            checked, count = validate_body_document(
+                proposed, cards, structure, language, selection
+            )
+            entry.update(
+                status="completed",
+                repaired_candidate_sha256=hashlib.sha256(repaired.encode()).hexdigest(),
+            )
+            return checked, count
+        except BaseException as exc:
+            entry.update(
+                status=(
+                    "cancelled" if isinstance(exc, asyncio.CancelledError) else "failed"
+                ),
+                error_code=(
+                    str(exc) if isinstance(exc, ValueError) else type(exc).__name__
+                ),
+            )
+            if (
+                isinstance(exc, GroundedWritingError)
+                and len(repair_state["attempts"]) < 2
+            ):
+                previous = {
+                    "candidate_sha256": exc.candidate_sha256,
+                    "diagnostics": exc.diagnostics,
+                    "attempt_index": entry["index"],
+                    "repair_proof": entry.get("repair_proof", {}),
+                }
+                retry = True
+            else:
+                raise
+        finally:
+            save_targeted_repairs(checkpoint_path, repair_state)
+            emit_targeted_repair(trace_hook, repair_state, parent_task_id)
+        if not retry:
+            raise failure

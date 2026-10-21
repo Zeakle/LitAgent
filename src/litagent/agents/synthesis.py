@@ -490,6 +490,7 @@ class SynthesisWorker(Worker):
                     trace_hook=self._trace_hook,
                     parent_task_id=task.task_id,
                     generation_options=generation_options,
+                    repair_state=repair_state,
                 )
             else:
                 check_grounded_request_budget(

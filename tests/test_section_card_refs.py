@@ -50,7 +50,7 @@ def test_aliases_restore_exact_canonical_body_and_original_position_hashes(langu
         == binding
     )
     messages, rf = request(cards, language, array_wire=True)
-    _, schema = prepare_body_request(messages, rf)
+    _, schema = prepare_body_request(messages, rf, typed_units=False)
     recovered, count = validate_body(
         json.dumps(wire), schema, cards, "academic_v2", language, None
     )
@@ -108,7 +108,7 @@ def test_model_schema_cannot_expand_host_section_permissions():
     body, _ = split(analysis_document(cards))
     binding = binding_for(cards)
     messages, rf = request(cards, array_wire=True)
-    _, rf = prepare_body_request(messages, rf)
+    _, rf = prepare_body_request(messages, rf, typed_units=False)
     rf["json_schema"]["schema"]["properties"]["methods"]["items"]["properties"][
         "fact_card_refs"
     ]["items"]["enum"].append("m999")
@@ -146,7 +146,7 @@ def test_source_prose_and_policy_survive_defined_reference_slot_projection():
         }
     )
     before = copy.deepcopy(messages)
-    prepared, _ = prepare_body_request(messages, rf)
+    prepared, _ = prepare_body_request(messages, rf, typed_units=False)
     packet = json.loads(prepared[1]["content"])
     binding = binding_for(cards)
     short = next(k for k, v in binding["reading_cards"].items() if v == cid)
@@ -170,7 +170,7 @@ def test_analysis_and_coverage_references_roundtrip_without_loss_of_sources():
     cards = facts()
     messages, rf = request(cards, array_wire=True)
     old = json.loads(messages[1]["content"])
-    prepared, _ = prepare_body_request(messages, rf)
+    prepared, _ = prepare_body_request(messages, rf, typed_units=False)
     new = json.loads(prepared[1]["content"])
     b = binding_for(cards)
     reading = b["reading_cards"]

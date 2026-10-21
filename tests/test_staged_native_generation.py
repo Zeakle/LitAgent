@@ -24,7 +24,7 @@ from litagent.staged_generation import (
     BodyRowError,
     body_row_projection,
     card_reference_binding,
-    encode_body,
+    encode_typed_body,
     expand_body,
     flatten_body,
     generate_staged_report,
@@ -47,7 +47,7 @@ def split(document):
 
 def provider_body(body, cards, language="en", selection=None):
     """Encode only at the simulated provider boundary; consumers stay canonical."""
-    return encode_body(
+    return encode_typed_body(
         body,
         card_reference_binding(
             cards, _writing_scopes(cards, "academic_v2", language, selection)
@@ -77,6 +77,7 @@ def test_body_and_summary_retain_exact_sources_and_frozen_prose(language):
         ] == original["sources"][ref]["fact_card_ids"]
     assert set(body_format["json_schema"]["schema"]["properties"]) == {
         "title",
+        "scope_notices",
         *body["sections"],
     }
     checked, count = validate_body(
@@ -249,7 +250,7 @@ async def test_real_sdk_partitions_and_failures_never_replay(tmp_path, fault):
         assert value["model"] == "pro-offline" and value["max_tokens"] == 20000
         name = value["response_format"]["json_schema"]["name"]
         assert name == (
-            "grounded_body_v3_refs" if len(calls) == 1 else "grounded_summaries_v1"
+            "grounded_body_v4_typed" if len(calls) == 1 else "grounded_summaries_v1"
         )
         journal = next(tmp_path.glob("*.generation-*.json"))
         persisted = json.loads(journal.read_text())
@@ -513,7 +514,7 @@ async def test_actual_human_revision_uses_two_parts_and_never_commits_body_mutat
         )
         assert len(calls) == 2
         assert [p["response_format"]["json_schema"]["name"] for p in calls] == [
-            "grounded_body_v3_refs",
+            "grounded_body_v4_typed",
             "grounded_summaries_v1",
         ]
         assert not outcome["committed"] and outcome["error_type"] == "ValidationError"

@@ -3710,6 +3710,7 @@ class LitAgent:
                     trace_hook=self._trace_hook,
                     parent_task_id="human_revision",
                     stage="human_revision",
+                    repair_state=metadata.get("targeted_repair_state"),
                     max_tokens=self._config.eval.max_tokens,
                     generation_options={
                         k: v for k, v in kwargs.items() if k == "extra_body"

@@ -171,10 +171,10 @@ def _check_unit(unit, section, *, validate_references=True):
         raise ValueError("array_wire_reference_invalid")
 
 
-def array_from_native(document):
+def array_from_native(document, *, body_only=False):
     """Encode canonical containers without editing unit values or ordering."""
     closed(document, {"title", "sections"})
-    closed(document["sections"], SECTIONS)
+    closed(document["sections"], BODY if body_only else SECTIONS)
     result = {"title": document["title"], "sections": {}}
     for key, section in document["sections"].items():
         closed(section, {"first_block", "additional_blocks"})

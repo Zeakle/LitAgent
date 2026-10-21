@@ -369,6 +369,7 @@ async def accounted(prepared, monkeypatch):
         state = await probe.run(prior, live=True)
         assert state["status"] == "protocol_completed" and len(calls) == 2
     root = prior.parent / "accounted"
+    monkeypatch.setattr(probe, "ACCOUNTED_CONTRACT", probe.CONTRACT)
     current = probe.prepare(root, prior.parent / "parent", prior)
     return root, current, prior, calls
 

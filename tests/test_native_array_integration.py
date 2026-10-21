@@ -349,7 +349,7 @@ async def test_real_reviewer_to_whole_revision_uses_explicit_array_wire(
             value = array_from_native(doc if index < (2 if staged else 1) else revised)
             if staged:
                 if index in {0, 3}:
-                    assert name == "grounded_body_v3_refs"
+                    assert name == "grounded_body_v4_typed"
                     if index == 3:
                         writing_packet = json.loads(packet["messages"][1]["content"])
                         assert "On DeiT-S" in writing_packet["current_draft"]
@@ -366,10 +366,10 @@ async def test_real_reviewer_to_whole_revision_uses_explicit_array_wire(
                     from litagent.quality import _writing_scopes
                     from litagent.staged_generation import (
                         card_reference_binding,
-                        encode_body,
+                        encode_typed_body,
                     )
 
-                    value = encode_body(
+                    value = encode_typed_body(
                         value,
                         card_reference_binding(
                             cards,
