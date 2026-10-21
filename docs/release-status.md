@@ -1,8 +1,8 @@
-# Engineering release status · 2026-10-21
+# Engineering release status · 2026-10-22
 
 ## Verified locally
 
-- Default offline regression: **3897 passed, 25 deselected** (8 deprecation warnings).
+- Default offline regression: **3916 passed, 25 deselected** (8 deprecation warnings).
 - Python 3.11.15 / Node 24.14.0 on macOS; direct dependency constraints install in
   a fresh virtual environment with no broken requirements (`pip check`).
 - Clean source snapshot has no `.env` or private `artifacts`; presentation health
@@ -213,3 +213,41 @@ but unsupported scientific claim still blocks strict acceptance. These are
 engineering regressions, not human calibration or evidence of live reliability.
 The v5 paid probe remains closed pending a separately frozen execution/accounting
 migration. Phase 14.5 remains in progress; the 8004 result retains its real failure.
+
+
+## Received-body repair observation · 2026-10-22
+
+At `1d58383`, a separate `frozen-received-body-protocol-v1` executor reconciles
+all three earlier protocol receipts and reuses the exact already-charged body
+response. It does not resend initial generation or reset historical charges,
+shared repair counts, terminal journals or the 500k/64 and phase budgets. Default
+writing identities and the retired v5 paid-probe guard remain unchanged.
+
+Offline validation: **3916 passed / 25 deselected** (8 warnings), including
+19 new cases for the real SDK boundary, three-hop accounting, immutable inputs,
+duplicate grants, interruption and request ceilings. The earlier related run
+passed 125 cases; the final full run includes the two subsequently added cases.
+Four changed Python files passed Black/isort; history and Plan SHA checks passed.
+
+One new bounded real attempt used exactly **2 Pro requests / 33,273 tokens**,
+complete usage, zero retries. The first request used 17,858 input + 1,018 output
+and repaired all seven local citation-scope issues without changing protected
+units or source permissions. This is a local contract pass, not a scientific
+support verdict. The second used 13,424 input + 973 output; its summary JSON ends
+incomplete at offset **2854** (line 1, column 2855), despite finish `stop` and the
+20,000 output cap. The raw response is preserved, with no delimiter patch or
+extra paid request. Reviewer/Evaluation did not run and the result is not deliverable.
+
+The family now totals **32 requests / 232,424 tokens**; historical totals are
+614 model requests / 3,330,345 known tokens, retaining the 1,003,467 older unknown
+holds. Protocol continuations do not add initial Survey rounds. LangFuse readback
+contains two generations / 33,273 tokens with empty generation I/O and an
+unverified survey terminal span; its outer parent remains absent from the returned
+list. A complete trace tree is not claimed.
+
+[Immutable received-body result and four public formats](../benchmarks/survey/results/received-body-protocol-20261022-001/README.md).
+Desktop/390px bilingual text, keyboard expansion, no overflow and no console errors
+were checked. The new result is served separately on 8005; 8004 remains unchanged.
+Live Survey remains experimental. Next work is offline summary-wire diagnosis;
+no new initial body generation, paid replay or formal suite was triggered.
+Phase 14.5 remains in progress.

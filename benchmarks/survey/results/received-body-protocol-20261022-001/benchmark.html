@@ -1,0 +1,196 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>接收正文修复 / Received body repair</title><style>*{box-sizing:border-box}body{margin:0;color:#1c303a;background:#f0f4f6;font:16px/1.6 system-ui}main{max-width:1080px;margin:auto;padding:30px 20px}h1{font-size:clamp(25px,5vw,38px);line-height:1.25}.notice{background:#fff4da;border-left:5px solid #9a6411;padding:20px}.cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin:24px 0}.card,section{background:white;border:1px solid #d5e0e5;border-radius:12px;padding:20px;margin-bottom:20px}.card strong{font-size:30px;display:block;overflow-wrap:anywhere}small{color:#4f6772}table{width:100%;border-collapse:collapse}th,td{text-align:left;vertical-align:top;padding:12px 8px;border-bottom:1px solid #d5e0e5;overflow-wrap:anywhere;font-size:14px}th{width:39%}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}summary{cursor:pointer;padding:12px}a{color:#006d89;display:inline-block;padding:8px}:focus-visible{outline:3px solid #006d89;outline-offset:3px}@media(max-width:600px){main{padding:24px 14px}.cards{grid-template-columns:1fr;gap:0}section{padding:14px}th,td{font-size:12px;padding:10px 4px}}</style><main><h1>接收正文的有界修复<br><small>Bounded received-body repair</small></h1><div class="notice"><strong>科学未核验 / Not scientifically evaluated · 不可交付 / Not deliverable</strong><p>复用已计费正文，未重发初稿、检索或提取。完整来源与权限保持，仅修复授权单元，再按预算尝试摘要。 / Reused the already charged body. No new initial generation or search. Full original sources and exact permissions remain.</p><p>正文修复通过本地检查；摘要在末尾返回不完整 JSON，Evaluation 未运行。 / Body repair passed local checks; summary JSON ended incomplete, before Evaluation.</p><p>本次终态 / Terminal: failed_no_replay; JSONDecodeError / stage_contract_invalid</p></div><div class="cards"><div class="card"><strong>2</strong><small>新增请求 / New calls · 无初稿重发 / No body resend</small></div><div class="card"><strong>33,273</strong><small>已知 tokens / Known usage</small></div><div class="card"><strong>1/1</strong><small>本地修复完成 / Local repairs completed</small></div></div><section><h2>分层结果 / Results by layer</h2><table><caption>协议、编译与科学验收分别呈现 / Contracts, compilation and science</caption><thead><tr><th scope="col">检查 / Check</th><th scope="col">状态 / Status</th><th scope="col">定位 / Location</th></tr></thead><tbody><tr><th scope="row">原正文身份 / Received body identity</th><td>通过 / Passed</td><td>80f8ca0b1643074889caf0148590bcb03a0d512713792da807fe02d408ef59da</td></tr><tr><th scope="row">原正文宿主校验 / Initial host validation</th><td>失败 / Failed</td><td>7 historical citation-scope diagnostics; this is not a scientific verdict</td></tr><tr><th scope="row">修复 1 JSON / Repair 1 JSON</th><td>通过 / Passed</td><td>—</td></tr><tr><th scope="row">修复 1 schema / Repair 1 schema</th><td>通过 / Passed</td><td>—</td></tr><tr><th scope="row">摘要 JSON / Summary JSON</th><td>失败 / Failed</td><td>line:1,column:2855,offset:2854,eof:True</td></tr><tr><th scope="row">修复 1 宿主检查 / Repair 1 host checks</th><td>通过 / Passed</td><td>—</td></tr><tr><th scope="row">修复后正文校验 / Repaired body checks</th><td>通过 / Passed</td><td>—</td></tr><tr><th scope="row">完整报告编译 / Full report compilation</th><td>未完成 / Incomplete</td><td>—</td></tr><tr><th scope="row">Reviewer</th><td>未运行 / Not run</td><td>—</td></tr><tr><th scope="row">Evaluation</th><td>未运行 / Not run</td><td>—</td></tr><tr><th scope="row">Judge</th><td>未运行 / Not run</td><td>—</td></tr><tr><th scope="row">Jev</th><td>未运行 / Not run</td><td>—</td></tr><tr><th scope="row">科学验收 / Scientific acceptance</th><td>未核验 / Not evaluated</td><td>—</td></tr><tr><th scope="row">交付 / Delivery</th><td>已阻止 / Blocked</td><td>—</td></tr></tbody></table></section><section><h2>预算与身份 / Accounting and identity</h2><p>父族 32 请求 / 232,424 tokens；500000/64及阶段限额继续生效。</p><p>新增最多2请求 / 120000tokens / 每次20000输出 / 零重试。共享修复最多两次，失败计费计次，未知响应不重发。</p><p>历史 614 请求 / 3,330,345 已知 tokens；旧未知占额 1,003,467 保留。</p><details><summary>查看源码、SHA和诊断 / Inspect source, SHA and diagnostics</summary><pre>{
+  &quot;run_id&quot;: &quot;received-body-protocol-20261022-001&quot;,
+  &quot;source_commit&quot;: &quot;1d5838382ec1eb08161d880a5cca2e11b7001fdc&quot;,
+  &quot;binding&quot;: &quot;98acf828d08d7e6ed068ca5ce0a6933375c9e01064175554a4d4b7675f2e0218&quot;,
+  &quot;contract&quot;: &quot;native-body-summary-v5&quot;,
+  &quot;execution_contract&quot;: &quot;frozen-received-body-protocol-v1&quot;,
+  &quot;accounting_predecessor_binding&quot;: &quot;f044739e43c28a7b076a40cd8c616460a9a3f9ba9da95341979bea82a21df3cb&quot;,
+  &quot;received_body&quot;: {
+    &quot;contract&quot;: &quot;received-typed-body-v1&quot;,
+    &quot;raw_response_sha256&quot;: &quot;80f8ca0b1643074889caf0148590bcb03a0d512713792da807fe02d408ef59da&quot;,
+    &quot;source_binding&quot;: &quot;f044739e43c28a7b076a40cd8c616460a9a3f9ba9da95341979bea82a21df3cb&quot;,
+    &quot;source_journal_sha256&quot;: &quot;a38ecf302c583ff7fe299ed1d8cfe5310e4cb70be9d8692098bdece7b9833253&quot;,
+    &quot;reference_binding_sha256&quot;: &quot;46df09aeed844022a83e0f7c1ba66420f036900ed8d1e05c9a581e96a60d5265&quot;,
+    &quot;sha256&quot;: &quot;086bbbc4da8e2ea8df9a350c161f8293292af086eb7c5d2daa3e71a730c486e0&quot;
+  },
+  &quot;status&quot;: &quot;failed_no_replay&quot;,
+  &quot;error_type&quot;: &quot;JSONDecodeError&quot;,
+  &quot;error_code&quot;: &quot;stage_contract_invalid&quot;,
+  &quot;error_phase&quot;: &quot;summaries&quot;,
+  &quot;json_error&quot;: {
+    &quot;offset&quot;: 2854,
+    &quot;line&quot;: 1,
+    &quot;column&quot;: 2855
+  },
+  &quot;scientific_verdict&quot;: &quot;not_evaluated&quot;,
+  &quot;publishable&quot;: false,
+  &quot;checks&quot;: [
+    {
+      &quot;check&quot;: &quot;received_body_identity&quot;,
+      &quot;status&quot;: &quot;passed&quot;,
+      &quot;paths&quot;: [
+        &quot;80f8ca0b1643074889caf0148590bcb03a0d512713792da807fe02d408ef59da&quot;
+      ]
+    },
+    {
+      &quot;check&quot;: &quot;initial_body_host_validation&quot;,
+      &quot;status&quot;: &quot;failed&quot;,
+      &quot;paths&quot;: [
+        &quot;7 historical citation-scope diagnostics; this is not a scientific verdict&quot;
+      ]
+    },
+    {
+      &quot;check&quot;: &quot;body_repair_0_json&quot;,
+      &quot;status&quot;: &quot;passed&quot;,
+      &quot;paths&quot;: []
+    },
+    {
+      &quot;check&quot;: &quot;body_repair_0_schema&quot;,
+      &quot;status&quot;: &quot;passed&quot;,
+      &quot;paths&quot;: []
+    },
+    {
+      &quot;check&quot;: &quot;summaries_json&quot;,
+      &quot;status&quot;: &quot;failed&quot;,
+      &quot;paths&quot;: [
+        &quot;line:1,column:2855,offset:2854,eof:True&quot;
+      ]
+    },
+    {
+      &quot;check&quot;: &quot;repair_0_host&quot;,
+      &quot;status&quot;: &quot;passed&quot;,
+      &quot;paths&quot;: []
+    },
+    {
+      &quot;check&quot;: &quot;repaired_body_host_validation&quot;,
+      &quot;status&quot;: &quot;passed&quot;,
+      &quot;paths&quot;: []
+    },
+    {
+      &quot;check&quot;: &quot;full_local_compile&quot;,
+      &quot;status&quot;: &quot;not_completed&quot;,
+      &quot;paths&quot;: []
+    },
+    {
+      &quot;check&quot;: &quot;reviewer&quot;,
+      &quot;status&quot;: &quot;not_run&quot;,
+      &quot;paths&quot;: []
+    },
+    {
+      &quot;check&quot;: &quot;evaluation&quot;,
+      &quot;status&quot;: &quot;not_run&quot;,
+      &quot;paths&quot;: []
+    },
+    {
+      &quot;check&quot;: &quot;judge&quot;,
+      &quot;status&quot;: &quot;not_run&quot;,
+      &quot;paths&quot;: []
+    },
+    {
+      &quot;check&quot;: &quot;jev&quot;,
+      &quot;status&quot;: &quot;not_run&quot;,
+      &quot;paths&quot;: []
+    },
+    {
+      &quot;check&quot;: &quot;scientific_acceptance&quot;,
+      &quot;status&quot;: &quot;not_evaluated&quot;,
+      &quot;paths&quot;: []
+    },
+    {
+      &quot;check&quot;: &quot;delivery&quot;,
+      &quot;status&quot;: &quot;blocked&quot;,
+      &quot;paths&quot;: []
+    }
+  ],
+  &quot;initial_host_diagnostic_counts&quot;: {
+    &quot;strict_writing_unit_citation_scope_ambiguous&quot;: 7
+  },
+  &quot;final_host_diagnostic_counts&quot;: {},
+  &quot;stage_raw_sha256&quot;: {
+    &quot;body_repair_0&quot;: &quot;072f0e93e23fba87248db0ffc5b6d28aaad3000814411e005b2036663d790f08&quot;,
+    &quot;summaries&quot;: &quot;f69a74db0f1ac419f0384ce373bff6ba041233ee7f0a36394b8b3b8549f01b0b&quot;
+  },
+  &quot;repair_attempts&quot;: [
+    {
+      &quot;index&quot;: 0,
+      &quot;status&quot;: &quot;completed&quot;,
+      &quot;input_sha256&quot;: &quot;64a4455405ee3dbba154c231a3207e89e284a26adf391040f64cb1a227564bb0&quot;
+    }
+  ],
+  &quot;requests&quot;: 2,
+  &quot;tokens&quot;: 33273,
+  &quot;unknown_hold&quot;: 0,
+  &quot;usage&quot;: [
+    {
+      &quot;model&quot;: &quot;doubao-seed-2-1-pro-260915&quot;,
+      &quot;actual_model&quot;: &quot;doubao-seed-2-1-pro-260915&quot;,
+      &quot;prompt_tokens&quot;: 17858,
+      &quot;completion_tokens&quot;: 1018,
+      &quot;total_tokens&quot;: 18876,
+      &quot;usage_available&quot;: true,
+      &quot;finish_reason&quot;: &quot;stop&quot;,
+      &quot;elapsed_ms&quot;: 15050
+    },
+    {
+      &quot;model&quot;: &quot;doubao-seed-2-1-pro-260915&quot;,
+      &quot;actual_model&quot;: &quot;doubao-seed-2-1-pro-260915&quot;,
+      &quot;prompt_tokens&quot;: 13424,
+      &quot;completion_tokens&quot;: 973,
+      &quot;total_tokens&quot;: 14397,
+      &quot;usage_available&quot;: true,
+      &quot;finish_reason&quot;: &quot;stop&quot;,
+      &quot;elapsed_ms&quot;: 20161
+    }
+  ],
+  &quot;parent_plus_probe&quot;: {
+    &quot;schema_version&quot;: 1,
+    &quot;max_tokens&quot;: 500000,
+    &quot;warn_ratio&quot;: 0.8,
+    &quot;used_tokens&quot;: 232424,
+    &quot;call_count&quot;: 32,
+    &quot;warned&quot;: false,
+    &quot;strict_policy&quot;: &quot;staged-budget-v1&quot;,
+    &quot;strict_phase&quot;: 1,
+    &quot;requests_sent&quot;: 32,
+    &quot;phase_usage&quot;: [
+      98267,
+      134157,
+      0
+    ],
+    &quot;usage_uncertain&quot;: false,
+    &quot;halt_on_unknown_usage&quot;: true,
+    &quot;stop_reason&quot;: null
+  },
+  &quot;cumulative&quot;: {
+    &quot;initial_generation_rounds&quot;: 31,
+    &quot;model_requests&quot;: 614,
+    &quot;model_known_tokens&quot;: 3330345,
+    &quot;model_unknown_conservative_tokens&quot;: 1003467,
+    &quot;jev_requests&quot;: 67,
+    &quot;jev_conservative_input_tokens&quot;: 756769,
+    &quot;judge_requests&quot;: 0,
+    &quot;jev_usage_complete&quot;: false
+  },
+  &quot;new_allowance&quot;: {
+    &quot;tokens&quot;: 120000,
+    &quot;requests&quot;: 2,
+    &quot;output_per_call&quot;: 20000,
+    &quot;retries&quot;: 0
+  },
+  &quot;no_initial_body_request&quot;: true,
+  &quot;human_calibration&quot;: &quot;unverified&quot;,
+  &quot;interpretation&quot;: &quot;Protocol validation only; no Reviewer or Evaluation, no scientific delivery claim.&quot;,
+  &quot;trace_readback&quot;: {
+    &quot;trace_id&quot;: &quot;ce4e999a13ae7a94d1382e8338b7fce1&quot;,
+    &quot;observations&quot;: 3,
+    &quot;generations&quot;: 2,
+    &quot;known_tokens&quot;: 33273,
+    &quot;generation_io_empty&quot;: true,
+    &quot;survey_lifecycle_recorded&quot;: true,
+    &quot;survey_parent_in_readback&quot;: false,
+    &quot;whole_trace_tree_verified&quot;: false,
+    &quot;scientific_verdict&quot;: &quot;not_evaluated&quot;,
+    &quot;trace_url&quot;: &quot;http://localhost:3000/project/litagent-local-project/traces/ce4e999a13ae7a94d1382e8338b7fce1&quot;
+  }
+}
+</pre></details></section><section><h2>解释边界 / Interpretation</h2><p>没有运行Reviewer/Evaluation，不宣称科学支持或可交付。无人工金标准，准确率/误放行率不可用。正式15题未运行，Phase14.5 in_progress。</p><p>Protocol completion cannot establish scientific reliability. Historical failures remain immutable.</p><a href="benchmark.json">JSON</a><a href="benchmark.csv">CSV</a><a href="benchmark.md">Markdown</a></section></main></html>
