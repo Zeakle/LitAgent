@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import re
+from collections.abc import Mapping
 from pathlib import Path
 
 from jsonschema import Draft202012Validator
@@ -27,7 +28,9 @@ from litagent.quality import (
 from litagent.report_audit import atomic_json, digest
 from litagent.writing_passages import compile_passage_report
 
-CONTRACT = "native-body-summary-v2"
+CONTRACT = "native-body-summary-v3"
+CARD_REFERENCE_CONTRACT = "section-card-refs-v1"
+SECTION_PREFIXES = dict(zip(BODY, ("i", "t", "m", "e", "o")))
 BODY_INSTRUCTION = """Write only the five academic body sections in the response schema.
 The host generates abstract/conclusion separately after freezing this body.
 Follow the research question, coverage requirements, report_language and each
@@ -37,7 +40,11 @@ selected materials without inventing a field-wide research gap.
 When current_draft and located_feedback are supplied, address those bound criticisms
 and preserve unaffected valid findings, conditions and requirements. Draft and
 feedback are not fact sources; verify corrections against the original sources.
-Scientific units require actual permitted, unique fact_card_ids and scope_notice_id=none.
+Scientific units require actual permitted, unique fact_card_refs and scope_notice_id=none.
+Choose fact_card_refs only from this section's explicit section_source_index menu.
+Its fact_card_ref (for example m3) selects the reading card at card_key (c3).
+Read cards[cN] for its complete original source and unverified fields. Never output
+reading keys cN, original ledger IDs, another section's prefix or invented refs.
 Read each card's COMPLETE original sources[source_ref].source_quote, preserving its
 subject, method, dataset, conditions, metric, value, unit, direction and qualifiers.
 Cards and unverified fields locate evidence; they are not verified facts. Never use
@@ -47,7 +54,7 @@ Keep technical names and identifiers intact. Proposals with scientific premises
 still require evidence. Preserve reported coordinate dimensions and tuples rather
 than inventing numerical decompositions. Omit numerical taxonomy counts: the host
 counts actual list entries. More text or repeated facts do not establish coverage.
-For optional organization/gap notices use text="", fact_card_ids=[], and one exact
+For optional organization/gap notices use text="", fact_card_refs=[], and one exact
 scope_notice_catalog ID. Use each notice at most once; notices cannot answer core
 questions or replace scientific limitations. Do not write arbitrary notice prose.
 Return title and the five section keys directly at the JSON root. Each section
@@ -86,18 +93,166 @@ def _format(schema, name):
     }
 
 
+def card_reference_binding(cards, scopes):
+    """Assign deterministic reading keys and uniquely chapter-prefixed references."""
+    if (
+        not isinstance(cards, Mapping)
+        or not isinstance(scopes, Mapping)
+        or not cards
+        or any(not isinstance(cid, str) or not cid for cid in cards)
+    ):
+        raise ValueError("section_card_binding_invalid")
+    numbers = {cid: i for i, cid in enumerate(sorted(cards), 1)}
+    sections = {}
+    for key in BODY:
+        ids = scopes.get(key)
+        if (
+            not isinstance(ids, list)
+            or any(not isinstance(cid, str) or cid not in numbers for cid in ids)
+            or len(set(ids)) != len(ids)
+        ):
+            raise ValueError("section_card_binding_invalid")
+        sections[key] = {
+            f"{SECTION_PREFIXES[key]}{numbers[cid]}": cid for cid in sorted(ids)
+        }
+    result = {
+        "contract": CARD_REFERENCE_CONTRACT,
+        "reading_cards": {f"c{n}": cid for cid, n in numbers.items()},
+        "section_cards": sections,
+    }
+    return {**result, "sha256": digest(result)}
+
+
+def _short_reference_fields(value, by_id):
+    """Recode defined reference slots only; scientific and source text stay exact."""
+    list_fields = {
+        "fact_card_ids",
+        "candidate_card_ids",
+        "source_card_ids",
+        "must_preserve_fact_card_ids",
+        "allowed_removed_fact_card_ids",
+        "existing_fact_card_ids",
+    }
+    if isinstance(value, dict):
+        result = {}
+        for key, item in value.items():
+            if key in list_fields:
+                if not isinstance(item, list) or any(
+                    not isinstance(cid, str) or cid not in by_id for cid in item
+                ):
+                    raise ValueError("section_card_reference_invalid")
+                result[key] = [by_id[cid] for cid in item]
+            elif key == "fact_card_id":
+                if not isinstance(item, str) or item not in by_id:
+                    raise ValueError("section_card_reference_invalid")
+                result[key] = by_id[item]
+            else:
+                result[key] = _short_reference_fields(item, by_id)
+        return result
+    if isinstance(value, list):
+        return [_short_reference_fields(item, by_id) for item in value]
+    return copy.deepcopy(value)
+
+
+def _short_draft_refs(text, by_id):
+    """Translate explicit canonical draft markers, never matching arbitrary prose."""
+
+    def replace(match):
+        if match[1] not in by_id:
+            raise ValueError("section_card_reference_invalid")
+        return f"[F:{by_id[match[1]]}]"
+
+    return re.sub(r"\[F:([^\]]+)\]", replace, text)
+
+
+def _short_feedback(value, by_id):
+    """Keep located criticism and its positions while recoding explicit citations."""
+    value = _short_reference_fields(value, by_id)
+    return _short_feedback_text(value, by_id)
+
+
+def _short_feedback_text(value, by_id):
+    """Map only F-markers inside report feedback, including JSON string payloads."""
+    if isinstance(value, str):
+        return _short_draft_refs(value, by_id)
+    if isinstance(value, dict):
+        return {k: _short_feedback_text(v, by_id) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_short_feedback_text(v, by_id) for v in value]
+    return value
+
+
+def _short_body_packet(original, binding):
+    """Present exact originals through short reading keys and explicit chapter menus."""
+    by_id = {cid: ref for ref, cid in binding["reading_cards"].items()}
+    packet = _short_reference_fields(original, by_id)
+    packet["cards"] = {
+        ref: packet["cards"][cid] for ref, cid in binding["reading_cards"].items()
+    }
+    for key, ids in original.get("analysis_plan", {}).get("missing_fields", {}).items():
+        packet["analysis_plan"]["missing_fields"][key] = _short_reference_fields(
+            {"fact_card_ids": ids}, by_id
+        )["fact_card_ids"]
+    for key in BODY:
+        inverse = {cid: ref for ref, cid in binding["section_cards"][key].items()}
+        if {
+            row["fact_card_id"] for row in original["section_source_index"][key]
+        } != set(inverse):
+            raise ValueError("section_card_binding_invalid")
+        packet["section_source_index"][key] = [
+            {
+                "fact_card_ref": inverse[row["fact_card_id"]],
+                "card_key": by_id[row["fact_card_id"]],
+                "source_ref": row["source_ref"],
+            }
+            for row in original["section_source_index"][key]
+        ]
+    for section in packet["section_contract"]:
+        if section["section_key"] in BODY:
+            section["allowed_fact_card_refs"] = list(
+                binding["section_cards"][section["section_key"]]
+            )
+    packet["current_draft"] = _short_draft_refs(original["current_draft"], by_id)
+    feedback = original["located_feedback"]
+    if isinstance(feedback, str):
+        try:
+            feedback = json.loads(feedback)
+        except json.JSONDecodeError:
+            packet["located_feedback"] = _short_draft_refs(feedback, by_id)
+        else:
+            packet["located_feedback"] = json.dumps(
+                _short_feedback(feedback, by_id), ensure_ascii=False
+            )
+    else:
+        packet["located_feedback"] = _short_feedback(feedback, by_id)
+    packet["body_card_reference_contract"] = CARD_REFERENCE_CONTRACT
+    packet["body_card_reference_binding_sha256"] = binding["sha256"]
+    return packet
+
+
 def prepare_body_request(messages, response_format):
     """Retain complete inputs and permissions, requesting only five body sections."""
     schema = copy.deepcopy(response_format["json_schema"]["schema"])
     sections = schema["properties"]["sections"]
     if set(sections["properties"]) != {*BODY, "abstract", "conclusion"}:
         raise ValueError("staged_generation_schema_invalid")
+    original = json.loads(messages[1]["content"])
+    scopes = {
+        key: sections["properties"][key]["properties"]["blocks"]["items"]["properties"][
+            "sentences"
+        ]["items"]["properties"]["fact_card_ids"]["items"]["enum"]
+        for key in BODY
+    }
+    binding = card_reference_binding(original["cards"], scopes)
     properties = {"title": schema["properties"]["title"]}
     for key in BODY:
         block = sections["properties"][key]["properties"]["blocks"]["items"]
         unit = block["properties"]["sentences"]["items"]
         closed(unit["properties"], BODY_FIELDS)
         row = copy.deepcopy(unit)
+        references = row["properties"].pop("fact_card_ids")
+        references["items"]["enum"] = list(binding["section_cards"][key])
+        row["properties"]["fact_card_refs"] = references
         row["properties"] = {
             "block_index": {"type": "integer", "minimum": 0, "maximum": 125},
             "heading": block["properties"]["heading"],
@@ -117,7 +272,7 @@ def prepare_body_request(messages, response_format):
         "required": list(properties),
         "additionalProperties": False,
     }
-    packet = json.loads(messages[1]["content"])
+    packet = _short_body_packet(original, binding)
     packet["generation_contract"] = CONTRACT
     packet["generation_stage"] = "body"
     packet["generation_section_order"] = list(BODY)
@@ -126,12 +281,17 @@ def prepare_body_request(messages, response_format):
         + APPLICABILITY_INSTRUCTION
         + UNIT_CITATION_SCOPE_INSTRUCTION.replace(
             "additional_sentences", "sentences array entries"
-        )
+        ).replace("fact_card_ids", "fact_card_refs")
     )
-    return [
+    prepared = [
         {"role": "system", "content": instruction},
         {"role": "user", "content": json.dumps(packet, ensure_ascii=False)},
-    ], _format(schema, "grounded_body_v2_rows")
+    ]
+    by_id = {cid: ref for ref, cid in binding["reading_cards"].items()}
+    for message in messages[2:]:
+        policy = _short_feedback(json.loads(message["content"]), by_id)
+        prepared.append({**message, "content": json.dumps(policy, ensure_ascii=False)})
+    return prepared, _format(schema, "grounded_body_v3_refs")
 
 
 class BodyRowError(ValueError):
@@ -159,6 +319,62 @@ def flatten_body(body):
             for unit in block["sentences"]
         ]
     return result
+
+
+def encode_body(body, binding):
+    """Encode exact permitted stable card IDs, without guessing their aliases."""
+    rows = flatten_body(body)
+    for key in BODY:
+        inverse = {cid: ref for ref, cid in binding["section_cards"][key].items()}
+        for ri, row in enumerate(rows[key]):
+            ids = row.pop("fact_card_ids")
+            if len(set(ids)) != len(ids) or any(cid not in inverse for cid in ids):
+                raise BodyRowError(
+                    "section_card_reference_invalid", [key, ri, "fact_card_refs"]
+                )
+            row["fact_card_refs"] = [inverse[cid] for cid in ids]
+    return rows
+
+
+def decode_body(rows, binding):
+    """Restore only exact chapter-authorized aliases to canonical stable IDs."""
+    rows = copy.deepcopy(rows)
+    closed(rows, {"title", *BODY})
+    for key in BODY:
+        if not isinstance(rows[key], list) or not rows[key]:
+            raise BodyRowError("flat_body_section_invalid", [key])
+        for ri, row in enumerate(rows[key]):
+            closed(
+                row,
+                {
+                    *(BODY_FIELDS - {"fact_card_ids"}),
+                    "fact_card_refs",
+                    "block_index",
+                    "heading",
+                    "type",
+                },
+            )
+            refs = row.pop("fact_card_refs")
+            allowed = binding["section_cards"][key]
+            if (
+                not isinstance(refs, list)
+                or any(not isinstance(ref, str) or ref not in allowed for ref in refs)
+                or len(set(refs)) != len(refs)
+            ):
+                raise BodyRowError(
+                    "section_card_reference_invalid", [key, ri, "fact_card_refs"]
+                )
+            row["fact_card_ids"] = [allowed[ref] for ref in refs]
+    return rows
+
+
+def _check_reference_schema(response_format, binding):
+    """Require native permissions to match independently reconstructed host scopes."""
+    fields = response_format["json_schema"]["schema"]["properties"]
+    for key in BODY:
+        enum = fields[key]["items"]["properties"]["fact_card_refs"]["items"]["enum"]
+        if enum != list(binding["section_cards"][key]):
+            raise ValueError("section_card_schema_binding_invalid")
 
 
 def expand_body(rows):
@@ -197,7 +413,7 @@ def expand_body(rows):
     return result
 
 
-def body_row_projection(body):
+def body_row_projection(body, binding=None):
     """Bind provider row indices to the unchanged canonical body coordinates."""
     _, projection = canonical_from_array(body, body_only=True)
     canonical_paths = {
@@ -222,7 +438,10 @@ def body_row_projection(body):
     return {
         "contract": CONTRACT,
         "positions": positions,
-        "wire_document_sha256": digest(flatten_body(body)),
+        "wire_document_sha256": digest(
+            encode_body(body, binding) if binding else flatten_body(body)
+        ),
+        **({"card_reference_binding_sha256": binding["sha256"]} if binding else {}),
         "array_document_sha256": digest(body),
         "scientific_verdict": "not_evaluated",
     }
@@ -232,7 +451,11 @@ def validate_body(raw, response_format, cards, structure, language, selection):
     """Check local body contracts without fabricating summaries or scientific scores."""
     rows = json.loads(raw, object_pairs_hook=unique)
     Draft202012Validator(response_format["json_schema"]["schema"]).validate(rows)
-    body = expand_body(rows)
+    binding = card_reference_binding(
+        cards, _writing_scopes(cards, structure, language, selection)
+    )
+    _check_reference_schema(response_format, binding)
+    body = expand_body(decode_body(rows, binding))
     native, _ = canonical_from_array(body, body_only=True)
     compiled, _ = compile_passage_report(
         json.dumps(native, ensure_ascii=False),
@@ -419,9 +642,15 @@ async def generate_staged_report(
     part, raw = "body", ""
     try:
         prepared, rf = prepare_body_request(messages, response_format)
+        binding = card_reference_binding(
+            cards, _writing_scopes(cards, structure, language, selection)
+        )
+        _check_reference_schema(rf, binding)
+        state["body_card_reference_binding"] = binding
+        atomic_json(path, state)
         raw = await call(part, prepared, rf)
         body, count = validate_body(raw, rf, cards, structure, language, selection)
-        state["steps"][part]["projection"] = body_row_projection(body)
+        state["steps"][part]["projection"] = body_row_projection(body, binding)
         state["steps"][part]["status"] = "locally_valid"
         atomic_json(path, state)
         prepared, rf = prepare_summary_request(body, count, messages, response_format)

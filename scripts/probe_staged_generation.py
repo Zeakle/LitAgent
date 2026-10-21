@@ -42,6 +42,7 @@ REQUESTS = 2
 OUTPUT = 20000
 REGISTRY = Path("artifacts/acceptance/staged-protocol-grants")
 ARTIFACTS = Path("artifacts")
+LIVE_CONTRACT = "native-body-summary-v2"
 
 
 def runtime_identity():
@@ -129,8 +130,19 @@ def rebuild(parent):
         ),
         array_wire=True,
     )
-    body_messages, _ = prepare_body_request(messages, rf)
-    rebuilt = json.loads(body_messages[1]["content"])
+    # Reconcile the historical host packet before any newer transport encoding.
+    rebuilt = json.loads(messages[1]["content"])
+    rebuilt.update(
+        generation_contract=packet["generation_contract"],
+        generation_stage="body",
+        generation_section_order=[
+            "introduction",
+            "taxonomy",
+            "methods",
+            "experiments",
+            "open_problems",
+        ],
+    )
     if set(packet) != set(rebuilt) or any(
         packet[k] != rebuilt[k] for k in packet if k != "generation_contract"
     ):
@@ -256,6 +268,8 @@ def save_receipt(root, m, state):
 
 async def run(root, *, live=False):
     """Use production writer validation without publishing or accepting a report."""
+    if live and CONTRACT != LIVE_CONTRACT:
+        raise ValueError("staged_probe_new_contract_requires_accounting_migration")
     m, config = validate(root)
     budget = ProbeBudget.from_snapshot(m["input"]["parent_budget"])
     budget.bind()
@@ -355,7 +369,11 @@ async def run(root, *, live=False):
                     or body.get("max_tokens") != OUTPUT
                     or body.get("thinking") != {"type": "disabled"}
                     or body["response_format"]["json_schema"]["name"]
-                    not in {"grounded_body_v2_rows", "grounded_summaries_v1"}
+                    not in {
+                        "grounded_body_v2_rows",
+                        "grounded_body_v3_refs",
+                        "grounded_summaries_v1",
+                    }
                 ):
                     raise ValueError("staged_probe_wire_invalid")
 

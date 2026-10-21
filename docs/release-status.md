@@ -2,7 +2,7 @@
 
 ## Verified locally
 
-- Default offline regression: **3773 passed, 25 deselected** (8 deprecation warnings).
+- Default offline regression: **3798 passed, 25 deselected** (8 deprecation warnings).
 - Python 3.11.15 / Node 24.14.0 on macOS; direct dependency constraints install in
   a fresh virtual environment with no broken requirements (`pip check`).
 - Clean source snapshot has no `.env` or private `artifacts`; presentation health
@@ -98,3 +98,18 @@ this new standalone result page. Prior workbench visual limitations remain
 separate. The live trace has one redacted generation but lacks its root terminal
 span; the executor now emits an explicitly unverified completion for future runs.
 The live trace was not rewritten. Final offline regression remains 3773 passed.
+
+## Chapter-scoped short references · offline candidate
+
+`native-body-summary-v3` asks the model for short chapter-prefixed references;
+the host restores the exact stable fact-card IDs before ordinary validation.
+Unknown, foreign-section, duplicate and mixed references remain rejected. Complete
+source text and semantic fields are unchanged. The seven actual prior reference
+errors are preserved as ID/scope regression fixtures, not scientific gold labels.
+
+3798 default tests and 107 related tests passed. A local reconstruction preserves
+24 cards, 17 full originals and all 60 permission edges. The complete body request
+reservation is 90,505 versus the previous 95,603; this is not actual token savings
+or a measured quality improvement. No new paid request was issued. The older paid
+protocol CLI refuses the new contract until the latest accounting lineage is wired.
+The previous real trial and its failures remain unchanged.

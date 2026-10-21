@@ -18,10 +18,13 @@ from litagent.llm.client import OpenAICompatibleClient
 from litagent.llm.routing import ModelBoundClient
 from litagent.native_wire import array_from_native
 from litagent.observability.context import reset_task_id, set_task_id
+from litagent.quality import _writing_scopes
 from litagent.safety.budget import CostBudget
 from litagent.staged_generation import (
     BodyRowError,
     body_row_projection,
+    card_reference_binding,
+    encode_body,
     expand_body,
     flatten_body,
     generate_staged_report,
@@ -42,6 +45,16 @@ def split(document):
     return body, summaries
 
 
+def provider_body(body, cards, language="en", selection=None):
+    """Encode only at the simulated provider boundary; consumers stay canonical."""
+    return encode_body(
+        body,
+        card_reference_binding(
+            cards, _writing_scopes(cards, "academic_v2", language, selection)
+        ),
+    )
+
+
 @pytest.mark.parametrize("language", ["en", "zh-CN"])
 def test_body_and_summary_retain_exact_sources_and_frozen_prose(language):
     cards = facts()
@@ -50,21 +63,24 @@ def test_body_and_summary_retain_exact_sources_and_frozen_prose(language):
     body, summaries = split(analysis_document(cards, language))
     body_messages, body_format = prepare_body_request(messages, rf)
     packet = json.loads(body_messages[1]["content"])
-    for key in (
-        "sources",
-        "cards",
-        "research_question",
-        "coverage_requirements",
-        "analysis_plan",
-        "section_source_index",
-    ):
+    for key in ("research_question", "coverage_requirements"):
         assert packet[key] == original[key]
+    binding = card_reference_binding(
+        cards, _writing_scopes(cards, "academic_v2", language, None)
+    )
+    for ref, cid in binding["reading_cards"].items():
+        assert packet["cards"][ref] == original["cards"][cid]
+    for ref, source in packet["sources"].items():
+        assert source["source_quote"] == original["sources"][ref]["source_quote"]
+        assert [
+            binding["reading_cards"][cid] for cid in source["fact_card_ids"]
+        ] == original["sources"][ref]["fact_card_ids"]
     assert set(body_format["json_schema"]["schema"]["properties"]) == {
         "title",
         *body["sections"],
     }
     checked, count = validate_body(
-        json.dumps(flatten_body(body)),
+        json.dumps(provider_body(body, cards, language)),
         body_format,
         cards,
         "academic_v2",
@@ -102,7 +118,12 @@ def test_flat_body_multiblock_roundtrip_and_original_positions(language):
     messages, rf = request(cards, language, array_wire=True)
     _, wire = prepare_body_request(messages, rf)
     restored, count = validate_body(
-        json.dumps(rows), wire, cards, "academic_v2", language, None
+        json.dumps(provider_body(body, cards, language)),
+        wire,
+        cards,
+        "academic_v2",
+        language,
+        None,
     )
     assert restored == body
     projection = body_row_projection(restored)
@@ -136,7 +157,7 @@ def test_flat_body_multiblock_roundtrip_and_original_positions(language):
 def test_flat_body_rejects_lossy_or_ambiguous_provider_records(fault):
     cards = facts()
     body, _ = split(analysis_document(cards))
-    rows = flatten_body(body)
+    rows = provider_body(body, cards)
     rows["methods"].append(copy.deepcopy(rows["methods"][0]))
     messages, rf = request(cards, array_wire=True)
     _, wire = prepare_body_request(messages, rf)
@@ -160,7 +181,7 @@ def test_flat_body_rejects_lossy_or_ambiguous_provider_records(fault):
         rows["methods"][1][fault] = "Other" if fault == "heading" else "list"
         expected = BodyRowError
     elif fault == "card":
-        rows["methods"][0]["fact_card_ids"] = ["invented-card"]
+        rows["methods"][0]["fact_card_refs"] = ["invented-card"]
     elif fault == "legacy":
         rows = body
     raw = json.dumps(rows)
@@ -228,14 +249,16 @@ async def test_real_sdk_partitions_and_failures_never_replay(tmp_path, fault):
         assert value["model"] == "pro-offline" and value["max_tokens"] == 20000
         name = value["response_format"]["json_schema"]["name"]
         assert name == (
-            "grounded_body_v2_rows" if len(calls) == 1 else "grounded_summaries_v1"
+            "grounded_body_v3_refs" if len(calls) == 1 else "grounded_summaries_v1"
         )
         journal = next(tmp_path.glob("*.generation-*.json"))
         persisted = json.loads(journal.read_text())
         assert persisted["status"] == "started_no_replay"
         if fault == "cancel":
             raise asyncio.CancelledError()
-        content = copy.deepcopy(flatten_body(body) if len(calls) == 1 else summaries)
+        content = copy.deepcopy(
+            provider_body(body, cards) if len(calls) == 1 else summaries
+        )
         if fault == "body_empty":
             content["methods"] = []
         if fault == "body_order":
@@ -413,7 +436,9 @@ async def test_actual_human_revision_uses_two_parts_and_never_commits_body_mutat
         packet = json.loads(req.content)
         calls.append(packet)
         assert packet["model"] == "pro-offline"
-        output = copy.deepcopy(flatten_body(body) if len(calls) == 1 else summaries)
+        output = copy.deepcopy(
+            provider_body(body, cards) if len(calls) == 1 else summaries
+        )
         if len(calls) == 2:
             output["sections"]["methods"] = body["sections"]["methods"]
         return httpx.Response(
@@ -488,7 +513,7 @@ async def test_actual_human_revision_uses_two_parts_and_never_commits_body_mutat
         )
         assert len(calls) == 2
         assert [p["response_format"]["json_schema"]["name"] for p in calls] == [
-            "grounded_body_v2_rows",
+            "grounded_body_v3_refs",
             "grounded_summaries_v1",
         ]
         assert not outcome["committed"] and outcome["error_type"] == "ValidationError"

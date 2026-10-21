@@ -11,7 +11,7 @@ import pytest
 from openai import AsyncOpenAI
 from test_body_analysis import analysis_document
 from test_complete_native_repair import source_selection
-from test_staged_native_generation import split
+from test_staged_native_generation import provider_body, split
 from test_writing_passages import facts
 
 from litagent.config import load_config
@@ -23,7 +23,6 @@ from litagent.quality import (
 )
 from litagent.report_audit import atomic_json, digest
 from litagent.safety.budget import CostBudget
-from litagent.staged_generation import flatten_body, prepare_body_request
 from scripts import probe_staged_generation as probe
 
 
@@ -56,9 +55,20 @@ def prepared(tmp_path, monkeypatch):
         ),
         array_wire=True,
     )
-    body_messages, body_rf = prepare_body_request(messages, rf)
+    body_messages = [dict(message) for message in messages]
+    body_rf = rf
     packet = json.loads(body_messages[1]["content"])
-    packet["generation_contract"] = "native-body-summary-v1"
+    packet.update(
+        generation_contract="native-body-summary-v2",
+        generation_stage="body",
+        generation_section_order=[
+            "introduction",
+            "taxonomy",
+            "methods",
+            "experiments",
+            "open_problems",
+        ],
+    )
     body_messages[1]["content"] = json.dumps(packet)
     parent = tmp_path / "parent"
     parent.mkdir()
@@ -162,6 +172,8 @@ async def test_sdk_calls_budget_no_replay_and_parent_preservation(
     prepared, monkeypatch, fault
 ):
     root, m, cards = prepared
+    # Only the fake-transport harness opts into this future contract. CLI cannot.
+    monkeypatch.setattr(probe, "LIVE_CONTRACT", probe.CONTRACT)
     original = {p: probe.sha(Path(p)) for p in m["input"]["inputs"]}
     body, summaries = split(analysis_document(cards))
     calls = []
@@ -179,7 +191,7 @@ async def test_sdk_calls_budget_no_replay_and_parent_preservation(
         )
         if fault == "cancel":
             raise asyncio.CancelledError()
-        content = flatten_body(body) if len(calls) == 1 else summaries
+        content = provider_body(body, cards) if len(calls) == 1 else summaries
         value = {
             "id": "offline",
             "object": "chat.completion",
@@ -262,8 +274,11 @@ def test_local_grant_retains_inherited_budget_and_limits():
 
 
 @pytest.mark.asyncio
-async def test_interrupted_state_is_conservative_and_never_resent(prepared):
+async def test_interrupted_state_is_conservative_and_never_resent(
+    prepared, monkeypatch
+):
     root, m, _ = prepared
+    monkeypatch.setattr(probe, "LIVE_CONTRACT", probe.CONTRACT)
     atomic_json(
         root / "state.json",
         {
@@ -280,3 +295,11 @@ async def test_interrupted_state_is_conservative_and_never_resent(prepared):
     shutil.copytree(root, clone)
     with pytest.raises(ValueError, match="identity_invalid"):
         await probe.run(clone, live=True)
+
+
+@pytest.mark.asyncio
+async def test_new_contract_cannot_reuse_retired_paid_budget(tmp_path):
+    assert probe.CONTRACT != probe.LIVE_CONTRACT
+    with pytest.raises(ValueError, match="requires_accounting_migration"):
+        await probe.run(tmp_path / "not-prepared", live=True)
+    assert not (tmp_path / "not-prepared").exists()
