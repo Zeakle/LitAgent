@@ -197,6 +197,7 @@ def reconcile_accounting(
     *,
     predecessor_version=VERSION,
     predecessor_contract=LIVE_CONTRACT,
+    predecessor_requests=REQUESTS,
 ):
     """Advance one explicitly versioned receipt without refunding paid calls."""
     root = Path(accounting_parent).resolve()
@@ -220,7 +221,8 @@ def reconcile_accounting(
         or m["contract"] != predecessor_contract
         or m["root"] != str(root)
         or m["input"] != inputs
-        or (m["limit"], m["requests"], m["output"]) != (LIMIT, REQUESTS, OUTPUT)
+        or (m["limit"], m["requests"], m["output"])
+        != (LIMIT, predecessor_requests, OUTPUT)
         or json.loads(grant.read_text()) != {"binding": m["binding"], "root": str(root)}
         or state != receipt
         or state["binding"] != m["binding"]
@@ -233,7 +235,7 @@ def reconcile_accounting(
     ends = [e["data"] for e in events if e["event"] == "llm.complete"]
     n = len(starts)
     if (
-        not 1 <= n <= REQUESTS
+        not 1 <= n <= predecessor_requests
         or len(ends) != n
         or len({e["operation_id"] for e in starts}) != n
         or len({e["operation_id"] for e in ends}) != n
@@ -280,7 +282,7 @@ def reconcile_accounting(
         or expected.get("halt_on_unknown_usage") is not True
         or state["cumulative"] != historical
         or expected["used_tokens"] + LIMIT > 500000
-        or expected["requests_sent"] + REQUESTS > 64
+        or expected["requests_sent"] + predecessor_requests > 64
     ):
         raise ValueError("staged_probe_accounting_budget_invalid")
     CostBudget.from_snapshot(expected)
@@ -563,6 +565,11 @@ async def run(root, *, live=False):
             "parent_budget": m["input"]["parent_budget"],
             "body_reservation": reservation,
         }
+    return await execute(root, m, config, budget)
+
+
+async def execute(root, m, config, budget, *, received_body=None):
+    """Execute a validated grant; received bodies never create initial requests."""
     with suite_lock(root / "probe.lock"):
         path = root / "state.json"
         if path.exists():
@@ -578,7 +585,14 @@ async def run(root, *, live=False):
             return save_receipt(root, m, state)
         REGISTRY.mkdir(parents=True, exist_ok=True)
         grant = REGISTRY / (
-            digest([m["input"]["parent_archive_sha256"], CONTRACT]) + ".json"
+            digest(
+                [
+                    m["input"]["parent_archive_sha256"],
+                    CONTRACT,
+                    *([received_body["sha256"], m["version"]] if received_body else []),
+                ]
+            )
+            + ".json"
         )
         # One explicit attempt per frozen parent and protocol, even across roots.
         with grant.open("x") as stream:
@@ -620,7 +634,7 @@ async def run(root, *, live=False):
         owner = None
         inputs = m["input"]
         repair_state = None
-        if m["version"] == TYPED_VERSION:
+        if m["version"] == TYPED_VERSION or received_body is not None:
             repair_state = m["repair_state"]
             save_targeted_repairs(root / "generation.json", repair_state)
         token = set_task_id("synthesis.protocol_conformance")
@@ -643,17 +657,21 @@ async def run(root, *, live=False):
                     or body.get("max_tokens") != OUTPUT
                     or body.get("thinking") != {"type": "disabled"}
                     or body["response_format"]["json_schema"]["name"]
-                    not in {
-                        "grounded_body_v2_rows",
-                        "grounded_body_v3_refs",
-                        "grounded_body_v4_typed",
-                        "grounded_summaries_v1",
-                        *(
-                            {"native_body_repair_v6", "native_body_repair_v7_refs"}
-                            if m["version"] == TYPED_VERSION
-                            else set()
-                        ),
-                    }
+                    not in (
+                        {"native_body_repair_v7_refs", "grounded_summaries_v1"}
+                        if received_body is not None
+                        else {
+                            "grounded_body_v2_rows",
+                            "grounded_body_v3_refs",
+                            "grounded_body_v4_typed",
+                            "grounded_summaries_v1",
+                            *(
+                                {"native_body_repair_v6", "native_body_repair_v7_refs"}
+                                if m["version"] == TYPED_VERSION
+                                else set()
+                            ),
+                        }
+                    )
                 ):
                     raise ValueError("staged_probe_wire_invalid")
 
@@ -670,6 +688,7 @@ async def run(root, *, live=False):
                 trace_hook=hook,
                 parent_task_id="protocol",
                 repair_state=repair_state,
+                received_body=received_body,
                 generation_options={
                     "temperature": 0.1,
                     "extra_body": {"thinking": {"type": "disabled"}},

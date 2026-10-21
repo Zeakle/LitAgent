@@ -39,6 +39,7 @@ from litagent.writing_passages import compile_passage_report
 CONTRACT = "native-body-summary-v5"
 CARD_REFERENCE_CONTRACT = "section-card-refs-v1"
 BODY_REPAIR_WIRE = "body-repair-card-aliases-v1"
+RECEIVED_BODY_CONTRACT = "received-typed-body-v1"
 SECTION_PREFIXES = dict(zip(BODY, ("i", "t", "m", "e", "o")))
 BODY_INSTRUCTION = """Write only the five academic body sections in the response schema.
 The host generates abstract/conclusion separately after freezing this body.
@@ -918,6 +919,36 @@ def restore_body_repair_response(raw, binding, *, cards):
     return json.dumps(response, ensure_ascii=False)
 
 
+def validate_received_body(received, reference_binding):
+    """Check a host-reconciled immutable input without treating it as a sent call."""
+    if not isinstance(received, Mapping) or set(received) != {
+        "contract",
+        "raw_response",
+        "raw_response_sha256",
+        "source_binding",
+        "source_journal_sha256",
+        "reference_binding_sha256",
+        "sha256",
+    }:
+        raise ValueError("staged_received_body_binding_invalid")
+    if (
+        received["contract"] != RECEIVED_BODY_CONTRACT
+        or not isinstance(received["raw_response"], str)
+        or received["raw_response_sha256"]
+        != hashlib.sha256(received["raw_response"].encode()).hexdigest()
+        or received["reference_binding_sha256"] != digest(reference_binding)
+        or any(
+            not isinstance(received[k], str)
+            or not re.fullmatch(r"[0-9a-f]{64}", received[k])
+            for k in ("source_binding", "source_journal_sha256")
+        )
+        or received["sha256"]
+        != digest({k: v for k, v in received.items() if k != "sha256"})
+    ):
+        raise ValueError("staged_received_body_binding_invalid")
+    return received["raw_response"]
+
+
 async def generate_staged_report(
     llm,
     messages,
@@ -934,6 +965,7 @@ async def generate_staged_report(
     max_tokens=20000,
     generation_options=None,
     repair_state=None,
+    received_body=None,
 ):
     """Journal both bounded calls and merge only fully validated immutable parts."""
     if checkpoint_path is None:
@@ -959,6 +991,16 @@ async def generate_staged_report(
             generation_options,
         ]
     )
+    if received_body is not None:
+        if repair_state is None:
+            raise ValueError("staged_received_body_repair_state_required")
+        binding = card_reference_binding(
+            cards, _writing_scopes(cards, structure, language, selection)
+        )
+        validate_received_body(received_body, binding)
+        # The default writer identity remains byte-for-byte unchanged. Only this
+        # explicit continuation adds the already-charged input to its identity.
+        identity = digest([identity, RECEIVED_BODY_CONTRACT, received_body])
     path = Path(checkpoint_path)
     path = path.with_name(path.name + f".generation-{identity}.json")
     state = {
@@ -1046,7 +1088,15 @@ async def generate_staged_report(
         _check_reference_schema(rf, binding)
         state["body_card_reference_binding"] = binding
         atomic_json(path, state)
-        raw = await call(part, prepared, rf)
+        if received_body is None:
+            raw = await call(part, prepared, rf)
+            body_entry = state["steps"]["body"]
+        else:
+            raw = validate_received_body(received_body, binding)
+            body_entry = copy.deepcopy(received_body)
+            body_entry["status"] = "received_input"
+            state["received_body"] = body_entry
+            atomic_json(path, state)
         from litagent.quality import GroundedWritingError
 
         try:
@@ -1056,7 +1106,7 @@ async def generate_staged_report(
         except GroundedWritingError as failure:
             state["body_validation_failure"] = {
                 "candidate_sha256": failure.candidate_sha256,
-                "raw_response_sha256": state["steps"]["body"]["raw_response_sha256"],
+                "raw_response_sha256": body_entry["raw_response_sha256"],
                 "diagnostics": copy.deepcopy(failure.diagnostics),
                 "scientific_verdict": "not_evaluated",
             }
@@ -1088,19 +1138,15 @@ async def generate_staged_report(
                 llm,
                 max_tokens,
             )
-        state["steps"][part]["projection"] = body_row_projection(
-            body, binding, typed_units=True
-        )
+        body_entry["projection"] = body_row_projection(body, binding, typed_units=True)
         repaired_here = (
             repair_state is not None and len(repair_state["attempts"]) > repair_start
         )
         if repaired_here:
-            state["steps"][part]["projection"].update(
+            body_entry["projection"].update(
                 transport="host_repaired_body", repair_state_sha256=digest(repair_state)
             )
-        state["steps"][part]["status"] = (
-            "locally_repaired" if repaired_here else "locally_valid"
-        )
+        body_entry["status"] = "locally_repaired" if repaired_here else "locally_valid"
         atomic_json(path, state)
         prepared, rf = prepare_summary_request(body, count, messages, response_format)
         part, raw = "summaries", ""
@@ -1124,8 +1170,19 @@ async def generate_staged_report(
             stage_response_sha256={
                 key: row["raw_response_sha256"] for key, row in state["steps"].items()
             },
-            body_row_projection=state["steps"]["body"]["projection"],
+            body_row_projection=body_entry["projection"],
         )
+        if received_body is not None:
+            proof["received_body"] = {
+                k: received_body[k]
+                for k in (
+                    "contract",
+                    "sha256",
+                    "raw_response_sha256",
+                    "source_binding",
+                    "source_journal_sha256",
+                )
+            }
         state.update(
             status="completed", canonical_candidate=canonical, projection=proof
         )
