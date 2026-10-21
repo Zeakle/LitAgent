@@ -43,6 +43,8 @@ OUTPUT = 20000
 REGISTRY = Path("artifacts/acceptance/staged-protocol-grants")
 ARTIFACTS = Path("artifacts")
 LIVE_CONTRACT = "native-body-summary-v2"
+ACCOUNTED_VERSION = "frozen-staged-protocol-v2"
+ACCOUNTED_CONTRACT = "native-body-summary-v3"
 
 
 def runtime_identity():
@@ -183,16 +185,171 @@ def rebuild(parent):
     }
 
 
-def prepare(root, parent):
+def reconcile_accounting(inputs, accounting_parent):
+    """Advance one completed v2 receipt without refunding its paid calls."""
+    root = Path(accounting_parent).resolve()
+    paths = [
+        root / name
+        for name in (
+            "manifest.json",
+            "state.json",
+            "acceptance-summary.json",
+            "events.jsonl",
+        )
+    ]
+    m, state, receipt = [json.loads(p.read_text()) for p in paths[:3]]
+    events = [json.loads(line) for line in paths[3].read_text().splitlines()]
+    grant = REGISTRY / (
+        digest([inputs["parent_archive_sha256"], LIVE_CONTRACT]) + ".json"
+    )
+    if (
+        m["binding"] != digest({k: v for k, v in m.items() if k != "binding"})
+        or m["version"] != VERSION
+        or m["contract"] != LIVE_CONTRACT
+        or m["root"] != str(root)
+        or m["input"] != inputs
+        or (m["limit"], m["requests"], m["output"]) != (LIMIT, REQUESTS, OUTPUT)
+        or json.loads(grant.read_text()) != {"binding": m["binding"], "root": str(root)}
+        or state != receipt
+        or state["binding"] != m["binding"]
+        or state["status"] not in {"failed_no_replay", "protocol_completed"}
+        or state["scientific_verdict"] != "not_evaluated"
+        or state["unknown_hold"] != 0
+    ):
+        raise ValueError("staged_probe_accounting_identity_invalid")
+    starts = [e["data"] for e in events if e["event"] == "llm.start"]
+    ends = [e["data"] for e in events if e["event"] == "llm.complete"]
+    n = len(starts)
+    if (
+        not 1 <= n <= REQUESTS
+        or len(ends) != n
+        or len({e["operation_id"] for e in starts}) != n
+        or len({e["operation_id"] for e in ends}) != n
+        or [e["operation_id"] for e in starts] != [e["operation_id"] for e in ends]
+        or state["new_requests"] != n
+        or any(
+            e.get("model") != MODELS["generation"] or e.get("max_tokens") != OUTPUT
+            for e in starts
+        )
+        or any(
+            e.get("usage_available") is not True
+            or e.get("actual_model") != MODELS["generation"]
+            or any(
+                type(e.get(k)) is not int or e[k] < 0
+                for k in ("prompt_tokens", "completion_tokens", "total_tokens")
+            )
+            or e["total_tokens"] != e["prompt_tokens"] + e["completion_tokens"]
+            for e in ends
+        )
+    ):
+        raise ValueError("staged_probe_accounting_calls_invalid")
+    known = sum(e["total_tokens"] for e in ends)
+    expected = dict(inputs["parent_budget"])
+    expected.update(
+        used_tokens=expected["used_tokens"] + known,
+        call_count=expected["call_count"] + n,
+        requests_sent=expected["requests_sent"] + n,
+        phase_usage=[
+            expected["phase_usage"][0],
+            expected["phase_usage"][1] + known,
+            expected["phase_usage"][2],
+        ],
+    )
+    historical = dict(inputs["historical"])
+    historical["model_requests"] += n
+    historical["model_known_tokens"] += known
+    if (
+        known > LIMIT
+        or state["new_known_tokens"] != known
+        or state["budget"] != expected
+        or expected.get("usage_uncertain") is not False
+        or expected.get("stop_reason") is not None
+        or expected.get("strict_phase") != 1
+        or expected.get("halt_on_unknown_usage") is not True
+        or state["cumulative"] != historical
+        or expected["used_tokens"] + LIMIT > 500000
+        or expected["requests_sent"] + REQUESTS > 64
+    ):
+        raise ValueError("staged_probe_accounting_budget_invalid")
+    CostBudget.from_snapshot(expected)
+    journals = list(root.glob("generation.json.generation-*.json"))
+    if len(journals) != 1:
+        raise ValueError("staged_probe_accounting_journal_invalid")
+    journal = json.loads(journals[0].read_text())
+    steps = list(journal["steps"].values())
+    if (
+        journal["contract"] != LIVE_CONTRACT
+        or journal["status"] not in {"failed_no_replay", "completed"}
+        or (
+            journal.get("budget")
+            if journal["status"] == "failed_no_replay"
+            else steps[-1].get("budget") if steps else None
+        )
+        != expected
+        or len(steps) != n
+        or any(
+            step.get("status") not in {"locally_valid", "response_received"}
+            or step.get("raw_response_sha256")
+            != hashlib.sha256(e["content"].encode()).hexdigest()
+            or step.get("raw_response") != e["content"]
+            or step.get("model") != e["actual_model"]
+            or step.get("finish_reason") != e["finish_reason"]
+            or step.get("usage")
+            != {
+                k: e[k]
+                for k in ("prompt_tokens", "completion_tokens", "usage_available")
+            }
+            for step, e in zip(steps, ends)
+        )
+    ):
+        raise ValueError("staged_probe_accounting_journal_invalid")
+    running = dict(inputs["parent_budget"])
+    for step, start, end in zip(steps, starts, ends):
+        running = {
+            **running,
+            "used_tokens": running["used_tokens"] + end["total_tokens"],
+            "call_count": running["call_count"] + 1,
+            "requests_sent": running["requests_sent"] + 1,
+            "phase_usage": [
+                running["phase_usage"][0],
+                running["phase_usage"][1] + end["total_tokens"],
+                running["phase_usage"][2],
+            ],
+        }
+        if step.get("budget") != running or step.get("input_sha256") != digest(
+            [start["messages"], start["response_format"]]
+        ):
+            raise ValueError("staged_probe_accounting_step_invalid")
+    return {
+        **inputs,
+        "parent_budget": expected,
+        "historical": historical,
+        "accounting_binding": m["binding"],
+        "inputs": {
+            **inputs["inputs"],
+            **{str(p.resolve()): sha(p) for p in (*paths, grant, journals[0])},
+        },
+    }
+
+
+def frozen_inputs(parent, accounting_parent=None):
+    """Keep source reconstruction separate from the latest paid accounting tip."""
+    inputs = rebuild(parent)
+    return (
+        reconcile_accounting(inputs, accounting_parent) if accounting_parent else inputs
+    )
+
+
+def prepare(root, parent, accounting_parent=None):
     """Freeze the exact root, original evidence, code and bounded new allowance."""
     config = load_config()
     check_models(config)
     value = {
-        "version": VERSION,
+        "version": ACCOUNTED_VERSION if accounting_parent else VERSION,
         "contract": CONTRACT,
         "root": str(root.resolve()),
         "parent": str(parent.resolve()),
-        "input": rebuild(parent),
+        "input": frozen_inputs(parent, accounting_parent),
         "limit": LIMIT,
         "requests": REQUESTS,
         "output": OUTPUT,
@@ -203,8 +360,23 @@ def prepare(root, parent):
         ).strip(),
         "hashes": source_hashes(),
     }
+    if accounting_parent:
+        if CONTRACT != ACCOUNTED_CONTRACT:
+            raise ValueError("staged_probe_new_contract_requires_accounting_migration")
+        value["accounting_parent"] = str(accounting_parent.resolve())
+        value["frozen_code"] = {
+            str(Path("frozen-code") / Path(p).relative_to(Path.cwd())): h
+            for p, h in value["hashes"].items()
+        }
     value["binding"] = digest(value)
     root.mkdir(parents=True, exist_ok=False)
+    for relative, h in value.get("frozen_code", {}).items():
+        original = Path.cwd() / Path(relative).relative_to("frozen-code")
+        target = root / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(original.read_bytes())
+        if sha(target) != h:
+            raise ValueError("staged_probe_frozen_source_changed")
     atomic_json(root / "manifest.json", value)
     return value
 
@@ -217,7 +389,8 @@ def validate(root):
     if (
         m["binding"] != digest({k: v for k, v in m.items() if k != "binding"})
         or m["root"] != str(root.resolve())
-        or m["version"] != VERSION
+        or m["version"]
+        != (ACCOUNTED_VERSION if m.get("accounting_parent") else VERSION)
         or m["contract"] != CONTRACT
         or (m["limit"], m["requests"], m["output"]) != (LIMIT, REQUESTS, OUTPUT)
         or m["config"] != build_config_summary(config, "strict_auto_v2")
@@ -227,7 +400,20 @@ def validate(root):
             sha(Path(p)) != h
             for p, h in {**m["hashes"], **m["input"]["inputs"]}.items()
         )
-        or m["input"] != rebuild(Path(m["parent"]))
+        or m["input"] != frozen_inputs(Path(m["parent"]), m.get("accounting_parent"))
+        or bool(m.get("accounting_parent"))
+        and (
+            m["contract"] != ACCOUNTED_CONTRACT
+            or m.get("frozen_code")
+            != {
+                str(Path("frozen-code") / Path(p).relative_to(Path.cwd())): h
+                for p, h in m["hashes"].items()
+            }
+            or any(
+                not (root / p).is_file() or sha(root / p) != h
+                for p, h in m.get("frozen_code", {}).items()
+            )
+        )
     ):
         raise ValueError("staged_probe_identity_invalid")
     return m, config
@@ -269,7 +455,14 @@ def save_receipt(root, m, state):
 async def run(root, *, live=False):
     """Use production writer validation without publishing or accepting a report."""
     if live and CONTRACT != LIVE_CONTRACT:
-        raise ValueError("staged_probe_new_contract_requires_accounting_migration")
+        path = root / "manifest.json"
+        manifest = json.loads(path.read_text()) if path.is_file() else {}
+        if not (
+            CONTRACT == ACCOUNTED_CONTRACT
+            and manifest.get("version") == ACCOUNTED_VERSION
+            and manifest.get("accounting_parent")
+        ):
+            raise ValueError("staged_probe_new_contract_requires_accounting_migration")
     m, config = validate(root)
     budget = ProbeBudget.from_snapshot(m["input"]["parent_budget"])
     budget.bind()
@@ -473,13 +666,16 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", type=Path, required=True)
     parser.add_argument("--parent", type=Path)
+    parser.add_argument("--accounting-parent", type=Path)
     parser.add_argument("--prepare", action="store_true")
     parser.add_argument("--live", action="store_true")
     args = parser.parse_args()
     if args.prepare:
         if args.parent is None:
             parser.error("--prepare requires --parent")
-        prepare(args.root, args.parent)
+        prepare(args.root, args.parent, args.accounting_parent)
+    elif args.accounting_parent is not None:
+        parser.error("--accounting-parent requires --prepare")
     result = asyncio.run(run(args.root, live=args.live))
     print(
         json.dumps(
