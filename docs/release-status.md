@@ -2,7 +2,7 @@
 
 ## Verified locally
 
-- Default offline regression: **3758 passed, 25 deselected** (8 deprecation warnings).
+- Default offline regression: **3773 passed, 25 deselected** (8 deprecation warnings).
 - Python 3.11.15 / Node 24.14.0 on macOS; direct dependency constraints install in
   a fresh virtual environment with no broken requirements (`pip check`).
 - Clean source snapshot has no `.env` or private `artifacts`; presentation health
@@ -82,3 +82,19 @@ The subsequent flat-body wire revision passed 95 related tests and the default
 3758-test offline suite (25 deselected). It remains an offline candidate. It preserves
 full sources and exact sentence/block mappings; it is not evidence of improved
 live protocol or scientific reliability. Phase 14.5 remains in progress.
+
+## Frozen-input protocol follow-up · 2026-10-21
+
+At `3f84492`, the same frozen few-shot evidence produced valid raw JSON, but
+schema validation rejected six outside-section card references and one unknown
+concatenated card ID. Only one Pro request ran: 24,382 input + 3,848 output =
+28,230 tokens, complete usage, zero retries. No summary or Evaluation request,
+report acceptance, or new Survey observation was made. This does not establish
+scientific reliability or a general protocol success rate.
+
+[Public protocol result](../benchmarks/survey/results/flat-body-protocol-20261021-001/README.md).
+Desktop/390px bilingual text, keyboard expansion and no overflow were checked on
+this new standalone result page. Prior workbench visual limitations remain
+separate. The live trace has one redacted generation but lacks its root terminal
+span; the executor now emits an explicitly unverified completion for future runs.
+The live trace was not rewritten. Final offline regression remains 3773 passed.

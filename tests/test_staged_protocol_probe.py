@@ -223,6 +223,13 @@ async def test_sdk_calls_budget_no_replay_and_parent_preservation(
     )
     assert len(calls) == (2 if fault in {None, "summary"} else 1)
     assert state["scientific_verdict"] == "not_evaluated"
+    events = [
+        json.loads(line) for line in (root / "events.jsonl").read_text().splitlines()
+    ]
+    assert events[-1]["event"] == "survey.complete"
+    assert events[-1]["data"]["accepted"] is False
+    assert events[-1]["data"]["quality_status"] == "unverified"
+    assert events[-1]["data"]["total_tokens"] == state["new_known_tokens"]
     if fault is None:
         candidate = json.loads((root / "candidate.json").read_text())
         assert (

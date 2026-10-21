@@ -15,7 +15,7 @@ Phase 14.5 scientific acceptance remains in progress.
 | Scoped Evaluation v3 and strict delivery | verified offline; full coverage and scientific support 1.0 required; no formal live baseline | [batched evaluator](../src/litagent/eval/batched.py), [tests](../tests/test_batched_evaluation.py) |
 | Lite / Pro stage routing | live calls observed; no controlled quality gain established | [routing](../src/litagent/llm/routing.py), [tests](../tests/test_stage_model_routing.py), [public diagnostic](../src/litagent/static/presentation/manifest.json) |
 | Native array writing and inline schema | verified offline; original invalid response remains rejected | [codec](../src/litagent/native_wire.py), [regressions](../tests/test_native_schema_inline.py) |
-| Staged body / summary generation | verified offline; first live body JSON failed; flat-body revision is not yet live validated | [staged writer](../src/litagent/staged_generation.py), [SDK regression tests](../tests/test_staged_native_generation.py), [bounded result](../benchmarks/survey/results/survey-reliability-20261021-001/README.md) |
+| Staged body / summary generation | verified offline; first staged body JSON failed; flat frozen-input follow-up JSON parsed but card schema failed | [staged writer](../src/litagent/staged_generation.py), [SDK regression tests](../tests/test_staged_native_generation.py), [bounded result](../benchmarks/survey/results/survey-reliability-20261021-001/README.md) |
 | Isolated public presentation | verified by fresh-process import, lifespan and read/export tests; no private archive scan, paid service or recovery | [presentation](../src/litagent/presentation.py), [tests](../tests/test_presentation.py) |
 | Academic structures and host retrieval appendix | implemented; version-bound, no full PRISMA claim | [structure](../src/litagent/review_structure.py), [tests](../tests/test_academic_v2.py) |
 | Citation styles and six export types | implemented; deterministic, no LLM on style change | [formats](../src/litagent/citation_formats.py), [tests](../tests/test_citation_formats.py) |
@@ -43,3 +43,5 @@ It is self-judged, non-formal and not comparable with current strict runs.
 There is no independent human calibration. Scientific accuracy and false
 acceptance/rejection rates are unavailable. Passing tests or publishing a
 Benchmark bundle does not complete scientific acceptance.
+
+The [frozen-input protocol follow-up](../benchmarks/survey/results/flat-body-protocol-20261021-001/README.md) used one Pro request / 28,230 tokens. Valid JSON still contained seven invalid card references; summary and scientific Evaluation did not run. It is not an additional Survey success.

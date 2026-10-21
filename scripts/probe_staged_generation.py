@@ -432,6 +432,17 @@ async def run(root, *, live=False):
                 trace_url=tracer.trace_url,
             )
             atomic_json(path, state)
+            # Protocol completion never asserts scientific acceptance or delivery.
+            hook(
+                "survey.complete",
+                {
+                    "rounds": 0,
+                    "accepted": False,
+                    "quality_status": "unverified",
+                    "delivery_status": "not_delivered",
+                    "total_tokens": known,
+                },
+            )
             if owner is not None:
                 await owner.close()
             hook.flush()
