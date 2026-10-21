@@ -1,8 +1,8 @@
-# Engineering release status · 2026-10-20
+# Engineering release status · 2026-10-21
 
 ## Verified locally
 
-- Default offline regression: **3727 passed, 25 deselected** (8 deprecation warnings).
+- Default offline regression: **3758 passed, 25 deselected** (8 deprecation warnings).
 - Python 3.11.15 / Node 24.14.0 on macOS; direct dependency constraints install in
   a fresh virtual environment with no broken requirements (`pip check`).
 - Clean source snapshot has no `.env` or private `artifacts`; presentation health
@@ -60,3 +60,25 @@ extra attempts were issued. These fixes do not establish scientific reliability.
 [Reproducible result and public four-format exports](../benchmarks/survey/results/survey-reliability-20261020-001/README.md).
 The packaged presentation remains an explicitly frozen earlier diagnostic replay;
 the new local workbench Benchmark is available under `survey-reliability-20261020-001`.
+
+## Two-stage generation trial · 2026-10-21
+
+Commit `0163e56` implements body-first / summary-second requests inside the same
+writer and shared budget. The bounded trial again stopped at **1/3 pilots**:
+26 Lite + 1 Pro requests, **126,023 tokens**, complete usage. The body response
+has an unclosed root object at offset 7393 (line 1, column 7394), finish `stop`,
+24,380 input + 3,376 output tokens. No summary request, Reviewer or Evaluation
+ran; no scientific score or delivery success is inferred. ViT/NeRF and formal
+15 cases were not dispatched. No retry or delimiter repair was accepted.
+
+[Immutable trial bindings and four public formats](../benchmarks/survey/results/survey-reliability-20261021-001/README.md).
+LangFuse readback contains 27 generations / 126,023 tokens with empty generation
+I/O. API four-format exports match the public files byte for byte. The packaged
+8001 presentation remains the earlier frozen diagnostic; it is not overwritten.
+The complete browser visual acceptance was interrupted by approval review usage
+limits; an archive-list timeout also remains unresolved. No new visual pass is claimed.
+
+The subsequent flat-body wire revision passed 95 related tests and the default
+3758-test offline suite (25 deselected). It remains an offline candidate. It preserves
+full sources and exact sentence/block mappings; it is not evidence of improved
+live protocol or scientific reliability. Phase 14.5 remains in progress.

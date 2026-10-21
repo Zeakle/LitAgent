@@ -15,6 +15,7 @@ Phase 14.5 scientific acceptance remains in progress.
 | Scoped Evaluation v3 and strict delivery | verified offline; full coverage and scientific support 1.0 required; no formal live baseline | [batched evaluator](../src/litagent/eval/batched.py), [tests](../tests/test_batched_evaluation.py) |
 | Lite / Pro stage routing | live calls observed; no controlled quality gain established | [routing](../src/litagent/llm/routing.py), [tests](../tests/test_stage_model_routing.py), [public diagnostic](../src/litagent/static/presentation/manifest.json) |
 | Native array writing and inline schema | verified offline; original invalid response remains rejected | [codec](../src/litagent/native_wire.py), [regressions](../tests/test_native_schema_inline.py) |
+| Staged body / summary generation | verified offline; first live body JSON failed; flat-body revision is not yet live validated | [staged writer](../src/litagent/staged_generation.py), [SDK regression tests](../tests/test_staged_native_generation.py), [bounded result](../benchmarks/survey/results/survey-reliability-20261021-001/README.md) |
 | Isolated public presentation | verified by fresh-process import, lifespan and read/export tests; no private archive scan, paid service or recovery | [presentation](../src/litagent/presentation.py), [tests](../tests/test_presentation.py) |
 | Academic structures and host retrieval appendix | implemented; version-bound, no full PRISMA claim | [structure](../src/litagent/review_structure.py), [tests](../tests/test_academic_v2.py) |
 | Citation styles and six export types | implemented; deterministic, no LLM on style change | [formats](../src/litagent/citation_formats.py), [tests](../tests/test_citation_formats.py) |
@@ -29,8 +30,8 @@ RRF Recall@5 is 0.8867 / p50 14 ms; reranking is 0.9089 / 647 ms. This demonstra
 an observed ranking/latency tradeoff, not broad generalization. Full-text profiles
 change indexed material and are not a pure ranking ablation.
 
-The published 2026-10-20 diagnostic used 26 Lite requests and one Pro request,
-124,448 known tokens. Invalid JSON stopped generation before Evaluation, so no
+The latest 2026-10-21 diagnostic used 26 Lite requests and one Pro request,
+126,023 known tokens. Invalid JSON stopped generation before Evaluation, so no
 scientific score is available. One of three pilots ran; formal cases are 0/15.
 Original response and private evidence remain local; the public record is an
 explicitly sanitized replay, identified by its source archive SHA.

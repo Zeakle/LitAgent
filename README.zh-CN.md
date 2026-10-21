@@ -70,9 +70,10 @@ flowchart LR
 reranker 改善排名但显著增加延迟，因此没有切为默认。全文配置同时改变索引材料，
 不能把差异全部归因于排名算法。[完整结果与解释边界](./benchmarks/rag/RESULTS.md)。
 
-Survey 最新公开诊断：试点 **1/3**、**27 请求／124,448 tokens**，Pro JSON 非法，
+Survey 最新公开诊断：试点 **1/3**、**27 请求／126,023 tokens**，Pro JSON 非法，
 **Evaluation 未运行**；正式 **0/15**。这是技术失败，不能当作科学支持率零分。
 历史单次 NeRF 在旧策略下交付成功，不代表当前严格策略成功，也不证明质量增益。
+[最新有界试点](./benchmarks/survey/results/survey-reliability-20261021-001/README.md) ·
 [Survey 方法与历史](./benchmarks/survey/README.md) ·
 [公开包来源绑定](./src/litagent/static/presentation/manifest.json)。
 

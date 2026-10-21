@@ -57,3 +57,8 @@ The later explicit reliability request opened a separate capped three-observatio
 attempt at commit `aa0ade7`. It stopped after its first protocol failure; it did not
 replay the earlier protocol grant or expand into the formal matrix. See the
 [bounded trial evidence](../benchmarks/survey/results/survey-reliability-20261020-001/README.md).
+
+The subsequent body/summary split at `0163e56` also stopped in its first body
+response, before summary or Evaluation: 27 requests / 126,023 known tokens.
+[2026-10-21 trial](../benchmarks/survey/results/survey-reliability-20261021-001/README.md).
+No current strict scientific baseline is established by these technical trials.

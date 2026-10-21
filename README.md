@@ -85,10 +85,11 @@ default. Full-text profiles change indexed material and are separate from pure
 ranking comparisons. [Full results and limitations](./benchmarks/rag/RESULTS.md).
 
 Survey: the latest published diagnostic ran **1/3 pilots**, used **27 requests /
-124,448 tokens**, and stopped on invalid Pro JSON **before Evaluation**. Formal
+126,023 tokens**, and stopped on invalid Pro body JSON **before Evaluation**. Formal
 cases: **0/15 run**. This is a technical failure, not a measured scientific score.
 An older single NeRF run passed an older, less strict policy; it is not success
 under the current policy or evidence of a quality improvement.
+[Latest bounded trial](./benchmarks/survey/results/survey-reliability-20261021-001/README.md) ·
 [Survey methodology](./benchmarks/survey/README.md) ·
 [Packaged public records](./src/litagent/static/presentation/manifest.json).
 

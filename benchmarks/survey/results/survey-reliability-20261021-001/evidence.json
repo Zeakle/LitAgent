@@ -1,0 +1,86 @@
+{
+  "suite_id": "survey-reliability-20261021-001",
+  "campaign_binding": "939d32beb3da5af504579008c423670c807f6c89bf3536cc585b8345735418e1",
+  "suite_binding": "a3726c594e8b814b54464ac9bbe73e257311e875d94956d1c37f7d9ec82bc1b7",
+  "commit": "0163e5622d0a944fd3adf9d8ea8c561df7584a0a",
+  "generation_strategy": "body_summary_v1",
+  "status": "stopped",
+  "new_rounds": 1,
+  "new_requests_started": 27,
+  "new_known_tokens": 126023,
+  "new_unknown_usage": false,
+  "new_unknown_hold": 0,
+  "elapsed_ms": 351955,
+  "source_archive_sha256": "00cd4968220fc2608d2a52edf0abf77bf99232b0ddecd2f47c04c16b1d596730",
+  "source_suite_sha256": "b5e56fc52f618c80bd7754bd02a232efe87e7d4f3fb8fb3cb7f148722ac8ce1c",
+  "model_counts": {
+    "doubao-seed-2-1-lite-260915": 26,
+    "doubao-seed-2-1-pro-260915": 1
+  },
+  "generation": {
+    "actual_model": "doubao-seed-2-1-pro-260915",
+    "prompt_tokens": 24380,
+    "completion_tokens": 3376,
+    "usage_available": true,
+    "finish_reason": "stop",
+    "phase": "body",
+    "summary_request_sent": false
+  },
+  "wire_failure": {
+    "task_id": "adversarial_review",
+    "phase": "initial/body",
+    "contract_version": "native-body-summary-v1",
+    "reason_code": "staged_generation_failed",
+    "subreason": "json_decode_error",
+    "error_type": "JSONDecodeError",
+    "candidate_sha256": "9230359b71ac6c83d7dbed49a0897d09f2a4547398ac8cc8f1b6a751c5946501",
+    "json_position": 7393,
+    "json_line": 1,
+    "json_column": 7394,
+    "raw_response_sha256": "9230359b71ac6c83d7dbed49a0897d09f2a4547398ac8cc8f1b6a751c5946501"
+  },
+  "delimiter_diagnosis": {
+    "raw_length": 7393,
+    "unclosed_delimiters": [
+      {
+        "delimiter": "{",
+        "offset": 0
+      }
+    ],
+    "original_response_unmodified": true,
+    "used_as_report": false
+  },
+  "scientific_verdict": "not_evaluated",
+  "counts": {
+    "pilot": {
+      "planned": 3,
+      "run": 1,
+      "complete_verification": 0,
+      "automatic_passed": 0,
+      "pending": 0,
+      "terminal": 1,
+      "blocked": 1,
+      "not_run": 2,
+      "pass_rate_planned": 0.0,
+      "pass_rate_completed": 0.0
+    },
+    "formal": {
+      "planned": 15,
+      "run": 0,
+      "complete_verification": 0,
+      "automatic_passed": 0,
+      "pending": 0,
+      "terminal": 0,
+      "blocked": 0,
+      "not_run": 15,
+      "pass_rate_planned": 0.0,
+      "pass_rate_completed": null
+    },
+    "goal_met": false
+  },
+  "stop_reasons": [
+    "strict_worker_failed"
+  ],
+  "effective_observation_cap": 3,
+  "phase14_5": "in_progress"
+}

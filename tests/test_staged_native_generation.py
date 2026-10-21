@@ -20,6 +20,10 @@ from litagent.native_wire import array_from_native
 from litagent.observability.context import reset_task_id, set_task_id
 from litagent.safety.budget import CostBudget
 from litagent.staged_generation import (
+    BodyRowError,
+    body_row_projection,
+    expand_body,
+    flatten_body,
     generate_staged_report,
     prepare_body_request,
     prepare_summary_request,
@@ -55,11 +59,17 @@ def test_body_and_summary_retain_exact_sources_and_frozen_prose(language):
         "section_source_index",
     ):
         assert packet[key] == original[key]
-    assert set(
-        body_format["json_schema"]["schema"]["properties"]["sections"]["properties"]
-    ) == set(body["sections"])
+    assert set(body_format["json_schema"]["schema"]["properties"]) == {
+        "title",
+        *body["sections"],
+    }
     checked, count = validate_body(
-        json.dumps(body), body_format, cards, "academic_v2", language, None
+        json.dumps(flatten_body(body)),
+        body_format,
+        cards,
+        "academic_v2",
+        language,
+        None,
     )
     assert checked == body
     summary_messages, summary_format = prepare_summary_request(
@@ -75,6 +85,106 @@ def test_body_and_summary_retain_exact_sources_and_frozen_prose(language):
     ) == set(summaries["sections"])
 
 
+@pytest.mark.parametrize("language", ["en", "zh-CN"])
+def test_flat_body_multiblock_roundtrip_and_original_positions(language):
+    cards = facts()
+    body, _ = split(analysis_document(cards, language))
+    original = body["sections"]["methods"]["blocks"][0]
+    original["sentences"].append(copy.deepcopy(original["sentences"][0]))
+    extra = copy.deepcopy(original)
+    extra["heading"] = "Conditions" if language == "en" else "实验条件"
+    body["sections"]["methods"]["blocks"].append(extra)
+    rows = flatten_body(body)
+    assert set(rows) == {"title", *body["sections"]}
+    assert [r["block_index"] for r in rows["methods"]] == [0, 0, 1, 1]
+    assert "sentences" not in rows["methods"][0]
+    assert expand_body(rows) == body
+    messages, rf = request(cards, language, array_wire=True)
+    _, wire = prepare_body_request(messages, rf)
+    restored, count = validate_body(
+        json.dumps(rows), wire, cards, "academic_v2", language, None
+    )
+    assert restored == body
+    projection = body_row_projection(restored)
+    assert len(projection["positions"]) == count
+    mapped = next(p for p in projection["positions"] if p["wire_path"] == "methods.2")
+    assert mapped["array_path"] == "sections.methods.blocks.1.sentences.0"
+    assert (
+        mapped["canonical_path"]
+        == "sections.methods.additional_blocks.0.first_sentence"
+    )
+    assert projection["scientific_verdict"] == "not_evaluated"
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "missing",
+        "extra",
+        "empty",
+        "boolean",
+        "skip",
+        "backward",
+        "heading",
+        "type",
+        "card",
+        "legacy",
+        "duplicate",
+        "truncated",
+    ],
+)
+def test_flat_body_rejects_lossy_or_ambiguous_provider_records(fault):
+    cards = facts()
+    body, _ = split(analysis_document(cards))
+    rows = flatten_body(body)
+    rows["methods"].append(copy.deepcopy(rows["methods"][0]))
+    messages, rf = request(cards, array_wire=True)
+    _, wire = prepare_body_request(messages, rf)
+    expected = SchemaError
+    if fault == "missing":
+        del rows["methods"]
+    elif fault == "extra":
+        rows["methods"][0]["invented"] = "ignored?"
+    elif fault == "empty":
+        rows["methods"] = []
+    elif fault == "boolean":
+        rows["methods"][0]["block_index"] = False
+    elif fault == "skip":
+        rows["methods"][0]["block_index"] = 1
+        expected = BodyRowError
+    elif fault == "backward":
+        rows["methods"][1]["block_index"] = 1
+        rows["methods"].append(copy.deepcopy(rows["methods"][0]))
+        expected = BodyRowError
+    elif fault in {"heading", "type"}:
+        rows["methods"][1][fault] = "Other" if fault == "heading" else "list"
+        expected = BodyRowError
+    elif fault == "card":
+        rows["methods"][0]["fact_card_ids"] = ["invented-card"]
+    elif fault == "legacy":
+        rows = body
+    raw = json.dumps(rows)
+    if fault == "duplicate":
+        raw = raw.replace('{"title":', '{"title":"duplicate", "title":', 1)
+        expected = ValueError
+    elif fault == "truncated":
+        raw = raw[:-1]
+        expected = json.JSONDecodeError
+    with pytest.raises(expected) as exc:
+        validate_body(raw, wire, cards, "academic_v2", "en", None)
+    if isinstance(exc.value, BodyRowError):
+        assert exc.value.absolute_path[0] == "methods"
+
+
+def test_received_7393_failure_remains_rejected_without_closing_repair():
+    # The received response ended with a closed section but an open root object.
+    received_tail = '{"title":"public regression","methods":[{"text":"unchanged"}]'
+    with pytest.raises(json.JSONDecodeError) as error:
+        json.loads(received_tail)
+    assert error.value.pos == len(received_tail)
+    assert received_tail.endswith("]")
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "fault",
@@ -82,6 +192,7 @@ def test_body_and_summary_retain_exact_sources_and_frozen_prose(language):
         None,
         "body_json",
         "body_empty",
+        "body_order",
         "summary_json",
         "body_mutation",
         "unknown_usage",
@@ -97,6 +208,7 @@ async def test_real_sdk_partitions_and_failures_never_replay(tmp_path, fault):
     document = analysis_document(cards)
     body, summaries = split(document)
     calls = []
+    events = []
     budget = CostBudget(max_tokens=1000 if fault == "budget" else 500000)
     budget.configure_strict(halt_on_unknown_usage=True)
     if fault == "summary_budget":
@@ -116,16 +228,18 @@ async def test_real_sdk_partitions_and_failures_never_replay(tmp_path, fault):
         assert value["model"] == "pro-offline" and value["max_tokens"] == 20000
         name = value["response_format"]["json_schema"]["name"]
         assert name == (
-            "grounded_body_v1" if len(calls) == 1 else "grounded_summaries_v1"
+            "grounded_body_v2_rows" if len(calls) == 1 else "grounded_summaries_v1"
         )
         journal = next(tmp_path.glob("*.generation-*.json"))
         persisted = json.loads(journal.read_text())
         assert persisted["status"] == "started_no_replay"
         if fault == "cancel":
             raise asyncio.CancelledError()
-        content = copy.deepcopy(body if len(calls) == 1 else summaries)
+        content = copy.deepcopy(flatten_body(body) if len(calls) == 1 else summaries)
         if fault == "body_empty":
-            content["sections"]["methods"]["blocks"] = []
+            content["methods"] = []
+        if fault == "body_order":
+            content["methods"][0]["block_index"] = 2
         if fault == "body_mutation" and len(calls) == 2:
             content["sections"]["methods"] = body["sections"]["methods"]
         malformed = fault == "body_json" or (
@@ -177,12 +291,14 @@ async def test_real_sdk_partitions_and_failures_never_replay(tmp_path, fault):
         language="en",
         selection=None,
         checkpoint_path=tmp_path / "run.json",
+        trace_hook=lambda event, data: events.append({"event": event, "data": data}),
     )
     try:
         if fault:
             expected = {
                 "body_json": (json.JSONDecodeError, None),
-                "body_empty": (ValueError, "array_wire_shape_invalid"),
+                "body_empty": (SchemaError, "non-empty"),
+                "body_order": (BodyRowError, "flat_body_block_order_invalid"),
                 "summary_json": (json.JSONDecodeError, None),
                 "body_mutation": (SchemaError, "Additional properties"),
                 "unknown_usage": (ValueError, "strict_usage_incomplete"),
@@ -204,6 +320,28 @@ async def test_real_sdk_partitions_and_failures_never_replay(tmp_path, fault):
             assert proof["transport"] == "host_assembled_stages"
             assert proof["scientific_verdict"] == "not_evaluated"
             assert set(proof["stage_response_sha256"]) == {"body", "summaries"}
+            assert proof["body_row_projection"]["positions"]
+        if fault == "body_order":
+            from litagent.demo import project_flow_demo_view
+            from litagent.observability.recorder import ArchiveRepository, RunRecorder
+
+            recorder = RunRecorder(
+                "rows-failure",
+                "public fixture",
+                ArchiveRepository(tmp_path / "archive"),
+            )
+            for item in events:
+                recorder(item["event"], item["data"])
+            artifact = recorder.snapshot()
+            artifact["report"] = {"survey": "placeholder", "evaluation": {}}
+            before = copy.deepcopy(artifact)
+            view = project_flow_demo_view(artifact, source="archive")
+            diagnostic = view["pipeline_verification"]["writing_diagnostics"][0]
+            assert (
+                diagnostic["raw_json_path"] == "native_response.methods.0.block_index"
+            )
+            assert diagnostic["phase"] == "initial/body"
+            assert artifact == before
         count = len(calls)
         assert count == (
             0
@@ -275,7 +413,7 @@ async def test_actual_human_revision_uses_two_parts_and_never_commits_body_mutat
         packet = json.loads(req.content)
         calls.append(packet)
         assert packet["model"] == "pro-offline"
-        output = copy.deepcopy(body if len(calls) == 1 else summaries)
+        output = copy.deepcopy(flatten_body(body) if len(calls) == 1 else summaries)
         if len(calls) == 2:
             output["sections"]["methods"] = body["sections"]["methods"]
         return httpx.Response(
@@ -350,7 +488,7 @@ async def test_actual_human_revision_uses_two_parts_and_never_commits_body_mutat
         )
         assert len(calls) == 2
         assert [p["response_format"]["json_schema"]["name"] for p in calls] == [
-            "grounded_body_v1",
+            "grounded_body_v2_rows",
             "grounded_summaries_v1",
         ]
         assert not outcome["committed"] and outcome["error_type"] == "ValidationError"
