@@ -575,3 +575,40 @@ reject without HTTP. No paid call or new visual validation was performed; the
 previous failed trial was not resumed. New limits require a live-service restart
 and do not yet demonstrate successful real body generation. Phase 14.5 remains
 `in_progress`.
+
+## Timeout-profile single-case trial · blocked by section references, 2026-10-22
+
+Frozen source `59fca65`, new identity `survey-reliability-20261022-003`, one few-shot
+case only; 500,000 tokens / 64 requests, zero retries, Judge/Jev off. All 50 papers
+completed extraction. **27 requests / 119,193 known tokens / 441.923 seconds**,
+complete usage, no new unknown hold. Lite used 26 requests / 96,924 tokens; Pro
+used one / 22,269 (19,096 input + 3,173 output), taking 85.415 seconds. There was
+no timeout or deadline admission rejection in this observation.
+
+The original Pro JSON parses, but the unchanged schema rejects two references:
+`methods[0].fact_card_refs[1] = m12` and `methods[2].fact_card_refs[1] = m8`.
+Reading cards c12/c8 exist; the host did not grant m12/m8 mappings for the methods
+section. The model cannot invent a chapter reference from a reading-card number.
+The current local repair path only collects empty-reference schema diagnostics;
+enum violations fail closed before that path. No repair, summary, Reviewer or
+Evaluation ran. No complete final report SHA or scientific score is available.
+The trial remains **blocked**, rather than treating extraction or valid JSON as
+scientific acceptance. No further case or paid retry was issued.
+
+[Sanitized result and four exports](../benchmarks/survey/results/survey-reliability-20261022-003/README.md)
+share one source. Local trace readback confirms 27 generations / 119,193 tokens,
+empty scientific I/O and a closed survey lifecycle; the outer parent tree is not
+claimed verified. Desktop and narrow viewport bilingual checks, keyboard diagnosis
+expansion, no overflow and zero console errors passed. The requested widths
+1280/390 rendered at CSS widths 1163/354 in the current in-app browser zoom; the
+viewport override was reset. Exact archive route and all four export endpoints
+return 200. Fifteen historical protection groups, including step148 evidence, and
+242 frozen input hashes / 144 snapshots remain unchanged. This trial made no
+production changes and uses the source's 4,082-test offline acceptance.
+
+History now totals **34 initial rounds / 695 model requests / 3,669,144 known
+tokens**, retaining **1,030,414** earlier conservative unknown holds. This is not
+a paired quality experiment; it demonstrates no timeout in this one observation,
+not reliable final scientific generation. Phase 14.5 remains `in_progress`.
+The next step is offline handling of exact section-reference diagnostics within
+the existing shared repair limit, without expanding source permissions.
