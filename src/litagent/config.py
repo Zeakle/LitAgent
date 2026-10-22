@@ -5,7 +5,7 @@ import os
 import re
 from enum import Enum
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
 import yaml
@@ -95,6 +95,10 @@ class OrchestratorConfig(BaseModel):
 
     timeout_ms: int = Field(default=900000, gt=0)
     max_concurrent: int = Field(default=5, gt=0)
+    task_timeouts_ms: dict[
+        Literal["search", "recall", "dedup", "relevance_gate", "graph_analysis"],
+        Annotated[int, Field(strict=True, gt=0, le=3600000)],
+    ] = Field(default_factory=dict)
 
 
 class LLMConfig(BaseModel):
@@ -108,6 +112,23 @@ class LLMConfig(BaseModel):
     # This cap applies when a task does not provide a narrower override.
     max_tokens: int = Field(default=20000, gt=0)
     temperature: float = Field(default=0.1, ge=0, le=2.0)
+    request_timeouts_seconds: dict[
+        Literal[
+            "default",
+            "planning",
+            "extraction",
+            "synthesis",
+            "summary",
+            "reviewer",
+            "revision",
+            "repair",
+            "evaluation",
+        ],
+        Annotated[float, Field(strict=True, gt=0, le=600, allow_inf_nan=False)],
+    ] = Field(default_factory=dict)
+    request_deadline_margin_seconds: float = Field(
+        default=5, strict=True, gt=0, le=60, allow_inf_nan=False
+    )
 
     @model_validator(mode="after")
     def _validate_stage_models(self):
@@ -227,6 +248,10 @@ class ExtractorConfig(BaseModel):
     thinking_mode: Literal["provider_default", "enabled", "disabled"] = "disabled"
     record_identity: Literal["source_fields_v1"] | None = None
     per_paper_timeout_ms: int = Field(default=60000, ge=1000, le=120000)
+    task_timeout_ms: int | None = Field(default=None, strict=True, gt=0, le=7200000)
+    automatic_timeout_seconds: float | None = Field(
+        default=None, gt=0, le=660, allow_inf_nan=False
+    )
 
 
 class ObservabilityConfig(BaseModel):
@@ -383,6 +408,9 @@ class EvalConfig(BaseModel):
     max_tokens: int = Field(default=16384, gt=0)
     thinking_mode: Literal["provider_default", "enabled", "disabled"] = "disabled"
     timeout_seconds: float = Field(default=180.0, gt=0, le=600)
+    total_timeout_seconds: float | None = Field(
+        default=None, gt=0, le=7200, allow_inf_nan=False
+    )
     faithfulness_max_evidence_items: int = Field(default=120, ge=1, le=500)
     faithfulness_max_context_chars: int = Field(default=80000, ge=1000, le=80000)
     rewrite: EvidenceRewriteConfig = Field(default_factory=EvidenceRewriteConfig)
@@ -431,6 +459,43 @@ class AppConfig(BaseModel):
     @model_validator(mode="after")
     def _validate_cross_component_limits(self):
         """Validate limits shared across configuration components."""
+        timeouts = self.llm.request_timeouts_seconds
+        if timeouts:
+            fallback = timeouts.get("default", 180)
+            extraction = timeouts.get("extraction", fallback)
+            strategy = self.extractor.automatic_timeout_seconds or 185
+            if strategy <= extraction + self.llm.request_deadline_margin_seconds:
+                raise ValueError(
+                    "extraction strategy timeout must exceed request plus margin"
+                )
+            if (self.extractor.task_timeout_ms or 300000) / 1000 <= strategy:
+                raise ValueError("extraction task timeout must exceed strategy timeout")
+            if timeouts.get("evaluation", fallback) > self.eval.timeout_seconds:
+                raise ValueError("evaluation request timeout exceeds evaluator timeout")
+        if (
+            self.eval.total_timeout_seconds is not None
+            and self.eval.total_timeout_seconds < self.eval.timeout_seconds
+        ):
+            raise ValueError("evaluation total timeout must cover one request")
+        if self.orchestrator.task_timeouts_ms or self.extractor.task_timeout_ms:
+            limits = self.orchestrator.task_timeouts_ms
+            roots = math.ceil(
+                4 * self.planner.max_sub_queries / self.orchestrator.max_concurrent
+            )
+            critical_path = (
+                roots * max(limits.get("search", 120000), limits.get("recall", 120000))
+                + limits.get("dedup", 120000)
+                + limits.get("relevance_gate", 120000)
+                + max(
+                    self.extractor.task_timeout_ms or 300000,
+                    limits.get("graph_analysis", 120000),
+                )
+                + self.adversarial.task_timeout_ms
+            )
+            if self.orchestrator.timeout_ms < critical_path:
+                raise ValueError(
+                    "orchestration timeout must cover configured DAG critical path"
+                )
         if (
             self.report_audit.judge_base_url
             and urlsplit(self.report_audit.judge_base_url).netloc

@@ -38,10 +38,19 @@ extractor:
   thinking_mode: disabled
   # The current provider needs more than 20s under five-way concurrency.
   per_paper_timeout_ms: 60000
+  # Includes fulltext preparation, queueing, model batches and parsing.
+  task_timeout_ms: 1200000
+  automatic_timeout_seconds: 210
 
 orchestrator:
-  timeout_ms: 900000       # 整体编排超时 15 分钟
+  timeout_ms: 4200000      # DAG deadline 70 min; final Evaluation has its own cap
   max_concurrent: 5        # 最大并行 Worker 数
+  task_timeouts_ms:
+    search: 120000
+    recall: 120000
+    dedup: 120000
+    relevance_gate: 180000
+    graph_analysis: 120000
 
 llm:
   base_url: "https://ark.cn-beijing.volces.com/api/v3"
@@ -51,6 +60,17 @@ llm:
   evaluation_model: "doubao-seed-2-1-lite-260915"
   max_tokens: 20000
   temperature: 0.1
+  request_deadline_margin_seconds: 5.0
+  request_timeouts_seconds:
+    default: 180.0
+    planning: 120.0
+    extraction: 180.0
+    synthesis: 300.0
+    summary: 180.0
+    reviewer: 180.0
+    revision: 300.0
+    repair: 300.0
+    evaluation: 180.0
 
 relevance:
   reranker_enabled: true
@@ -108,7 +128,7 @@ adversarial:
   pass_threshold: 0.8  # Reviewer评分 >= 0.8是未通过
   review_max_tokens: 4096  # bounded structured review JSON
   thinking_mode: disabled
-  task_timeout_ms: 720000  # synthesis/review/revision loop upper bound
+  task_timeout_ms: 1800000  # synthesis/review/revision loop: 30 min
 
 mcp_servers: {} 
 
@@ -145,6 +165,7 @@ eval:
   max_tokens: 16384       # output cap; citation/faithfulness reasoning needs more than 8K
   thinking_mode: "disabled"  # keep evaluator JSON bounded on reasoning providers
   timeout_seconds: 180.0
+  total_timeout_seconds: 1800.0
   faithfulness_max_evidence_items: 120
   faithfulness_max_context_chars: 80000
   strict_batch_size: 16

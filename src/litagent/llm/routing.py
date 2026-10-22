@@ -22,6 +22,11 @@ class ModelBoundClient(BaseLLMClient):
         """Expose the existing trace hook without creating another root trace."""
         return self._base._trace_hook
 
+    @property
+    def _request_timeouts(self):
+        """Borrow the transport owner's timeout policy without copying budgets."""
+        return getattr(self._base, "_request_timeouts", {})
+
     async def chat(self, messages, **kwargs):
         """Reject model substitution and preserve accounting on identity failures."""
         if kwargs.get("model", self._model) != self._model:

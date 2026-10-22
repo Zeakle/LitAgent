@@ -376,6 +376,7 @@ async def test_provider_attempt_cap_and_zero_retry_apply_even_to_failed_transpor
     budget = CostBudget()
     budget.configure_strict()
     client = object.__new__(OpenAICompatibleClient)
+    client._request_timeouts = {}
     client._cost_budget = budget
     client._transport_max_attempts = 3
     client._max_tokens = 1

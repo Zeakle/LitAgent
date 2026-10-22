@@ -28,7 +28,7 @@ from litagent.evidence import (
     collect_ledger,
     encode_citation_aliases,
 )
-from litagent.llm.client import BaseLLMClient
+from litagent.llm.client import BaseLLMClient, chat_with_timeout
 from litagent.logging import get_logger
 from litagent.memory.manager import MemoryManager
 from litagent.observability.citations import (
@@ -501,15 +501,14 @@ class SynthesisWorker(Worker):
                     parent_task_id=task.task_id,
                     stage="synthesis",
                 )
-                response = await asyncio.wait_for(
-                    self._llm.chat(
-                        messages,
-                        max_tokens=20000,
-                        response_format=response_format,
-                        transport_max_attempts=1,
-                        **generation_options,
-                    ),
-                    180,
+                response = await chat_with_timeout(
+                    self._llm,
+                    messages,
+                    stage="synthesis",
+                    max_tokens=20000,
+                    response_format=response_format,
+                    transport_max_attempts=1,
+                    **generation_options,
                 )
                 candidate = response.content
                 from litagent.quality import (
@@ -1011,15 +1010,14 @@ class SynthesisWorker(Worker):
         )
         emit_targeted_repair(self._trace_hook, state, task.task_id)
         try:
-            response = await asyncio.wait_for(
-                self._llm.chat(
-                    prepared,
-                    max_tokens=20000,
-                    response_format=schema,
-                    transport_max_attempts=1,
-                    **generation_options,
-                ),
-                180,
+            response = await chat_with_timeout(
+                self._llm,
+                prepared,
+                stage="repair",
+                max_tokens=20000,
+                response_format=schema,
+                transport_max_attempts=1,
+                **generation_options,
             )
             entry.update(
                 usage=dict(response.usage),

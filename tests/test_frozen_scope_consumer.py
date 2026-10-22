@@ -113,6 +113,7 @@ async def test_real_frozen_cli_consumes_shared_method_permissions_without_paid_c
     def client_factory(**kwargs):
         # Only the provider transport is replaced; the real budget and chat gate run.
         client = object.__new__(OpenAICompatibleClient)
+        client._request_timeouts = {}
         client._cost_budget = kwargs["cost_budget"]
         client._trace_hook = kwargs["trace_hook"]
         client._max_tokens = 16384

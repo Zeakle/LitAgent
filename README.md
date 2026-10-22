@@ -117,6 +117,9 @@ new UI. Enabled checks must pass. Judge using a generation-family model is
 `self_judged`; Jev confidence is not accuracy. No independent human calibration
 has been completed. [Configuration example](./.env.example).
 
+Stage-specific request and Worker deadlines are configured in `config/default.yaml`;
+see [timeout settings and cancellation accounting](./docs/timeouts.md).
+
 Academic styles require Node.js (validated locally with 24.14.0). PDF/Word Chinese
 rendering requires a CJK font; see the demo guide. There is no OCR, arbitrary-URL
 PDF crawling, or submission-format certification.

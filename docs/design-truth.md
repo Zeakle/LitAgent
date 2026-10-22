@@ -46,3 +46,7 @@ acceptance/rejection rates are unavailable. Passing tests or publishing a
 Benchmark bundle does not complete scientific acceptance.
 
 The [frozen-input protocol follow-up](../benchmarks/survey/results/flat-body-protocol-20261021-001/README.md) used one Pro request / 28,230 tokens. Valid JSON still contained seven invalid card references; summary and scientific Evaluation did not run. It is not an additional Survey success.
+
+Stage timeout configuration and inherited deadline admission are implemented and
+offline verified (4,082 default tests). The latest settings have **not** undergone
+a new paid Survey. [Timeout controls and remaining guarantees](./timeouts.md).

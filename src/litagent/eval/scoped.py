@@ -15,6 +15,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from litagent.body_quality import ANALYSIS_OWNERSHIP_CONTRACT, APPLICABILITY_CONTRACT
 from litagent.evidence import extract_evidence_refs_ordered
+from litagent.llm.client import chat_with_timeout
+from litagent.observability.context import deadline_scope
 from litagent.report_render import build_report_source_units
 from litagent.review_structure import _managed_span
 from litagent.safety.budget import CostBudget, strict_request_reservation
@@ -2288,8 +2290,12 @@ async def _evaluate_scoped(*, llm, survey, context, config) -> dict:
             if context.get("evaluation_checkpoint"):
                 context["evaluation_checkpoint"](progress)
         try:
-            response = await asyncio.wait_for(
-                llm.chat(messages, **call_kwargs), config.timeout_seconds
+            response = await chat_with_timeout(
+                llm,
+                messages,
+                stage="evaluation",
+                default=config.timeout_seconds,
+                **call_kwargs,
             )
             responses.append(response)
             if entry is not None:
@@ -2364,7 +2370,10 @@ async def _evaluate_scoped(*, llm, survey, context, config) -> dict:
             on_rejected=on_rejected,
         )
 
-    async with asyncio.timeout(config.timeout_seconds * (10 if strict else 1)):
+    total_timeout = config.total_timeout_seconds or config.timeout_seconds * (
+        10 if strict else 1
+    )
+    async with asyncio.timeout(total_timeout), deadline_scope(total_timeout):
         generated = await call(
             (
                 FLAT_INVENTORY_PROMPT

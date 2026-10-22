@@ -144,6 +144,17 @@ def build_config_summary(
                 for stage in ("extraction", "generation", "evaluation")
             },
         }
+    # Empty policies retain historical identities and their original defaults.
+    if not config.orchestrator.task_timeouts_ms:
+        effective["orchestrator"].pop("task_timeouts_ms", None)
+    if config.eval.total_timeout_seconds is None:
+        effective["eval"].pop("total_timeout_seconds", None)
+    if config.llm.request_timeouts_seconds:
+        effective["llm"]["request_timeout_policy"] = {
+            "version": "step-timeouts-v1",
+            "seconds": dict(config.llm.request_timeouts_seconds),
+            "deadline_margin_seconds": config.llm.request_deadline_margin_seconds,
+        }
     rag = _rag_summary(config)
     if rag is not None:
         effective["rag"] = rag
@@ -211,8 +222,16 @@ def build_config_summary(
             "strict_max_output_tokens"
         ] = STRICT_EXTRACTION_OUTPUT_TOKENS
         if quality_policy in {"strict_auto_v1", "strict_auto_v2"}:
-            effective["extractor"]["automatic_transport_timeout_ms"] = 180000
-            effective["extractor"]["automatic_strategy_timeout_ms"] = 185000
+            effective["extractor"]["automatic_transport_timeout_ms"] = int(
+                config.llm.request_timeouts_seconds.get(
+                    "extraction",
+                    config.llm.request_timeouts_seconds.get("default", 180),
+                )
+                * 1000
+            )
+            effective["extractor"]["automatic_strategy_timeout_ms"] = int(
+                (config.extractor.automatic_timeout_seconds or 185) * 1000
+            )
             effective["extractor"][
                 "automatic_source_key_protocol"
             ] = "host-source-key-v1"

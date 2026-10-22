@@ -18,6 +18,10 @@ from scripts.rebuild_extraction_preparation import rebuild
 async def prepared(tmp_path):
     config = continuation.effective_config()
     data = source()
+    # This synthetic parent uses the current profile before its input is frozen.
+    data["graph"]["tasks"]["adversarial_review"][
+        "timeout_ms"
+    ] = config.adversarial.task_timeout_ms
     data["query"] = (
         "Compare metric-learning approaches for few-shot image classification."
     )

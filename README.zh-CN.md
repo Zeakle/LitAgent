@@ -97,6 +97,8 @@ Judge 与写作前 Jev 提取核验独立可选，新前端默认关闭，开启
 Judge 同源模型标记 `self_judged`；Jev confidence 不代表准确率；尚无独立真人校准。
 [配置示例](./.env.example)。
 
+各阶段请求和 Worker 的超时在 `config/default.yaml` 配置，见[超时设置与取消计账](./docs/timeouts.md)。
+
 学术引用样式需要 Node.js，本机验证版本 24.14.0；中文 PDF/Word 需 CJK 字体，见演示指导。
 不支持 OCR、任意 URL 全文抓取，也不宣称完整 PRISMA 或投稿格式合规。
 

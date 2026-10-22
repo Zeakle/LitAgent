@@ -12,8 +12,25 @@ def load_legacy_mini_config(config_path=None):
             "extraction_model": None,
             "generation_model": None,
             "evaluation_model": None,
+            "request_timeouts_seconds": {},
         }
     )
     config.planner = config.planner.model_copy(update={"thinking_mode": None})
-    config.extractor = config.extractor.model_copy(update={"record_identity": None})
+    config.extractor = config.extractor.model_copy(
+        update={
+            "record_identity": None,
+            "task_timeout_ms": None,
+            "automatic_timeout_seconds": None,
+        }
+    )
+    config.orchestrator = config.orchestrator.model_copy(
+        update={
+            "timeout_ms": 900000,
+            "task_timeouts_ms": {},
+        }
+    )
+    config.adversarial = config.adversarial.model_copy(
+        update={"task_timeout_ms": 720000}
+    )
+    config.eval = config.eval.model_copy(update={"total_timeout_seconds": None})
     return config

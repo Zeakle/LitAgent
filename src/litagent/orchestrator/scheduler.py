@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from litagent.logging import get_logger
-from litagent.observability.context import reset_task_id, set_task_id
+from litagent.observability.context import deadline_scope, reset_task_id, set_task_id
 from litagent.orchestrator.task_graph import SubTask, TaskGraph, TaskStatus
 from litagent.safety.budget import CostBudget
 
@@ -97,10 +97,11 @@ class Scheduler:
     ) -> dict[str, Any]:
         """Run a graph within the orchestration deadline."""
         try:
-            return await asyncio.wait_for(
-                self._loop(graph, cancellation),
-                timeout=self._timeout_ms / 1000,
-            )
+            async with deadline_scope(self._timeout_ms / 1000):
+                return await asyncio.wait_for(
+                    self._loop(graph, cancellation),
+                    timeout=self._timeout_ms / 1000,
+                )
         except asyncio.TimeoutError:
             logger.warning("Orchestration timeout, returning partial results")
             self._finalize_incomplete(graph, "orchestration_timeout")
@@ -123,10 +124,11 @@ class Scheduler:
         if stop_after is not None and graph.get_task(stop_after) is None:
             raise ValueError("unknown_stop_task")
         try:
-            result = await asyncio.wait_for(
-                self._loop(graph, cancellation, stop_after=stop_after),
-                timeout=self._timeout_ms / 1000,
-            )
+            async with deadline_scope(self._timeout_ms / 1000):
+                result = await asyncio.wait_for(
+                    self._loop(graph, cancellation, stop_after=stop_after),
+                    timeout=self._timeout_ms / 1000,
+                )
         except asyncio.TimeoutError:
             self._finalize_incomplete(graph, "orchestration_timeout")
             return SchedulerOutcome("interrupted", graph.get_results(), stop_after)
@@ -253,11 +255,12 @@ class Scheduler:
                 for attempt in range(task.max_retries + 1):
                     try:
 
-                        result = await self._await_worker(
-                            worker.execute(task),
-                            cancellation=cancellation,
-                            timeout=task.timeout_ms / 1000,
-                        )
+                        async with deadline_scope(task.timeout_ms / 1000):
+                            result = await self._await_worker(
+                                worker.execute(task),
+                                cancellation=cancellation,
+                                timeout=task.timeout_ms / 1000,
+                            )
 
                         if task.output_schema and "type" in task.output_schema:
                             from pydantic import TypeAdapter, ValidationError

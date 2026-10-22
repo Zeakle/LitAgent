@@ -67,7 +67,12 @@ from litagent.interaction import (
     paper_id,
     report_version_from_checkpoint,
 )
-from litagent.llm.client import BaseLLMClient, OpenAICompatibleClient
+from litagent.llm.client import (
+    BaseLLMClient,
+    OpenAICompatibleClient,
+    chat_with_timeout,
+    request_timeout_seconds,
+)
 from litagent.logging import get_logger, setup_logging
 from litagent.mcp.bridge import MCPBridge
 from litagent.memory.episodic import EpisodicMemory
@@ -1499,6 +1504,8 @@ class LitAgent:
             temperature=cfg.llm.temperature,
             cost_budget=self._cost_budget,
             trace_hook=self._trace_hook,
+            request_timeouts=cfg.llm.request_timeouts_seconds,
+            deadline_margin_seconds=cfg.llm.request_deadline_margin_seconds,
         )
         self._owned_llm = self._llm
         self._stage_llms = {
@@ -1609,6 +1616,8 @@ class LitAgent:
                 llm_strategy,
                 regex_strategy,
                 per_paper_timeout_ms=cfg.extractor.per_paper_timeout_ms,
+                automatic_timeout_seconds=cfg.extractor.automatic_timeout_seconds
+                or 185,
             )
         else:
             self._extraction_strategy = regex_strategy
@@ -1750,6 +1759,8 @@ class LitAgent:
             ),
             rag_config=cfg.rag,
             adversarial_timeout_ms=cfg.adversarial.task_timeout_ms,
+            task_timeouts_ms=cfg.orchestrator.task_timeouts_ms,
+            extractor_timeout_ms=cfg.extractor.task_timeout_ms or 300000,
             decomposition_override=(
                 self._external_inputs.decomposition
                 if self._external_inputs is not None
@@ -3089,7 +3100,13 @@ class LitAgent:
                 chat_kwargs["extra_body"] = {
                     "thinking": {"type": self._config.eval.thinking_mode}
                 }
-            async with asyncio.timeout(self._config.eval.timeout_seconds):
+            async with asyncio.timeout(
+                request_timeout_seconds(
+                    self._stage_llm("generation"),
+                    "repair",
+                    self._config.eval.timeout_seconds,
+                )
+            ):
                 messages = self._synthesis.rewrite_with_evidence(
                     original_survey,
                     json.dumps(model_items, ensure_ascii=False, separators=(",", ":")),
@@ -3717,10 +3734,13 @@ class LitAgent:
                     },
                 )
             else:
-                async with asyncio.timeout(self._config.eval.timeout_seconds):
-                    response = await self._stage_llm("generation").chat(
-                        messages, **kwargs
-                    )
+                response = await chat_with_timeout(
+                    self._stage_llm("generation"),
+                    messages,
+                    stage="revision",
+                    default=self._config.eval.timeout_seconds,
+                    **kwargs,
+                )
                 candidate = (response.content or "").strip()
             if is_strict_policy(metadata.get("quality_policy")):
                 from litagent.quality import (

@@ -89,6 +89,7 @@ def received_parent(tmp_path):
             "write",
             "adversarial_review",
             input_data=copy.deepcopy(data),
+            timeout_ms=config.adversarial.task_timeout_ms,
         ),
         depends_on=["extract"],
     )

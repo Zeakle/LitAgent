@@ -9,10 +9,10 @@ import unicodedata
 from enum import Enum
 from typing import Callable, Sequence
 
-from litagent.config import PlannerConfig, RAGConfig
+from litagent.config import OrchestratorConfig, PlannerConfig, RAGConfig
 from litagent.context.templates import wrap_xml
 from litagent.exceptions import SafetyError
-from litagent.llm.client import BaseLLMClient
+from litagent.llm.client import BaseLLMClient, chat_with_timeout
 from litagent.logging import get_logger
 from litagent.observability.context import reset_task_id, set_task_id
 from litagent.orchestrator.task_graph import SubTask, TaskGraph
@@ -104,6 +104,8 @@ class SurveyPlanner:
         adversarial_timeout_ms: int = 720000,
         decomposition_override: Sequence[str] | None = None,
         replay_fingerprint: str | None = None,
+        task_timeouts_ms: dict[str, int] | None = None,
+        extractor_timeout_ms: int = 300000,
     ) -> None:
         """Initialize the survey planner."""
         if adversarial_timeout_ms <= 0:
@@ -114,6 +116,12 @@ class SurveyPlanner:
         self._trace_hook = trace_hook
         self._memory = memory_manager
         self._adversarial_timeout_ms = adversarial_timeout_ms
+        self._task_timeouts_ms = OrchestratorConfig(
+            task_timeouts_ms=task_timeouts_ms or {}
+        ).task_timeouts_ms
+        if type(extractor_timeout_ms) is not int or extractor_timeout_ms <= 0:
+            raise ValueError("extractor_timeout_ms must be positive")
+        self._extractor_timeout_ms = extractor_timeout_ms
         self._decomposition_override = (
             tuple(decomposition_override)
             if decomposition_override is not None
@@ -191,6 +199,7 @@ class SurveyPlanner:
                         description=f"Search {source} for: {sub_query}",
                         agent_type="search",
                         priority=rank_idx,
+                        timeout_ms=self._task_timeouts_ms.get("search", 120000),
                         input_data={
                             "mode": "external",
                             "source": source,
@@ -208,6 +217,7 @@ class SurveyPlanner:
                     task_id=task_id,
                     description=f"RAG recall for: {sub_query}",
                     agent_type="recall",
+                    timeout_ms=self._task_timeouts_ms.get("recall", 120000),
                     input_data={
                         "query": sub_query,
                         "query_index": index,
@@ -227,6 +237,7 @@ class SurveyPlanner:
                 task_id="dedup",
                 description="Deduplicate search results",
                 agent_type="dedup",
+                timeout_ms=self._task_timeouts_ms.get("dedup", 120000),
                 input_data={"query": query},
             ),
             depends_on=search_ids + recall_ids,
@@ -237,6 +248,7 @@ class SurveyPlanner:
                 task_id="relevance_gate",
                 description="Rank papers by relevance to query",
                 agent_type="relevance_gate",
+                timeout_ms=self._task_timeouts_ms.get("relevance_gate", 120000),
                 input_data={"query": query},
             ),
             depends_on=["dedup"],
@@ -248,7 +260,7 @@ class SurveyPlanner:
                 description="Extract structure info from papers",
                 agent_type="extractor",
                 input_data={"query": query},
-                timeout_ms=300000,
+                timeout_ms=self._extractor_timeout_ms,
                 max_retries=0,
             ),
             depends_on=["relevance_gate"],
@@ -259,6 +271,7 @@ class SurveyPlanner:
                 task_id="graph_analysis",
                 description="Analyze citation network",
                 agent_type="graph",
+                timeout_ms=self._task_timeouts_ms.get("graph_analysis", 120000),
                 input_data={"query": query},
             ),
             depends_on=["relevance_gate"],
@@ -297,12 +310,14 @@ class SurveyPlanner:
                 kwargs["extra_body"] = {
                     "thinking": {"type": self._config.thinking_mode}
                 }
-            resp = await self._llm.chat(
+            resp = await chat_with_timeout(
+                self._llm,
                 [
                     {"role": "system", "content": _DECOMPOSE_SYSTEM},
                     {"role": "user", "content": wrap_xml("topic", query)},
                 ],
                 response_format={"type": "json_object"},
+                stage="planning",
                 max_tokens=self._config.max_tokens,
                 temperature=self._config.temperature,
                 **kwargs,

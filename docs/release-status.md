@@ -549,3 +549,29 @@ The next offline task is to align extraction Worker, batch and orchestration
 deadlines and check remaining time before sending queued requests. The stopped
 trial and its unknown request will not be revived or replayed. Live Survey remains
 experimental and Phase 14.5 stays in progress.
+
+## Configurable stage timeouts · offline, 2026-10-22
+
+The extraction Worker is no longer fixed at 300 seconds. The current YAML uses
+20 minutes for extraction, 30 minutes for the writing/review chain and 70 minutes
+for the DAG, with a separate 30-minute Evaluation cap. Pro body calls use 300
+seconds; summaries and Reviewer calls use 180 seconds. All values are server
+configuration; see [settings and units](./timeouts.md).
+
+Nested deadlines propagate to the actual provider transport. If the remaining
+window cannot fit the complete request timeout plus a five-second margin,
+`llm.not_sent` records `request_deadline_insufficient` before HTTP, request counting
+or unknown-usage charging. Cancellation after sending retains the existing
+conservative unknown charge and never automatically retries. Token limits,
+scientific gates and historical terminal records remain unchanged.
+
+**24 new regressions; 4,082 passed / 25 deselected / 8 warnings** in the final
+default offline suite; 23 changed Python files pass Black/isort and diff checks.
+Four historical config fingerprints and fourteen historical preservation groups
+remain valid. The initial eight fixture failures are retained locally; fixtures
+now explicitly initialize omitted client policy fields and give synthetic graphs
+the current configured Worker window before freezing. Short real deadlines still
+reject without HTTP. No paid call or new visual validation was performed; the
+previous failed trial was not resumed. New limits require a live-service restart
+and do not yet demonstrate successful real body generation. Phase 14.5 remains
+`in_progress`.

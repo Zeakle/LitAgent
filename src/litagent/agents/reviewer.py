@@ -25,7 +25,7 @@ from litagent.evidence import (
     extract_evidence_refs,
     find_malformed_evidence_refs,
 )
-from litagent.llm.client import BaseLLMClient
+from litagent.llm.client import BaseLLMClient, chat_with_timeout
 from litagent.logging import get_logger
 from litagent.observability.context import get_task_id
 from litagent.orchestrator.scheduler import Worker
@@ -453,7 +453,9 @@ class ReviewerWorker(Worker):
                     ),
                     contract_version=STRICT_REVIEW_REQUEST_CONTRACT,
                 )
-                resp = await asyncio.wait_for(self._llm.chat(messages, **kwargs), 180)
+                resp = await chat_with_timeout(
+                    self._llm, messages, stage="reviewer", **kwargs
+                )
             else:
                 resp = await self._llm.chat(messages, **kwargs)
             review = self._parse_review(resp.content)

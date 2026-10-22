@@ -303,6 +303,7 @@ async def test_actual_runner_and_transport_boundary_reject_bad_native_candidate_
 
     def client_factory(**kwargs):
         client = object.__new__(OpenAICompatibleClient)
+        client._request_timeouts = {}
         client._cost_budget = kwargs["cost_budget"]
         client._trace_hook = kwargs["trace_hook"]
         client._max_tokens = 20000

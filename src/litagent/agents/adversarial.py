@@ -13,7 +13,7 @@ from litagent.agents.reviewer import ReviewerWorker
 from litagent.agents.synthesis import SynthesisWorker
 from litagent.context.evidence_selector import EvidenceSelection
 from litagent.evidence import build_citation_aliases
-from litagent.llm.client import BaseLLMClient
+from litagent.llm.client import BaseLLMClient, chat_with_timeout
 from litagent.logging import get_logger
 from litagent.observability.citations import (
     decode_citations_traced,
@@ -408,8 +408,8 @@ class AdversarialReviewWorker(Worker):
                                     )
                                 )
                             elif strict:
-                                resp = await asyncio.wait_for(
-                                    self._llm.chat(messages, **kwargs), 180
+                                resp = await chat_with_timeout(
+                                    self._llm, messages, stage="revision", **kwargs
                                 )
                             else:
                                 resp = await self._llm.chat(messages, **kwargs)

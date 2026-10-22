@@ -35,8 +35,10 @@ def test_default_timeouts_cover_multi_round_adversarial_review():
     project_root = Path(__file__).resolve().parents[1]
     cfg = load_config(str(project_root / "config" / "default.yaml"))
 
-    assert cfg.adversarial.task_timeout_ms == AdversarialConfig().task_timeout_ms
-    assert cfg.adversarial.task_timeout_ms == 720_000
+    assert AdversarialConfig().task_timeout_ms == 720_000
+    assert cfg.adversarial.task_timeout_ms == 1_800_000
+    assert cfg.extractor.task_timeout_ms == 1_200_000
+    assert cfg.orchestrator.timeout_ms == 4_200_000
     assert cfg.orchestrator.timeout_ms > cfg.adversarial.task_timeout_ms
 
 

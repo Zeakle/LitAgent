@@ -17,6 +17,7 @@ from litagent.body_quality import (
     APPLICABILITY_INSTRUCTION,
     UNIT_CITATION_SCOPE_INSTRUCTION,
 )
+from litagent.llm.client import chat_with_timeout
 from litagent.native_wire import (
     BODY,
     BODY_FIELDS,
@@ -1787,15 +1788,22 @@ async def generate_staged_report(
         state["steps"][part] = entry
         state["status"] = "started_no_replay"
         atomic_json(path, state)
-        response = await asyncio.wait_for(
-            llm.chat(
-                prepared,
-                max_tokens=max_tokens,
-                response_format=rf,
-                transport_max_attempts=1,
-                **(generation_options or {}),
+        response = await chat_with_timeout(
+            llm,
+            prepared,
+            stage=(
+                "summary"
+                if part == "summaries"
+                else (
+                    "repair"
+                    if part.startswith("body_repair")
+                    else "synthesis" if stage == "initial" else "revision"
+                )
             ),
-            180,
+            max_tokens=max_tokens,
+            response_format=rf,
+            transport_max_attempts=1,
+            **(generation_options or {}),
         )
         entry.update(
             status="response_received",

@@ -1204,6 +1204,8 @@ class ResilientExtractionStrategy(ExtractionStrategy):
         llm_strategy: LLMStrategy,
         regex_strategy: RegexStrategy,
         per_paper_timeout_ms: int = 20000,
+        *,
+        automatic_timeout_seconds: float = 185,
     ):
         """Initialize the resilient extraction strategy."""
         self._llm = llm_strategy
@@ -1212,14 +1214,20 @@ class ResilientExtractionStrategy(ExtractionStrategy):
         if per_paper_timeout_ms <= 0:
             raise ValueError("per_paper_timeout_ms must be positive")
         self._timeout_seconds = per_paper_timeout_ms / 1000.0
+        if not 0 < automatic_timeout_seconds <= 660:
+            raise ValueError("automatic_timeout_seconds must be positive and bounded")
+        self._automatic_timeout_seconds = automatic_timeout_seconds
 
     async def extract(self, paper: dict) -> dict:
         """Extract one paper and degrade to rules on timeout or LLM failure."""
         paper_id = paper.get("paper_id", "?")
         if paper.get("quality_policy") in {"strict_auto_v1", "strict_auto_v2"}:
-            # The client owns a 180s bounded transport. Do not cancel a valid
-            # in-flight request earlier merely to substitute a regex result.
-            result = await asyncio.wait_for(self._llm.extract(paper), timeout=185)
+            from litagent.observability.context import deadline_scope
+
+            async with deadline_scope(self._automatic_timeout_seconds):
+                result = await asyncio.wait_for(
+                    self._llm.extract(paper), timeout=self._automatic_timeout_seconds
+                )
             result["extraction_mode"] = "llm"
             return result
         try:
@@ -1248,7 +1256,12 @@ class ResilientExtractionStrategy(ExtractionStrategy):
             p.get("quality_policy") != "strict_auto_v2" for p in papers
         ):
             raise ValueError("extraction_batch_contract_invalid")
-        result = await asyncio.wait_for(self._llm.extract_batch(papers), timeout=185)
+        from litagent.observability.context import deadline_scope
+
+        async with deadline_scope(self._automatic_timeout_seconds):
+            result = await asyncio.wait_for(
+                self._llm.extract_batch(papers), timeout=self._automatic_timeout_seconds
+            )
         for item in result:
             item["extraction_mode"] = "llm"
         return result

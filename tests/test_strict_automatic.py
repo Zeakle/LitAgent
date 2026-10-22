@@ -173,6 +173,7 @@ async def test_unknown_usage_stops_next_transport_and_survives_restore():
     budget = CostBudget()
     budget.configure_strict(halt_on_unknown_usage=True)
     client = object.__new__(OpenAICompatibleClient)
+    client._request_timeouts = {}
     client._cost_budget = budget
     client._transport_max_attempts = 3
     client._max_tokens = 1
