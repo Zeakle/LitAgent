@@ -501,3 +501,51 @@ unchanged. No UI/export code changed and no new browser visual acceptance is cla
 A separately bound real trial is still needed to establish live behavior; offline
 contract success does not prove improved scientific pass rate. Live Survey remains
 experimental and Phase 14.5 stays in progress.
+
+
+## v10 single-case real validation · extraction timeout, 2026-10-22
+
+Frozen source `5ad66f6f4e23b7c25cb0ce5d474ffe6fe7d023a3` ran exactly one new
+few-shot case, capped at 500,000 tokens / 64 requests, zero retries, Judge/Jev off.
+Offline preparation exactly reproduced the previous 24 cards / 12 complete sources
+and legacy schema, including Synthesis's existing selected-union summary scopes.
+The new full body request reserves **89,897**, below **117,964**, retaining the
+20,000 output reserve. This fixed-material check did not guarantee wall-clock
+capacity for a fresh retrieval/extraction run.
+
+The real run stopped after **315.523 seconds**. Planner's extraction Worker has a
+hardcoded **300-second** deadline. It cancelled the final extraction call after
+4.679 seconds, leaving its response unknown. **26 requests were sent: 25 completed,
+one cancelled without a response.** Known provider usage is **96,704 tokens**;
+the unknown request retains its exact conservative reservation of **26,947**.
+The run ledger is **123,651**, while the suite retains its full **500,000** cap.
+Neither ledger figure is a known actual bill, and they are not added together.
+The unknown-usage gate stopped further requests; there was no retry or extra case.
+
+Pro writing, summaries, Reviewer and Evaluation never ran. No complete report was
+frozen; a digest of partial placeholder text is not presented as a final-report
+SHA. The v10 block-directory contract therefore remains **offline validated only**.
+The timeout is an engineering failure, not evidence that scientific claims failed.
+[Public result](../benchmarks/survey/results/survey-reliability-20261022-002/README.md)
+separates known usage, unknown holds, stage status and unavailable scientific counts.
+The earlier 8007 failure remains unchanged.
+
+Cumulative records: **33 initial rounds / 668 sent model requests / 3,549,951 known
+tokens / 1,030,414 conservative unknown tokens**, including the older 1,003,467 hold.
+These trials span different contracts and materials and do not establish a paired
+improvement or calibrated scientific accuracy.
+
+All four public formats match their served bytes and shared projection; exact
+archive API reads succeed. Desktop/390px, English/Chinese, document language,
+keyboard diagnostic expansion and console checks pass. LangFuse confirms 26
+generations, 96,704 known tokens, one unknown generation and empty scientific I/O.
+Its survey output separately records the 123,651 run ledger; an absent outer parent
+means the whole trace tree was not verified. Thirteen historical protection maps,
+the architecture Plan SHA and all 242 frozen input files remain unchanged. No
+production Python changed; the source's prior 4058-test offline pass is retained
+as source validation, not a new scientific success.
+
+The next offline task is to align extraction Worker, batch and orchestration
+deadlines and check remaining time before sending queued requests. The stopped
+trial and its unknown request will not be revived or replayed. Live Survey remains
+experimental and Phase 14.5 stays in progress.
