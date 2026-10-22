@@ -37,7 +37,8 @@ from litagent.quality import (
 from litagent.report_audit import atomic_json, digest
 from litagent.writing_passages import compile_passage_report
 
-CONTRACT = "native-body-summary-v9"
+CONTRACT = "native-body-summary-v10"
+BODY_LAYOUT_CONTRACT = "body-block-directory-v1"
 CARD_REFERENCE_CONTRACT = "section-card-refs-v1"
 BODY_REPAIR_WIRE = "body-repair-card-aliases-v1"
 RECEIVED_BODY_CONTRACT = "received-typed-body-v1"
@@ -299,8 +300,14 @@ def _short_body_packet(original, binding):
     return packet
 
 
-def prepare_body_request(messages, response_format, *, typed_units=True):
+def prepare_body_request(
+    messages, response_format, *, typed_units=True, block_layout=None
+):
     """Retain complete inputs and permissions, requesting only five body sections."""
+    if block_layout is None:
+        block_layout = typed_units and CONTRACT == "native-body-summary-v10"
+    if block_layout and not typed_units:
+        raise ValueError("body_layout_requires_typed_units")
     schema = copy.deepcopy(response_format["json_schema"]["schema"])
     sections = schema["properties"]["sections"]
     if set(sections["properties"]) != {*BODY, "abstract", "conclusion"}:
@@ -314,6 +321,7 @@ def prepare_body_request(messages, response_format, *, typed_units=True):
     }
     binding = card_reference_binding(original["cards"], scopes)
     properties = {"title": schema["properties"]["title"]}
+    layouts = {}
     for key in BODY:
         block = sections["properties"][key]["properties"]["blocks"]["items"]
         if typed_units and not binding["section_cards"][key]:
@@ -336,11 +344,34 @@ def prepare_body_request(messages, response_format, *, typed_units=True):
             **row["properties"],
         }
         row["required"] = list(row["properties"])
+        if block_layout:
+            metadata = {
+                field: row["properties"].pop(field) for field in ("heading", "type")
+            }
+            row["required"] = list(row["properties"])
+            layouts[key] = {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 126,
+                "items": {
+                    "type": "object",
+                    "properties": metadata,
+                    "required": list(metadata),
+                    "additionalProperties": False,
+                },
+            }
         properties[key] = {
             "type": "array",
             "minItems": 1,
             "maxItems": 126,
             "items": row,
+        }
+    if block_layout:
+        properties["block_layout"] = {
+            "type": "object",
+            "properties": layouts,
+            "required": list(BODY),
+            "additionalProperties": False,
         }
     if typed_units:
         properties["scope_notices"] = {
@@ -370,6 +401,8 @@ def prepare_body_request(messages, response_format, *, typed_units=True):
     packet["generation_contract"] = CONTRACT
     packet["generation_stage"] = "body"
     packet["generation_section_order"] = list(BODY)
+    if block_layout:
+        packet["body_layout_contract"] = BODY_LAYOUT_CONTRACT
     instruction = (
         BODY_INSTRUCTION
         + APPLICABILITY_INSTRUCTION
@@ -377,6 +410,17 @@ def prepare_body_request(messages, response_format, *, typed_units=True):
             "additional_sentences", "sentences array entries"
         ).replace("fact_card_ids", "fact_card_refs")
     )
+    if block_layout:
+        instruction = instruction.replace(
+            "Each record contains block_index, heading, type and the four unit fields. Start\n"
+            "block_index at 0; keep the same index for sentences in one block, then increment\n"
+            "by exactly 1. Repeated records in a block must repeat the exact heading and type.",
+            "Declare each block's heading and type exactly once in block_layout[section_key],\n"
+            "in block order. Each scientific row contains only block_index and the four unit\n"
+            "fields; never repeat heading/type in a row. Start block_index at 0, retain it\n"
+            "within a block and increment by exactly 1 for the next block. Every declared\n"
+            "block must contain scientific rows. Never omit prose to satisfy the layout.",
+        )
     prepared = [
         {"role": "system", "content": instruction},
         {"role": "user", "content": json.dumps(packet, ensure_ascii=False)},
@@ -386,7 +430,12 @@ def prepare_body_request(messages, response_format, *, typed_units=True):
         policy = _short_feedback(json.loads(message["content"]), by_id)
         prepared.append({**message, "content": json.dumps(policy, ensure_ascii=False)})
     return prepared, _format(
-        schema, "grounded_body_v4_typed" if typed_units else "grounded_body_v3_refs"
+        schema,
+        (
+            "grounded_body_v5_blocks"
+            if block_layout
+            else "grounded_body_v4_typed" if typed_units else "grounded_body_v3_refs"
+        ),
     )
 
 
@@ -464,8 +513,10 @@ def decode_body(rows, binding):
     return rows
 
 
-def encode_typed_body(body, binding):
+def encode_typed_body(body, binding, *, block_layout=None):
     """Separate host notices without dropping or reclassifying authored prose."""
+    if block_layout is None:
+        block_layout = CONTRACT == "native-body-summary-v10"
     rows = encode_body(body, binding)
     result = {"title": rows["title"], "scope_notices": []}
     for key in BODY:
@@ -495,11 +546,28 @@ def encode_typed_body(body, binding):
                     "scope_notice_id": notice,
                 }
             )
+    if block_layout:
+        result["block_layout"] = {
+            key: [
+                {field: copy.deepcopy(block[field]) for field in ("heading", "type")}
+                for block in body["sections"][key]["blocks"]
+            ]
+            for key in BODY
+        }
+        for key in BODY:
+            for row in result[key]:
+                del row["heading"], row["type"]
     return result
 
 
-def decode_typed_body(rows, binding, *, allow_empty_references=False):
+def decode_typed_body(
+    rows, binding, *, allow_empty_references=False, block_layout=None
+):
     """Restore catalog-only notices at explicit scientific anchors, never guessing."""
+    if block_layout is None:
+        block_layout = CONTRACT == "native-body-summary-v10"
+    if block_layout:
+        rows = restore_body_layout(rows)
     closed(rows, {"title", *BODY, "scope_notices"})
     notices = rows["scope_notices"]
     if not isinstance(notices, list) or len(notices) > 2:
@@ -559,6 +627,48 @@ def decode_typed_body(rows, binding, *, allow_empty_references=False):
     return decode_body(restored, binding)
 
 
+def restore_body_layout(rows):
+    """Restore declared metadata without merging blocks or rewriting authored units."""
+    closed(rows, {"title", *BODY, "scope_notices", "block_layout"})
+    layout = rows["block_layout"]
+    closed(layout, BODY)
+    restored = copy.deepcopy({k: v for k, v in rows.items() if k != "block_layout"})
+    fields = {*BODY_FIELDS - {"fact_card_ids"}, "fact_card_refs", "block_index"}
+    for key in BODY:
+        blocks = layout[key]
+        if not isinstance(blocks, list) or not 1 <= len(blocks) <= 126:
+            raise BodyRowError("body_layout_invalid", ["block_layout", key])
+        for bi, metadata in enumerate(blocks):
+            closed(metadata, {"heading", "type"})
+            if (
+                not isinstance(metadata["heading"], str)
+                or not isinstance(metadata["type"], str)
+                or metadata["type"] not in {"paragraph", "list"}
+            ):
+                raise BodyRowError("body_layout_invalid", ["block_layout", key, bi])
+        if not isinstance(restored[key], list) or not restored[key]:
+            raise BodyRowError("flat_body_section_invalid", [key])
+        previous = -1
+        for ri, row in enumerate(restored[key]):
+            closed(row, fields)
+            bi = row["block_index"]
+            if (
+                type(bi) is not int
+                or not 0 <= bi < len(blocks)
+                or bi not in {previous, previous + 1}
+            ):
+                raise BodyRowError(
+                    "flat_body_block_order_invalid", [key, ri, "block_index"]
+                )
+            row.update(copy.deepcopy(blocks[bi]))
+            previous = bi
+        if previous != len(blocks) - 1:
+            raise BodyRowError(
+                "body_layout_unused_block", ["block_layout", key, previous + 1]
+            )
+    return restored
+
+
 def _check_reference_schema(response_format, binding):
     """Require native permissions to match independently reconstructed host scopes."""
     fields = response_format["json_schema"]["schema"]["properties"]
@@ -604,7 +714,7 @@ def expand_body(rows):
     return result
 
 
-def body_row_projection(body, binding=None, *, typed_units=False):
+def body_row_projection(body, binding=None, *, typed_units=False, block_layout=None):
     """Bind provider row indices to the unchanged canonical body coordinates."""
     _, projection = canonical_from_array(body, body_only=True)
     canonical_paths = {
@@ -636,7 +746,7 @@ def body_row_projection(body, binding=None, *, typed_units=False):
         "contract": CONTRACT,
         "positions": positions,
         "wire_document_sha256": digest(
-            encode_typed_body(body, binding)
+            encode_typed_body(body, binding, block_layout=block_layout)
             if typed_units
             else encode_body(body, binding) if binding else flatten_body(body)
         ),
@@ -682,8 +792,11 @@ def validate_body(
             rows,
             binding,
             allow_empty_references=collect_diagnostics and empty_cards_only,
+            block_layout=response_format["json_schema"]["name"]
+            == "grounded_body_v5_blocks",
         )
-        if response_format["json_schema"]["name"] == "grounded_body_v4_typed"
+        if response_format["json_schema"]["name"]
+        in {"grounded_body_v4_typed", "grounded_body_v5_blocks"}
         else decode_body(rows, binding)
     )
     return validate_body_document(body, cards, structure, language, selection)
@@ -1716,7 +1829,11 @@ async def generate_staged_report(
     part, raw = "body", ""
     repair_start = len(repair_state["attempts"]) if repair_state is not None else 0
     try:
-        prepared, rf = prepare_body_request(messages, response_format)
+        # Received v1 envelopes contain already charged v4 bytes. Select their
+        # codec explicitly; this never authorizes a new paid continuation.
+        prepared, rf = prepare_body_request(
+            messages, response_format, block_layout=False if received_body else None
+        )
         binding = card_reference_binding(
             cards, _writing_scopes(cards, structure, language, selection)
         )
@@ -1774,6 +1891,8 @@ async def generate_staged_report(
                         json.loads(raw, object_pairs_hook=unique),
                         binding,
                         allow_empty_references=True,
+                        block_layout=rf["json_schema"]["name"]
+                        == "grounded_body_v5_blocks",
                     )
                 )
                 body, count = await repair_staged_body(
@@ -1792,7 +1911,12 @@ async def generate_staged_report(
                     llm,
                     max_tokens,
                 )
-        body_entry["projection"] = body_row_projection(body, binding, typed_units=True)
+        body_entry["projection"] = body_row_projection(
+            body,
+            binding,
+            typed_units=True,
+            block_layout=rf["json_schema"]["name"] == "grounded_body_v5_blocks",
+        )
         if frozen_body is not None:
             body_entry["projection"].update(
                 transport="host_frozen_body",
@@ -1812,6 +1936,7 @@ async def generate_staged_report(
             "native-body-summary-v7",
             "native-body-summary-v8",
             "native-body-summary-v9",
+            "native-body-summary-v10",
         }
         prepared, rf = prepare_summary_request(
             body,
@@ -1824,19 +1949,29 @@ async def generate_staged_report(
                 "native-body-summary-v7",
                 "native-body-summary-v8",
                 "native-body-summary-v9",
+                "native-body-summary-v10",
             },
             host_layout=CONTRACT
-            in {"native-body-summary-v8", "native-body-summary-v9"},
-            compact_metadata=CONTRACT == "native-body-summary-v9",
+            in {
+                "native-body-summary-v8",
+                "native-body-summary-v9",
+                "native-body-summary-v10",
+            },
+            compact_metadata=CONTRACT
+            in {"native-body-summary-v9", "native-body-summary-v10"},
         )
         if short_summaries:
             state["summary_reference_binding"] = summary_reference_binding(body)
-            if CONTRACT == "native-body-summary-v9":
+            if CONTRACT in {"native-body-summary-v9", "native-body-summary-v10"}:
                 state["summary_input_projection"] = {
                     "contract": SUMMARY_METADATA_CONTRACT,
                     "packet_sha256": digest(json.loads(prepared[1]["content"])),
                 }
-            if CONTRACT in {"native-body-summary-v8", "native-body-summary-v9"}:
+            if CONTRACT in {
+                "native-body-summary-v8",
+                "native-body-summary-v9",
+                "native-body-summary-v10",
+            }:
                 state["summary_layout"] = summary_layout(
                     response_format, json.loads(messages[1]["content"])["summary_rules"]
                 )

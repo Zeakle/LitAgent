@@ -92,6 +92,7 @@ def frozen_inputs(parent, accounting_parent):
             json.loads(prior["raw_response"], object_pairs_hook=unique),
             journal["body_card_reference_binding"],
             allow_empty_references=True,
+            block_layout=False,
         )
     )
     native, _ = canonical_from_array(original_body, body_only=True)

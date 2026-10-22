@@ -695,6 +695,7 @@ async def execute(root, m, config, budget, *, received_body=None, frozen_body=No
                                 "grounded_body_v2_rows",
                                 "grounded_body_v3_refs",
                                 "grounded_body_v4_typed",
+                                "grounded_body_v5_blocks",
                                 "grounded_summaries_v1",
                                 "grounded_summaries_v2_refs",
                                 "grounded_summaries_v3_layout",

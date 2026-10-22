@@ -45,13 +45,14 @@ def split(document):
     return body, summaries
 
 
-def provider_body(body, cards, language="en", selection=None):
+def provider_body(body, cards, language="en", selection=None, *, block_layout=None):
     """Encode only at the simulated provider boundary; consumers stay canonical."""
     return encode_typed_body(
         body,
         card_reference_binding(
             cards, _writing_scopes(cards, "academic_v2", language, selection)
         ),
+        block_layout=block_layout,
     )
 
 
@@ -110,6 +111,7 @@ def test_body_and_summary_retain_exact_sources_and_frozen_prose(language):
     assert set(body_format["json_schema"]["schema"]["properties"]) == {
         "title",
         "scope_notices",
+        "block_layout",
         *body["sections"],
     }
     checked, count = validate_body(
@@ -190,10 +192,10 @@ def test_flat_body_multiblock_roundtrip_and_original_positions(language):
 def test_flat_body_rejects_lossy_or_ambiguous_provider_records(fault):
     cards = facts()
     body, _ = split(analysis_document(cards))
-    rows = provider_body(body, cards)
+    rows = provider_body(body, cards, block_layout=False)
     rows["methods"].append(copy.deepcopy(rows["methods"][0]))
     messages, rf = request(cards, array_wire=True)
-    _, wire = prepare_body_request(messages, rf)
+    _, wire = prepare_body_request(messages, rf, block_layout=False)
     expected = SchemaError
     if fault == "missing":
         del rows["methods"]
@@ -285,7 +287,7 @@ async def test_real_sdk_partitions_and_failures_never_replay(tmp_path, fault):
         assert value["model"] == "pro-offline" and value["max_tokens"] == 20000
         name = value["response_format"]["json_schema"]["name"]
         assert name == (
-            "grounded_body_v4_typed"
+            "grounded_body_v5_blocks"
             if len(calls) == 1
             else "grounded_summaries_v3_layout"
         )
@@ -606,7 +608,7 @@ async def test_actual_human_revision_uses_two_parts_and_never_commits_body_mutat
         )
         assert len(calls) == 2
         assert [p["response_format"]["json_schema"]["name"] for p in calls] == [
-            "grounded_body_v4_typed",
+            "grounded_body_v5_blocks",
             "grounded_summaries_v3_layout",
         ]
         assert not outcome["committed"] and outcome["error_type"] == "ValidationError"

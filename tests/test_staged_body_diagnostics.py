@@ -439,7 +439,7 @@ def test_new_staged_contract_changes_only_explicit_staged_identity(monkeypatch):
         body_quality="analysis_v1",
         generation_strategy="body_summary_v1",
     )
-    assert CONTRACT == "native-body-summary-v9"
+    assert CONTRACT == "native-body-summary-v10"
     previous_single = single.fingerprint()
     monkeypatch.setattr(staged_generation, "CONTRACT", "native-body-summary-v6")
     previous_staged = staged.fingerprint()

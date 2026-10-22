@@ -461,3 +461,43 @@ The next offline task is to remove or bind repeated block metadata while keeping
 all scientific prose, citations, ordering and permissions. No extra paid request
 was made after this failure. Live Survey remains experimental and Phase 14.5
 stays in progress.
+
+
+## Single-declaration body block metadata · offline, 2026-10-22
+
+Staged contract `native-body-summary-v10` requests `grounded_body_v5_blocks`.
+Each block declares its heading/type once in an ordered per-section directory.
+Scientific rows retain block indices, exact prose, section-scoped card references
+and existing unit fields. The host restores metadata before the original canonical,
+source, language and scientific checks. Distinct blocks are never merged, even
+when headings match. Invalid or unused directory entries, mixed legacy/new fields,
+noncontiguous indices and unauthorized references fail closed.
+
+This removes the repeated-header equality requirement that blocked the latest
+real attempt. It does not validate the scientific meaning of a heading or sentence.
+The actual prior response still fails at `methods[1].heading` under its original
+v4 codec. Read-only replay preserves all **34 scientific rows / 2 host notices**,
+raw response SHA and charges. The public regression fixture is explicitly redacted
+structural data, not the complete model response or scientific gold.
+
+The new staged fingerprint prevents reuse across the change; single-stage identity
+and explicit historical v4 decoding remain intact. Received-v1 and frozen-summary
+accounting readers explicitly consume the original codec. An internal HTTP observer
+recognizes the new schema name, while old paid-executor version/grant guards remain
+closed to v10. The v9 lossless summary metadata tables and v3 host layout continue
+unchanged; no additional model call or budget was introduced.
+
+Final default regression: **4058 passed / 25 deselected**, eight existing warnings,
+including **34 new cases**. The latest focused compatibility suite passed **168**
+cases. Earlier failures are retained locally: the structural fixture initially
+counted host notices as scientific rows, and expanded tests exposed historical
+readers and the HTTP observer selecting the wrong wire. Eleven changed Python
+files pass Black/isort; diff checks and twelve historical protection maps, including
+the architecture Plan SHA, pass. Real SDK-boundary tests cover writing, Reviewer,
+Evaluation, bounded repair, failure persistence and no replay; only HTTP is mocked.
+
+No paid request was issued. The previous blocked report, fees and 8007 result are
+unchanged. No UI/export code changed and no new browser visual acceptance is claimed.
+A separately bound real trial is still needed to establish live behavior; offline
+contract success does not prove improved scientific pass rate. Live Survey remains
+experimental and Phase 14.5 stays in progress.

@@ -236,7 +236,7 @@ async def test_real_sdk_repairs_share_attempts_then_freeze_before_summary(
         payload = json.loads(req.content)
         calls.append(payload)
         name = payload["response_format"]["json_schema"]["name"]
-        if name == "grounded_body_v4_typed":
+        if name == "grounded_body_v5_blocks":
             value = body_wire
         elif name == "grounded_summaries_v3_layout":
             assert state["attempts"][-1]["status"] == "completed"
@@ -412,7 +412,7 @@ async def test_synthesis_repair_reviewer_and_actual_v3_evaluator_share_frozen_so
         p = json.loads(request.content)
         requests.append(p)
         name = p.get("response_format", {}).get("json_schema", {}).get("name")
-        if name == "grounded_body_v4_typed":
+        if name == "grounded_body_v5_blocks":
             value = provider_body(body, cards, selection=selection)
             value["methods"][0]["fact_card_refs"] = []
         elif name == "native_body_repair_v7_refs":

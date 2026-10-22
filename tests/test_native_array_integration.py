@@ -349,7 +349,7 @@ async def test_real_reviewer_to_whole_revision_uses_explicit_array_wire(
             value = array_from_native(doc if index < (2 if staged else 1) else revised)
             if staged:
                 if index in {0, 3}:
-                    assert name == "grounded_body_v4_typed"
+                    assert name == "grounded_body_v5_blocks"
                     if index == 3:
                         writing_packet = json.loads(packet["messages"][1]["content"])
                         assert "On DeiT-S" in writing_packet["current_draft"]

@@ -93,7 +93,8 @@ async def test_received_sdk_skips_body_preserves_attempts_and_never_replays(
     repair_inputs, tmp_path, monkeypatch, fault
 ):
     x = repair_inputs
-    raw = json.dumps(x["wire"])
+    # The immutable received-v1 envelope predates the block directory.
+    raw = json.dumps(staged.restore_body_layout(x["wire"]))
     scopes = staged._writing_scopes(x["cards"], "academic_v2", "en", x["selected"])
     receipt = envelope(raw, x["cards"], scopes)
     path = tmp_path / "repair.json"
@@ -233,7 +234,7 @@ async def received_prepared(accounted, monkeypatch):
     original_generator = staged.generate_staged_report
     cards = m["input"]["cards"]
     body, summaries = split(analysis_document(cards))
-    wire = provider_body(body, cards)
+    wire = provider_body(body, cards, block_layout=False)
     wire["methods"][0]["fact_card_refs"] = []
     sent = []
 

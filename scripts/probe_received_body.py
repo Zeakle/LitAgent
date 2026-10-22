@@ -79,7 +79,9 @@ def received_inputs(parent, accounting_parent):
         or original != {"state": repair}
     ):
         raise ValueError("received_probe_body_already_consumed")
-    prepared, rf = prepare_body_request(inputs["messages"], inputs["response_format"])
+    prepared, rf = prepare_body_request(
+        inputs["messages"], inputs["response_format"], block_layout=False
+    )
     expected_packet = json.loads(prepared[1]["content"])
     expected_packet["generation_contract"] = m["contract"]
     events = [
@@ -201,7 +203,9 @@ def validate(root):
 def preflight(m, budget):
     """Reserve full next inputs before authorizing the sole live execution path."""
     inputs = m["input"]
-    _, rf = prepare_body_request(inputs["messages"], inputs["response_format"])
+    _, rf = prepare_body_request(
+        inputs["messages"], inputs["response_format"], block_layout=False
+    )
     selection = EvidenceSelection.from_dict(inputs["selection"])
     raw = m["received_body"]["raw_response"]
     try:
@@ -222,6 +226,7 @@ def preflight(m, budget):
                 json.loads(raw, object_pairs_hook=unique),
                 card_reference_binding(inputs["cards"], probe_scope(inputs)),
                 allow_empty_references=True,
+                block_layout=False,
             )
         )
         native, _ = canonical_from_array(body, body_only=True)
