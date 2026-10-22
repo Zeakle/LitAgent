@@ -1,8 +1,8 @@
-# Engineering release status · 2026-10-22
+# Engineering release status · 2026-10-23
 
 ## Verified locally
 
-- Default offline regression: **4024 passed, 25 deselected** (8 deprecation warnings).
+- Default offline regression: **4118 passed, 25 deselected** (8 deprecation warnings).
 - Python 3.11.15 / Node 24.14.0 on macOS; direct dependency constraints install in
   a fresh virtual environment with no broken requirements (`pip check`).
 - Clean source snapshot has no `.env` or private `artifacts`; presentation health
@@ -645,3 +645,46 @@ fixture failures are retained locally and corrected without weakening scientific
 assertions. No UI changes, new visual pass or paid request occurred. Phase 14.5
 remains `in_progress`; real semantic effectiveness still requires a new bounded
 identity, without resuming the original failed request.
+
+## Bounded v11 validation · 2026-10-23
+
+Source `eb675a4`, prepared campaign `survey-reliability-20261022-004`, executed
+exactly one few-shot case. The previous approval-service quota failure had sent
+no request; the same unused identity was revalidated and started through normal
+approval. No duplicate execution or extra case was issued.
+
+All **50 papers** completed extraction. **28 requests / 132,596 known tokens /
+359.298 seconds**, complete usage, no timeout or automatic retry. Lite used
+26 requests / 96,352 tokens; Pro used two / 36,244. The body JSON was valid, but
+five chapter-reference enum violations affected four units. The new narrow
+repair was actually invoked once. Its response passed JSON/schema and explicitly
+returned `can_repair=false` with four null patches. This is a valid refusal,
+not a successful repair or a scientific verdict. The original body was preserved;
+permissions were not expanded and references were not silently removed.
+
+The run stopped as `body_reference_repair_unavailable` / `strict_worker_failed`.
+Summary, Reviewer and Evaluation **did not run**. Scientific counts and
+faithfulness remain unavailable; no final complete-report SHA or publishable
+report exists. Judge/Jev were disabled. The second shared repair slot was not
+used, and the failure did not authorize another paid attempt.
+
+[Sanitized result, bindings and four exports](../benchmarks/survey/results/survey-reliability-20261022-004/README.md)
+are consistent with the terminal archive. Local trace readback confirms
+28 generations / 132,596 tokens, empty scientific I/O and the survey lifecycle;
+the outer parent trace tree remains unverified. Desktop and 390 CSS-pixel
+Chinese/English views, keyboard expansion, no overflow and zero console errors
+were checked; temporary viewport overrides were reset. The in-app browser's
+zoom cropped full-page mobile captures, so an explicit viewport clip was used
+for the complete 390px screenshot. No report evidence-location pass is claimed
+because no final report exists. The offline workbench and all four exports
+return 200. Seventeen historical protection groups, architecture SHA and all
+242 input hashes / 144 frozen snapshots remain unchanged.
+
+This step changed no production Python and retains source `eb675a4`'s
+**4,118-test** offline acceptance. The 36 focused reference-repair regressions pass again (five deprecation
+warnings). An additional zero-transport replay reproduces the exact five errors and validates the refusal through the real patch consumer.
+Cumulative history is **35 initial rounds / 723 model requests / 3,801,740 known
+tokens**, with the prior **1,030,414** unknown conservative holds unchanged.
+The 500k cap is not charged again as actual usage. Phase 14.5 remains
+`in_progress`. Next, audit chapter-menu adherence and how a safe repair refusal
+is classified; do not replace this result or loosen evidence/quality gates.
