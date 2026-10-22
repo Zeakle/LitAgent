@@ -216,7 +216,7 @@ def test_new_contract_retains_single_identity_and_paid_guards_stay_closed(
     from scripts import probe_received_body as received
     from scripts import probe_staged_generation as probe
 
-    assert CONTRACT == "native-body-summary-v10"
+    assert CONTRACT == "native-body-summary-v11"
     single = RunOptions(quality_policy="strict_auto_v2", body_quality="analysis_v1")
     staged = single.model_copy(update={"generation_strategy": "body_summary_v1"})
     before_single = single.fingerprint()

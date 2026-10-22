@@ -612,3 +612,36 @@ a paired quality experiment; it demonstrates no timeout in this one observation,
 not reliable final scientific generation. Phase 14.5 remains `in_progress`.
 The next step is offline handling of exact section-reference diagnostics within
 the existing shared repair limit, without expanding source permissions.
+
+## Section-reference repair · offline, 2026-10-22
+
+Generation contract `native-body-summary-v11` collects only pure string-enum
+failures in `fact_card_refs` for the current v5 body wire. The failure is bound to
+exact raw bytes, schema, host permissions and row positions. A new narrow patch
+can change only the affected rows' reference arrays; prose, placement, block
+layout, notices and other rows remain immutable. The full original schema and
+all existing body/source checks run again before summaries. A model must decline
+when the immutable sentence has no supporting permitted source. Local patch
+acceptance is explicitly `not_evaluated` scientifically.
+
+This uses the existing shared two-repair allowance and original budgets/timeouts.
+Preflight refusal sends nothing; dispatched cancellation/unknown usage keeps the
+original charge and never retries automatically. A remaining scientific-unit
+failure still enters the existing native repair path and consumes the same limit.
+V10/default validation and explicit historical codecs retain their fail-closed
+behavior; staged identity changes while single-stage identities remain stable.
+
+The exact original 003 response replays both original locations without editing
+its archive or journal. A complete repair request retains **24 cards / 16 source
+records**, with **94,870** conservative tokens including the unchanged **20,000**
+output reserve, below **117,964** context capacity and **180,807** remaining writing
+capacity. This prepares a request only; no model repair was sent and the old
+report remains blocked with 119,193 known tokens.
+
+**36 new regressions; final default 4,118 passed / 25 deselected / 8 warnings**.
+Four changed Python files pass Black/isort and diff checks; sixteen historical
+protection groups and the architecture SHA remain unchanged. The first seven
+fixture failures are retained locally and corrected without weakening scientific
+assertions. No UI changes, new visual pass or paid request occurred. Phase 14.5
+remains `in_progress`; real semantic effectiveness still requires a new bounded
+identity, without resuming the original failed request.

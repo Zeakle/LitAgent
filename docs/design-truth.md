@@ -50,3 +50,9 @@ The [frozen-input protocol follow-up](../benchmarks/survey/results/flat-body-pro
 Stage timeout configuration and inherited deadline admission are implemented and
 offline verified (4,082 default tests). The latest settings have **not** undergone
 a new paid Survey. [Timeout controls and remaining guarantees](./timeouts.md).
+
+The v11 staged writer has an offline-verified reference-only repair boundary:
+exact bad rows and original chapter permissions are frozen, and patches cannot
+rewrite scientific prose or expand permissions. It shares the existing two-repair
+limit; local repair success is not scientific acceptance. The original 003
+failure is preserved and no paid v11 repair has yet been observed.
