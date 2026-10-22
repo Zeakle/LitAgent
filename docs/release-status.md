@@ -419,3 +419,45 @@ history remains **615 model requests / 3,342,081 known tokens**, preserving the 
 validation. The remaining reservation gap and an independently bounded execution
 identity must be resolved before any continuation; the exhausted prior grant is
 not reopened. Live Survey remains experimental and Phase 14.5 stays in progress.
+
+
+## One complete Survey attempt · blocked, 2026-10-22
+
+Frozen source `5d4a7f941ad2e67277db1d1646384c76eb656d7e` ran one few-shot
+metric-learning case, with Lite extraction/Evaluation and Pro writing. The
+persisted limit was one observation, 500,000 tokens / 64 requests, zero retries;
+Judge/Jev were disabled. Other pilot/formal slots were not authorized or run.
+
+Actual usage: **27 requests / 111,166 tokens / 410.837 seconds**, complete usage.
+Lite used 26 requests / 88,664 tokens; Pro used one / 22,502. Raw JSON and the
+native body schema passed. Canonical body expansion rejected
+`flat_body_block_metadata_conflict` at `methods[1].heading`: two rows in the
+same block supplied different headings. The original response and failure are
+preserved, without normalization or retry. This attempt had sufficient budget;
+it did not exercise the v9 summary input on real data.
+
+Summary, Reviewer and Evaluation did not run. Scientific support counts and
+faithfulness are unavailable; 24 fact cards and 34 model-labelled scientific rows
+are not verified scientific results. There is no valid final-report SHA. The
+report is **blocked**, not a successful Survey or a scientific rejection.
+
+[Public observation](../benchmarks/survey/results/survey-reliability-20261022-001/README.md)
+provides one projection in JSON/CSV/Markdown/HTML, including exact source/input
+bindings, costs, stage statuses and failure location. Full responses and paper
+text stay local. History totals become 32 initial rounds / 642 model requests /
+3,453,247 known tokens; the older 1,003,467 unknown hold remains unchanged.
+Different historical contracts are not pooled into a current success rate.
+
+Preflight regression: **102 passed**. Production Python was unchanged; the
+frozen source's **4024 passed / 25 deselected** default result remains the source
+validation, not evidence of live scientific quality. Eleven historical protection
+maps and the architecture Plan SHA verify unchanged. All four static formats
+match their files; archive API reads succeed. Desktop/390px, English/Chinese,
+keyboard failure-location expansion and console checks passed. LangFuse readback
+confirms 27 generations / 111,166 tokens with empty scientific I/O; an absent outer
+parent means the complete trace tree was not verified.
+
+The next offline task is to remove or bind repeated block metadata while keeping
+all scientific prose, citations, ordering and permissions. No extra paid request
+was made after this failure. Live Survey remains experimental and Phase 14.5
+stays in progress.
