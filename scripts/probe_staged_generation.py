@@ -199,8 +199,14 @@ def reconcile_accounting(
     predecessor_contract=LIVE_CONTRACT,
     predecessor_requests=REQUESTS,
     predecessor_received=None,
+    predecessor_frozen=None,
 ):
     """Advance one explicitly versioned receipt without refunding paid calls."""
+    if predecessor_received is not None and predecessor_frozen is not None:
+        raise ValueError("staged_probe_accounting_continuation_conflict")
+    continuation = (
+        predecessor_frozen if predecessor_frozen is not None else predecessor_received
+    )
     root = Path(accounting_parent).resolve()
     paths = [
         root / name
@@ -219,8 +225,8 @@ def reconcile_accounting(
                 inputs["parent_archive_sha256"],
                 predecessor_contract,
                 *(
-                    [predecessor_received["sha256"], predecessor_version]
-                    if predecessor_received
+                    [continuation["sha256"], predecessor_version]
+                    if continuation is not None
                     else []
                 ),
             ]
@@ -235,6 +241,8 @@ def reconcile_accounting(
         or m["input"] != inputs
         or predecessor_received is not None
         and m.get("received_body") != predecessor_received
+        or predecessor_frozen is not None
+        and m.get("frozen_body") != predecessor_frozen
         or (m["limit"], m["requests"], m["output"])
         != (LIMIT, predecessor_requests, OUTPUT)
         or json.loads(grant.read_text()) != {"binding": m["binding"], "root": str(root)}

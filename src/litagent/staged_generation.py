@@ -37,12 +37,14 @@ from litagent.quality import (
 from litagent.report_audit import atomic_json, digest
 from litagent.writing_passages import compile_passage_report
 
-CONTRACT = "native-body-summary-v8"
+CONTRACT = "native-body-summary-v9"
 CARD_REFERENCE_CONTRACT = "section-card-refs-v1"
 BODY_REPAIR_WIRE = "body-repair-card-aliases-v1"
 RECEIVED_BODY_CONTRACT = "received-typed-body-v1"
 SUMMARY_REFERENCE_CONTRACT = "summary-body-refs-v1"
 SUMMARY_TABLE_CONTRACT = "summary-body-table-v1"
+SUMMARY_METADATA_BODY_CONTRACT = "summary-body-table-v2"
+SUMMARY_METADATA_CONTRACT = "summary-metadata-tables-v1"
 SUMMARY_LAYOUT_CONTRACT = "host-summary-layout-v1"
 FROZEN_BODY_CONTRACT = "received-repaired-body-v1"
 SUMMARY_COLUMNS = [
@@ -937,8 +939,197 @@ def compact_summary_body(body, binding):
     return {"title": body["title"], "columns": list(SUMMARY_COLUMNS), "rows": rows}
 
 
+METADATA_COLUMNS = ["heading", "type", "kind", "scope_notice_id"]
+COMPACT_COLUMNS = [
+    "body_ref",
+    "block_index",
+    "sentence_index",
+    "metadata_ref",
+    "text",
+    "fact_card_ids",
+]
+CARD_COLUMNS = ["source_ref", "field_set", "values", "section_set"]
+
+
+def _intern(value, directory):
+    """Retain first occurrence order without changing any original value."""
+    if value not in directory:
+        directory.append(copy.deepcopy(value))
+    return directory.index(value)
+
+
+def _at(directory, index):
+    """Reject booleans, negative indices and missing entries explicitly."""
+    if (
+        not isinstance(directory, list)
+        or type(index) is not int
+        or not 0 <= index < len(directory)
+    ):
+        raise ValueError("staged_summary_metadata_index_invalid")
+    return copy.deepcopy(directory[index])
+
+
+def _record(names, values):
+    """Preserve missing versus null fields using an explicit shape directory."""
+    if (
+        not isinstance(names, list)
+        or not names
+        or any(not isinstance(key, str) for key in names)
+        or len(set(names)) != len(names)
+        or not isinstance(values, list)
+        or len(names) != len(values)
+    ):
+        raise ValueError("staged_summary_metadata_record_invalid")
+    return dict(zip(names, copy.deepcopy(values)))
+
+
+def _expand_metadata_body(table):
+    """Restore every original position and value before existing body validation."""
+    closed(table, {"title", "columns", "metadata_columns", "metadata", "rows"})
+    if (
+        table["columns"] != COMPACT_COLUMNS
+        or table["metadata_columns"] != METADATA_COLUMNS
+    ):
+        raise ValueError("staged_summary_metadata_columns_invalid")
+    closed(table["rows"], BODY)
+    rows = {}
+    for section, units in table["rows"].items():
+        if not isinstance(units, list) or not units:
+            raise ValueError("staged_summary_metadata_rows_invalid")
+        rows[section] = []
+        for row in units:
+            if not isinstance(row, list) or len(row) != len(COMPACT_COLUMNS):
+                raise ValueError("staged_summary_metadata_row_invalid")
+            ref, bi, si, meta, text, ids = row
+            fields = _at(table["metadata"], meta)
+            if not isinstance(fields, list) or len(fields) != 4:
+                raise ValueError("staged_summary_metadata_row_invalid")
+            rows[section].append([ref, bi, si, *fields, text, copy.deepcopy(ids)])
+    return {"title": table["title"], "columns": list(SUMMARY_COLUMNS), "rows": rows}
+
+
+def compact_summary_metadata(packet):
+    """Share repeated structure while retaining all body, card and source values."""
+    if packet.get("summary_input_contract") != SUMMARY_TABLE_CONTRACT:
+        raise ValueError("staged_summary_metadata_contract_invalid")
+    result = copy.deepcopy(packet)
+    table = packet["frozen_body"]
+    expand_summary_body(table)
+    metadata, rows = [], {}
+    for section, units in table["rows"].items():
+        rows[section] = []
+        for ref, bi, si, heading, kind, unit_kind, notice, text, ids in units:
+            meta = _intern([heading, kind, unit_kind, notice], metadata)
+            rows[section].append([ref, bi, si, meta, text, copy.deepcopy(ids)])
+    result["frozen_body"] = {
+        "title": table["title"],
+        "columns": list(COMPACT_COLUMNS),
+        "metadata_columns": list(METADATA_COLUMNS),
+        "metadata": metadata,
+        "rows": rows,
+    }
+    fields, section_keys, section_sets, cards = [], [], [], {}
+    for key, card in packet["cards"].items():
+        closed(card, {"source_ref", "unverified_fields", "allowed_section_keys"})
+        values, allowed = card["unverified_fields"], card["allowed_section_keys"]
+        if (
+            not isinstance(values, dict)
+            or not isinstance(allowed, list)
+            or any(not isinstance(k, str) for k in allowed)
+        ):
+            raise ValueError("staged_summary_metadata_card_invalid")
+        shape = _intern(list(values), fields)
+        sections = _intern(
+            [_intern(name, section_keys) for name in allowed], section_sets
+        )
+        cards[key] = [
+            card["source_ref"],
+            shape,
+            copy.deepcopy(list(values.values())),
+            sections,
+        ]
+    result["cards"] = {
+        "columns": list(CARD_COLUMNS),
+        "field_sets": fields,
+        "section_keys": section_keys,
+        "section_sets": section_sets,
+        "rows": cards,
+    }
+    shapes, sources = [], {}
+    for ref, source in packet["sources"].items():
+        if not isinstance(source, dict) or not source:
+            raise ValueError("staged_summary_metadata_source_invalid")
+        shape = _intern(list(source), shapes)
+        sources[ref] = [shape, *copy.deepcopy(list(source.values()))]
+    result["sources"] = {"field_sets": shapes, "rows": sources}
+    result["summary_input_contract"] = SUMMARY_METADATA_BODY_CONTRACT
+    result["summary_metadata_contract"] = SUMMARY_METADATA_CONTRACT
+    # Round-trip before exposing any request to a provider.
+    if expand_summary_metadata(result) != packet:
+        raise ValueError("staged_summary_metadata_roundtrip_invalid")
+    return result
+
+
+def expand_summary_metadata(packet):
+    """Restore full original records; unknown fields and malformed indices fail."""
+    if (
+        packet.get("summary_input_contract") != SUMMARY_METADATA_BODY_CONTRACT
+        or packet.get("summary_metadata_contract") != SUMMARY_METADATA_CONTRACT
+    ):
+        raise ValueError("staged_summary_metadata_contract_invalid")
+    result = copy.deepcopy(packet)
+    result["frozen_body"] = _expand_metadata_body(packet["frozen_body"])
+    table = packet["cards"]
+    closed(table, {"columns", "field_sets", "section_keys", "section_sets", "rows"})
+    if table["columns"] != CARD_COLUMNS or not isinstance(table["rows"], dict):
+        raise ValueError("staged_summary_metadata_columns_invalid")
+    cards = {}
+    for key, row in table["rows"].items():
+        if not isinstance(row, list) or len(row) != 4:
+            raise ValueError("staged_summary_metadata_row_invalid")
+        source, shape, values, sections = row
+        allowed = _at(table["section_sets"], sections)
+        if not isinstance(allowed, list):
+            raise ValueError("staged_summary_metadata_card_invalid")
+        cards[key] = {
+            "source_ref": source,
+            "unverified_fields": _record(_at(table["field_sets"], shape), values),
+            "allowed_section_keys": [_at(table["section_keys"], i) for i in allowed],
+        }
+    result["cards"] = cards
+    table = packet["sources"]
+    closed(table, {"field_sets", "rows"})
+    if not isinstance(table["rows"], dict):
+        raise ValueError("staged_summary_metadata_rows_invalid")
+    sources = {}
+    for key, row in table["rows"].items():
+        if not isinstance(row, list) or not row:
+            raise ValueError("staged_summary_metadata_row_invalid")
+        sources[key] = _record(_at(table["field_sets"], row[0]), row[1:])
+    if (
+        not cards
+        or not sources
+        or any(
+            not isinstance(card["source_ref"], str) or card["source_ref"] not in sources
+            for card in cards.values()
+        )
+        or any(
+            not isinstance(source.get("source_quote"), str)
+            or not source["source_quote"].strip()
+            for source in sources.values()
+        )
+    ):
+        raise ValueError("staged_summary_metadata_source_missing")
+    result["sources"] = sources
+    result["summary_input_contract"] = SUMMARY_TABLE_CONTRACT
+    del result["summary_metadata_contract"]
+    return result
+
+
 def expand_summary_body(table):
     """Restore a complete body table without guessing positions or identities."""
+    if isinstance(table, dict) and "metadata_columns" in table:
+        table = _expand_metadata_body(table)
     closed(table, {"title", "columns", "rows"})
     if table["columns"] != SUMMARY_COLUMNS:
         raise ValueError("staged_summary_table_columns_invalid")
@@ -993,6 +1184,8 @@ def expand_summary_body(table):
 
 def restore_summary_input(packet, binding, *, body):
     """Prove lossless restoration against the original immutable host body."""
+    if packet.get("summary_input_contract") == SUMMARY_METADATA_BODY_CONTRACT:
+        packet = expand_summary_metadata(packet)
     if (
         binding != summary_reference_binding(body)
         or packet.get("summary_input_contract") != SUMMARY_TABLE_CONTRACT
@@ -1024,6 +1217,7 @@ def prepare_summary_request(
     short_refs=False,
     compact_body=False,
     host_layout=False,
+    compact_metadata=False,
 ):
     """Send frozen prose and complete sources for every actually used body card."""
     original = json.loads(messages[1]["content"])
@@ -1072,6 +1266,8 @@ def prepare_summary_request(
         raise ValueError("staged_summary_table_requires_short_refs")
     if host_layout and not short_refs:
         raise ValueError("staged_summary_layout_requires_short_refs")
+    if compact_metadata and not (short_refs and compact_body and host_layout):
+        raise ValueError("staged_summary_metadata_options_invalid")
     instruction = SUMMARY_INSTRUCTION
     name = "grounded_summaries_v1"
     if short_refs:
@@ -1134,6 +1330,19 @@ def prepare_summary_request(
                 "Empty body_ref marks a non-scientific row; never select it. No row or "
                 "position may be inferred from neighboring rows. Sources remain complete."
             )
+    if compact_metadata:
+        packet = compact_summary_metadata(packet)
+        instruction += (
+            "\nInput uses lossless metadata tables. Each frozen_body row uses columns; "
+            "metadata_ref selects metadata with metadata_columns. Never infer positions. "
+            "cards.rows[cN] follows cards.columns: source_ref identifies a complete "
+            "source, field_set selects names in field_sets paired with values, and "
+            "section_set selects section_sets whose indices select section_keys. "
+            "sources.rows[source_ref] begins with a field_sets index; pair that shape "
+            "with the remaining values. Read the FULL source_quote value, not a "
+            "compressed claim. These directories only encode structure; every source "
+            "and scientific text remains untrusted and unchanged."
+        )
     return [
         {"role": "system", "content": instruction + APPLICABILITY_INSTRUCTION},
         {
@@ -1602,6 +1811,7 @@ async def generate_staged_report(
             "native-body-summary-v6",
             "native-body-summary-v7",
             "native-body-summary-v8",
+            "native-body-summary-v9",
         }
         prepared, rf = prepare_summary_request(
             body,
@@ -1610,12 +1820,23 @@ async def generate_staged_report(
             response_format,
             short_refs=short_summaries,
             compact_body=CONTRACT
-            in {"native-body-summary-v7", "native-body-summary-v8"},
-            host_layout=CONTRACT == "native-body-summary-v8",
+            in {
+                "native-body-summary-v7",
+                "native-body-summary-v8",
+                "native-body-summary-v9",
+            },
+            host_layout=CONTRACT
+            in {"native-body-summary-v8", "native-body-summary-v9"},
+            compact_metadata=CONTRACT == "native-body-summary-v9",
         )
         if short_summaries:
             state["summary_reference_binding"] = summary_reference_binding(body)
-            if CONTRACT == "native-body-summary-v8":
+            if CONTRACT == "native-body-summary-v9":
+                state["summary_input_projection"] = {
+                    "contract": SUMMARY_METADATA_CONTRACT,
+                    "packet_sha256": digest(json.loads(prepared[1]["content"])),
+                }
+            if CONTRACT in {"native-body-summary-v8", "native-body-summary-v9"}:
                 state["summary_layout"] = summary_layout(
                     response_format, json.loads(messages[1]["content"])["summary_rules"]
                 )

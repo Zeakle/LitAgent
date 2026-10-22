@@ -2,7 +2,7 @@
 
 ## Verified locally
 
-- Default offline regression: **3990 passed, 25 deselected** (8 deprecation warnings).
+- Default offline regression: **4024 passed, 25 deselected** (8 deprecation warnings).
 - Python 3.11.15 / Node 24.14.0 on macOS; direct dependency constraints install in
   a fresh virtual environment with no broken requirements (`pip check`).
 - Clean source snapshot has no `.env` or private `artifacts`; presentation health
@@ -379,3 +379,43 @@ continues to show the real failure, not this offline repair as a live success.
 Further lossless encoding and reconciliation of the latest paid tip are required
 before another bounded continuation. Reviewer/Evaluation have not run on a new
 real report; live Survey remains experimental and Phase 14.5 stays in progress.
+
+
+## Complete metadata tables and receipt reconciliation · offline, 2026-10-22
+
+Staged contract `native-body-summary-v9` shares repeated body metadata, card-field
+names and section permissions through explicit directories. Source rows select
+their own field-set shape, preserving optional fields, null values and extensions.
+All original scientific prose, positions, card values and complete source records
+round-trip exactly; no text is compressed into model-generated claims. Native
+output remains `grounded_summaries_v3_layout`, with the existing canonical and
+scientific gates. Historical input codecs and single-stage identity remain intact.
+
+The new read-only `scripts.reconcile_frozen_summary` adapter reproduces the exact
+historical v7 summary request and verifies its input SHA, frozen body, shared repair
+counter, grant, raw response, per-call usage and cumulative ledger. It creates no
+grant or HTTP client. Repeated reconciliation does not duplicate fees. Retired
+paid executors continue to reject the new generation contract.
+
+Full private-input replay preserves **50 body units / 48 scientific units / 22
+cards / 15 complete sources** and the **20,000** output reserve. Reservation falls
+**67,622 → 60,979**, a reduction of **6,643** in the conservative request upper bound,
+not measured paid usage. Against the latest writing balance of **55,840**, a
+**5,139** deficit remains and the actual budget consumer rejects the request.
+No sources were removed and evaluation-stage capacity was not borrowed.
+
+Final offline regression: **4024 passed / 25 deselected**, eight warnings,
+including 34 new cases. The 292 related tests and earlier 4020-test full pass preceded
+four additional source-completeness counterexamples. Final decoding also rejects
+missing source records, unknown card-source links and absent or invalid original
+support text; a structurally valid table alone cannot establish complete materials.
+Six Python files pass Black/isort and diff checks. Ten immutable protection maps
+and the architecture Plan SHA remain valid. No UI code changed or new visual
+acceptance was claimed; the 8006 result retains the actual prior failure.
+
+No paid request was issued. Parent totals remain **244,160 tokens / 33 requests**;
+history remains **615 model requests / 3,342,081 known tokens**, preserving the older
+1,003,467 unknown hold. New v9 inputs have not received real model or scientific
+validation. The remaining reservation gap and an independently bounded execution
+identity must be resolved before any continuation; the exhausted prior grant is
+not reopened. Live Survey remains experimental and Phase 14.5 stays in progress.
