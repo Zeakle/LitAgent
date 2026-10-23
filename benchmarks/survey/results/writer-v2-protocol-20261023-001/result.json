@@ -1,0 +1,33 @@
+{
+  "status": "protocol_completed",
+  "source_commit": "bcc12ed32daed4f7f77fd6b2a11375af2139da23",
+  "identity": "c1a51ca0a4e1faf95430330d6540f9b6f1b7a37fe1ff393ac393ba9346a3eb73",
+  "http_status": 200,
+  "wire_matches_sdk": true,
+  "request_matches_original": true,
+  "body_units": 66,
+  "sections": 5,
+  "schema_passed": true,
+  "scientific_evaluation": "not_run",
+  "publishable": false,
+  "requests": 1,
+  "known_tokens": 14578,
+  "unknown_hold": 0,
+  "trace_url": null,
+  "historical_files_unchanged": 5,
+  "scope": "protocol_only",
+  "model": "doubao-seed-2-1-pro-260915",
+  "limits": {
+    "tokens": 120000,
+    "requests": 1,
+    "output_tokens": 20000,
+    "retries": 0
+  },
+  "source_run_id": "survey-reliability-20261022-004-pilot-few-shot-metric",
+  "previous_identical_request": {
+    "status": "writer_json_invalid",
+    "requests": 1,
+    "known_tokens": 12477
+  },
+  "human_calibration": "unavailable"
+}

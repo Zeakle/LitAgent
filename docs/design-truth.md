@@ -80,3 +80,9 @@ gaps. Offline verification passed 4,181 tests (25 deselected). The original
 invalid JSON was replayed unchanged through the real SDK with mock HTTP only;
 no new paid request was made. This does not resolve the provider output failure
 or establish a live quality improvement.
+
+A [subsequent identical full-input request](../benchmarks/survey/results/writer-v2-protocol-20261023-001/README.md)
+completed JSON/schema and local body checks with 66 units, one Pro request and
+14,578 known tokens. Provider HTTP content matched the SDK content. No scientific
+Evaluation was performed; the previous malformed response remains a failure.
+This observation does not establish an improvement in Survey quality or reliability.

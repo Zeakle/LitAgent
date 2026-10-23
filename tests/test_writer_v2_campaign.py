@@ -121,3 +121,95 @@ def test_campaign_source_inventory_includes_new_consumers_and_tests():
         "tests/test_writer_v2_campaign.py",
     } <= paths
     assert campaign.LIMITS["formal_cases"] == 0 and len(campaign.CASES) == 3
+
+
+def accounting_parent(tmp_path, name, history, tokens):
+    """Create a terminal receipt with independently reconcilable SDK events."""
+    root = tmp_path / name
+    root.mkdir()
+    manifest = {"history": dict(history)}
+    manifest["identity"] = campaign.digest(manifest)
+    atomic_json(root / "manifest.json", manifest)
+    atomic_json(
+        root / "state.json",
+        {
+            "identity": manifest["identity"],
+            "status": "protocol_completed",
+            "known_tokens": tokens,
+            "requests": 1,
+            "usage_complete": True,
+            "unknown_hold": 0,
+        },
+    )
+    atomic_json(
+        tmp_path / "artifacts/runs" / (name + ".json"),
+        {
+            "run_id": name,
+            "events": [
+                {"event": "llm.start", "data": {"operation_id": name}},
+                {
+                    "event": "llm.complete",
+                    "data": {
+                        "operation_id": name,
+                        "usage_available": True,
+                        "prompt_tokens": tokens - 1,
+                        "completion_tokens": 1,
+                        "total_tokens": tokens,
+                    },
+                },
+            ],
+        },
+    )
+    return root
+
+
+def test_accounting_prefix_keeps_both_paid_observations_and_old_unknown(
+    tmp_path, monkeypatch
+):
+    """Protocol attempts add costs, without becoming new initial Survey rounds."""
+    monkeypatch.chdir(tmp_path)
+    history = {
+        "model_requests": 723,
+        "model_known_tokens": 3801740,
+        "model_unknown_conservative_tokens": 1030414,
+        "initial_generation_rounds": 35,
+    }
+    p1 = accounting_parent(tmp_path, "first", history, 12477)
+    after_first = {**history, "model_requests": 724, "model_known_tokens": 3814217}
+    p2 = accounting_parent(tmp_path, "protocol", after_first, 14578)
+    result, receipts = campaign.accounting_history(history, [p1, p2])
+    assert result == {**history, "model_requests": 725, "model_known_tokens": 3828795}
+    assert [r["known_tokens"] for r in receipts] == [12477, 14578]
+    assert history["model_requests"] == 723
+    assert campaign.accounting_history(history, [p1, p2]) == (result, receipts)
+    with pytest.raises(ValueError, match="duplicate"):
+        campaign.accounting_history(history, [p1, p1])
+    with pytest.raises(ValueError, match="prefix_invalid"):
+        campaign.accounting_history(history, [p2, p1])
+
+
+@pytest.mark.parametrize("fault", ["count", "unknown", "operation", "tokens"])
+def test_accounting_cannot_hide_unknown_or_forge_completed_usage(
+    tmp_path, monkeypatch, fault
+):
+    """A receipt needs terminal, complete usage reconciled with the original events."""
+    monkeypatch.chdir(tmp_path)
+    history = {"model_requests": 1, "model_known_tokens": 100}
+    root = accounting_parent(tmp_path, "parent", history, 30)
+    if fault in {"count", "unknown"}:
+        path = root / "state.json"
+        state = json.loads(path.read_text())
+        state.update(
+            {"known_tokens": 29} if fault == "count" else {"usage_complete": False}
+        )
+        atomic_json(path, state)
+    else:
+        path = tmp_path / "artifacts/runs/parent.json"
+        archive = json.loads(path.read_text())
+        end = archive["events"][-1]["data"]
+        end.update(
+            {"operation_id": "wrong"} if fault == "operation" else {"total_tokens": 31}
+        )
+        atomic_json(path, archive)
+    with pytest.raises(ValueError, match="accounting_.*(invalid|unknown)"):
+        campaign.accounting_history(history, [root])

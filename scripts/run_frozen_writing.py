@@ -73,7 +73,83 @@ def source_paths():
     return sorted({p for p in paths if p.is_file() and "__pycache__" not in str(p)})
 
 
-def prepare(root, config):
+def accounting_history(history, parents):
+    """Carry a verified terminal prefix forward without refunding or duplicating calls."""
+    history, receipts, seen, seen_archives = dict(history), [], set(), set()
+    for parent in parents:
+        root = Path(parent)
+        if root.resolve() in seen:
+            raise ValueError("frozen_accounting_parent_duplicate")
+        seen.add(root.resolve())
+        mp, sp = root / "manifest.json", root / "state.json"
+        manifest, state = json.loads(mp.read_text()), json.loads(sp.read_text())
+        if (
+            manifest.get("history") != history
+            or manifest.get("identity")
+            != digest({k: v for k, v in manifest.items() if k != "identity"})
+            or state.get("identity") != manifest["identity"]
+            or state.get("status") not in {"stopped", "completed", "protocol_completed"}
+        ):
+            raise ValueError("frozen_accounting_prefix_invalid")
+        rows = state.get("cases", [state])
+        archives = {}
+        requests, tokens = 0, 0
+        for row in rows:
+            if row.get("usage_complete") is not True or row.get("unknown_hold", 0):
+                raise ValueError("frozen_accounting_usage_unknown")
+            run_id = row.get("run_id", root.name)
+            if Path(run_id).name != run_id:
+                raise ValueError("frozen_accounting_run_invalid")
+            path = Path("artifacts/runs", run_id + ".json")
+            archive = json.loads(path.read_text())
+            if archive["run_id"] != run_id or path.resolve() in seen_archives:
+                raise ValueError("frozen_accounting_archive_duplicate_or_invalid")
+            seen_archives.add(path.resolve())
+            events = archive["events"]
+            starts = [e["data"] for e in events if e["event"] == "llm.start"]
+            ends = [e["data"] for e in events if e["event"] == "llm.complete"]
+            if (
+                type(row.get("requests")) is not int
+                or type(row.get("known_tokens")) is not int
+                or row["requests"] < 0
+                or row["known_tokens"] < 0
+                or len(starts) != len(ends)
+                or len(starts) != row["requests"]
+                or len({e["operation_id"] for e in starts}) != len(starts)
+                or {e["operation_id"] for e in starts}
+                != {e["operation_id"] for e in ends}
+                or any(e.get("usage_available") is not True for e in ends)
+                or any(
+                    any(
+                        type(e.get(k)) is not int or e[k] < 0
+                        for k in ("prompt_tokens", "completion_tokens", "total_tokens")
+                    )
+                    or e["total_tokens"] != e["prompt_tokens"] + e["completion_tokens"]
+                    for e in ends
+                )
+                or sum(e["total_tokens"] for e in ends) != row["known_tokens"]
+            ):
+                raise ValueError("frozen_accounting_archive_usage_invalid")
+            requests += row["requests"]
+            tokens += row["known_tokens"]
+            archives[str(path)] = hashlib.sha256(path.read_bytes()).hexdigest()
+        receipts.append(
+            {
+                "root": str(root),
+                "manifest_sha256": hashlib.sha256(mp.read_bytes()).hexdigest(),
+                "state_sha256": hashlib.sha256(sp.read_bytes()).hexdigest(),
+                "archives": archives,
+                "requests": requests,
+                "known_tokens": tokens,
+                "history_before": dict(history),
+            }
+        )
+        history["model_requests"] += requests
+        history["model_known_tokens"] += tokens
+    return history, receipts
+
+
+def prepare(root, config, *, accounting_parents=()):
     """Freeze all three materials and the same source before any paid request."""
     check_models(config)
     root = Path(root)
@@ -94,6 +170,7 @@ def prepare(root, config):
             "artifacts/acceptance/survey-reliability-20261022-004/acceptance-summary.json"
         ).read_text()
     )["cumulative"]
+    history, receipts = accounting_history(history, accounting_parents)
     manifest = {
         "version": VERSION,
         "suite_id": root.name,
@@ -118,6 +195,8 @@ def prepare(root, config):
         },
     }
     manifest["limits"] = dict(LIMITS)
+    if receipts:
+        manifest["accounting_receipts"] = receipts
     manifest["runtime"] = runtime_identity()
     manifest["identity"] = digest(manifest)
     root.mkdir(parents=True)
@@ -156,6 +235,13 @@ def validate(root, config):
     ):
         raise ValueError("frozen_campaign_identity_conflict")
     check_models(config)
+    if m.get("accounting_receipts"):
+        receipts = m["accounting_receipts"]
+        history, verified = accounting_history(
+            receipts[0]["history_before"], [r["root"] for r in receipts]
+        )
+        if history != m["history"] or verified != receipts:
+            raise ValueError("frozen_campaign_accounting_changed")
     for name, h in m["source_hashes"].items():
         if (
             hashlib.sha256(Path(name).read_bytes()).hexdigest() != h
@@ -573,13 +659,16 @@ def main():
     """Require explicit preparation or bounded live execution of the frozen suite."""
     p = argparse.ArgumentParser()
     p.add_argument("--root", type=Path, required=True)
+    p.add_argument("--accounting-parent", type=Path, action="append", default=[])
     g = p.add_mutually_exclusive_group(required=True)
     g.add_argument("--prepare", action="store_true")
     g.add_argument("--live", action="store_true")
     args = p.parse_args()
+    if args.live and args.accounting_parent:
+        p.error("--accounting-parent is frozen during --prepare only")
     cfg = load_config()
     result = (
-        prepare(args.root, cfg)
+        prepare(args.root, cfg, accounting_parents=args.accounting_parent)
         if args.prepare
         else asyncio.run(execute(args.root, cfg))
     )

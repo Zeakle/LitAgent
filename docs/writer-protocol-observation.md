@@ -20,3 +20,7 @@
 `tests/test_writer_v2_protocol.py` 用真实 SDK、预算、ModelBoundClient、WriterSession 和归档消费者，只替代 HTTP 传输，验证合法与非法 JSON、未知用量、取消、模型身份、原包一致性、身份漂移、进程中断、不重发及公开错误脱敏。
 
 当前依据及限制见 [计划审查](writer-plan-review-20261023.md)。只有新的真实观察完成后才能判断这次协议是否通过；科学质量仍须完整 Survey Evaluation 证明。
+
+## 2026-10-23 实际观察
+
+源码bcc12ed，HTTP200/stop，五章66正文单元通过JSON/schema/本地契约；原包与SDK内容逐字一致，参数与原失败请求相同。新增1请求/14,578已知tokens，零重试/无新增未知。没有运行科学Evaluation，不能据此声称根因消失或正文已可靠。详见[公开观察记录](../benchmarks/survey/results/writer-v2-protocol-20261023-001/README.md)。后续固定三域使用独立账本，累计历史显式继承这两次观察，不重启旧套件。
