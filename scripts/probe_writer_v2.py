@@ -38,6 +38,7 @@ from litagent.writing_v2 import (
     WriterSession,
     classify_failure,
     provider_response_format,
+    request_messages,
     schema_for,
     source_packet,
     validate_body,
@@ -49,7 +50,7 @@ from scripts.run_frozen_writing import (
 )
 from scripts.run_stage_model_quality import MODELS, check_models, sha
 
-VERSION = "writer-v2-protocol-observation-v2"
+VERSION = "writer-v2-protocol-observation-v3"
 PARENT = Path("artifacts/acceptance/frozen-writer-three-domain-20261023-001")
 LIMITS = {"tokens": 120000, "requests": 1, "output_tokens": 20000, "retries": 0}
 
@@ -131,12 +132,14 @@ def build_manifest(config):
     ):
         raise ValueError("writer_probe_original_request_changed")
     rf = provider_response_format("synthesis", local_schema)
+    messages = request_messages(INSTRUCTION, packet, local_schema)
     history, receipts = accounting_history(
         parent["history"],
         [
             PARENT,
             Path("artifacts/acceptance/writer-v2-protocol-20261023-001"),
             Path("artifacts/acceptance/frozen-writer-three-domain-20261023-002"),
+            Path("artifacts/acceptance/writer-v2-schema-compat-20261023-001"),
         ],
     )
     files = [
@@ -162,7 +165,10 @@ def build_manifest(config):
         "messages": messages,
         "response_format": rf,
         "local_schema": local_schema,
-        "changed_request_fields": ["response_format.json_schema.schema"],
+        "changed_request_fields": [
+            "response_format.json_schema.schema",
+            "messages[0].content",
+        ],
         "packet": packet,
         "aliases": aliases,
         "reservation": strict_request_reservation(

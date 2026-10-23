@@ -2,7 +2,7 @@
 
 该诊断只验证 `grounded-writer-v1` 正文请求的 JSON/schema 和本地正文契约，不生成摘要，不调用 Reviewer、Evaluation、Judge 或 Jev，不产生可交付报告。协议完成时科学分数仍为不可用。
 
-入口：`scripts/probe_writer_v2.py`。它从已终止的 `frozen-writer-three-domain-20261023-001` 读取既有 few-shot 输入，以当前 producer 重建完整请求，并逐值核对历史 SDK 消息、本地完整 schema、模型、temperature 和输出上限。供应商侧现使用[受支持的 schema 适配](writer-provider-schema.md)，清单明确记录唯一的传输字段变化。原始支持文本不截断，旧归档、原响应、评分及费用保持不变。
+入口：`scripts/probe_writer_v2.py`。它从已终止的 `frozen-writer-three-domain-20261023-001` 读取既有 few-shot 输入，先逐值核对原始 SDK 消息、本地完整 schema、模型、temperature 和输出上限，再使用当前 producer 构造请求。当前供应商侧使用 [schema 适配](writer-provider-schema.md)，系统指令追加[宿主层级指南](writer-layout-review.md)；清单分别记录 schema 与系统消息变化，不能宣称当前请求与原失败完全相同。完整 user 材料不截断，旧归档、原响应、评分及费用保持不变。
 
 固定边界：
 

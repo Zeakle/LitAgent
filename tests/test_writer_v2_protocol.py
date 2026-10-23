@@ -13,7 +13,12 @@ from test_writer_v2 import case  # noqa: F401
 from litagent.config import load_config
 from litagent.report_audit import atomic_json, digest
 from litagent.safety.budget import strict_request_reservation
-from litagent.writing_v2 import INSTRUCTION, provider_response_format, schema_for
+from litagent.writing_v2 import (
+    INSTRUCTION,
+    provider_response_format,
+    request_messages,
+    schema_for,
+)
 from scripts import probe_writer_v2 as probe
 
 
@@ -23,11 +28,8 @@ def observation(case, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     cfg = load_config()
     cfg.observability.enabled = False
-    messages = [
-        {"role": "system", "content": INSTRUCTION},
-        {"role": "user", "content": json.dumps(case.packet, ensure_ascii=False)},
-    ]
     local_schema = schema_for("body", case.aliases)
+    messages = request_messages(INSTRUCTION, case.packet, local_schema)
     rf = provider_response_format("synthesis", local_schema)
     manifest = {
         "packet": case.packet,

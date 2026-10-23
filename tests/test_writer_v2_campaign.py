@@ -213,3 +213,36 @@ def test_accounting_cannot_hide_unknown_or_forge_completed_usage(
         atomic_json(path, archive)
     with pytest.raises(ValueError, match="accounting_.*(invalid|unknown)"):
         campaign.accounting_history(history, [root])
+
+
+@pytest.mark.parametrize("fault", [None, "running", "version", "unknown"])
+def test_terminal_failed_protocol_cost_is_inherited_without_restarting(
+    tmp_path, monkeypatch, fault
+):
+    """Known paid failures stay in the ledger; uncertain and arbitrary states do not."""
+    monkeypatch.chdir(tmp_path)
+    history = {"model_requests": 726, "model_known_tokens": 3841217}
+    root = accounting_parent(tmp_path, "compat", history, 12537)
+    manifest = json.loads((root / "manifest.json").read_text())
+    manifest.pop("identity")
+    manifest["version"] = (
+        "unreviewed" if fault == "version" else "writer-v2-protocol-observation-v2"
+    )
+    manifest["identity"] = campaign.digest(manifest)
+    atomic_json(root / "manifest.json", manifest)
+    state = json.loads((root / "state.json").read_text())
+    state.update(
+        identity=manifest["identity"],
+        status="running" if fault == "running" else "blocked",
+        failure={"family": "protocol", "code": "writer_json_invalid"},
+    )
+    if fault == "unknown":
+        state["usage_complete"] = False
+    atomic_json(root / "state.json", state)
+    if fault:
+        with pytest.raises(ValueError, match="accounting_.*(invalid|unknown)"):
+            campaign.accounting_history(history, [root])
+    else:
+        result, receipts = campaign.accounting_history(history, [root])
+        assert result == {"model_requests": 727, "model_known_tokens": 3853754}
+        assert receipts[0]["known_tokens"] == 12537

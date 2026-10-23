@@ -83,12 +83,26 @@ def accounting_history(history, parents):
         seen.add(root.resolve())
         mp, sp = root / "manifest.json", root / "state.json"
         manifest, state = json.loads(mp.read_text()), json.loads(sp.read_text())
+        terminal_probe_failure = (
+            state.get("status") == "blocked"
+            and manifest.get("version")
+            in {
+                "writer-v2-protocol-observation-v2",
+                "writer-v2-protocol-observation-v3",
+            }
+            and state.get("failure", {}).get("family") == "protocol"
+            and state.get("requests") == 1
+        )
         if (
             manifest.get("history") != history
             or manifest.get("identity")
             != digest({k: v for k, v in manifest.items() if k != "identity"})
             or state.get("identity") != manifest["identity"]
-            or state.get("status") not in {"stopped", "completed", "protocol_completed"}
+            or (
+                state.get("status")
+                not in {"stopped", "completed", "protocol_completed"}
+                and not terminal_probe_failure
+            )
         ):
             raise ValueError("frozen_accounting_prefix_invalid")
         rows = state.get("cases", [state])

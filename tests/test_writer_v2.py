@@ -28,6 +28,7 @@ from litagent.workbench import RunOptions
 from litagent.writing_v2 import (
     BODY,
     CONTRACT,
+    PROMPT_CONTRACT,
     SCOPE,
     WriterError,
     WriterSession,
@@ -593,6 +594,15 @@ async def test_frozen_runtime_uses_real_workers_report_exit_and_evaluation(
         async def chat(self, messages, **kwargs):
             """Return controlled provider output at the external transport boundary."""
             p = json.loads(messages[1]["content"])
+            if not any(
+                key in p
+                for key in (
+                    "allowed_citation_aliases",
+                    "cited_materials",
+                    "report_structure",
+                )
+            ):
+                assert messages[0]["content"].count(PROMPT_CONTRACT) == 1
             if "targets" in p:
                 summary = "body_units" in p
                 if not summary:

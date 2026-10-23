@@ -32,8 +32,9 @@ from litagent.review_structure import assemble_methodology, structure_sections
 from litagent.safety.budget import CostBudget, strict_request_reservation
 
 CONTRACT = "grounded-writer-v1"
-EXECUTION_CONTRACT = "grounded-writer-execution-v3"
+EXECUTION_CONTRACT = "grounded-writer-execution-v4"
 PROVIDER_SCHEMA_CONTRACT = "ark-structured-schema-v1"
+PROMPT_CONTRACT = "grounded-writer-layout-v1"
 STRATEGY = "body_summary_v2"
 SCOPE = "frozen_union_v1"
 BODY = tuple(k for k in ROLES if k not in {"abstract", "conclusion"})
@@ -198,6 +199,38 @@ def provider_response_format(stage, schema):
             "schema": project(schema),
         },
     }
+
+
+def request_messages(system, payload, schema):
+    """Explain host-owned container paths without adding sources or a second schema."""
+    Draft202012Validator.check_schema(schema)
+    lines = [
+        "Output layout " + PROMPT_CONTRACT + " (trusted host format, not evidence):",
+        "Paths describe the JSON reply, not paper facts; [] means an array element.",
+        "Keys listed for one object are siblings in THAT object, not in its children.",
+        "Close each child object and array before writing its parent's next key.",
+        "Do not copy input packet keys into the reply. Return one complete JSON object.",
+    ]
+
+    def describe(node, path):
+        """Read only structural keywords; annotations and source text are not prompts."""
+        kind = node["type"]
+        if kind == "object":
+            properties = node["properties"]
+            lines.append(f"{path}: object; sibling keys = {', '.join(properties)}.")
+            for key, child in properties.items():
+                describe(child, path + "." + key)
+        elif kind == "array":
+            lines.append(path + ": array.")
+            describe(node["items"], path + "[]")
+        else:
+            lines.append(f"{path}: {kind}.")
+
+    describe(schema, "$")
+    return [
+        {"role": "system", "content": system + "\n\n" + "\n".join(lines)},
+        {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+    ]
 
 
 def parse_response(raw, schema):
@@ -543,11 +576,8 @@ class WriterSession:
         """Journal a single checked request and never replay its response."""
         if name in self.journal["calls"]:
             raise WriterError("writer_request_no_replay", "interrupted")
-        messages = [
-            {"role": "system", "content": system},
-            {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
-        ]
         rf = provider_response_format(stage, schema)
+        messages = request_messages(system, payload, schema)
         reservation = check_grounded_request_budget(
             self.llm,
             messages,
@@ -562,6 +592,7 @@ class WriterSession:
             ),
             "schema_sha256": digest(schema),
             "provider_schema_contract": PROVIDER_SCHEMA_CONTRACT,
+            "prompt_contract": PROMPT_CONTRACT,
             "provider_schema_sha256": digest(rf["json_schema"]["schema"]),
             "max_tokens": max_tokens,
             "reservation": reservation,
@@ -713,10 +744,7 @@ class WriterSession:
                 + json.dumps(body_units(summary_body), ensure_ascii=False)
             )
         rf = provider_response_format("repair", schema)
-        messages = [
-            {"role": "system", "content": system},
-            {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
-        ]
+        messages = request_messages(system, payload, schema)
         self.reserve_followup(
             messages,
             rf,
