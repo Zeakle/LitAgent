@@ -56,3 +56,19 @@ exact bad rows and original chapter permissions are frozen, and patches cannot
 rewrite scientific prose or expand permissions. It shares the existing two-repair
 limit; local repair success is not scientific acceptance. The original 003
 failure is preserved and no paid v11 repair has yet been observed.
+
+## Converged frozen-pool writer (2026-10-23)
+
+`body_summary_v2` uses `grounded-writer-v1`: global short card IDs refer to an
+immutable selected pool; per-chapter lists are recommendations. The model writes
+only text and card references. The host owns headings, citation spans and summary
+dependencies. Evaluation and automatic acceptance consume the same native unit
+bindings. Reviewer, local and Evaluation repairs share two attempts, followed by
+complete reassessment. Old explicit strategies and API defaults remain readable
+and retain their identity semantics. New UI runs select v2.
+
+The fixed three-domain validation reuses existing public evidence snapshots,
+without new retrieval/extraction. Judge/Jev are disabled for this experiment.
+No new scientific reliability result is claimed until the frozen experiment ends.
+The earlier v11 real run returned a valid repair refusal; it did not reach
+Evaluation. Its original failure and historical costs remain preserved.

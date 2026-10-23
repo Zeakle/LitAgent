@@ -365,8 +365,15 @@ or reinterpret an invalid extraction, invent citations or force these flags true
 
 def batch_prompt(payload: dict) -> str:
     """Use the identical versioned prompt for preflight and actual transport."""
+    from litagent.body_quality import NATIVE_OWNERSHIP_INSTRUCTION
+
     return (
         BATCH_PROMPT
+        + (
+            NATIVE_OWNERSHIP_INSTRUCTION
+            if payload.get("native_unit_ownership_contract") == "grounded-writer-v1"
+            else ""
+        )
         + (
             SOURCE_FIDELITY_PROMPT
             if payload.get("source_fidelity_contract") == SOURCE_FIDELITY_CONTRACT

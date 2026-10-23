@@ -9,6 +9,16 @@ from collections import Counter
 from collections.abc import Mapping
 
 ANALYSIS_CONTRACT = "body-analysis-v1"
+NATIVE_OWNERSHIP_INSTRUCTION = """
+HOST NATIVE OWNERSHIP grounded-writer-v1: each supplied :native: fragment is one
+exact host-bound authored unit with its actual citation set. Those citations apply
+to that complete native unit, including its internal punctuation. Extract every
+atomic assertion within it; shared citations remain attached to each assertion.
+Do not borrow citations across native fragments or infer ownership from semicolons.
+This host binding proves location and ownership only, never scientific support.
+Each scientific assertion still requires complete support, correct conditions,
+attribution and source fidelity; independently detect omitted or compound claims.
+"""
 ANALYSIS_VERSION = "grounded-writing-v22"
 ANALYSIS_OWNERSHIP_CONTRACT = "host-analysis-claim-ownership-v1"
 ANALYSIS_CHAPTER_CONTRACT = "host-analysis-parent-chapter-v1"

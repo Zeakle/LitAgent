@@ -419,6 +419,12 @@ class SynthesisWorker(Worker):
             ) or coverage_requirements(
                 query, task.input_data.get("requested_methods", [])
             )
+            if task.input_data.get("generation_strategy") == "body_summary_v2":
+                from litagent.writing_v2 import synthesize
+
+                return await synthesize(
+                    self, task, cards, selection, review_methodology, requirements
+                )
             # Received-native v1 preserves the original formatting contract;
             # fresh runs opt into the version-bound citation-scope preflight.
             messages = grounded_messages(

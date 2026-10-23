@@ -545,3 +545,33 @@ const fs=require('node:fs');
         timeout=15,
     )
     assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("locale", ["zh-CN", "en"])
+def test_v2_failure_is_visible_without_a_compiled_report(locale):
+    """A failed initial response has a root cause even before native bindings exist."""
+    script = r"""
+const fs=require('node:fs');
+(async()=>{
+ class E{constructor(){this.children=[];this.dataset={};this.textContent=''}append(...x){this.children.push(...x)}replaceChildren(...x){this.children=x}addEventListener(){}setAttribute(){}}
+ global.document={createElement:()=>new E()};
+ const {renderQuality}=await import('data:text/javascript;base64,'+fs.readFileSync(process.argv[1]+'/quality-view.js').toString('base64'));
+ const root=new E(),walk=e=>[e,...e.children.flatMap(walk)];
+ renderQuality(root,{}, {status:'unverified'}, {status:'blocked'},()=>{},x=>x,{locale:process.argv[2],writerFailure:{family:'protocol',code:'writer_json_invalid'}});
+ const text=walk(root).map(e=>e.textContent).join(' ');
+ if(!text.includes('protocol · writer_json_invalid')||text.includes('1.000'))throw Error(text);
+})().catch(e=>{console.error(e);process.exit(1)});
+"""
+    result = subprocess.run(
+        [
+            shutil.which("node") or "node",
+            "-e",
+            script,
+            str(Path("src/litagent/static/flow-demo").resolve()),
+            locale,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr

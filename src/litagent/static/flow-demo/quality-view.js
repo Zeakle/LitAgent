@@ -206,6 +206,13 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
     node(disabledJev,"h3",`Jev · ${L("disabled")}`);
   }
   const extraction = options.extractionVerification;
+  if (options.writerContract || options.writerFailure) {
+    const writer = node(container,"section",null,"quality-section");
+    node(writer,"h3", options.locale === "en" ? "Writing protocol and outcome" : "正文协议与执行结果");
+    if (options.writerContract) node(writer,"p", options.writerContract);
+    if (options.writerFailure) node(writer,"p",`${options.writerFailure.family} · ${options.writerFailure.code}`);
+    node(writer,"p", options.locale === "en" ? "Chapter recommendations do not restrict the frozen source pool. Scientific support is verified independently by Evaluation." : "章节名单仅作推荐，引用限于冻结总证据；科学支持由 Evaluation 独立核验。");
+  }
   const history = options.evaluationHistory;
   const cleanup = history?.editorial_cleanup;
   const editorialBound = cleanup?.version === "assessed-repair-repetition-v1"

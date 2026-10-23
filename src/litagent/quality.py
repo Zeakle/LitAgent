@@ -1573,6 +1573,15 @@ def _writing_scopes(
     if selection is not None and not isinstance(selection, Mapping):
         raise ValueError("strict_writing_scope_contract_invalid")
     scope = None
+    if (
+        selection is not None
+        and selection.get("writing_scope_policy") == "frozen_union_v1"
+    ):
+        return {
+            key: list(cards)
+            for key, _ in structure_sections(structure, language)
+            if key != "run_methodology"
+        }
     if selection is not None and "section_evidence_ids" in selection:
         scope = selection["section_evidence_ids"]
         if not isinstance(scope, Mapping) or any(

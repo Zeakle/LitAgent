@@ -2087,6 +2087,11 @@ async def evaluate_scoped(
             result["local_numeric_contract"] = LOCAL_NUMERIC_CONTRACT
             if context.get("body_quality") == "analysis_v1":
                 result["local_comparative_contract"] = CHINESE_COMPARATIVE_CONTRACT
+    if (
+        context.get("writing_bindings", {}).get("writer_contract")
+        == "grounded-writer-v1"
+    ):
+        result["writer_bindings"] = context["writing_bindings"]
     return result
 
 
@@ -2185,8 +2190,16 @@ async def _evaluate_scoped(*, llm, survey, context, config) -> dict:
     inverse = {v: k for k, v in aliases.items()}
     input_units = []
     fragments_by_unit = {}
+    native_fragments = {}
+    if (
+        context.get("writing_bindings", {}).get("writer_contract")
+        == "grounded-writer-v1"
+    ):
+        from litagent.writing_v2 import bound_fragments
+
+        native_fragments = bound_fragments(survey, context["writing_bindings"])
     for unit in units:
-        fragments = build_source_fragments(unit)
+        fragments = native_fragments.get(unit.unit_id) or build_source_fragments(unit)
         fragments_by_unit[unit.unit_id] = {
             f["source_fragment_id"]: f for f in fragments
         }
@@ -2237,6 +2250,11 @@ async def _evaluate_scoped(*, llm, survey, context, config) -> dict:
 
     async def call(prompt: str, payload: dict) -> Any:
         """Do not retry invalid output or transport failures during evaluation."""
+        if native_fragments:
+            from litagent.body_quality import NATIVE_OWNERSHIP_INSTRUCTION
+
+            if NATIVE_OWNERSHIP_INSTRUCTION not in prompt:
+                prompt += NATIVE_OWNERSHIP_INSTRUCTION
         call_kwargs = dict(kwargs)
         messages, native_format = build_evaluation_request(prompt, payload)
         if native_format is not None:
@@ -2335,6 +2353,8 @@ async def _evaluate_scoped(*, llm, survey, context, config) -> dict:
         if context.get("body_quality") == "analysis_v1":
             payload["body_analysis_contract"] = "body-analysis-v1"
             payload["source_applicability_contract"] = APPLICABILITY_CONTRACT
+        if native_fragments:
+            payload["native_unit_ownership_contract"] = "grounded-writer-v1"
         if context.get("quality_policy") == "strict_auto_v2":
             payload["source_fidelity_contract"] = SOURCE_FIDELITY_CONTRACT
             payload["global_consistency_contract"] = GLOBAL_CONSISTENCY_CONTRACT

@@ -206,6 +206,10 @@ class ReviewerWorker(Worker):
 
     async def execute(self, task: SubTask) -> Any:
         """Review an upstream draft and enforce its evidence contract."""
+        if task.input_data.get("generation_strategy") == "body_summary_v2":
+            from litagent.writing_v2 import review
+
+            return await review(self, task)
         review_structure = task.input_data.get("review_structure", "legacy")
         quality_policy = task.input_data.get("quality_policy", "legacy")
         review_methodology = task.input_data.get("review_methodology", {})

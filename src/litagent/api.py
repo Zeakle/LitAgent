@@ -101,7 +101,9 @@ class SurveyRequest(BaseModel):
         "legacy", "strict_v1", "strict_auto_v1", "strict_auto_v2"
     ] = "legacy"
     body_quality: Literal["legacy", "analysis_v1"] = "legacy"
-    generation_strategy: Literal["single_v1", "body_summary_v1"] = "single_v1"
+    generation_strategy: Literal["single_v1", "body_summary_v1", "body_summary_v2"] = (
+        "single_v1"
+    )
     verification: VerificationOptions | None = None
     citation_style: CitationStyle = "numbered"
     auto_audit_mode: AutoAuditMode = "off"
@@ -813,7 +815,7 @@ async def get_workbench_context():
             "gates": ["extraction_jev", "evaluation", "judge"],
             "required_gates": ["evaluation"],
             "default_body_quality": "analysis_v1",
-            "default_generation_strategy": "body_summary_v1",
+            "default_generation_strategy": "body_summary_v2",
             "optional_gates": ["judge", "extraction_jev"],
             "default_verification": VerificationOptions().model_dump(mode="json"),
             "omitted_verification": "historical_mandatory_gates",

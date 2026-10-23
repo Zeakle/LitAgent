@@ -159,6 +159,7 @@ class RewriteOutcome:
     candidate_quality: Mapping[str, Any] | None
     reason_code: str
     candidate_bindings: Mapping[str, Any] | None = None
+    candidate_metadata: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -919,6 +920,21 @@ class LitAgent:
             metadata["body_quality"] = options.body_quality
         if options.generation_strategy != "single_v1":
             metadata["generation_strategy"] = options.generation_strategy
+        if (
+            options.generation_strategy == "body_summary_v2"
+            and not final_output_present
+        ):
+            journal_path = Path(str(self._targeted_repair_path()) + ".writer-v2.json")
+            if journal_path.exists():
+                journal = json.loads(journal_path.read_text(encoding="utf-8"))
+                metadata["writer_failure"] = journal.get("failure") or next(
+                    (
+                        call["failure"]
+                        for call in reversed(list(journal.get("calls", {}).values()))
+                        if call.get("failure")
+                    ),
+                    {"family": "protocol", "code": "writer_final_output_unavailable"},
+                )
         if options.verification is not None:
             metadata["verification"] = options.verification.model_dump(mode="json")
         if options.quality_policy == "strict_auto_v2" and verification_enabled(
@@ -945,6 +961,8 @@ class LitAgent:
                 "extraction_verification",
                 "writing_bindings",
                 "targeted_repair_state",
+                "writer_document",
+                "reviewer_diagnostics",
             ):
                 if (
                     name == "targeted_repair_state"
@@ -999,9 +1017,18 @@ class LitAgent:
         report_data.update(
             {"evaluation": initial_evaluation, "quality": initial_quality}
         )
-        if initial_quality["status"] == "failed" or (
-            is_strict_policy(options.quality_policy)
-            and self._completed_bound_repair(initial_evaluation, report_data["survey"])
+        if (
+            initial_quality["status"] == "failed"
+            or (
+                is_strict_policy(options.quality_policy)
+                and self._completed_bound_repair(
+                    initial_evaluation, report_data["survey"]
+                )
+            )
+            or (
+                options.generation_strategy == "body_summary_v2"
+                and metadata.get("reviewer_diagnostics", {}).get("issues")
+            )
         ):
             strict = is_strict_policy(options.quality_policy)
             working = {**report_data, "metadata": dict(metadata)}
@@ -1022,6 +1049,19 @@ class LitAgent:
                     ),
                     cancellation,
                 )
+                if options.generation_strategy == "body_summary_v2":
+                    metadata["targeted_repair_state"] = working["metadata"].get(
+                        "targeted_repair_state", metadata["targeted_repair_state"]
+                    )
+                    if (
+                        working["metadata"].get("writer_failure")
+                        and not rewrite.committed
+                    ):
+                        metadata["writer_failure"] = working["metadata"][
+                            "writer_failure"
+                        ]
+                    elif rewrite.committed:
+                        metadata.pop("writer_failure", None)
                 outcome = {
                     "attempted": rewrite.attempted,
                     "committed": rewrite.committed,
@@ -1046,6 +1086,25 @@ class LitAgent:
                     )
                     if rewrite.candidate_bindings:
                         metadata["writing_bindings"] = rewrite.candidate_bindings
+                    if rewrite.candidate_metadata:
+                        metadata.update(rewrite.candidate_metadata)
+                    break
+                if options.generation_strategy == "body_summary_v2":
+                    if rewrite.reason_code in {
+                        "writer_repair_duplicate",
+                        "writer_repair_no_progress",
+                    }:
+                        continue
+                    if rewrite.reason_code == "writer_candidate_failed":
+                        if rewrite.candidate and rewrite.candidate_evaluation:
+                            working.update(
+                                survey=rewrite.candidate,
+                                evaluation=rewrite.candidate_evaluation,
+                                quality=rewrite.candidate_quality,
+                            )
+                            if rewrite.candidate_metadata:
+                                working["metadata"].update(rewrite.candidate_metadata)
+                        continue
                     break
                 if strict and rewrite.reason_code == "strict_repair_duplicate_content":
                     outcome["local_diagnostics"] = working["metadata"].get(
@@ -1082,6 +1141,23 @@ class LitAgent:
             if strict:
                 metadata["evidence_rewrite_attempts"] = attempts
         if (metadata.get("writing_bindings") or {}).get("scope_notice_contract"):
+            if (
+                options.generation_strategy == "body_summary_v2"
+                and metadata.get("reviewer_diagnostics", {}).get("issues")
+                and not metadata.get("evidence_rewrite", {}).get("committed")
+            ):
+                report_data["quality"] = {
+                    **report_data["quality"],
+                    "status": "failed",
+                    "failed_metrics": list(
+                        dict.fromkeys(
+                            [
+                                *report_data["quality"].get("failed_metrics", []),
+                                "reviewer_unresolved",
+                            ]
+                        )
+                    ),
+                }
             metadata["evaluation_history"] = {
                 "version": "version-bound-evaluation-history-v1",
                 "source_report_sha256": hashlib.sha256(
@@ -2353,6 +2429,15 @@ class LitAgent:
             for claim in extraction.get("claims", [])
             if isinstance(claim, str) and claim.strip()
         ]
+        if (
+            isinstance(selection_summary, Mapping)
+            and selection_summary.get("writing_scope_policy") == "frozen_union_v1"
+        ):
+            selected = [
+                ledger[eid]
+                for eid in selection_summary.get("selected_items", {})
+                if isinstance(ledger.get(eid), dict)
+            ]
 
         from litagent.audit_context import SurveyAuditContext, check_structure
         from litagent.eval.scoped import EVALUATION_VERSION
@@ -2513,10 +2598,20 @@ class LitAgent:
             "processed_units"
         ) != len(units):
             return False
+        native_fragments = {}
+        if new.get("writer_bindings"):
+            from litagent.writing_v2 import bound_fragments
+
+            try:
+                native_fragments = bound_fragments(candidate, new["writer_bindings"])
+            except ValueError:
+                return False
         actual = {
             f["source_fragment_id"]: (unit, f)
             for unit in units
-            for f in build_source_fragments(unit)
+            for f in (
+                native_fragments.get(unit.unit_id) or build_source_fragments(unit)
+            )
         }
         groups = {}
         for claim in new.get("assertions", []):
@@ -2738,10 +2833,20 @@ class LitAgent:
         batch_ids = [i for b in batches for i in b.get("claim_ids", [])]
         if None in ids or len(set(ids)) != len(ids) or batch_ids != ids:
             return False
+        native_fragments = {}
+        if details.get("writer_bindings"):
+            from litagent.writing_v2 import bound_fragments
+
+            try:
+                native_fragments = bound_fragments(survey, details["writer_bindings"])
+            except ValueError:
+                return False
         fragments = {
             f["source_fragment_id"]: (unit, f)
             for unit in build_report_source_units(survey)
-            for f in build_source_fragments(unit)
+            for f in (
+                native_fragments.get(unit.unit_id) or build_source_fragments(unit)
+            )
         }
         by_id = {a["claim_id"]: a for a in assertions}
         for item in [*assertions, *diagnostics]:
@@ -2891,6 +2996,21 @@ class LitAgent:
         report_language: Literal["en", "zh-CN"] = "en",
     ) -> RewriteOutcome:
         """Attempt evidence-grounded rewrite with full validation and atomic commit."""
+        if (
+            report_data.get("metadata", {}).get("generation_strategy")
+            == "body_summary_v2"
+        ):
+            from litagent.writing_v2 import repair_report
+
+            return await repair_report(
+                self,
+                query=query,
+                report_data=report_data,
+                results=results,
+                initial_evaluation=initial_evaluation,
+                initial_quality=initial_quality,
+                report_language=report_language,
+            )
         original_survey = str(report_data.get("survey") or "")
         if not original_survey:
             return RewriteOutcome(
@@ -3594,6 +3714,12 @@ class LitAgent:
         """Generate one feedback revision and commit it only after every gate."""
         original = str(report_data.get("survey") or "")
         metadata = report_data.get("metadata") or {}
+        if metadata.get("generation_strategy") == "body_summary_v2":
+            return report_data, {
+                "attempted": False,
+                "committed": False,
+                "reason_code": "writer_v2_requires_bound_diagnostics",
+            }
         eval_context = self._build_eval_context(
             query=query, survey=original, results=results
         )

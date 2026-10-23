@@ -120,10 +120,20 @@ def freeze_automatic_inputs(
     units = {unit.unit_id: unit for unit in build_report_source_units(survey)}
     from litagent.eval.scoped import build_source_fragments
 
+    native_fragments = {}
+    if (
+        metadata.get("writing_bindings", {}).get("writer_contract")
+        == "grounded-writer-v1"
+    ):
+        from litagent.writing_v2 import bound_fragments
+
+        native_fragments = bound_fragments(survey, metadata["writing_bindings"])
     fragments = {
         fragment["source_fragment_id"]: (unit, fragment)
         for unit in units.values()
-        for fragment in build_source_fragments(unit)
+        for fragment in (
+            native_fragments.get(unit.unit_id) or build_source_fragments(unit)
+        )
     }
     assertions = details.get("assertions", [])
     ids = [c["claim_id"] for c in assertions]
@@ -194,6 +204,11 @@ def freeze_automatic_inputs(
         "ledger": dict(ledger),
         "artifact": {"run_id": run_id, "quality_policy": policy},
         "frozen_inventory": {
+            **(
+                {"writer_bindings": metadata["writing_bindings"]}
+                if native_fragments
+                else {}
+            ),
             **(
                 {
                     "scope_notice_contract": details["scope_notice_contract"],
@@ -360,6 +375,10 @@ async def evaluate_frozen_judge(
     }
 
     async def call(prompt, value, phase):
+        if frozen_inventory.get("writer_bindings"):
+            from litagent.body_quality import NATIVE_OWNERSHIP_INSTRUCTION
+
+            prompt += NATIVE_OWNERSHIP_INSTRUCTION
         messages = [
             {"role": "system", "content": prompt},
             {

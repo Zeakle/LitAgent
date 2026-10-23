@@ -1,15 +1,15 @@
-import { bindAuditControls, bindAutomaticAuditPreferences } from "./audit-controls.js?v=15.10.6.124-evaluation-execution";
+import { bindAuditControls, bindAutomaticAuditPreferences } from "./audit-controls.js?v=15.10.6.152-writer-v2";
 import { bindFormatControls } from "./format-controls.js?v=15.10.10";
 import { createApiClient, openEventStream } from "./api-client.js";
-import { createBenchmarkController } from "./benchmark-controller.js?v=15.10.6.124-evaluation-execution";
-import { renderBenchmarkDetail, renderBenchmarkList, renderBenchmarkObservation } from "./benchmark-view.js?v=15.10.6.124-evaluation-execution";
-import { adaptArchiveView, adaptInteractiveView, chooseDefaultSection, normalizeRunList } from "./adapters.js?v=15.10.6.124-evaluation-execution";
+import { createBenchmarkController } from "./benchmark-controller.js?v=15.10.6.152-writer-v2";
+import { renderBenchmarkDetail, renderBenchmarkList, renderBenchmarkObservation } from "./benchmark-view.js?v=15.10.6.152-writer-v2";
+import { adaptArchiveView, adaptInteractiveView, chooseDefaultSection, normalizeRunList } from "./adapters.js?v=15.10.6.152-writer-v2";
 import { evidenceMap, renderEvidenceList } from "./evidence-view.js";
 import { createExecutionWorkspace } from "./execution-workspace.js";
 import { renderExecutionInspector } from "./execution-inspector.js";
 import { renderHistory } from "./history-view.js";
-import { applyTranslations, translator } from "./i18n.js?v=15.10.6.124-evaluation-execution";
-import { renderQuality, locateReportDiagnostic } from "./quality-view.js?v=15.10.6.124-evaluation-execution";
+import { applyTranslations, translator } from "./i18n.js?v=15.10.6.152-writer-v2";
+import { renderQuality, locateReportDiagnostic } from "./quality-view.js?v=15.10.6.152-writer-v2";
 import { renderOutline, renderReportDocument, renderSearchRecords } from "./report-view.js?v=15.10.10";
 import { renderReview } from "./review-view.js?v=15.10.5-strict";
 import { createWorkbenchStore } from "./state.js";
@@ -182,7 +182,7 @@ function renderQualityContent() {
   const state = store.get(); const view = state.view;
   const revision = Number(view?.displayRevision || view?.versions?.[0]?.revision || 1);
   const snapshot = independentAuditState?.target && view?.identity && independentAuditState.target.runId === view.identity.runId && independentAuditState.target.revision === revision ? independentAuditState : null;
-  renderQuality($("#quality-content"), view?.runtimeEvaluation || {}, view?.quality, view?.delivery, setInspector, t, { locale: state.locale, revision: view?.report?.survey ? revision : null, sha: snapshot?.data?.source_report_sha256 || view?.reportSha, audits: snapshot, qualityPolicy: view?.report?.metadata?.quality_policy, verification: view?.report?.metadata?.verification, bodyDiagnostics: view?.report?.metadata?.body_diagnostics, analysisPlan: view?.report?.metadata?.analysis_plan, pipelineVerification: view?.pipelineVerification, extractionVerification: view?.report?.metadata?.extraction_verification, automaticAcceptance: view?.report?.metadata?.automatic_acceptance, evaluationHistory: view?.report?.metadata?.evaluation_history, targetedRepairState: view?.report?.metadata?.targeted_repair_state || (view?.report?.survey ? null : view?.targetedRepairState) });
+  renderQuality($("#quality-content"), view?.runtimeEvaluation || {}, view?.quality, view?.delivery, setInspector, t, { locale: state.locale, revision: view?.report?.survey ? revision : null, sha: snapshot?.data?.source_report_sha256 || view?.reportSha, audits: snapshot, qualityPolicy: view?.report?.metadata?.quality_policy, verification: view?.report?.metadata?.verification, bodyDiagnostics: view?.report?.metadata?.body_diagnostics, analysisPlan: view?.report?.metadata?.analysis_plan, pipelineVerification: view?.pipelineVerification, extractionVerification: view?.report?.metadata?.extraction_verification, automaticAcceptance: view?.report?.metadata?.automatic_acceptance, evaluationHistory: view?.report?.metadata?.evaluation_history, writerFailure: view?.report?.metadata?.writer_failure, writerContract: view?.report?.metadata?.writing_bindings?.writer_contract, targetedRepairState: view?.report?.metadata?.targeted_repair_state || (view?.report?.survey ? null : view?.targetedRepairState) });
 }
 
 function renderBenchmarkState() {

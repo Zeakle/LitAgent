@@ -82,7 +82,9 @@ class RunOptions(Contract):
     quality_policy: QualityPolicy = "legacy"
     verification: VerificationOptions | None = None
     body_quality: Literal["legacy", "analysis_v1"] = "legacy"
-    generation_strategy: Literal["single_v1", "body_summary_v1"] = "single_v1"
+    generation_strategy: Literal["single_v1", "body_summary_v1", "body_summary_v2"] = (
+        "single_v1"
+    )
 
     @model_validator(mode="after")
     def enforce_strict_review(self):
@@ -114,6 +116,11 @@ class RunOptions(Contract):
             object.__setattr__(self, "auto_audit_max_versions", 1)
             if self.review_structure == "legacy":
                 object.__setattr__(self, "review_structure", "academic_v2")
+        if (
+            self.generation_strategy == "body_summary_v2"
+            and self.review_structure != "academic_v2"
+        ):
+            raise ValueError("writer_v2_requires_academic_v2")
         return self
 
     def fingerprint(self) -> str:
@@ -121,6 +128,9 @@ class RunOptions(Contract):
         payload = self.model_dump(mode="json")
         if self.generation_strategy == "single_v1":
             payload.pop("generation_strategy")
+        elif self.generation_strategy == "body_summary_v2":
+            payload["generation_contract"] = "grounded-writer-v1"
+            payload["writing_scope_policy"] = "frozen_union_v1"
         else:
             from litagent.staged_generation import CONTRACT as generation_contract
 

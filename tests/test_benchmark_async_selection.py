@@ -11,7 +11,7 @@ def test_benchmark_reads_discard_stale_selection_and_normal_cancellation():
 const fs=require('node:fs'),assert=require('node:assert/strict');
 const source=fs.readFileSync(process.argv[1],'utf8');
 assert(source.includes('createBenchmarkController({'));
-assert(source.includes('benchmark-controller.js?v=15.10.6.124-evaluation-execution'));
+assert.match(source,/benchmark-controller\.js\?v=[^"\s]+/);
 const requests=[],notices=[],observations=[];
 const state={results:[],selectedId:null,detail:null,observation:null,loaded:false,loadSequence:0,selectionSequence:0,observationSequence:0};
 const context={benchmarkState:state,api:{json:path=>new Promise((resolve,reject)=>requests.push({path,resolve,reject}))},t:x=>x,setNotice:x=>notices.push(x),renderBenchmarkState:()=>{},renderBenchmarkObservation:(_,p)=>observations.push(p),$:()=>({replaceChildren(){}})};

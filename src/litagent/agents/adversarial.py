@@ -108,6 +108,34 @@ class AdversarialReviewWorker(Worker):
         # Initial synthesis is required; only later failures may return a draft.
         async with self._sub_span(task.task_id, "synthesis", 1):
             synthesis_result = await self._synthesis.execute(task)
+        if task.input_data.get("generation_strategy") == "body_summary_v2":
+            self._reviewer._writer_path = self._synthesis._repair_state_path_provider()
+            self._reviewer._writer_run_id = self._synthesis._run_id_provider()
+            async with self._sub_span(task.task_id, "reviewer", 1):
+                review_task = SubTask(
+                    task_id=task.task_id,
+                    description="Review frozen writer v2 draft",
+                    agent_type="reviewer",
+                    input_data={
+                        **task.input_data,
+                        "upstream_results": {"synthesis": synthesis_result},
+                    },
+                )
+                review = await self._reviewer.execute(review_task)
+            selection = EvidenceSelection.from_dict(
+                synthesis_result["evidence_selection"]
+            )
+            return {
+                **synthesis_result,
+                "final_draft": synthesis_result["draft"],
+                "rounds": [{"round": 1, "review": review}],
+                "reviewer_diagnostics": review,
+                "total_rounds": 1,
+                "final_score": review["score"],
+                "accepted": review["accepted"],
+                "evidence_selection": {"valid": True, **selection.to_dict()},
+                "degradation_reasons": [],
+            }
         draft = synthesis_result.get("draft")
         if not isinstance(draft, str) or not draft.strip():
             raise ValueError("synthesis returned an empty draft")

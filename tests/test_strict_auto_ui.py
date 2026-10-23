@@ -15,6 +15,7 @@ def test_new_workbench_contract_modules_share_the_bootstrap_cache_version():
     script = (root / "app.js").read_text()
     for module in (
         "audit-controls.js",
+        "benchmark-controller.js",
         "adapters.js",
         "benchmark-view.js",
         "quality-view.js",

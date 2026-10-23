@@ -77,10 +77,14 @@ class EvidenceSelection:
     omitted_count: int
     estimated_tokens: int
     ranking_decisions: list[dict[str, Any]] = field(default_factory=list)
+    writing_scope_policy: str = "section_v1"
 
     def to_dict(self) -> dict[str, Any]:
         """Return the complete selection result as a plain dictionary."""
-        return asdict(self)
+        value = asdict(self)
+        if self.writing_scope_policy == "section_v1":
+            value.pop("writing_scope_policy")
+        return value
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "EvidenceSelection":
@@ -204,6 +208,9 @@ class EvidenceSelection:
                 "omitted_count must equal candidate_count - selected item count"
             )
 
+        policy = value.get("writing_scope_policy", "section_v1")
+        if policy not in {"section_v1", "frozen_union_v1"}:
+            raise ValueError("writing_scope_policy_invalid")
         return cls(
             candidate_count=cand_count,
             selected_items=selected_items,
@@ -211,6 +218,7 @@ class EvidenceSelection:
             method_by_section=method_by_section,
             omitted_count=oc,
             estimated_tokens=et,
+            writing_scope_policy=policy,
             ranking_decisions=[
                 dict(item)
                 for item in value.get("ranking_decisions", [])
@@ -245,6 +253,7 @@ def compact_evidence_selection(
         omitted_count=selection.omitted_count,
         estimated_tokens=estimated_tokens,
         ranking_decisions=list(selection.ranking_decisions),
+        writing_scope_policy=selection.writing_scope_policy,
     )
 
 
