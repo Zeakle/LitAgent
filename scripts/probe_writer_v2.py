@@ -34,16 +34,22 @@ from litagent.writing_v2 import (
     CONTRACT,
     EXECUTION_CONTRACT,
     INSTRUCTION,
+    PROVIDER_SCHEMA_CONTRACT,
     WriterSession,
     classify_failure,
+    provider_response_format,
     schema_for,
     source_packet,
     validate_body,
 )
-from scripts.run_frozen_writing import runtime_identity, source_paths
+from scripts.run_frozen_writing import (
+    accounting_history,
+    runtime_identity,
+    source_paths,
+)
 from scripts.run_stage_model_quality import MODELS, check_models, sha
 
-VERSION = "writer-v2-protocol-observation-v1"
+VERSION = "writer-v2-protocol-observation-v2"
 PARENT = Path("artifacts/acceptance/frozen-writer-three-domain-20261023-001")
 LIMITS = {"tokens": 120000, "requests": 1, "output_tokens": 20000, "retries": 0}
 
@@ -95,12 +101,13 @@ def build_manifest(config):
         {"role": "system", "content": INSTRUCTION},
         {"role": "user", "content": json.dumps(packet, ensure_ascii=False)},
     ]
-    rf = {
+    local_schema = schema_for("body", aliases)
+    original_rf = {
         "type": "json_schema",
         "json_schema": {
             "name": "writer_v2_synthesis",
             "strict": True,
-            "schema": schema_for("body", aliases),
+            "schema": local_schema,
         },
     }
     original = starts[0]
@@ -117,12 +124,21 @@ def build_manifest(config):
         raise ValueError("writer_probe_parent_response_changed")
     if (
         messages != original["messages"]
-        or rf != original["response_format"]
+        or original_rf != original["response_format"]
         or original["max_tokens"] != LIMITS["output_tokens"]
         or original["model"] != MODELS["generation"]
         or original["temperature"] != config.llm.temperature
     ):
         raise ValueError("writer_probe_original_request_changed")
+    rf = provider_response_format("synthesis", local_schema)
+    history, receipts = accounting_history(
+        parent["history"],
+        [
+            PARENT,
+            Path("artifacts/acceptance/writer-v2-protocol-20261023-001"),
+            Path("artifacts/acceptance/frozen-writer-three-domain-20261023-002"),
+        ],
+    )
     files = [
         PARENT / "manifest.json",
         PARENT / "state.json",
@@ -134,6 +150,7 @@ def build_manifest(config):
         "version": VERSION,
         "contract": CONTRACT,
         "execution_contract": EXECUTION_CONTRACT,
+        "provider_schema_contract": PROVIDER_SCHEMA_CONTRACT,
         "limits": dict(LIMITS),
         "runtime": runtime_identity(),
         "source_commit": subprocess.check_output(
@@ -144,16 +161,15 @@ def build_manifest(config):
         "config": build_config_summary(config, "strict_auto_v2"),
         "messages": messages,
         "response_format": rf,
+        "local_schema": local_schema,
+        "changed_request_fields": ["response_format.json_schema.schema"],
         "packet": packet,
         "aliases": aliases,
         "reservation": strict_request_reservation(
             messages, LIMITS["output_tokens"], rf
         ),
-        "history": {
-            **parent["history"],
-            "model_requests": parent["history"]["model_requests"] + 1,
-            "model_known_tokens": parent["history"]["model_known_tokens"] + 12477,
-        },
+        "history": history,
+        "accounting_receipts": receipts,
     }
     manifest["identity"] = digest(manifest)
     return manifest
@@ -204,6 +220,11 @@ def publish(root, result):
             "trace_url",
             "raw_sha256",
             "finish_reason",
+            "provider_schema_contract",
+            "source_commit",
+            "changed_request_fields",
+            "limits",
+            "input_binding_sha256",
         )
     }
     public.update(
@@ -291,6 +312,18 @@ async def execute(root, config):
             "unknown_hold": manifest["reservation"],
             "requests": 0,
             "usage_complete": False,
+            "provider_schema_contract": manifest.get("provider_schema_contract"),
+            "source_commit": manifest.get("source_commit"),
+            "changed_request_fields": manifest.get("changed_request_fields"),
+            "limits": dict(LIMITS),
+            "input_binding_sha256": digest(
+                [
+                    manifest["messages"],
+                    manifest["response_format"],
+                    LIMITS["output_tokens"],
+                    {"thinking": {"type": "disabled"}},
+                ]
+            ),
         }
         atomic_json(path, result)
         recorder = RunRecorder(
@@ -352,7 +385,7 @@ async def execute(root, config):
                 "body",
                 INSTRUCTION,
                 manifest["packet"],
-                manifest["response_format"]["json_schema"]["schema"],
+                manifest["local_schema"],
             )
             validate_body(body, manifest["aliases"])
             result["status"] = "protocol_completed"

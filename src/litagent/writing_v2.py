@@ -32,7 +32,8 @@ from litagent.review_structure import assemble_methodology, structure_sections
 from litagent.safety.budget import CostBudget, strict_request_reservation
 
 CONTRACT = "grounded-writer-v1"
-EXECUTION_CONTRACT = "grounded-writer-execution-v2"
+EXECUTION_CONTRACT = "grounded-writer-execution-v3"
+PROVIDER_SCHEMA_CONTRACT = "ark-structured-schema-v1"
 STRATEGY = "body_summary_v2"
 SCOPE = "frozen_union_v1"
 BODY = tuple(k for k in ROLES if k not in {"abstract", "conclusion"})
@@ -148,6 +149,55 @@ def schema_for(stage, references, targets=(), *, summary_repair=False):
             }
         )
     raise ValueError("writer_stage_invalid")
+
+
+def provider_response_format(stage, schema):
+    """Project supported native constraints while retaining the full host validator."""
+    Draft202012Validator.check_schema(schema)
+    native = {
+        "type",
+        "properties",
+        "required",
+        "additionalProperties",
+        "items",
+        "enum",
+        "description",
+    }
+    host_only = {"minLength", "maxLength", "minItems", "maxItems", "uniqueItems"}
+
+    def project(node, path=()):
+        if not isinstance(node, dict) or set(node) - native - host_only:
+            raise WriterError(
+                "writer_provider_schema_keyword_invalid",
+                diagnostics=[{"path": list(path)}],
+            )
+        result = {}
+        for key, value in node.items():
+            if key == "properties":
+                # Property names are data, not schema keywords to be filtered.
+                result[key] = {
+                    name: project(child, (*path, name)) for name, child in value.items()
+                }
+            elif key == "items":
+                result[key] = project(value, (*path, "items"))
+            elif key in native:
+                result[key] = copy.deepcopy(value)
+        limits = {k: node[k] for k in sorted(host_only) if k in node}
+        if limits:
+            hint = (
+                "Host validation requires " + json.dumps(limits, sort_keys=True) + "."
+            )
+            result["description"] = (result.get("description", "") + " " + hint).strip()
+        return result
+
+    return {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "writer_v2_" + stage,
+            "strict": True,
+            "schema": project(schema),
+        },
+    }
 
 
 def parse_response(raw, schema):
@@ -497,14 +547,7 @@ class WriterSession:
             {"role": "system", "content": system},
             {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
         ]
-        rf = {
-            "type": "json_schema",
-            "json_schema": {
-                "name": "writer_v2_" + stage,
-                "strict": True,
-                "schema": schema,
-            },
-        }
+        rf = provider_response_format(stage, schema)
         reservation = check_grounded_request_budget(
             self.llm,
             messages,
@@ -518,6 +561,8 @@ class WriterSession:
                 [messages, rf, max_tokens, {"thinking": {"type": "disabled"}}]
             ),
             "schema_sha256": digest(schema),
+            "provider_schema_contract": PROVIDER_SCHEMA_CONTRACT,
+            "provider_schema_sha256": digest(rf["json_schema"]["schema"]),
             "max_tokens": max_tokens,
             "reservation": reservation,
             "status": "started_no_replay",
@@ -667,14 +712,7 @@ class WriterSession:
                 "\nSummary repair: use body_unit_refs instead of fact_card_refs. Choose ONLY actual frozen body unit IDs: "
                 + json.dumps(body_units(summary_body), ensure_ascii=False)
             )
-        rf = {
-            "type": "json_schema",
-            "json_schema": {
-                "name": "writer_v2_repair",
-                "strict": True,
-                "schema": schema,
-            },
-        }
+        rf = provider_response_format("repair", schema)
         messages = [
             {"role": "system", "content": system},
             {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},

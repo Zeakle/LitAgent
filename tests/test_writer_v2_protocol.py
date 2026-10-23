@@ -13,7 +13,7 @@ from test_writer_v2 import case  # noqa: F401
 from litagent.config import load_config
 from litagent.report_audit import atomic_json, digest
 from litagent.safety.budget import strict_request_reservation
-from litagent.writing_v2 import INSTRUCTION, schema_for
+from litagent.writing_v2 import INSTRUCTION, provider_response_format, schema_for
 from scripts import probe_writer_v2 as probe
 
 
@@ -27,19 +27,14 @@ def observation(case, tmp_path, monkeypatch):
         {"role": "system", "content": INSTRUCTION},
         {"role": "user", "content": json.dumps(case.packet, ensure_ascii=False)},
     ]
-    rf = {
-        "type": "json_schema",
-        "json_schema": {
-            "name": "writer_v2_synthesis",
-            "strict": True,
-            "schema": schema_for("body", case.aliases),
-        },
-    }
+    local_schema = schema_for("body", case.aliases)
+    rf = provider_response_format("synthesis", local_schema)
     manifest = {
         "packet": case.packet,
         "aliases": case.aliases,
         "messages": messages,
         "response_format": rf,
+        "local_schema": local_schema,
         "source_hashes": {},
         "limits": dict(probe.LIMITS),
         "reservation": strict_request_reservation(messages, 20000, rf),
@@ -55,7 +50,9 @@ def observation(case, tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("outcome", ["valid", "json", "usage", "cancel", "identity"])
+@pytest.mark.parametrize(
+    "outcome", ["valid", "json", "usage", "cancel", "identity", "host_bounds"]
+)
 async def test_single_sdk_observation_never_becomes_scientific_acceptance(
     observation, case, monkeypatch, outcome
 ):
@@ -97,6 +94,8 @@ async def test_single_sdk_observation_never_becomes_scientific_acceptance(
         raw = json.dumps(case.body)
         if outcome == "json":
             raw = raw[:-1]
+        if outcome == "host_bounds":
+            raw = json.dumps({**case.body, "title": "x" * 301})
         return httpx.Response(
             200,
             headers={"x-request-id": "offline-observation"},
@@ -163,7 +162,7 @@ async def test_single_sdk_observation_never_becomes_scientific_acceptance(
         private = json.loads(
             (observation.root / "request.json.writer-v2.json").read_text()
         )
-        if outcome in {"valid", "json"}:
+        if outcome in {"valid", "json", "host_bounds"}:
             assert (
                 wire["choices"][0]["message"]["content"]
                 == private["calls"]["body"]["raw"]
@@ -180,6 +179,8 @@ async def test_single_sdk_observation_never_becomes_scientific_acceptance(
     assert case.body["title"] not in public
     assert case.packet["query"] not in public
     assert "offline-observation" not in public
+    if outcome == "host_bounds":
+        assert result["failure"]["code"] == "writer_schema_invalid"
 
 
 @pytest.mark.asyncio
