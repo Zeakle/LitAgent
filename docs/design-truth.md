@@ -73,3 +73,10 @@ without new retrieval/extraction. Judge/Jev are disabled for this experiment.
 The [fixed validation](../benchmarks/survey/results/frozen-writer-three-domain-20261023-001/README.md) stopped after its first Pro request: 12,477 known tokens, valid provider completion but invalid JSON at character 6,089. Summary, Reviewer and Evaluation did not run; ViT and NeRF were not requested. Strict delivery is 0/3 planned cases, with no scientific score. No extra attempts were added. This remains a protocol reliability blocker, not a measured scientific failure rate.
 The earlier v11 real run returned a valid repair refusal; it did not reach
 Evaluation. Its original failure and historical costs remain preserved.
+
+The subsequent [writer plan review](writer-plan-review-20261023.md) closes local
+preflight, repair-target, no-progress, budget-ownership and response-accounting
+gaps. Offline verification passed 4,181 tests (25 deselected). The original
+invalid JSON was replayed unchanged through the real SDK with mock HTTP only;
+no new paid request was made. This does not resolve the provider output failure
+or establish a live quality improvement.

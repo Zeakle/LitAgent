@@ -289,6 +289,7 @@ class Provider:
         return LLMResponse(
             content="{" if self.invalid else json.dumps(result),
             model="offline",
+            finish_reason="stop",
             usage={
                 "prompt_tokens": 10,
                 "completion_tokens": 10,
@@ -527,7 +528,15 @@ async def test_actual_v3_does_not_confuse_cross_chapter_permission_with_support(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "scenario", ["supported", "declined", "repaired", "second_repaired"]
+    "scenario",
+    [
+        "supported",
+        "declined",
+        "repaired",
+        "second_repaired",
+        "no_progress",
+        "invalid_body",
+    ],
 )
 async def test_frozen_runtime_uses_real_workers_report_exit_and_evaluation(
     case, tmp_path, monkeypatch, scenario
@@ -538,6 +547,8 @@ async def test_frozen_runtime_uses_real_workers_report_exit_and_evaluation(
     from litagent.review_structure import build_methodology
     from litagent.runner import LitAgent, RunPolicy
 
+    if scenario == "invalid_body":
+        case.body["methods"][0]["sentences"][0]["text"] = "[E:borrowed] invalid markup"
     bundle = {
         "query": case.packet["query"],
         "selection": case.selection.to_dict(),
@@ -602,26 +613,30 @@ async def test_frozen_runtime_uses_real_workers_report_exit_and_evaluation(
                                     {
                                         "target_id": tid,
                                         "sentences": [
-                                            {
-                                                "text": (
-                                                    "A source-bound summary."
-                                                    if summary
-                                                    else (
-                                                        "Relation networks learn a comparison function."
-                                                        if self.repairs == 1
-                                                        else "A relation network uses a learned comparison function."
-                                                    )
-                                                ),
-                                                (
-                                                    "body_unit_refs"
-                                                    if summary
-                                                    else "fact_card_refs"
-                                                ): (
-                                                    ["u3"]
-                                                    if summary
-                                                    else [case.by_eid["b"]]
-                                                ),
-                                            }
+                                            (
+                                                p["targets"][tid]["original"]
+                                                if scenario == "no_progress"
+                                                else {
+                                                    "text": (
+                                                        "A source-bound summary."
+                                                        if summary
+                                                        else (
+                                                            "Relation networks learn a comparison function."
+                                                            if self.repairs == 1
+                                                            else "A relation network uses a learned comparison function."
+                                                        )
+                                                    ),
+                                                    (
+                                                        "body_unit_refs"
+                                                        if summary
+                                                        else "fact_card_refs"
+                                                    ): (
+                                                        ["u3"]
+                                                        if summary
+                                                        else [case.by_eid["b"]]
+                                                    ),
+                                                }
+                                            )
                                         ],
                                     }
                                     for tid in p["targets"]
@@ -630,6 +645,7 @@ async def test_frozen_runtime_uses_real_workers_report_exit_and_evaluation(
                         }
                     ),
                     model="offline",
+                    finish_reason="stop",
                     usage={
                         "prompt_tokens": 10,
                         "completion_tokens": 10,
@@ -650,15 +666,20 @@ async def test_frozen_runtime_uses_real_workers_report_exit_and_evaluation(
     agent = LitAgent(cfg, run_policy=RunPolicy.isolated_benchmark())
     agent._targeted_repair_state_path = tmp_path / "repair.json"
     agent._evaluation_progress_root = tmp_path / "evaluation"
+    transport = Transport()
     try:
-        result = await run_frozen(
-            agent, bundle, "test-frozen-v2", transport=Transport()
-        )
+        result = await run_frozen(agent, bundle, "test-frozen-v2", transport=transport)
+        if scenario == "invalid_body":
+            assert not result["delivery"]["publishable"]
+            assert result["metadata"]["writer_failure"]["code"] == "writer_text_invalid"
+            assert result["evaluation"]["faithfulness"]["skipped"]
+            assert len(transport.calls) == 1
+            return
         assert result["metadata"]["generation_strategy"] == "body_summary_v2"
         assert result["metadata"]["writing_bindings"]["writer_contract"] == CONTRACT
         # A controlled positive exercises automatic acceptance, never human approval.
         assert result["delivery"]["publishable"] == (
-            scenario != "declined"
+            scenario not in {"declined", "no_progress"}
         ), json.dumps(
             {
                 "quality": result["quality"],
@@ -679,9 +700,13 @@ async def test_frozen_runtime_uses_real_workers_report_exit_and_evaluation(
         attempts = result["metadata"]["targeted_repair_state"]["attempts"]
         assert (
             len(attempts)
-            == {"supported": 0, "declined": 1, "repaired": 1, "second_repaired": 2}[
-                scenario
-            ]
+            == {
+                "supported": 0,
+                "declined": 1,
+                "repaired": 1,
+                "second_repaired": 2,
+                "no_progress": 1,
+            }[scenario]
         )
         history = result["metadata"].get("evidence_rewrite_attempts", [])
         if scenario == "second_repaired":
@@ -758,6 +783,7 @@ async def test_summary_dependency_update_preserves_unaffected_prose(case, tmp_pa
                     }
                 ),
                 model="offline",
+                finish_reason="stop",
                 usage={
                     "prompt_tokens": 10,
                     "completion_tokens": 10,
@@ -804,6 +830,7 @@ async def test_uncertain_writer_calls_are_durable_and_never_replayed(
             return LLMResponse(
                 content=json.dumps(case.body),
                 model="offline",
+                finish_reason="stop",
                 usage={"usage_available": False},
             )
 

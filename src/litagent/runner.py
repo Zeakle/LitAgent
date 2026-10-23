@@ -1090,10 +1090,7 @@ class LitAgent:
                         metadata.update(rewrite.candidate_metadata)
                     break
                 if options.generation_strategy == "body_summary_v2":
-                    if rewrite.reason_code in {
-                        "writer_repair_duplicate",
-                        "writer_repair_no_progress",
-                    }:
+                    if rewrite.reason_code == "writer_repair_duplicate":
                         continue
                     if rewrite.reason_code == "writer_candidate_failed":
                         if rewrite.candidate and rewrite.candidate_evaluation:

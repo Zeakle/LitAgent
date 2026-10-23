@@ -16,6 +16,7 @@ from jsonschema import Draft202012Validator
 from litagent.body_quality import ROLES
 from litagent.evidence import extract_evidence_refs_ordered
 from litagent.llm.client import chat_with_timeout
+from litagent.observability.context import get_task_id
 from litagent.quality import (
     SUMMARY_RULES,
     begin_targeted_repair,
@@ -31,6 +32,7 @@ from litagent.review_structure import assemble_methodology, structure_sections
 from litagent.safety.budget import CostBudget, strict_request_reservation
 
 CONTRACT = "grounded-writer-v1"
+EXECUTION_CONTRACT = "grounded-writer-execution-v2"
 STRATEGY = "body_summary_v2"
 SCOPE = "frozen_union_v1"
 BODY = tuple(k for k in ROLES if k not in {"abstract", "conclusion"})
@@ -164,7 +166,16 @@ def parse_response(raw, schema):
         value = json.loads(raw, object_pairs_hook=unique)
     except json.JSONDecodeError as exc:
         raise WriterError(
-            "writer_json_invalid", diagnostics=[{"offset": exc.pos}]
+            "writer_json_invalid",
+            diagnostics=[
+                {
+                    "offset": exc.pos,
+                    "line": exc.lineno,
+                    "column": exc.colno,
+                    "message": exc.msg,
+                    "raw_sha256": hashlib.sha256(raw.encode()).hexdigest(),
+                }
+            ],
         ) from exc
     errors = list(Draft202012Validator(schema).iter_errors(value))
     if errors:
@@ -279,14 +290,51 @@ def _valid_text(text):
         raise WriterError("writer_text_invalid")
 
 
+def validate_body(body, aliases):
+    """Reject locally invalid prose before purchasing dependent summaries."""
+    parse_response(json.dumps(body), schema_for("body", aliases))
+    units = body_units(body)
+    # Abstract and conclusion each require at least one independently checked unit.
+    if len(units) + 2 > 128:
+        raise WriterError("writer_assertion_capacity_exceeded", "budget")
+    _valid_text(body["title"])
+    for unit in units.values():
+        _valid_text(unit["text"])
+    return units
+
+
+def validate_targets(body, targets, *, summary_repair=False):
+    """Bind every requested edit to a distinct current unit before any paid call."""
+    if not isinstance(targets, dict) or not targets:
+        raise WriterError("writer_no_editable_targets", "quality")
+    allowed = {"abstract", "conclusion"} if summary_repair else set(BODY)
+    seen = set()
+    for target in targets.values():
+        path = target.get("path") if isinstance(target, dict) else None
+        if (
+            not isinstance(path, (list, tuple))
+            or len(path) != 3
+            or not isinstance(path[0], str)
+            or path[0] not in allowed
+            or any(type(i) is not int or i < 0 for i in path[1:])
+            or tuple(path) in seen
+        ):
+            raise WriterError("writer_patch_identity_invalid")
+        seen.add(tuple(path))
+        section, pi, si = path
+        try:
+            current = body[section][pi]["sentences"][si]
+        except (KeyError, IndexError, TypeError):
+            raise WriterError("writer_patch_identity_invalid") from None
+        if current != target.get("original"):
+            raise WriterError("writer_patch_identity_invalid")
+
+
 def compile_document(
     body, summaries, cards, aliases, language="zh-CN", methodology=None
 ):
     """Render exact unit spans and derive summary evidence from frozen body units."""
-    parse_response(json.dumps(body), schema_for("body", aliases))
-    units = body_units(body)
-    if not units or len(units) > 128:
-        raise WriterError("writer_assertion_capacity_exceeded", "budget")
+    units = validate_body(body, aliases)
     parse_response(json.dumps(summaries), schema_for("summary", units))
     from litagent.quality import SUMMARY_RULES
 
@@ -419,7 +467,7 @@ class WriterSession:
         self.llm, self.path, self.run_id = llm, Path(path), run_id
         self.packet, self.aliases, self.trace_hook = packet, aliases, trace_hook
         self.journal_path = Path(str(path) + ".writer-v2.json")
-        self.identity = digest([CONTRACT, packet, aliases])
+        self.identity = digest([CONTRACT, EXECUTION_CONTRACT, packet, aliases])
         if self.journal_path.exists():
             self.journal = json.loads(self.journal_path.read_text())
             if self.journal.get("identity") != self.identity:
@@ -427,6 +475,7 @@ class WriterSession:
         else:
             self.journal = {
                 "contract": CONTRACT,
+                "execution_contract": EXECUTION_CONTRACT,
                 "identity": self.identity,
                 "calls": {},
                 "candidates": [],
@@ -456,7 +505,7 @@ class WriterSession:
                 "schema": schema,
             },
         }
-        check_grounded_request_budget(
+        reservation = check_grounded_request_budget(
             self.llm,
             messages,
             rf,
@@ -465,13 +514,30 @@ class WriterSession:
             contract_version=CONTRACT,
         )
         entry = {
-            "input_sha256": digest([messages, rf]),
+            "input_sha256": digest(
+                [messages, rf, max_tokens, {"thinking": {"type": "disabled"}}]
+            ),
+            "schema_sha256": digest(schema),
+            "max_tokens": max_tokens,
+            "reservation": reservation,
             "status": "started_no_replay",
             "stage": stage,
         }
-        self.journal["calls"][name] = entry
-        self.save()
+        budget = getattr(self.llm, "_cost_budget", None)
+        # The SDK delegates reservation ownership in these evaluation contexts.
+        owns_reservation = (
+            isinstance(budget, CostBudget)
+            and budget.strict
+            and (
+                (get_task_id() or "").startswith("evaluation")
+                or get_task_id() == "evidence_rewrite"
+            )
+        )
+        if owns_reservation:
+            budget.reserve(reservation)
         try:
+            self.journal["calls"][name] = entry
+            self.save()
             response = await chat_with_timeout(
                 self.llm,
                 messages,
@@ -487,12 +553,26 @@ class WriterSession:
                 usage=response.usage,
                 model=response.model,
                 finish_reason=response.finish_reason,
+                request_id=response.request_id,
+                raw_sha256=hashlib.sha256(response.content.encode()).hexdigest(),
             )
             self.save()
-            if not response.usage or response.usage.get("usage_available") is False:
+            if (
+                not isinstance(response.usage, dict)
+                or response.usage.get("usage_available") is not True
+                or any(
+                    type(response.usage.get(k)) is not int or response.usage[k] < 0
+                    for k in ("prompt_tokens", "completion_tokens")
+                )
+            ):
                 raise WriterError("writer_usage_unknown", "interrupted")
             if response.finish_reason == "length":
                 raise WriterError("writer_output_truncated")
+            if response.finish_reason != "stop":
+                raise WriterError(
+                    "writer_finish_reason_invalid",
+                    diagnostics=[{"finish_reason": response.finish_reason}],
+                )
             return parse_response(response.content, schema)
         except BaseException as exc:
             entry.update(
@@ -505,10 +585,19 @@ class WriterSession:
             )
             self.save()
             raise
+        finally:
+            if owns_reservation:
+                budget.release(reservation)
 
     async def summaries(self, body, name):
         """Derive summaries from the frozen ordered scientific body."""
-        units = body_units(body)
+        try:
+            units = validate_body(body, self.aliases)
+        except WriterError as exc:
+            # No summary call exists to carry this locally discovered root cause.
+            self.journal["failure"] = classify_failure(exc)
+            self.save()
+            raise
         payload = {
             "query": self.packet["query"],
             "language": self.packet["language"],
@@ -526,10 +615,12 @@ class WriterSession:
 
     def reserve_followup(self, messages, rf, report_size, claim_count):
         """Keep enough real run capacity for a repair, summaries and full reassessment."""
+        if type(claim_count) is not int or not 1 <= claim_count <= 128:
+            raise WriterError("writer_assertion_capacity_exceeded", "budget")
         budget = getattr(self.llm, "_cost_budget", None)
         if not isinstance(budget, CostBudget):
             return
-        batches = min(8, max(1, math.ceil(claim_count / 16)))
+        batches = math.ceil(claim_count / 16)
         # Use the complete pool in every projected batch, not truncated evidence.
         full_sources = len(
             json.dumps(self.packet["sources"], ensure_ascii=False).encode()
@@ -550,8 +641,7 @@ class WriterSession:
 
     async def patch(self, body, targets, *, cause, claim_count=128, summary_body=None):
         """Repair only authorized units within the shared two-attempt limit."""
-        if not targets:
-            raise WriterError("writer_no_editable_targets", "quality")
+        validate_targets(body, targets, summary_repair=summary_body is not None)
         if len(self.state["attempts"]) >= 2:
             raise WriterError("writer_repair_limit", "quality")
         references = (
@@ -639,6 +729,13 @@ class WriterSession:
                     else schema_for("body", self.aliases)
                 ),
             )
+            if summary_body is None:
+                validate_body(candidate, self.aliases)
+            else:
+                for paragraphs in candidate.values():
+                    for paragraph in paragraphs:
+                        for unit in paragraph["sentences"]:
+                            _valid_text(unit["text"])
             if candidate == body:
                 raise WriterError("writer_repair_no_progress", "quality")
 
