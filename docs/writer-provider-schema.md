@@ -16,3 +16,9 @@
 `probe_writer_v2` 清单分别保存 `local_schema`、实际 `response_format`、profile 和唯一允许变化的请求字段。它继承已验证的完整账本，不清除历史费用或未知占用。本步只进行一次新独立协议验证，120,000 tokens / 1 请求 / 20,000 输出 / 零重试，不自动启动三域或正式十五题。
 
 回归位于 `tests/test_writer_v2_schema.py`、`tests/test_writer_v2_protocol.py`，并复用实际 Synthesis→Reviewer→Evaluation→唯一交付出口测试。模型能力、真实 JSON 稳定性与科学质量是否改善仍须分别验证，不能仅从兼容适配或离线通过得出结论。
+
+## 有界真实结果
+
+源码 `9c95e52` 的[单次兼容验证](../benchmarks/survey/results/writer-v2-schema-compat-20261023-001/README.md)仍返回末尾不完整 JSON：HTTP 200、`finish_reason=stop`，5,759 字符在 EOF 处解析失败。供应商 HTTP 原包中的 content 与 SDK 保存内容逐字相同；本次可排除 SDK 对正文的截断或改写，但不能据此定位远端的具体组件或内部原因。
+
+仅原生 schema 投影变化，完整消息、来源、本地 schema、模型及输出上限保持。新增一次请求、12,537 已知 tokens，用量完整；按上限停止，没有重试或启动三域。兼容适配没有解决本次 JSON 稳定性问题，也没有产生科学 Evaluation 或可交付正文。默认离线 4,211 项通过只证明工程回归，不能替代真实正文质量结果。

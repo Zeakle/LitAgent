@@ -94,3 +94,12 @@ Reviewer and Evaluation did not run; two cases were not started, and strict
 delivery is 0/3. Its trace was read back with one generation, matching usage
 and empty scientific I/O. The standalone protocol observer's missing trace
 parent was separately corrected offline; its historical trace remains unavailable.
+
+The [provider-schema compatibility observation](../benchmarks/survey/results/writer-v2-schema-compat-20261023-001/README.md)
+retains complete host validation while projecting only the native decoder schema.
+Offline regression passed 4,211 tests (25 deselected). Its single live Pro request
+still returned malformed JSON: HTTP content exactly matched SDK content, with
+12,537 known tokens and complete usage. This rules out local SDK content rewriting
+for that response, without identifying the remote cause. No retry, summary or
+Evaluation followed. Compatibility adaptation has not demonstrated improved
+protocol reliability or scientific quality; Phase 14.5 remains in progress.

@@ -26,3 +26,5 @@
 源码bcc12ed，HTTP200/stop，五章66正文单元通过JSON/schema/本地契约；原包与SDK内容逐字一致，参数与原失败请求相同。新增1请求/14,578已知tokens，零重试/无新增未知。没有运行科学Evaluation，不能据此声称根因消失或正文已可靠。详见[公开观察记录](../benchmarks/survey/results/writer-v2-protocol-20261023-001/README.md)。后续固定三域使用独立账本，累计历史显式继承这两次观察，不重启旧套件。
 
 该次协议观察未建立 LangFuse 根 span，因此没有可用的外部 trace 链接；这不代表 tracing 配置关闭。完整本地请求与 HTTP 原包仍在。CLI 已补齐根生命周期并离线覆盖成功、非法 JSON、取消和未知用量；旧观察不追溯创建 trace，也不重发。协议成功始终保留 accepted=false 和质量未核验状态。
+
+后续[供应商 schema 兼容观察](../benchmarks/survey/results/writer-v2-schema-compat-20261023-001/README.md)只改变实际发送的 schema 投影，完整本地校验不变。该次仍是非法 JSON，HTTP 原包与 SDK 内容相同，新增一次请求 / 12,537 tokens 后终止。LangFuse 读回一个 generation、匹配用量和空科学 I/O；没有运行 Evaluation，不计作新的完整 Survey 或成功样本。
