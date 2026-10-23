@@ -1,6 +1,8 @@
 """Keep the three-case paid boundary and restart behavior deterministic offline."""
 
 import copy
+import csv
+import hashlib
 import json
 from pathlib import Path
 
@@ -246,3 +248,148 @@ def test_terminal_failed_protocol_cost_is_inherited_without_restarting(
         result, receipts = campaign.accounting_history(history, [root])
         assert result == {"model_requests": 727, "model_known_tokens": 3853754}
         assert receipts[0]["known_tokens"] == 12537
+
+
+@pytest.mark.parametrize(
+    "fault", [None, "sha", "run_id", "missing_reason", "unsafe_reason"]
+)
+def test_export_reads_exact_bound_evaluation_cause_without_modifying_old_state(
+    tmp_path, monkeypatch, fault
+):
+    """A view can explain a terminal run without changing its original score or cause."""
+    monkeypatch.chdir(tmp_path)
+    root = tmp_path / "suite"
+    root.mkdir()
+    report = {
+        "survey": "Original frozen scientific report.",
+        "evaluation": {
+            "faithfulness": {
+                "details": {
+                    "skipped_reason": "evaluation_assertion_capacity_exceeded",
+                    "unverified_count": 116,
+                    "stages": {
+                        "expected_assertions": 132,
+                        "processed_assertions": 0,
+                        "requests": [{"raw": "private response"}],
+                    },
+                }
+            }
+        },
+        "metadata": {
+            "evidence_rewrite_attempts": [
+                {"attempted": False, "reason_code": "writer_assessment_incomplete"},
+                {
+                    "attempted": True,
+                    "candidate_evaluation": None,
+                    "reason_code": "failed_candidate",
+                },
+            ]
+        },
+    }
+    if fault == "missing_reason":
+        report["evaluation"]["faithfulness"]["details"].pop("skipped_reason")
+    if fault == "unsafe_reason":
+        report["evaluation"]["faithfulness"]["details"][
+            "skipped_reason"
+        ] = "Private model response with credentials"
+    original_sha = hashlib.sha256(report["survey"].encode()).hexdigest()
+    row = {
+        "case_id": campaign.CASES[0][0],
+        "run_id": "bound",
+        "status": "blocked",
+        "generated": True,
+        "reviewer_completed": True,
+        "evaluation": "not_complete",
+        "publishable": False,
+        "supported": 0,
+        "unsupported": 0,
+        "unverified": 116,
+        "requests": 4,
+        "known_tokens": 89534,
+        "unknown_hold": 0,
+        "report_sha256": "changed" if fault == "sha" else original_sha,
+        "failure_code": "evaluation_not_completed",
+        "evaluation_history": [
+            {"stage": "initial"},
+            {"stage": "repair_1"},
+            {"stage": "repair_2"},
+        ],
+    }
+    state = {
+        "identity": "suite",
+        "status": "stopped",
+        "stop_reason": "evaluation_not_completed",
+        "cases": [row],
+    }
+    manifest = {
+        "identity": "suite",
+        "source_commit": "original-execution",
+        "history": {},
+        "limits": dict(campaign.LIMITS),
+    }
+    atomic_json(root / "state.json", state)
+    archive = {
+        "run_id": "different" if fault == "run_id" else "bound",
+        "report": report,
+    }
+    path = tmp_path / "artifacts/runs/bound.json"
+    atomic_json(path, archive)
+    before = copy.deepcopy(state)
+    original_bytes = (root / "state.json").read_bytes()
+    original_archive = path.read_bytes()
+    campaign.export(root, state, manifest)
+    out = tmp_path / "benchmarks/survey/results/suite"
+    public = json.loads((out / "benchmark.json").read_text())
+    actual = public["cases"][0]
+    assert state == before and (root / "state.json").read_bytes() == original_bytes
+    assert path.read_bytes() == original_archive
+    assert (
+        actual["failure_code"] == "evaluation_not_completed"
+        and not actual["publishable"]
+    )
+    assert public["planned"] == 3 and public["run"] == 1 and public["not_run"] == 2
+    assert public["new_usage"]["known_tokens"] == 89534
+    serialized = (out / "benchmark.json").read_text()
+    assert "private response" not in serialized and "credentials" not in serialized
+    if fault not in {"sha", "run_id", "missing_reason"}:
+        expected = (
+            "evaluation_not_completed"
+            if fault == "unsafe_reason"
+            else "evaluation_assertion_capacity_exceeded"
+        )
+        assert actual["evaluation_reason"] == expected
+        assert (
+            actual["expected_assertions"] == 132 and actual["processed_assertions"] == 0
+        )
+        csv_row = next(csv.DictReader((out / "benchmark.csv").open()))
+        assert (
+            csv_row["evaluation_reason"] == expected
+            and csv_row["expected_assertions"] == "132"
+        )
+        assert expected in (out / "benchmark.md").read_text()
+        assert expected in (out / "benchmark.html").read_text()
+    else:
+        assert "evaluation_diagnostic" not in actual
+        assert actual["expected_assertions"] is None
+    if fault not in {"sha", "run_id"}:
+        assert [h["stage"] for h in actual["evaluation_history"]] == [
+            "initial",
+            "repair_2",
+        ]
+        assert actual["repair_preflight_failures"] == [
+            {"attempted": False, "reason_code": "writer_assessment_incomplete"}
+        ]
+
+
+@pytest.mark.parametrize("field", ["error", "reason"])
+def test_old_evaluation_reason_fields_remain_readable_without_invented_counts(field):
+    """Missing versioned statistics stay unavailable instead of using current defaults."""
+    report = {
+        "evaluation": {"faithfulness": {"details": {field: "evaluation_incomplete"}}}
+    }
+    assert campaign.evaluation_diagnostic(report) == {
+        "reason_code": "evaluation_incomplete",
+        "expected_assertions": None,
+        "processed_assertions": None,
+        "scientific_unverified": None,
+    }

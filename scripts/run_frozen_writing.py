@@ -10,6 +10,7 @@ import html
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -272,6 +273,38 @@ def validate(root, config):
     return m
 
 
+def safe_reason(reason):
+    """Keep exception prose and model content out of public machine-code fields."""
+    return (
+        reason
+        if isinstance(reason, str) and re.fullmatch(r"[a-z][a-z0-9_]{0,127}", reason)
+        else "evaluation_not_completed"
+    )
+
+
+def evaluation_diagnostic(report):
+    """Return safe scalar diagnostics without publishing evaluator request payloads."""
+    details = report.get("evaluation", {}).get("faithfulness", {}).get("details", {})
+    reason = next(
+        (details[k] for k in ("skipped_reason", "error", "reason") if details.get(k)),
+        None,
+    )
+    if not reason:
+        return None
+    stages = details.get("stages", {})
+
+    def count(value):
+        """Unknown historical counts remain unavailable, not scientific zero."""
+        return value if type(value) is int and value >= 0 else None
+
+    return {
+        "reason_code": safe_reason(reason),
+        "expected_assertions": count(stages.get("expected_assertions")),
+        "processed_assertions": count(stages.get("processed_assertions")),
+        "scientific_unverified": count(details.get("unverified_count")),
+    }
+
+
 def export(root, state, manifest):
     """Publish one sanitized data source with separate execution and quality outcomes."""
     executed = state["cases"]
@@ -301,6 +334,40 @@ def export(root, state, manifest):
         )
         for case_id, _ in CASES
     ]
+    for row in rows:
+        if not row.get("run_id") or Path(row["run_id"]).name != row["run_id"]:
+            continue
+        archive_path = Path("artifacts/runs", row["run_id"] + ".json")
+        if not archive_path.exists() or not row.get("report_sha256"):
+            continue
+        archive = json.loads(archive_path.read_text())
+        report = archive.get("report") or {}
+        survey = report.get("survey")
+        if (
+            archive.get("run_id") != row["run_id"]
+            or not isinstance(survey, str)
+            or hashlib.sha256(survey.encode()).hexdigest() != row["report_sha256"]
+        ):
+            continue
+        diagnostic = evaluation_diagnostic(report)
+        if diagnostic:
+            row["evaluation_diagnostic"] = diagnostic
+        attempts = report.get("metadata", {}).get("evidence_rewrite_attempts", [])
+        not_sent = {
+            f"repair_{i+1}": a
+            for i, a in enumerate(attempts)
+            if a.get("attempted") is False
+        }
+        if not_sent:
+            row["evaluation_history"] = [
+                h
+                for h in row.get("evaluation_history", [])
+                if h.get("stage") not in not_sent
+            ]
+            row["repair_preflight_failures"] = [
+                {"attempted": False, "reason_code": safe_reason(a.get("reason_code"))}
+                for a in not_sent.values()
+            ]
     for row in rows:
         if row.get("failure_code") != "writer_json_invalid" or not row.get("run_id"):
             continue
@@ -339,9 +406,20 @@ def export(root, state, manifest):
             else "Yes" if value is True else "No" if value is False else str(value)
         )
 
+    def reason(row):
+        """Display the bound evaluator cause while preserving the original run state."""
+        return row.get("evaluation_diagnostic", {}).get("reason_code") or row.get(
+            "failure_code", ""
+        )
+
+    for row in rows:
+        row["evaluation_reason"] = reason(row)
+        for key in ("expected_assertions", "processed_assertions"):
+            row[key] = row.get("evaluation_diagnostic", {}).get(key)
+
     public = {
         "version": VERSION,
-        "view_version": "frozen-writing-view-v2",
+        "view_version": "frozen-writing-view-v3",
         "suite_id": root.name,
         "identity": manifest["identity"],
         "source_commit": manifest["source_commit"],
@@ -387,6 +465,9 @@ def export(root, state, manifest):
         "report_sha256",
         "failure_family",
         "failure_code",
+        "evaluation_reason",
+        "expected_assertions",
+        "processed_assertions",
     ]
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=keys, extrasaction="ignore")
@@ -395,7 +476,7 @@ def export(root, state, manifest):
     (out / "benchmark.csv").write_text(buf.getvalue())
     md = f"# 三域冻结正文验收\n\n计划3题，运行{public['run']}题，生成{public['generated']}题，Evaluation完成{public['evaluation_completed']}题，严格交付{public['passed']}/3。状态：{state['status']}。\n\n源码 `{manifest['source_commit']}`，协议 `{CONTRACT}`；Lite审阅/评估，Pro写作，Judge/Jev关闭。固定证据到交付，不包含新检索或提取，不是端到端检索Benchmark。人工校准未验证，不报告科学准确率。\n\n|题目|生成|Evaluation|严格交付|支持/不支持/未核验|原因|\n|---|---|---|---|---|---|\n"
     md += "".join(
-        f"|{r['case_id']}|{display(r.get('generated'))}|{r.get('evaluation')}|{display(r.get('publishable'))}|{display(r.get('supported'))}/{display(r.get('unsupported'))}/{display(r.get('unverified'))}|{r.get('failure_code','')}|\n"
+        f"|{r['case_id']}|{display(r.get('generated'))}|{r.get('evaluation')}|{display(r.get('publishable'))}|{display(r.get('supported'))}/{display(r.get('unsupported'))}/{display(r.get('unverified'))}|{reason(r)}|\n"
         for r in rows
     )
     md += f"\n新增已知用量{public['new_usage']['known_tokens']} tokens，未知保守占用{public['new_usage']['unknown_hold']}，{public['new_usage']['requests']}请求。历史用量独立保留，不重复计算提取费用。失败和未运行题不移出分母，不追加到通过。\n\n[JSON](benchmark.json) · [CSV](benchmark.csv) · [HTML](benchmark.html)\n"
@@ -428,7 +509,7 @@ def export(root, state, manifest):
         "<details><summary>"
         + html.escape(r["case_id"])
         + " · "
-        + html.escape(str(r.get("failure_code") or r["status"]))
+        + html.escape(str(reason(r) or r["status"]))
         + "</summary><pre>"
         + html.escape(json.dumps(r, ensure_ascii=False, indent=2))
         + "</pre></details>"
@@ -628,8 +709,7 @@ async def _execute(root, config):
             if not failure and entry["evaluation"] != "completed":
                 failure = {
                     "family": "protocol",
-                    "code": details.get("error")
-                    or details.get("reason")
+                    "code": (evaluation_diagnostic(report) or {}).get("reason_code")
                     or "evaluation_not_completed",
                 }
         journal_path = Path(

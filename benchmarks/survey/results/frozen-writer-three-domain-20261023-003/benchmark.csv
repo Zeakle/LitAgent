@@ -1,0 +1,4 @@
+case_id,run_id,status,generated,evaluation,publishable,supported,unsupported,unverified,requests,known_tokens,unknown_hold,elapsed_ms,report_sha256,failure_family,failure_code,evaluation_reason,expected_assertions,processed_assertions
+few-shot-metric,frozen-writer-three-domain-20261023-003-few-shot-metric,blocked,True,not_complete,False,0,0,116,4,89534,0,238319,92604f969eac3500e88c0e17ca1427202596bcfb8543427491a6b9d62db590b3,protocol,evaluation_not_completed,evaluation_assertion_capacity_exceeded,132,0
+vit-data-efficient,,not_run,False,not_run,False,,,,0,0,0,,,,not_started_after_stop,not_started_after_stop,,
+nerf-foundations,,not_run,False,not_run,False,,,,0,0,0,,,,not_started_after_stop,not_started_after_stop,,

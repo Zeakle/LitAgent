@@ -103,3 +103,14 @@ still returned malformed JSON: HTTP content exactly matched SDK content, with
 for that response, without identifying the remote cause. No retry, summary or
 Evaluation followed. Compatibility adaptation has not demonstrated improved
 protocol reliability or scientific quality; Phase 14.5 remains in progress.
+
+The [layout-guided fixed campaign](../benchmarks/survey/results/frozen-writer-three-domain-20261023-003/README.md)
+completed one full draft, summary and Reviewer, then stopped after independent
+extraction produced 132 assertions against the unchanged 128 limit. Support
+verification and global checks did not run; 116 provisionally scientific
+assertions remain unverified. Four requests used 89,534 known tokens with complete
+usage; two planned cases were not started. Strict delivery remains 0/3. This is
+progress beyond the prior JSON blocker for one sample, not proof of scientific
+reliability. A later read-only view fix exposes the preserved capacity reason and
+distinguishes unsent repair preflight from actual repair requests. It does not
+alter archived scores, report SHA or execution status.
