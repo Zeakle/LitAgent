@@ -31,7 +31,7 @@ RRF Recall@5 is 0.8867 / p50 14 ms; reranking is 0.9089 / 647 ms. This demonstra
 an observed ranking/latency tradeoff, not broad generalization. Full-text profiles
 change indexed material and are not a pure ranking ablation.
 
-The latest 2026-10-21 diagnostic used 26 Lite requests and one Pro request,
+An earlier 2026-10-21 diagnostic used 26 Lite requests and one Pro request,
 126,023 known tokens. Invalid JSON stopped generation before Evaluation, so no
 scientific score is available. One of three pilots ran; formal cases are 0/15.
 Original response and private evidence remain local; the public record is an
@@ -55,7 +55,8 @@ The v11 staged writer has an offline-verified reference-only repair boundary:
 exact bad rows and original chapter permissions are frozen, and patches cannot
 rewrite scientific prose or expand permissions. It shares the existing two-repair
 limit; local repair success is not scientific acceptance. The original 003
-failure is preserved and no paid v11 repair has yet been observed.
+failure is preserved. The subsequent v11 live attempt returned a valid repair
+refusal and did not reach Evaluation.
 
 ## Converged frozen-pool writer (2026-10-23)
 
@@ -69,6 +70,6 @@ and retain their identity semantics. New UI runs select v2.
 
 The fixed three-domain validation reuses existing public evidence snapshots,
 without new retrieval/extraction. Judge/Jev are disabled for this experiment.
-No new scientific reliability result is claimed until the frozen experiment ends.
+The [fixed validation](../benchmarks/survey/results/frozen-writer-three-domain-20261023-001/README.md) stopped after its first Pro request: 12,477 known tokens, valid provider completion but invalid JSON at character 6,089. Summary, Reviewer and Evaluation did not run; ViT and NeRF were not requested. Strict delivery is 0/3 planned cases, with no scientific score. No extra attempts were added. This remains a protocol reliability blocker, not a measured scientific failure rate.
 The earlier v11 real run returned a valid repair refusal; it did not reach
 Evaluation. Its original failure and historical costs remain preserved.

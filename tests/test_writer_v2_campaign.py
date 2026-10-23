@@ -52,11 +52,19 @@ async def test_campaign_restart_holds_unsettled_case_without_any_request(
         (tmp_path / "benchmarks/survey/results/suite/benchmark.json").read_text()
     )
     assert public["planned"] == 3 and public["not_run"] == 2 and public["passed"] == 0
+    assert [r["case_id"] for r in public["cases"]] == [c for c, _ in campaign.CASES]
+    assert all(
+        r["run_id"] is None and r["status"] == "not_run" for r in public["cases"][1:]
+    )
     assert (
         public["new_usage"]["known_tokens"] == 0
         and public["new_usage"]["request_hold"] == 64
     )
     assert public["judge"] == public["jev"] == "disabled"
+    assert (
+        ">None<"
+        not in (tmp_path / "benchmarks/survey/results/suite/benchmark.html").read_text()
+    )
 
 
 def test_campaign_rejects_limits_runtime_and_case_drift_before_transport(

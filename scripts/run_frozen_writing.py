@@ -174,9 +174,74 @@ def validate(root, config):
 
 def export(root, state, manifest):
     """Publish one sanitized data source with separate execution and quality outcomes."""
-    rows = state["cases"]
+    executed = state["cases"]
+    rows = [
+        next(
+            (dict(r) for r in executed if r["case_id"] == case_id),
+            {
+                "case_id": case_id,
+                "run_id": None,
+                "status": "not_run",
+                "generated": False,
+                "reviewer_completed": False,
+                "evaluation": "not_run",
+                "publishable": False,
+                "supported": None,
+                "unsupported": None,
+                "unverified": None,
+                "requests": 0,
+                "known_tokens": 0,
+                "unknown_hold": 0,
+                "failure_code": (
+                    "not_started_after_stop"
+                    if state["status"] in {"stopped", "interrupted"}
+                    else "not_started"
+                ),
+            },
+        )
+        for case_id, _ in CASES
+    ]
+    for row in rows:
+        if row.get("failure_code") != "writer_json_invalid" or not row.get("run_id"):
+            continue
+        journal = Path(
+            "artifacts/targeted-repairs", row["run_id"] + ".json.writer-v2.json"
+        )
+        if not journal.exists():
+            continue
+        calls = json.loads(journal.read_text()).get("calls", {}).values()
+        call = next(
+            (
+                c
+                for c in calls
+                if c.get("failure", {}).get("code") == "writer_json_invalid"
+            ),
+            None,
+        )
+        if call and isinstance(call.get("raw"), str):
+            raw = call["raw"]
+            offset = call["failure"]["diagnostics"][0]["offset"]
+            row["protocol_diagnostic"] = {
+                "stage": call["stage"],
+                "raw_response_sha256": hashlib.sha256(raw.encode()).hexdigest(),
+                "offset": offset,
+                "line": raw.count("\n", 0, offset) + 1,
+                "column": offset - raw.rfind("\n", 0, offset),
+                "finish_reason": call.get("finish_reason"),
+                "scientific_assessment": "not_run",
+            }
+
+    def display(value):
+        """Render absent statistics as unavailable rather than scientific zero."""
+        return (
+            "—"
+            if value is None
+            else "Yes" if value is True else "No" if value is False else str(value)
+        )
+
     public = {
         "version": VERSION,
+        "view_version": "frozen-writing-view-v2",
         "suite_id": root.name,
         "identity": manifest["identity"],
         "source_commit": manifest["source_commit"],
@@ -184,11 +249,11 @@ def export(root, state, manifest):
         "state": state["status"],
         "stop_reason": state.get("stop_reason"),
         "planned": 3,
-        "run": len(rows),
+        "run": len(executed),
         "generated": sum(bool(r.get("generated")) for r in rows),
         "evaluation_completed": sum(r.get("evaluation") == "completed" for r in rows),
         "passed": sum(r.get("publishable", False) for r in rows),
-        "not_run": 3 - len(rows),
+        "not_run": 3 - len(executed),
         "judge": "disabled",
         "jev": "disabled",
         "human_calibration": "not_validated",
@@ -230,7 +295,7 @@ def export(root, state, manifest):
     (out / "benchmark.csv").write_text(buf.getvalue())
     md = f"# 三域冻结正文验收\n\n计划3题，运行{public['run']}题，生成{public['generated']}题，Evaluation完成{public['evaluation_completed']}题，严格交付{public['passed']}/3。状态：{state['status']}。\n\n源码 `{manifest['source_commit']}`，协议 `{CONTRACT}`；Lite审阅/评估，Pro写作，Judge/Jev关闭。固定证据到交付，不包含新检索或提取，不是端到端检索Benchmark。人工校准未验证，不报告科学准确率。\n\n|题目|生成|Evaluation|严格交付|支持/不支持/未核验|原因|\n|---|---|---|---|---|---|\n"
     md += "".join(
-        f"|{r['case_id']}|{r.get('generated')}|{r.get('evaluation')}|{r.get('publishable')}|{r.get('supported')}/{r.get('unsupported')}/{r.get('unverified')}|{r.get('failure_code','')}|\n"
+        f"|{r['case_id']}|{display(r.get('generated'))}|{r.get('evaluation')}|{display(r.get('publishable'))}|{display(r.get('supported'))}/{display(r.get('unsupported'))}/{display(r.get('unverified'))}|{r.get('failure_code','')}|\n"
         for r in rows
     )
     md += f"\n新增已知用量{public['new_usage']['known_tokens']} tokens，未知保守占用{public['new_usage']['unknown_hold']}，{public['new_usage']['requests']}请求。历史用量独立保留，不重复计算提取费用。失败和未运行题不移出分母，不追加到通过。\n\n[JSON](benchmark.json) · [CSV](benchmark.csv) · [HTML](benchmark.html)\n"
@@ -239,7 +304,7 @@ def export(root, state, manifest):
     table = "".join(
         "<tr>"
         + "".join(
-            "<td>" + html.escape(str(r.get(k, "—"))) + "</td>"
+            "<td>" + html.escape(display(r.get(k))) + "</td>"
             for k in [
                 "case_id",
                 "generated",
@@ -250,9 +315,13 @@ def export(root, state, manifest):
                 "unverified",
             ]
         )
-        + '<td><a href="http://127.0.0.1:8000/flow-demo?run=archive%3A'
-        + r["run_id"]
-        + '&view=quality">质量与原文 / Report</a></td></tr>'
+        + (
+            '<td><a href="http://127.0.0.1:8000/flow-demo?run=archive%3A'
+            + r["run_id"]
+            + '&view=quality">质量与原文 / Report</a></td></tr>'
+            if r.get("run_id")
+            else "<td>未运行 / Not run</td></tr>"
+        )
         for r in rows
     )
     details = "".join(
