@@ -315,6 +315,12 @@ async def execute(root, config):
                 else None
             ),
         )
+        # Standalone diagnostics need the same parent lifecycle as worker runs.
+        # The final quality remains unverified even when the protocol succeeds.
+        hook(
+            "survey.start",
+            {"session_id": root.name, "query": manifest["packet"]["query"]},
+        )
         budget = CostBudget(max_tokens=LIMITS["tokens"])
         budget.configure_strict(halt_on_unknown_usage=True)
         owner = OpenAICompatibleClient(
@@ -356,6 +362,17 @@ async def execute(root, config):
         finally:
             reset_task_id(token)
             await owner.close()
+        hook(
+            "survey.complete",
+            {
+                "accepted": False,
+                "quality_status": "unverified",
+                "delivery_status": "blocked",
+                "total_tokens": (
+                    budget.used if not budget.snapshot()["usage_uncertain"] else None
+                ),
+            },
+        )
         if tracer:
             recorder.set_trace_reference(tracer.trace_id, tracer.trace_url)
             tracer.flush()

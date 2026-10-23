@@ -63,6 +63,28 @@ async def test_single_sdk_observation_never_becomes_scientific_acceptance(
     original = probe.OpenAICompatibleClient
     sent = []
     unused_clients = []
+    traced = []
+    observation.cfg.observability.enabled = True
+
+    class Trace:
+        """Expose a link only after the standalone run has created its parent."""
+
+        trace_id = None
+        trace_url = None
+
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def __call__(self, event, data):
+            traced.append((event, data))
+            if event == "survey.start":
+                self.trace_id = "offline-trace"
+                self.trace_url = "http://offline.invalid/trace"
+
+        def flush(self):
+            pass
+
+    monkeypatch.setattr(probe, "LangFuseTracer", Trace)
 
     def transport(request):
         body = json.loads(request.content)
@@ -127,6 +149,11 @@ async def test_single_sdk_observation_never_becomes_scientific_acceptance(
     )
     assert result["evaluation"] == "not_run" and not result["publishable"]
     assert result["scientific_score"] is None
+    assert result["trace_url"] == "http://offline.invalid/trace"
+    assert traced[0][0] == "survey.start" and traced[-1][0] == "survey.complete"
+    assert traced[-1][1]["quality_status"] == "unverified"
+    assert traced[-1][1]["accepted"] is False
+    assert case.packet["query"] not in json.dumps(traced)
     if outcome in {"usage", "cancel"}:
         assert not result["usage_complete"] and result["unknown_hold"] > 20000
     else:

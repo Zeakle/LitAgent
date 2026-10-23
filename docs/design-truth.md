@@ -86,3 +86,11 @@ completed JSON/schema and local body checks with 66 units, one Pro request and
 14,578 known tokens. Provider HTTP content matched the SDK content. No scientific
 Evaluation was performed; the previous malformed response remains a failure.
 This observation does not establish an improvement in Survey quality or reliability.
+
+The next [fixed three-domain campaign](../benchmarks/survey/results/frozen-writer-three-domain-20261023-002/README.md)
+stopped after one Pro response was invalid JSON again (12,422 known tokens).
+The request fields and input SHA matched the successful protocol observation.
+Reviewer and Evaluation did not run; two cases were not started, and strict
+delivery is 0/3. Its trace was read back with one generation, matching usage
+and empty scientific I/O. The standalone protocol observer's missing trace
+parent was separately corrected offline; its historical trace remains unavailable.
