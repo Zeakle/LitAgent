@@ -143,6 +143,7 @@ def build_manifest(config):
             Path("artifacts/acceptance/frozen-writer-three-domain-20261023-003"),
             Path("artifacts/acceptance/frozen-writer-three-domain-20261024-004"),
             Path("artifacts/acceptance/frozen-writer-three-domain-20261024-005"),
+            Path("artifacts/acceptance/frozen-writer-three-domain-20261024-006"),
         ],
     )
     files = [

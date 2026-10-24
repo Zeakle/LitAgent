@@ -133,11 +133,16 @@ class RunOptions(Contract):
                 NATIVE_REPORT_INPUT_CONTRACT,
                 WRITER_CONTENT_CONTRACT,
             )
-            from litagent.writing_v2 import EXECUTION_CONTRACT, PROVIDER_SCHEMA_CONTRACT
+            from litagent.writing_v2 import (
+                EXECUTION_CONTRACT,
+                PROMPT_CONTRACT,
+                PROVIDER_SCHEMA_CONTRACT,
+            )
 
             payload["generation_contract"] = "grounded-writer-v1"
             payload["writer_execution_contract"] = EXECUTION_CONTRACT
             payload["writer_provider_schema_contract"] = PROVIDER_SCHEMA_CONTRACT
+            payload["writer_prompt_contract"] = PROMPT_CONTRACT
             payload["writer_content_contract"] = WRITER_CONTENT_CONTRACT
             payload["writer_input_contract"] = NATIVE_REPORT_INPUT_CONTRACT
             payload["writing_scope_policy"] = "frozen_union_v1"

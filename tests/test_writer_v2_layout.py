@@ -1,4 +1,4 @@
-"""Keep layout instructions aligned with the real writer without repairing output."""
+"""Keep native schema authoritative without repeating its layout in prompts."""
 
 import copy
 import json
@@ -24,8 +24,12 @@ from litagent.writing_v2 import (
 
 
 @pytest.mark.parametrize("stage", ["body", "summary", "repair"])
-def test_layout_names_the_actual_sibling_containers(case, stage):
-    """Root chapter keys must not be mistaken for fields of a paragraph."""
+def test_native_schema_owns_shape_without_duplicate_layout_instructions(case, stage):
+    """All original field permissions remain in the schema rather than prose trees."""
+    from test_writer_v2_schema import structural_schema
+
+    from litagent.writing_v2 import provider_response_format
+
     refs = body_units(case.body) if stage == "summary" else case.aliases
     schema = schema_for(stage, refs, ["target"])
     before = copy.deepcopy(schema)
@@ -34,21 +38,12 @@ def test_layout_names_the_actual_sibling_containers(case, stage):
     assert schema == before
     assert guide.count(PROMPT_CONTRACT) == 1
     assert json.loads(messages[1]["content"]) == case.packet
-    if stage == "body":
-        assert "$: object; sibling keys = title, " + ", ".join(BODY) + "." in guide
-        for section in BODY:
-            assert f"$.{section}[]: object; sibling keys = sentences." in guide
-            assert (
-                f"$.{section}[].sentences[]: object; sibling keys = text, fact_card_refs."
-                in guide
-            )
-    elif stage == "summary":
-        assert "$: object; sibling keys = abstract, conclusion." in guide
-        assert "$.abstract[].sentences[].body_unit_refs[]: string." in guide
-        assert "fact_card_refs" not in guide.split(PROMPT_CONTRACT)[1]
-    else:
-        assert "$: object; sibling keys = outcome, explanation, patches." in guide
-        assert "$.patches[]: object; sibling keys = target_id, sentences." in guide
+    assert "sibling keys" not in guide and "$." not in guide
+    assert "Each sentence has only" not in guide
+    native = provider_response_format(stage, schema)["json_schema"]["schema"]
+    assert structural_schema(native) == structural_schema(before)
+    assert native["additionalProperties"] is False
+    assert set(native["required"]) == set(before["properties"])
 
 
 @pytest.mark.parametrize("language", ["zh-CN", "en"])

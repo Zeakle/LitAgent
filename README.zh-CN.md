@@ -79,6 +79,7 @@ reranker 改善排名但显著增加延迟，因此没有切为默认。全文�
 [最新写作验收](./benchmarks/survey/results/frozen-writer-three-domain-20261024-006/README.md) ·
 [章节生成离线修复](./docs/writer-sections-review-20261024.md) ·
 [完整材料预算修复](./docs/native-input-review-20261024.md) ·
+[摘要协议离线审查](./docs/native-intent-review-20261024.md) ·
 [早期端到端试点](./benchmarks/survey/results/survey-reliability-20261021-001/README.md) ·
 [Survey 方法与历史](./benchmarks/survey/README.md) ·
 [公开包来源绑定](./src/litagent/static/presentation/manifest.json)。

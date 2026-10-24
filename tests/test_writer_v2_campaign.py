@@ -395,3 +395,42 @@ def test_old_evaluation_reason_fields_remain_readable_without_invented_counts(fi
         "processed_assertions": None,
         "scientific_unverified": None,
     }
+
+
+@pytest.mark.parametrize("report_sha", [None, "final-version-sha"])
+def test_public_link_does_not_claim_a_report_for_failed_generation(
+    tmp_path, monkeypatch, report_sha
+):
+    """A compiled or failed draft alone only has a diagnostic archive to inspect."""
+    monkeypatch.chdir(tmp_path)
+    row = {
+        "case_id": campaign.CASES[0][0],
+        "run_id": "bound",
+        "status": "blocked",
+        "generated": True,
+        "evaluation": "not_complete",
+        "publishable": False,
+        "report_sha256": report_sha,
+        "compiled_report_sha256": "draft-only",
+        "requests": 6,
+        "known_tokens": 100,
+        "unknown_hold": 0,
+        "failure_code": "writer_json_invalid",
+    }
+    state = {"identity": "suite", "status": "stopped", "cases": [row]}
+    manifest = {
+        "identity": "suite",
+        "source_commit": "frozen",
+        "history": {},
+        "limits": dict(campaign.LIMITS),
+    }
+    original = copy.deepcopy(state)
+    campaign.export(tmp_path / "suite", state, manifest)
+    out = tmp_path / "benchmarks/survey/results/suite"
+    page = (out / "benchmark.html").read_text()
+    assert ("质量与原文 / Report" in page) == bool(report_sha)
+    assert ("运行诊断 / Diagnostics" in page) == (not report_sha)
+    assert state == original
+    public = json.loads((out / "benchmark.json").read_text())
+    assert public["cases"][0]["report_sha256"] == report_sha
+    assert public["planned"] == 3 and public["run"] == 1 and public["passed"] == 0

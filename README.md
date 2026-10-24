@@ -95,6 +95,7 @@ under the current policy or evidence of a quality improvement.
 [Latest writing validation](./benchmarks/survey/results/frozen-writer-three-domain-20261024-006/README.md) ·
 [Offline chapter-generation repair](./docs/writer-sections-review-20261024.md) ·
 [Complete-input budget repair](./docs/native-input-review-20261024.md) ·
+[Summary protocol review](./docs/native-intent-review-20261024.md) ·
 [Earlier end-to-end trial](./benchmarks/survey/results/survey-reliability-20261021-001/README.md) ·
 [Survey methodology](./benchmarks/survey/README.md) ·
 [Packaged public records](./src/litagent/static/presentation/manifest.json).

@@ -419,7 +419,7 @@ def export(root, state, manifest):
 
     public = {
         "version": VERSION,
-        "view_version": "frozen-writing-view-v3",
+        "view_version": "frozen-writing-view-v5",
         "suite_id": root.name,
         "identity": manifest["identity"],
         "source_commit": manifest["source_commit"],
@@ -499,7 +499,13 @@ def export(root, state, manifest):
         + (
             '<td><a href="http://127.0.0.1:8000/flow-demo?run=archive%3A'
             + r["run_id"]
-            + '&view=quality">质量与原文 / Report</a></td></tr>'
+            + '&view=quality">'
+            + (
+                "质量与原文 / Report"
+                if r.get("report_sha256")
+                else "运行诊断 / Diagnostics"
+            )
+            + "</a></td></tr>"
             if r.get("run_id")
             else "<td>未运行 / Not run</td></tr>"
         )
