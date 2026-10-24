@@ -37,7 +37,7 @@ from litagent.review_structure import assemble_methodology, structure_sections
 from litagent.safety.budget import CostBudget, strict_request_reservation
 
 CONTRACT = "grounded-writer-v1"
-EXECUTION_CONTRACT = "grounded-writer-execution-v8"
+EXECUTION_CONTRACT = "grounded-writer-execution-v9"
 PROVIDER_SCHEMA_CONTRACT = "ark-structured-schema-v1"
 PROMPT_CONTRACT = "grounded-writer-native-intent-v2"
 STRATEGY = "body_summary_v2"
@@ -547,8 +547,21 @@ def bound_fragments(survey, bindings):
 class WriterSession:
     """Own durable calls and the single shared repair ledger for one run."""
 
-    def __init__(self, llm, path, run_id, packet, aliases, *, trace_hook=None):
+    def __init__(
+        self,
+        llm,
+        path,
+        run_id,
+        packet,
+        aliases,
+        *,
+        trace_hook=None,
+        thinking_mode="disabled",
+    ):
         """Initialize immutable inputs and durable ownership."""
+        if thinking_mode not in ("provider_default", "enabled", "disabled"):
+            raise WriterError("writer_thinking_mode_invalid")
+        self.thinking_mode = thinking_mode
         self.llm, self.path, self.run_id = llm, Path(path), run_id
         self.packet, self.aliases, self.trace_hook = packet, aliases, trace_hook
         self.journal_path = Path(str(path) + ".writer-v2.json")
@@ -560,6 +573,7 @@ class WriterSession:
                 PROVIDER_SCHEMA_CONTRACT,
                 NATIVE_REPORT_INPUT_CONTRACT,
                 WRITER_CONTENT_CONTRACT,
+                thinking_mode,
                 packet,
                 aliases,
             ]
@@ -574,6 +588,7 @@ class WriterSession:
                 "execution_contract": EXECUTION_CONTRACT,
                 "prompt_contract": PROMPT_CONTRACT,
                 "content_contract": WRITER_CONTENT_CONTRACT,
+                "generation_thinking_mode": thinking_mode,
                 "identity": self.identity,
                 "calls": {},
                 "candidates": [],
@@ -586,7 +601,15 @@ class WriterSession:
         save_targeted_repairs(self.path, self.state)
 
     async def call(
-        self, name, system, payload, schema, *, stage="synthesis", max_tokens=20000
+        self,
+        name,
+        system,
+        payload,
+        schema,
+        *,
+        stage="synthesis",
+        max_tokens=20000,
+        thinking_mode=None,
     ):
         """Journal a single checked request and never replay its response."""
         if name in self.journal["calls"]:
@@ -600,12 +623,18 @@ class WriterSession:
         budget = getattr(self.llm, "_cost_budget", None)
         reserved = False
         try:
+            mode = self.thinking_mode if thinking_mode is None else thinking_mode
+            if mode not in ("provider_default", "enabled", "disabled"):
+                raise WriterError("writer_thinking_mode_invalid")
+            extra_body = (
+                None if mode == "provider_default" else {"thinking": {"type": mode}}
+            )
+            request_kwargs = {} if extra_body is None else {"extra_body": extra_body}
             rf = provider_response_format(stage, schema)
             messages = request_messages(system, payload, schema)
             entry.update(
-                input_sha256=digest(
-                    [messages, rf, max_tokens, {"thinking": {"type": "disabled"}}]
-                ),
+                input_sha256=digest([messages, rf, max_tokens, extra_body]),
+                thinking_mode=mode,
                 schema_sha256=digest(schema),
                 provider_schema_contract=PROVIDER_SCHEMA_CONTRACT,
                 prompt_contract=PROMPT_CONTRACT,
@@ -653,8 +682,9 @@ class WriterSession:
                 max_tokens=max_tokens,
                 response_format=rf,
                 transport_max_attempts=1,
-                extra_body={"thinking": {"type": "disabled"}},
+                **request_kwargs,
             )
+            reasoning = getattr(response, "reasoning_content", None)
             entry.update(
                 status="response_received",
                 raw=response.content,
@@ -663,6 +693,9 @@ class WriterSession:
                 finish_reason=response.finish_reason,
                 request_id=response.request_id,
                 raw_sha256=hashlib.sha256(response.content.encode()).hexdigest(),
+                returned_reasoning_characters=(
+                    len(reasoning) if isinstance(reasoning, str) else None
+                ),
             )
             self.save()
             if (
@@ -1032,6 +1065,7 @@ async def synthesize(worker, task, cards, selection, methodology, requirements):
         packet,
         aliases,
         trace_hook=worker._trace_hook,
+        thinking_mode=getattr(worker, "_thinking_mode", "disabled"),
     )
     try:
         body = await session.initial_body()
@@ -1078,6 +1112,7 @@ async def synthesize(worker, task, cards, selection, methodology, requirements):
             "summaries": summaries,
             "packet": packet,
             "aliases": aliases,
+            "generation_thinking_mode": session.thinking_mode,
         },
         "report_language": language,
         "review_structure": "academic_v2",
@@ -1205,7 +1240,12 @@ async def review(worker, task):
     }
     path = worker._writer_path
     session = WriterSession(
-        worker._llm, path, worker._writer_run_id, doc["packet"], doc["aliases"]
+        worker._llm,
+        path,
+        worker._writer_run_id,
+        doc["packet"],
+        doc["aliases"],
+        thinking_mode=doc.get("generation_thinking_mode", "disabled"),
     )
     if source["writing_bindings"].get("input_contract") == NATIVE_REPORT_INPUT_CONTRACT:
         try:
@@ -1225,6 +1265,7 @@ async def review(worker, task):
         schema,
         stage="reviewer",
         max_tokens=worker._config.review_max_tokens,
+        thinking_mode=getattr(worker._config, "thinking_mode", "disabled"),
     )
     return {
         "score": 0.0 if result["issues"] else 1.0,
@@ -1283,6 +1324,7 @@ async def _repair_report(
         document["packet"],
         document["aliases"],
         trace_hook=runner._trace_hook,
+        thinking_mode=document.get("generation_thinking_mode", "disabled"),
     )
     details = initial_evaluation.get("faithfulness", {}).get("details", {})
     # Invalid or incomplete assessments do not authorize a scientific rewrite.

@@ -199,6 +199,7 @@ async def run_frozen(agent, bundle, run_id, *, transport=None):
         context_config=cfg.context,
         trace_hook=agent._trace_hook,
         methodology_provider=lambda task: copy.deepcopy(bundle["methodology"]),
+        thinking_mode=cfg.adversarial.thinking_mode,
         run_id_provider=lambda: agent._session_id,
         repair_state_path_provider=agent._targeted_repair_path,
     )
@@ -209,7 +210,11 @@ async def run_frozen(agent, bundle, run_id, *, transport=None):
         trace_hook=agent._trace_hook,
     )
     agent._adversarial = AdversarialReviewWorker(
-        generation, agent._synthesis, agent._reviewer, trace_hook=agent._trace_hook
+        generation,
+        agent._synthesis,
+        agent._reviewer,
+        trace_hook=agent._trace_hook,
+        thinking_mode=cfg.adversarial.thinking_mode,
     )
     agent._evaluators = [
         CitationEvaluator(evaluation),

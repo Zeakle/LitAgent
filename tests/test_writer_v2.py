@@ -558,6 +558,7 @@ async def test_actual_v3_does_not_confuse_cross_chapter_permission_with_support(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("thinking_mode", ["disabled", "enabled"])
 @pytest.mark.parametrize(
     "scenario",
     [
@@ -570,7 +571,7 @@ async def test_actual_v3_does_not_confuse_cross_chapter_permission_with_support(
     ],
 )
 async def test_frozen_runtime_uses_real_workers_report_exit_and_evaluation(
-    case, tmp_path, monkeypatch, scenario
+    case, tmp_path, monkeypatch, scenario, thinking_mode
 ):
     """Frozen runtime uses real workers report exit and evaluation."""
     from litagent.config import load_config
@@ -632,6 +633,7 @@ async def test_frozen_runtime_uses_real_workers_report_exit_and_evaluation(
                     "report_structure",
                 )
             ):
+                assert kwargs["extra_body"] == {"thinking": {"type": thinking_mode}}
                 assert messages[0]["content"].count(PROMPT_CONTRACT) == 1
                 assert messages[0]["content"].count(WRITER_CONTENT_CONTRACT) == 1
             if "targets" in p:
@@ -703,6 +705,7 @@ async def test_frozen_runtime_uses_real_workers_report_exit_and_evaluation(
 
     cfg = load_config()
     cfg.observability.enabled = False
+    cfg.adversarial.thinking_mode = thinking_mode
     cfg.mcp_servers = {}
     agent = LitAgent(cfg, run_policy=RunPolicy.isolated_benchmark())
     agent._targeted_repair_state_path = tmp_path / "repair.json"
@@ -980,6 +983,7 @@ async def test_v2_native_schema_uses_actual_sdk_zero_retries_and_stage_models(
         ),
         run_id_provider=lambda: "sdk-v2",
         repair_state_path_provider=lambda: tmp_path / "r.json",
+        thinking_mode="disabled",
     )
     task = SubTask(
         "adversarial_review",
