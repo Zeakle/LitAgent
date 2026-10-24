@@ -84,15 +84,15 @@ Reranking improves ranking metrics but adds substantial latency; it is not the
 default. Full-text profiles change indexed material and are separate from pure
 ranking comparisons. [Full results and limitations](./benchmarks/rag/RESULTS.md).
 
-Latest frozen-evidence writing validation: **1/3 cases started**, **6 Pro requests /
-76,416 tokens**. Five chapters passed local contracts, but summary JSON was invalid.
-Reviewer and Evaluation did not run; strict delivery **0/3**.
+Latest frozen-evidence writing validation: **1/3 cases started**, **5 Pro requests /
+67,872 tokens**. Four chapters passed local contracts; open-problems JSON was invalid.
+Summaries, Reviewer and Evaluation did not run; strict delivery **0/3**.
 No retrieval or extraction was repeated. The earlier end-to-end diagnostic used
 **27 requests / 126,023 tokens** and also stopped before Evaluation. Formal cases:
 **0/15 run**. These are technical failures, not measured scientific scores.
 An older single NeRF run passed an older, less strict policy; it is not success
 under the current policy or evidence of a quality improvement.
-[Latest writing validation](./benchmarks/survey/results/frozen-writer-three-domain-20261024-006/README.md) ·
+[Latest writing validation](./benchmarks/survey/results/frozen-writer-three-domain-20261024-007/README.md) ·
 [Offline chapter-generation repair](./docs/writer-sections-review-20261024.md) ·
 [Complete-input budget repair](./docs/native-input-review-20261024.md) ·
 [Summary protocol review](./docs/native-intent-review-20261024.md) ·

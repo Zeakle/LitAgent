@@ -70,13 +70,13 @@ flowchart LR
 reranker 改善排名但显著增加延迟，因此没有切为默认。全文配置同时改变索引材料，
 不能把差异全部归因于排名算法。[完整结果与解释边界](./benchmarks/rag/RESULTS.md)。
 
-最新冻结证据写作验收：**1/3 题启动**、**6 次 Pro 请求／76,416 tokens**，
-五章通过本地契约，摘要 JSON 非法，Reviewer 和 Evaluation 均未运行，
+最新冻结证据写作验收：**1/3 题启动**、**5 次 Pro 请求／67,872 tokens**，
+四章通过本地契约，第五章 JSON 非法；摘要、Reviewer 和 Evaluation 均未运行，
 严格交付 **0/3**，未重新检索或提取。
 早期端到端诊断为 **27 请求／126,023 tokens**，也在 Evaluation 前停止；正式 **0/15**。
 这些是技术失败，不能当作科学支持率零分。
 历史单次 NeRF 在旧策略下交付成功，不代表当前严格策略成功，也不证明质量增益。
-[最新写作验收](./benchmarks/survey/results/frozen-writer-three-domain-20261024-006/README.md) ·
+[最新写作验收](./benchmarks/survey/results/frozen-writer-three-domain-20261024-007/README.md) ·
 [章节生成离线修复](./docs/writer-sections-review-20261024.md) ·
 [完整材料预算修复](./docs/native-input-review-20261024.md) ·
 [摘要协议离线审查](./docs/native-intent-review-20261024.md) ·

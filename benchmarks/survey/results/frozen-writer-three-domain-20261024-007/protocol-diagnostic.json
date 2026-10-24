@@ -1,0 +1,37 @@
+{
+  "phase": "body:open_problems",
+  "failure": {
+    "family": "protocol",
+    "code": "writer_json_invalid",
+    "diagnostics": [
+      {
+        "offset": 2628,
+        "line": 1,
+        "column": 2629,
+        "message": "Expecting ',' delimiter",
+        "raw_sha256": "d8296703e1ab2203140f673c7703ea173a202a2a6a72a36c15c2131128b6790b"
+      }
+    ]
+  },
+  "raw_characters": 2628,
+  "raw_bytes": 5796,
+  "raw_sha256": "d8296703e1ab2203140f673c7703ea173a202a2a6a72a36c15c2131128b6790b",
+  "finish_reason": "stop",
+  "usage": {
+    "prompt_tokens": 15841,
+    "completion_tokens": 1362,
+    "usage_available": true
+  },
+  "max_output_tokens": 20000,
+  "unclosed_containers": [
+    [
+      "{",
+      0
+    ]
+  ],
+  "mismatched_closing_offsets": [],
+  "inside_string_at_end": false,
+  "configured_temperature": 0.1,
+  "temperature_causality": "not_established",
+  "http_raw_captured_for_this_run": false
+}
