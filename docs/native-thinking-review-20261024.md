@@ -40,3 +40,15 @@ Phase 14.5 保持 `in_progress`。三域真实严格通过的目标尚未完成�
 新增 [总输出回归](../tests/test_completion_output_limit.py) 经真实 SDK、HTTP 替身及 shared CostBudget 检查字段互斥、小于默认值的显式上限、额度不足、超时及缺 usage。响应未知时保留完整预留占用，不自动重发；completion 内的 reasoning 仍不重复计费。原生写作还覆盖 `length`、仅 reasoning、非法 JSON 均不能放行。替身不能证明真实供应商一定遵守参数，也不能证明科学支持。
 
 本批相关 **172 项通过**；最终默认 **4352 passed、25 deselected、8 warnings**，6 个改动 Python 文件格式及差异检查通过。24 个保护路径、472 份旧源码副本、007 原归档及 journal 不变。本批新增付费零，默认仍 disabled，原套件模式门禁未放宽，真实严格结果仍 0/3。后续使用独立冻结配置验收，不续跑旧终态。
+
+## 独立冻结配置入口（仅离线与准备）
+
+三域 CLI 现在提供固定的 `writer_reviewer_thinking_v1` 配置，仅在 `--prepare` 时显式选择。它同时开启 Pro 初稿／摘要／修复和 Lite Reviewer 的思考；Lite Evaluation、提取及规划仍为 disabled。生成、Reviewer 采用原 20,000／4,096 的总输出上限，Evaluation 保持 16,384。默认 `disabled_v1`、缺少该字段的旧 manifest 及旧模型检查门禁保留原语义；没有修改默认 YAML 或模型。
+
+有效配置使用深拷贝，模式与完整配置进入 manifest 身份；`--live` 从已冻结配置恢复，不允许重新传入模式。原 3 题／150 万 tokens／192 请求上限及所有科学门禁保持，不自动进入正式 15 题。历史 receipt 必须继续单列继承，准备新配置不能重置已花费用。
+
+JSON、CSV、Markdown 和 HTML 展示同源模式与输出额度；页面首部明确写作、Reviewer、Evaluation 的模式。缺失的历史额度显示不可用，不推算默认值。页面检查使用标有“离线配置预览（无模型请求）”的临时数据，桌面／390px、中英文、键盘切换与展开均通过，页面宽度 390、console 错误和警告为零；它不是一份新 Survey 或真实质量结果。
+
+[配置入口回归](../tests/test_writer_thinking_profile.py)覆盖显式模式、旧门禁、默认配置不变、输出／模型／预算漂移、manifest 身份、CLI 不得覆盖及四格式同源。相关 132 项通过，页面相关最终 38 项通过；最终默认 **4369 passed、25 deselected、8 warnings**，2 个改动 Python 文件格式及差异检查通过。首轮测试发现 consumer 误读配置层级，已按真实 `build_config_summary.effective` 修复，没有伪造扁平 fixture。
+
+此入口只建立可验证的实验配置，不证明开启思考能解决 007 的非法 JSON。下一次真实验收仍须单独冻结源码、三域完整材料、配置和累计账本，各题一次、技术或未知用量即停，失败保留，不追加至通过。

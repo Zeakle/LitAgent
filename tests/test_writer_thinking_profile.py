@@ -1,0 +1,249 @@
+"""Freeze explicit thinking campaigns without loosening the old disabled baseline."""
+
+import copy
+import csv
+import hashlib
+import json
+import sys
+from pathlib import Path
+
+import pytest
+
+from litagent.config import load_config
+from litagent.report_audit import atomic_json
+from scripts import run_frozen_writing as campaign
+from scripts.run_stage_model_quality import MODELS, ORIGIN, check_models
+
+BASELINE = "disabled_v1"
+THINKING = "writer_reviewer_thinking_v1"
+
+
+@pytest.fixture
+def configured():
+    """Make provider and reservation assertions independent of a developer's env."""
+    config = load_config()
+    config.llm.base_url, config.llm.model = ORIGIN, MODELS["extraction"]
+    for role, model in MODELS.items():
+        setattr(config.llm, role + "_model", model)
+    config.llm.max_tokens = 20000
+    config.safety.max_cost_tokens = 500000
+    for section in (config.planner, config.extractor, config.eval, config.adversarial):
+        section.thinking_mode = "disabled"
+    config.adversarial.review_max_tokens = 4096
+    config.eval.max_tokens = 16384
+    return config
+
+
+def test_old_model_gate_stays_disabled_and_new_profile_is_explicit(configured):
+    """The new mode cannot silently alter the baseline or shared app config."""
+    check_models(configured)
+    before = configured.model_dump()
+    thinking = campaign.profile_config(configured, THINKING)
+    assert configured.model_dump() == before
+    assert thinking.adversarial.thinking_mode == "enabled"
+    with pytest.raises(ValueError, match="model_configuration_invalid"):
+        check_models(thinking)
+    campaign.check_profile(thinking, THINKING)
+    with pytest.raises(ValueError, match="profile"):
+        campaign.check_profile(thinking, BASELINE)
+    assert campaign.profile_config(configured, BASELINE).model_dump() == before
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "unknown",
+        "mode",
+        "evaluation",
+        "planner",
+        "model",
+        "budget",
+        "output",
+        "review_output",
+        "eval_output",
+    ],
+)
+def test_profile_rejects_all_other_drift_without_correcting_the_caller(
+    configured, fault
+):
+    """Only the named mode change is allowed; no wider budget or model role slips in."""
+    config = campaign.profile_config(configured, THINKING)
+    profile = THINKING
+    if fault == "unknown":
+        profile = "arbitrary-url-or-mode"
+    if fault == "mode":
+        config.adversarial.thinking_mode = "provider_default"
+    if fault == "evaluation":
+        config.eval.thinking_mode = "enabled"
+    if fault == "planner":
+        config.planner.thinking_mode = "enabled"
+    if fault == "model":
+        config.llm.generation_model = "different"
+    if fault == "budget":
+        config.safety.max_cost_tokens = 500001
+    if fault == "output":
+        config.llm.max_tokens = 20001
+    if fault == "review_output":
+        config.adversarial.review_max_tokens = 4097
+    if fault == "eval_output":
+        config.eval.max_tokens = 16385
+    before = config.model_dump()
+    with pytest.raises(ValueError):
+        campaign.check_profile(config, profile)
+    assert config.model_dump() == before
+
+
+@pytest.fixture
+def manifest(tmp_path, monkeypatch, configured):
+    """Use real prepare/validate while substituting only the archive parser and Git."""
+    monkeypatch.chdir(tmp_path)
+    source = Path("source.py")
+    source.write_text("# Frozen test source\n")
+    monkeypatch.setattr(campaign, "source_paths", lambda: [source])
+    monkeypatch.setattr(
+        campaign.subprocess, "check_output", lambda *a, **kw: "commit\n"
+    )
+    for _, run in campaign.CASES:
+        atomic_json(Path("artifacts/runs") / (run + ".json"), {"run": run})
+
+    def read(path):
+        return {
+            "source_run_id": path.stem,
+            "archive_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+            "selection": {"selected_items": []},
+        }
+
+    monkeypatch.setattr(campaign, "read_bundle", read)
+    atomic_json(
+        Path(
+            "artifacts/acceptance/survey-reliability-20261022-004/acceptance-summary.json"
+        ),
+        {
+            "cumulative": {
+                "model_requests": 749,
+                "model_known_tokens": 4176901,
+                "model_unknown_conservative_tokens": 1030414,
+            }
+        },
+    )
+    config = campaign.profile_config(configured, THINKING)
+    root = tmp_path / "thinking-suite"
+    campaign.prepare(root, config, writing_profile=THINKING)
+    return root, config
+
+
+def test_named_profile_is_bound_to_manifest_and_preserves_fixed_scope(manifest):
+    """The explicit mode and unchanged three-case cap are part of one frozen identity."""
+    root, config = manifest
+    value = campaign.validate(root, config)
+    assert value["writing_profile"] == THINKING
+    assert value["config"]["effective"]["adversarial"]["thinking_mode"] == "enabled"
+    assert value["limits"] == campaign.LIMITS
+    assert [r["case_id"] for r in value["cases"]] == [c for c, _ in campaign.CASES]
+    assert value["history"]["model_requests"] == 749
+    assert value["history"]["model_unknown_conservative_tokens"] == 1030414
+    assert not (root / "state.json").exists()
+    with pytest.raises(ValueError, match="already_exists"):
+        campaign.prepare(root, config, writing_profile=THINKING)
+
+
+@pytest.mark.parametrize("profile", [None, BASELINE, "unreviewed"])
+def test_changing_profile_cannot_reinterpret_enabled_manifest(manifest, profile):
+    """Even a freshly recomputed digest cannot turn the mode into another contract."""
+    root, config = manifest
+    value = json.loads((root / "manifest.json").read_text())
+    if profile is None:
+        value.pop("writing_profile")
+    else:
+        value["writing_profile"] = profile
+    value["identity"] = campaign.digest(
+        {k: v for k, v in value.items() if k != "identity"}
+    )
+    atomic_json(root / "manifest.json", value)
+    with pytest.raises(ValueError, match="profile"):
+        campaign.validate(root, config)
+
+
+def test_live_cli_loads_frozen_mode_without_changing_default_config(
+    manifest, configured, monkeypatch, capsys
+):
+    """Live restores an already frozen mode, never an implicit new attempt."""
+    root, _ = manifest
+    before = configured.model_dump()
+    monkeypatch.setattr(sys, "argv", ["campaign", "--root", str(root), "--live"])
+    monkeypatch.setattr(campaign, "load_config", lambda: configured)
+
+    async def execute(path, config):
+        campaign.validate(path, config)
+        assert config.adversarial.thinking_mode == "enabled"
+        assert config.eval.thinking_mode == "disabled"
+        return {"status": "completed", "cases": []}
+
+    monkeypatch.setattr(campaign, "execute", execute)
+    campaign.main()
+    assert configured.model_dump() == before
+    assert json.loads(capsys.readouterr().out)["status"] == "completed"
+
+
+def test_live_cli_cannot_override_frozen_profile(tmp_path, monkeypatch):
+    """Reject conflicting execution flags before loading config or any transport."""
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["campaign", "--root", str(tmp_path), "--live", "--writing-profile", THINKING],
+    )
+
+    def forbidden():
+        raise AssertionError("must not even load mutable config")
+
+    monkeypatch.setattr(campaign, "load_config", forbidden)
+    with pytest.raises(SystemExit) as error:
+        campaign.main()
+    assert error.value.code == 2
+
+
+def test_public_exports_show_real_mode_and_keep_three_planned_cases(manifest):
+    """All presentations use one mode descriptor, without leaking config or sources."""
+    root, config = manifest
+    frozen = campaign.validate(root, config)
+    state = {"identity": frozen["identity"], "status": "prepared", "cases": []}
+    before = copy.deepcopy(state)
+    public = campaign.export(root, state, frozen)
+    assert state == before
+    descriptor = public["writing_profile"]
+    assert descriptor["id"] == THINKING
+    assert (
+        descriptor["generation_thinking_mode"]
+        == descriptor["reviewer_thinking_mode"]
+        == "enabled"
+    )
+    assert descriptor["evaluation_thinking_mode"] == "disabled"
+    assert descriptor["output_limit_parameter"] == "max_completion_tokens"
+    assert (
+        descriptor["generation_output_tokens"] == 20000
+        and descriptor["reviewer_output_tokens"] == 4096
+    )
+    out = Path("benchmarks/survey/results") / root.name
+    page = (out / "benchmark.html").read_text()
+    assert (
+        json.loads(
+            page.split('<script id="data" type="application/json">')[1].split(
+                "</script>"
+            )[0]
+        )
+        == public
+    )
+    assert THINKING in (out / "benchmark.md").read_text()
+    rows = list(csv.DictReader((out / "benchmark.csv").open()))
+    assert len(rows) == 3 and all(r["writing_profile"] == THINKING for r in rows)
+    assert all(
+        r["reviewer_thinking_mode"] == "enabled"
+        and r["generation_output_tokens"] == "20000"
+        and r["output_limit_parameter"] == "max_completion_tokens"
+        for r in rows
+    )
+    assert "writing_profile:d.writing_profile" in page
+    assert public["planned"] == public["not_run"] == 3 and public["passed"] == 0
+    assert "source_run_id" not in json.dumps(public) and "api_key" not in json.dumps(
+        public
+    )

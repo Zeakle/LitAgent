@@ -44,6 +44,67 @@ LIMITS = {
     "retries": 0,
     "formal_cases": 0,
 }
+DISABLED_PROFILE = "disabled_v1"
+THINKING_PROFILE = "writer_reviewer_thinking_v1"
+
+
+def profile_mode(profile):
+    """Resolve only server-defined campaign modes, never arbitrary provider kwargs."""
+    if profile == DISABLED_PROFILE:
+        return "disabled"
+    if profile == THINKING_PROFILE:
+        return "enabled"
+    raise ValueError("frozen_writing_profile_invalid")
+
+
+def profile_config(config, profile):
+    """Create an explicit experiment override without mutating deployment defaults."""
+    mode = profile_mode(profile)
+    if profile == DISABLED_PROFILE:
+        return config
+    result = config.model_copy(deep=True)
+    result.adversarial.thinking_mode = mode
+    return result
+
+
+def check_profile(config, profile):
+    """Reuse the unchanged baseline gate while checking the explicit mode separately."""
+    if config.adversarial.thinking_mode != profile_mode(profile):
+        raise ValueError("frozen_writing_profile_mode_conflict")
+    if profile == DISABLED_PROFILE:
+        check_models(config)
+        return
+    if config.adversarial.review_max_tokens != 4096 or config.eval.max_tokens != 16384:
+        raise ValueError("frozen_writing_profile_output_conflict")
+    baseline = config.model_copy(deep=True)
+    baseline.adversarial.thinking_mode = "disabled"
+    check_models(baseline)
+
+
+def profile_description(profile, summary):
+    """Publish only mode and output metadata that belongs to the frozen config."""
+    mode = profile_mode(profile)
+    summary = summary.get("effective", {})
+    llm = summary.get("llm", {})
+    routing = llm.get("model_routing", {})
+    return {
+        "id": profile,
+        "generation_thinking_mode": mode,
+        "reviewer_thinking_mode": mode,
+        "evaluation_thinking_mode": "disabled",
+        "output_limit_parameter": (
+            "max_tokens" if mode == "disabled" else "max_completion_tokens"
+        ),
+        "generation_output_tokens": llm.get("max_tokens"),
+        "reviewer_output_tokens": summary.get("adversarial", {}).get(
+            "review_max_tokens"
+        ),
+        "evaluation_output_tokens": summary.get("eval", {}).get("max_tokens"),
+        "configured_models": {
+            role: routing.get(role, llm.get("model"))
+            for role in ("extraction", "generation", "evaluation")
+        },
+    }
 
 
 def runtime_identity():
@@ -164,9 +225,9 @@ def accounting_history(history, parents):
     return history, receipts
 
 
-def prepare(root, config, *, accounting_parents=()):
+def prepare(root, config, *, accounting_parents=(), writing_profile=DISABLED_PROFILE):
     """Freeze all three materials and the same source before any paid request."""
-    check_models(config)
+    check_profile(config, writing_profile)
     root = Path(root)
     if root.exists():
         raise ValueError("frozen_campaign_already_exists")
@@ -210,6 +271,8 @@ def prepare(root, config, *, accounting_parents=()):
         },
     }
     manifest["limits"] = dict(LIMITS)
+    if writing_profile != DISABLED_PROFILE:
+        manifest["writing_profile"] = writing_profile
     if receipts:
         manifest["accounting_receipts"] = receipts
     manifest["runtime"] = runtime_identity()
@@ -249,7 +312,7 @@ def validate(root, config):
         != list(CASES)
     ):
         raise ValueError("frozen_campaign_identity_conflict")
-    check_models(config)
+    check_profile(config, m.get("writing_profile", DISABLED_PROFILE))
     if m.get("accounting_receipts"):
         receipts = m["accounting_receipts"]
         history, verified = accounting_history(
@@ -308,6 +371,9 @@ def evaluation_diagnostic(report):
 def export(root, state, manifest):
     """Publish one sanitized data source with separate execution and quality outcomes."""
     executed = state["cases"]
+    writing_profile = profile_description(
+        manifest.get("writing_profile", DISABLED_PROFILE), manifest.get("config", {})
+    )
     rows = [
         next(
             (dict(r) for r in executed if r["case_id"] == case_id),
@@ -413,17 +479,29 @@ def export(root, state, manifest):
         )
 
     for row in rows:
+        row["writing_profile"] = writing_profile["id"]
+        for key in (
+            "generation_thinking_mode",
+            "reviewer_thinking_mode",
+            "evaluation_thinking_mode",
+            "output_limit_parameter",
+            "generation_output_tokens",
+            "reviewer_output_tokens",
+            "evaluation_output_tokens",
+        ):
+            row[key] = writing_profile[key]
         row["evaluation_reason"] = reason(row)
         for key in ("expected_assertions", "processed_assertions"):
             row[key] = row.get("evaluation_diagnostic", {}).get(key)
 
     public = {
         "version": VERSION,
-        "view_version": "frozen-writing-view-v5",
+        "view_version": "frozen-writing-view-v6",
         "suite_id": root.name,
         "identity": manifest["identity"],
         "source_commit": manifest["source_commit"],
         "contract": CONTRACT,
+        "writing_profile": writing_profile,
         "state": state["status"],
         "stop_reason": state.get("stop_reason"),
         "planned": 3,
@@ -450,6 +528,14 @@ def export(root, state, manifest):
     atomic_json(out / "benchmark.json", public)
     keys = [
         "case_id",
+        "writing_profile",
+        "generation_thinking_mode",
+        "reviewer_thinking_mode",
+        "evaluation_thinking_mode",
+        "output_limit_parameter",
+        "generation_output_tokens",
+        "reviewer_output_tokens",
+        "evaluation_output_tokens",
         "run_id",
         "status",
         "generated",
@@ -478,6 +564,13 @@ def export(root, state, manifest):
     md += "".join(
         f"|{r['case_id']}|{display(r.get('generated'))}|{r.get('evaluation')}|{display(r.get('publishable'))}|{display(r.get('supported'))}/{display(r.get('unsupported'))}/{display(r.get('unverified'))}|{reason(r)}|\n"
         for r in rows
+    )
+    md += (
+        "\n冻结模式 / Frozen profile: `"
+        + writing_profile["id"]
+        + "`。\n\n```json\n"
+        + json.dumps(writing_profile, ensure_ascii=False, indent=2)
+        + "\n```\n"
     )
     md += f"\n新增已知用量{public['new_usage']['known_tokens']} tokens，未知保守占用{public['new_usage']['unknown_hold']}，{public['new_usage']['requests']}请求。历史用量独立保留，不重复计算提取费用。失败和未运行题不移出分母，不追加到通过。\n\n[JSON](benchmark.json) · [CSV](benchmark.csv) · [HTML](benchmark.html)\n"
     (out / "benchmark.md").write_text(md)
@@ -521,7 +614,7 @@ def export(root, state, manifest):
         + "</pre></details>"
         for r in rows
     )
-    page = """<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LitAgent · Frozen writing validation</title><style>*{box-sizing:border-box}body{font:16px/1.6 system-ui;background:#f4f6fa;color:#172c43;max-width:1100px;padding:20px;margin:auto}section,header{background:white;padding:20px;margin:16px 0;border:1px solid #dbe2ee;border-radius:12px}h1{font-size:1.7rem}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}.stat{background:#edf2f9;padding:14px}.scroll{overflow:auto}table{width:100%;border-collapse:collapse}th,td{padding:10px;border-bottom:1px solid #ccc;text-align:left}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:.85em}button,a,summary{cursor:pointer}button{font:inherit;padding:8px}a{color:#135a9e}*:focus-visible{outline:3px solid #1679d2}summary{padding:12px 0}p{overflow-wrap:anywhere}@media(max-width:430px){body{padding:10px}section,header{padding:14px}h1{font-size:1.3rem}}</style><header><button id="locale">English / 中文</button><h1 id="title">三域冻结正文验收</h1><p id="scope">固定证据 → 正文 → Reviewer → Evaluation → 自动交付或失败归档；不重新检索。Judge/Jev关闭。</p></header><section><div id="stats" class="grid"></div><p id="note">自动评测；人工校准未验证。未核验不等于通过，协议完成不等于科学通过。失败及未运行题均保留在分母。</p><p id="status"></p></section><section class="scroll"><table><thead><tr><th>Case</th><th>Generated</th><th>Evaluation</th><th>Delivered</th><th>Supported</th><th>Unsupported</th><th>Unverified</th><th>Detail</th></tr></thead><tbody>__ROWS__</tbody></table></section><section><h2>诊断 / Diagnostics</h2>__DETAILS__</section><section><a href="benchmark.json">JSON</a> · <a href="benchmark.csv">CSV</a> · <a href="benchmark.md">Markdown</a><pre id="usage"></pre></section><script id="data" type="application/json">__DATA__</script><script>const d=JSON.parse(document.getElementById('data').textContent);let en=false;function draw(){document.documentElement.lang=en?'en':'zh-CN';document.getElementById('title').textContent=en?'Three-domain frozen writing validation':'三域冻结正文验收';document.getElementById('scope').textContent=en?'Frozen evidence → writing → Reviewer → Evaluation → automatic delivery or archived failure. No retrieval. Judge/Jev disabled.':'固定证据 → 正文 → Reviewer → Evaluation → 自动交付或失败归档；不重新检索。Judge/Jev关闭。';document.getElementById('note').textContent=en?'Automatic evaluation; no human calibration. Unverified is not passed. Protocol completion is not scientific acceptance. Failures and unrun cases remain in the denominator.':'自动评测；人工校准未验证。未核验不等于通过，协议完成不等于科学通过。失败及未运行题均保留在分母。';document.getElementById('status').textContent=d.state+' · '+(d.stop_reason||'');let s=document.getElementById('stats');s.replaceChildren();for(const [k,v]of Object.entries({Planned:3,Run:d.run,Generated:d.generated,Evaluated:d.evaluation_completed,Delivered:d.passed})){let e=document.createElement('div');e.className='stat';e.textContent=k+' '+v+' / 3';s.append(e)}document.getElementById('usage').textContent=JSON.stringify({new_usage:d.new_usage,historical_usage:d.historical_usage,source_commit:d.source_commit,contract:d.contract},null,2)}document.getElementById('locale').onclick=()=>{en=!en;draw()};draw();</script></html>"""
+    page = """<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LitAgent · Frozen writing validation</title><style>*{box-sizing:border-box}body{font:16px/1.6 system-ui;background:#f4f6fa;color:#172c43;max-width:1100px;padding:20px;margin:auto}section,header{background:white;padding:20px;margin:16px 0;border:1px solid #dbe2ee;border-radius:12px}h1{font-size:1.7rem}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}.stat{background:#edf2f9;padding:14px}.scroll{overflow:auto}table{width:100%;border-collapse:collapse}th,td{padding:10px;border-bottom:1px solid #ccc;text-align:left}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:.85em}button,a,summary{cursor:pointer}button{font:inherit;padding:8px}a{color:#135a9e}*:focus-visible{outline:3px solid #1679d2}summary{padding:12px 0}p{overflow-wrap:anywhere}@media(max-width:430px){body{padding:10px}section,header{padding:14px}h1{font-size:1.3rem}}</style><header><button id="locale">English / 中文</button><h1 id="title">三域冻结正文验收</h1><p id="scope">固定证据 → 正文 → Reviewer → Evaluation → 自动交付或失败归档；不重新检索。Judge/Jev关闭。</p><p id="profile"></p></header><section><div id="stats" class="grid"></div><p id="note">自动评测；人工校准未验证。未核验不等于通过，协议完成不等于科学通过。失败及未运行题均保留在分母。</p><p id="status"></p></section><section class="scroll"><table><thead><tr><th>Case</th><th>Generated</th><th>Evaluation</th><th>Delivered</th><th>Supported</th><th>Unsupported</th><th>Unverified</th><th>Detail</th></tr></thead><tbody>__ROWS__</tbody></table></section><section><h2>诊断 / Diagnostics</h2>__DETAILS__</section><section><a href="benchmark.json">JSON</a> · <a href="benchmark.csv">CSV</a> · <a href="benchmark.md">Markdown</a><pre id="usage"></pre></section><script id="data" type="application/json">__DATA__</script><script>const d=JSON.parse(document.getElementById('data').textContent);let en=false;function draw(){document.documentElement.lang=en?'en':'zh-CN';document.getElementById('title').textContent=en?'Three-domain frozen writing validation':'三域冻结正文验收';document.getElementById('scope').textContent=en?'Frozen evidence → writing → Reviewer → Evaluation → automatic delivery or archived failure. No retrieval. Judge/Jev disabled.':'固定证据 → 正文 → Reviewer → Evaluation → 自动交付或失败归档；不重新检索。Judge/Jev关闭。';document.getElementById('note').textContent=en?'Automatic evaluation; no human calibration. Unverified is not passed. Protocol completion is not scientific acceptance. Failures and unrun cases remain in the denominator.':'自动评测；人工校准未验证。未核验不等于通过，协议完成不等于科学通过。失败及未运行题均保留在分母。';const p=d.writing_profile;document.getElementById('profile').textContent=(en?'Frozen thinking profile: ':'冻结思考配置：')+p.id+' · '+(en?'Writing':'写作')+' '+p.generation_thinking_mode+' / Reviewer '+p.reviewer_thinking_mode+' / Evaluation '+p.evaluation_thinking_mode+' · '+p.output_limit_parameter+' '+(p.generation_output_tokens??'—')+' / '+(p.reviewer_output_tokens??'—');document.getElementById('status').textContent=d.state+' · '+(d.stop_reason||'');let s=document.getElementById('stats');s.replaceChildren();for(const [k,v]of Object.entries({Planned:3,Run:d.run,Generated:d.generated,Evaluated:d.evaluation_completed,Delivered:d.passed})){let e=document.createElement('div');e.className='stat';e.textContent=k+' '+v+' / 3';s.append(e)}document.getElementById('usage').textContent=JSON.stringify({new_usage:d.new_usage,historical_usage:d.historical_usage,writing_profile:d.writing_profile,source_commit:d.source_commit,contract:d.contract},null,2)}document.getElementById('locale').onclick=()=>{en=!en;draw()};draw();</script></html>"""
     page = (
         page.replace("__ROWS__", table)
         .replace("__DETAILS__", details)
@@ -760,15 +853,33 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--root", type=Path, required=True)
     p.add_argument("--accounting-parent", type=Path, action="append", default=[])
+    p.add_argument(
+        "--writing-profile", choices=(DISABLED_PROFILE, THINKING_PROFILE), default=None
+    )
     g = p.add_mutually_exclusive_group(required=True)
     g.add_argument("--prepare", action="store_true")
     g.add_argument("--live", action="store_true")
     args = p.parse_args()
     if args.live and args.accounting_parent:
         p.error("--accounting-parent is frozen during --prepare only")
+    if args.live and args.writing_profile is not None:
+        p.error("--writing-profile is frozen during --prepare only")
     cfg = load_config()
+    profile = (
+        (args.writing_profile or DISABLED_PROFILE)
+        if args.prepare
+        else json.loads((args.root / "manifest.json").read_text()).get(
+            "writing_profile", DISABLED_PROFILE
+        )
+    )
+    cfg = profile_config(cfg, profile)
     result = (
-        prepare(args.root, cfg, accounting_parents=args.accounting_parent)
+        prepare(
+            args.root,
+            cfg,
+            accounting_parents=args.accounting_parent,
+            writing_profile=profile,
+        )
         if args.prepare
         else asyncio.run(execute(args.root, cfg))
     )
