@@ -9,6 +9,48 @@ from collections import Counter
 from collections.abc import Mapping
 
 ANALYSIS_CONTRACT = "body-analysis-v1"
+WRITER_CONTENT_CONTRACT = "grounded-writer-content-v1"
+WRITER_CONTENT_INSTRUCTION = """
+CONTENT CONTRACT grounded-writer-content-v1:
+Each authored text unit should express one independently testable proposition.
+Keep the method, dataset, baseline, value, unit and qualifiers of that proposition
+together. Split independent mechanisms, experimental results and recommendations
+into separate units; splitting does not reduce their assertion count. Punctuation
+alone does not establish atomicity or scientific error. Never hide multiple facts
+in an enumeration, replace a semicolon, or weaken conditions to evade checking.
+
+Give each chapter a distinct job: introduce the question and scope briefly; explain
+classification criteria in taxonomy; develop source-backed mechanisms in methods;
+compare actual results and conditions in experiments; discuss concrete supported
+limitations in open_problems. Do not repeat the full mechanism list in each chapter.
+Do not infer speed, parameter cost, suitability or universal superiority from a
+mechanism alone. A comparison needs the actual premises for both methods, with
+their original conditions preserved; unmatched settings cannot support a ranking.
+
+The host owns retrieval disclosure and material-gap records. Do not fill academic
+paragraphs with freely authored claims that selected sources lack a table, setting
+or result. A missing extracted metadata field does not mean the original omits it.
+Read the full supplied originals. Do not invent a field-wide gap or present missing
+selected material as a method's scientific limitation. Retain all core questions,
+named methods and required conditions; gaps must remain unresolved rather than be
+replaced by unrelated facts, generic caveats or an empty report.
+
+Abstract and conclusion should select a few central findings, not enumerate every
+method and repeat its mechanism. Normally focus on two or three findings in each,
+within the existing host summary limits; this is guidance, not a scientific verdict
+based on sentence count. Use different emphases, preserve necessary conditions and
+direct support, and do not add recommendations or causality beyond the premises.
+Do not delete substantive body findings just to shorten summaries or fit capacity.
+The independent evaluator counts every atomic assertion across body and summaries,
+not JSON units. Its unchanged capacity and scientific gates still apply. Do not
+omit hard assertions, relabel science as organization/method, or claim verification
+from a source-located card or a model-generated classification.
+
+For Reviewer or global review, apply these criteria to exact host-bound units and
+report concrete problems, not a rewrite. Concision targets are not automatic errors
+or exemptions. A scientifically supported finding and complete core coverage remain
+necessary; these writing instructions never provide scientific evidence.
+"""
 NATIVE_OWNERSHIP_INSTRUCTION = """
 HOST NATIVE OWNERSHIP grounded-writer-v1: each supplied :native: fragment is one
 exact host-bound authored unit with its actual citation set. Those citations apply

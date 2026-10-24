@@ -12,6 +12,7 @@ from test_complete_native_repair import source_selection
 from litagent.agents.adversarial import AdversarialReviewWorker
 from litagent.agents.reviewer import ReviewerWorker
 from litagent.agents.synthesis import SynthesisWorker
+from litagent.body_quality import WRITER_CONTENT_CONTRACT
 from litagent.config import EvalConfig
 from litagent.context.evidence_selector import EvidenceSelection
 from litagent.eval.scoped import build_source_fragments, evaluate_scoped
@@ -249,6 +250,7 @@ class Provider:
         """Initialize the controlled transport."""
         self.case = case
         self.calls = []
+        self.messages = []
         self.decline = decline
         self.invalid = invalid
 
@@ -256,6 +258,7 @@ class Provider:
         """Return controlled provider output at the external transport boundary."""
         p = json.loads(messages[1]["content"])
         self.calls.append((p, kwargs))
+        self.messages.append(copy.deepcopy(messages))
         if "targets" in p:
             result = (
                 {
@@ -487,8 +490,9 @@ class EvaluatorTransport:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("unsupported", [False, True])
+@pytest.mark.parametrize("current_content", [False, True])
 async def test_actual_v3_does_not_confuse_cross_chapter_permission_with_support(
-    case, unsupported
+    case, unsupported, current_content
 ):
     """Actual v3 does not confuse cross chapter permission with support."""
     from litagent.quality import strict_acceptance
@@ -496,6 +500,8 @@ async def test_actual_v3_does_not_confuse_cross_chapter_permission_with_support(
     draft, bindings = compile_document(
         case.body, case.summaries, case.cards, case.aliases, "en"
     )
+    if not current_content:
+        bindings.pop("content_contract")
     context = {
         "query": case.packet["query"],
         "quality_policy": "strict_auto_v2",
@@ -521,6 +527,12 @@ async def test_actual_v3_does_not_confuse_cross_chapter_permission_with_support(
         "failed" if unsupported else "passed"
     )
     assert details["score"] == (0.0 if unsupported else 1.0)
+    assert details.get("writer_content_contract") == (
+        WRITER_CONTENT_CONTRACT if current_content else None
+    )
+    assert llm.base.calls[-1].get("writer_content_contract") == (
+        WRITER_CONTENT_CONTRACT if current_content else None
+    )
     if unsupported:
         assert details["unsupported_count"] > 0
     inventory = llm.base.calls[0]
@@ -603,6 +615,7 @@ async def test_frozen_runtime_uses_real_workers_report_exit_and_evaluation(
                 )
             ):
                 assert messages[0]["content"].count(PROMPT_CONTRACT) == 1
+                assert messages[0]["content"].count(WRITER_CONTENT_CONTRACT) == 1
             if "targets" in p:
                 summary = "body_units" in p
                 if not summary:

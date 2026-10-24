@@ -12,6 +12,8 @@ from litagent.body_quality import (
     APPLICABILITY_CONTRACT,
     APPLICABILITY_INSTRUCTION,
     ROLES,
+    WRITER_CONTENT_CONTRACT,
+    WRITER_CONTENT_INSTRUCTION,
     analysis_claim_ids_by_section,
 )
 from litagent.eval.scoped import (
@@ -305,12 +307,19 @@ NOTICE_PROMPT = "\nThe host_scope_notice_catalog contains fixed statements about
 
 def global_prompt(payload: dict) -> str:
     """Keep ordinary citations separate from concrete report inconsistencies."""
-    if payload.get(
-        "global_consistency_contract"
-    ) != GLOBAL_CONSISTENCY_CONTRACT and not payload.get("body_analysis_contract"):
+    if (
+        payload.get("global_consistency_contract") != GLOBAL_CONSISTENCY_CONTRACT
+        and not payload.get("body_analysis_contract")
+        and (payload.get("writer_content_contract") != WRITER_CONTENT_CONTRACT)
+    ):
         return GLOBAL_PROMPT
     return (
         GLOBAL_PROMPT
+        + (
+            WRITER_CONTENT_INSTRUCTION
+            if payload.get("writer_content_contract") == WRITER_CONTENT_CONTRACT
+            else ""
+        )
         + (
             "\nHOST GLOBAL COMPLETENESS host-global-completeness-v1: source_units is the complete set to review. excluded_unit_inventory lists exclusions ONLY; an empty exclusions list never means an empty report. Return exactly one units entry per expected_source_unit_id, one coverage entry per expected_requirement_id and one analyses entry per analysis_duties key. Inadequate or unanswerable content still requires an explicit negative decision and explanation; never return empty arrays for nonempty inputs.\nBODY ANALYSIS: return analyses with section_key, adequate, claim_ids and explanation for EVERY key in analysis_duties. Judge substantive mechanisms, contributions and applicability in methods; classification criteria/relations in taxonomy; comparable conditions or explicit non-comparability in experiments; concrete limitations in open_problems; scientific synthesis in abstract and evidence-backed answers/tradeoffs in conclusion. A title, method mention, scope notice, repeated fact or arbitrary correct assertion cannot establish analytical adequacy. Every adequate result must cite actual scientific IDs from that section. Do not infer support; the host separately checks scientific verdicts. More length/assertions is not a quality test.\n"
             if payload.get("body_analysis_contract")
@@ -579,6 +588,11 @@ async def assess_batches(
         if checkpoint:
             checkpoint(progress)
     global_payload = {
+        **(
+            {"writer_content_contract": WRITER_CONTENT_CONTRACT}
+            if payload.get("writer_content_contract") == WRITER_CONTENT_CONTRACT
+            else {}
+        ),
         **(
             {
                 "body_analysis_contract": payload["body_analysis_contract"],

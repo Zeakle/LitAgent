@@ -263,8 +263,9 @@ async def test_mutated_card_source_stops_before_any_model_call():
 
 
 @pytest.mark.asyncio
-async def test_capacity_overflow_is_not_silently_truncated():
-    survey, context = materials(129)
+@pytest.mark.parametrize("count", [129, 132])
+async def test_capacity_overflow_is_not_silently_truncated(count):
+    survey, context = materials(count)
     llm = BatchLLM()
     # Isolate the assertion-count gate from the complete-request context gate.
     config = EvalConfig(faithfulness_max_evidence_items=150, context_tokens=262144)

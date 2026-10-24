@@ -69,7 +69,7 @@ def source_paths():
     paths += (
         list(Path("src/litagent").rglob("*.py"))
         + list(Path("scripts").glob("*.py"))
-        + list(Path("tests").glob("test_writer_v2*.py"))
+        + list(Path("tests").rglob("*.py"))
     )
     return sorted({p for p in paths if p.is_file() and "__pycache__" not in str(p)})
 

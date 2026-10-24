@@ -13,7 +13,11 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from litagent.body_quality import ANALYSIS_OWNERSHIP_CONTRACT, APPLICABILITY_CONTRACT
+from litagent.body_quality import (
+    ANALYSIS_OWNERSHIP_CONTRACT,
+    APPLICABILITY_CONTRACT,
+    WRITER_CONTENT_CONTRACT,
+)
 from litagent.evidence import extract_evidence_refs_ordered
 from litagent.llm.client import chat_with_timeout
 from litagent.observability.context import deadline_scope
@@ -2092,6 +2096,11 @@ async def evaluate_scoped(
         == "grounded-writer-v1"
     ):
         result["writer_bindings"] = context["writing_bindings"]
+        if (
+            context["writing_bindings"].get("content_contract")
+            == WRITER_CONTENT_CONTRACT
+        ):
+            result["writer_content_contract"] = WRITER_CONTENT_CONTRACT
     return result
 
 
@@ -2355,6 +2364,11 @@ async def _evaluate_scoped(*, llm, survey, context, config) -> dict:
             payload["source_applicability_contract"] = APPLICABILITY_CONTRACT
         if native_fragments:
             payload["native_unit_ownership_contract"] = "grounded-writer-v1"
+            if (
+                context["writing_bindings"].get("content_contract")
+                == WRITER_CONTENT_CONTRACT
+            ):
+                payload["writer_content_contract"] = WRITER_CONTENT_CONTRACT
         if context.get("quality_policy") == "strict_auto_v2":
             payload["source_fidelity_contract"] = SOURCE_FIDELITY_CONTRACT
             payload["global_consistency_contract"] = GLOBAL_CONSISTENCY_CONTRACT

@@ -140,6 +140,7 @@ def build_manifest(config):
             Path("artifacts/acceptance/writer-v2-protocol-20261023-001"),
             Path("artifacts/acceptance/frozen-writer-three-domain-20261023-002"),
             Path("artifacts/acceptance/writer-v2-schema-compat-20261023-001"),
+            Path("artifacts/acceptance/frozen-writer-three-domain-20261023-003"),
         ],
     )
     files = [

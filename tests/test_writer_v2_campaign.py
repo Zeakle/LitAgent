@@ -121,6 +121,7 @@ def test_campaign_source_inventory_includes_new_consumers_and_tests():
         "scripts/run_frozen_writing.py",
         "tests/test_writer_v2.py",
         "tests/test_writer_v2_campaign.py",
+        "tests/test_writer_content.py",
     } <= paths
     assert campaign.LIMITS["formal_cases"] == 0 and len(campaign.CASES) == 3
 

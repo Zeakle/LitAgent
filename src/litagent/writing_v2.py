@@ -13,7 +13,11 @@ from pathlib import Path
 
 from jsonschema import Draft202012Validator
 
-from litagent.body_quality import ROLES
+from litagent.body_quality import (
+    ROLES,
+    WRITER_CONTENT_CONTRACT,
+    WRITER_CONTENT_INSTRUCTION,
+)
 from litagent.evidence import extract_evidence_refs_ordered
 from litagent.llm.client import chat_with_timeout
 from litagent.observability.context import get_task_id
@@ -32,7 +36,7 @@ from litagent.review_structure import assemble_methodology, structure_sections
 from litagent.safety.budget import CostBudget, strict_request_reservation
 
 CONTRACT = "grounded-writer-v1"
-EXECUTION_CONTRACT = "grounded-writer-execution-v4"
+EXECUTION_CONTRACT = "grounded-writer-execution-v5"
 PROVIDER_SCHEMA_CONTRACT = "ark-structured-schema-v1"
 PROMPT_CONTRACT = "grounded-writer-layout-v1"
 STRATEGY = "body_summary_v2"
@@ -228,7 +232,14 @@ def request_messages(system, payload, schema):
 
     describe(schema, "$")
     return [
-        {"role": "system", "content": system + "\n\n" + "\n".join(lines)},
+        {
+            "role": "system",
+            "content": system
+            + "\n"
+            + WRITER_CONTENT_INSTRUCTION
+            + "\n"
+            + "\n".join(lines),
+        },
         {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
     ]
 
@@ -478,6 +489,7 @@ def compile_document(
     draft = assemble_methodology(academic, "academic_v2", language, methodology or {})
     bindings = {
         "writer_contract": CONTRACT,
+        "content_contract": WRITER_CONTENT_CONTRACT,
         "scope_policy": SCOPE,
         "academic_end": len(academic),
         "academic_sha256": hashlib.sha256(academic.encode()).hexdigest(),
@@ -550,7 +562,9 @@ class WriterSession:
         self.llm, self.path, self.run_id = llm, Path(path), run_id
         self.packet, self.aliases, self.trace_hook = packet, aliases, trace_hook
         self.journal_path = Path(str(path) + ".writer-v2.json")
-        self.identity = digest([CONTRACT, EXECUTION_CONTRACT, packet, aliases])
+        self.identity = digest(
+            [CONTRACT, EXECUTION_CONTRACT, WRITER_CONTENT_CONTRACT, packet, aliases]
+        )
         if self.journal_path.exists():
             self.journal = json.loads(self.journal_path.read_text())
             if self.journal.get("identity") != self.identity:
@@ -559,6 +573,7 @@ class WriterSession:
             self.journal = {
                 "contract": CONTRACT,
                 "execution_contract": EXECUTION_CONTRACT,
+                "content_contract": WRITER_CONTENT_CONTRACT,
                 "identity": self.identity,
                 "calls": {},
                 "candidates": [],
@@ -593,6 +608,7 @@ class WriterSession:
             "schema_sha256": digest(schema),
             "provider_schema_contract": PROVIDER_SCHEMA_CONTRACT,
             "prompt_contract": PROMPT_CONTRACT,
+            "content_contract": WRITER_CONTENT_CONTRACT,
             "provider_schema_sha256": digest(rf["json_schema"]["schema"]),
             "max_tokens": max_tokens,
             "reservation": reservation,
