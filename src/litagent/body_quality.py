@@ -10,6 +10,7 @@ from collections.abc import Mapping
 
 ANALYSIS_CONTRACT = "body-analysis-v1"
 WRITER_CONTENT_CONTRACT = "grounded-writer-content-v1"
+NATIVE_REPORT_INPUT_CONTRACT = "host-report-input-v1"
 WRITER_CONTENT_INSTRUCTION = """
 CONTENT CONTRACT grounded-writer-content-v1:
 Each authored text unit should express one independently testable proposition.

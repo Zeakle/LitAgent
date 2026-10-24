@@ -224,7 +224,11 @@ async def test_real_sdk_section_budget_stops_before_next_request(case, tmp_path)
         assert len(sent) == 1
         assert budget.used == 20000 and budget.snapshot()["requests_sent"] == 1
         assert session.journal["failure"]["body_section"] == BODY[1]
-        assert set(session.journal["calls"]) == {"body:" + BODY[0]}
+        assert set(session.journal["calls"]) == {"body:" + BODY[0], "body:" + BODY[1]}
+        rejected = session.journal["calls"]["body:" + BODY[1]]
+        assert rejected["status"] == "rejected_not_sent"
+        assert rejected["stage"] == "synthesis"
+        assert session.journal["failure"]["request_sent"] is False
         assert budget._reserved_tokens == 0
     finally:
         reset_task_id(token)

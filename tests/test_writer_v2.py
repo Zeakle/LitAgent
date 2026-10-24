@@ -286,7 +286,7 @@ class Provider:
             )
         elif "body_units" in p:
             result = self.case.summaries
-        elif "draft" in p:
+        elif "draft" in p or "report_layout" in p:
             result = {"issues": [], "explanation": "No controlled review defect."}
         elif "requested_body_section" in p:
             result = {
@@ -469,11 +469,21 @@ class EvaluatorTransport:
             sections = {
                 u["source_unit_id"]: u["section"] for u in payload["report_structure"]
             }
+            parents = {
+                f["source_fragment_id"]: u["source_unit_id"]
+                for u in payload["source_units"]
+                for f in u["source_fragments"]
+            }
             grouped = {
                 k: [
                     c["claim_id"]
                     for c in payload["assertions"]
-                    if sections[c["source_unit_id"]] == titles[k]
+                    if sections[
+                        c.get(
+                            "source_unit_id", parents.get(c.get("source_fragment_id"))
+                        )
+                    ]
+                    == titles[k]
                 ]
                 for k in ROLES
             }
@@ -509,6 +519,7 @@ async def test_actual_v3_does_not_confuse_cross_chapter_permission_with_support(
     )
     if not current_content:
         bindings.pop("content_contract")
+        bindings.pop("input_contract")
     context = {
         "query": case.packet["query"],
         "quality_policy": "strict_auto_v2",

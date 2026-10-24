@@ -123,9 +123,7 @@ async def test_host_rejects_business_constraint_violations_after_native_acceptan
 
 
 @pytest.mark.asyncio
-async def test_unknown_native_keyword_is_rejected_before_http_or_journal(
-    case, tmp_path
-):
+async def test_unknown_native_keyword_is_journaled_without_http(case, tmp_path):
     """Future constraints need a reviewed mapping rather than automatic omission."""
     host = schema_for("body", case.aliases)
     host["properties"]["title"]["pattern"] = "^review"
@@ -135,7 +133,12 @@ async def test_unknown_native_keyword_is_rejected_before_http_or_journal(
     )
     with pytest.raises(WriterError, match="provider_schema_keyword_invalid"):
         await session.call("body", "system", case.packet, host)
-    assert not provider.calls and not session.journal["calls"]
+    assert not provider.calls
+    entry = session.journal["calls"]["body"]
+    assert entry["status"] == "rejected_not_sent"
+    assert entry["failure"]["code"] == "writer_provider_schema_keyword_invalid"
+    assert session.journal["failure"]["request_sent"] is False
+    assert session.journal["failure"]["stage"] == "synthesis"
 
 
 def test_original_malformed_json_stays_invalid_under_full_host_schema(case):

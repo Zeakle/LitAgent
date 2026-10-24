@@ -13,7 +13,8 @@ Phase 14.5 scientific acceptance remains in progress.
 | 15-case Survey benchmark | implementation and diagnostic pilots complete; formal controlled baseline pending | [dataset](../benchmarks/survey/dataset.yaml), [methodology](../benchmarks/survey/README.md) |
 | Evidence / fact-card preparation | verified offline; semantic fields remain unverified candidates | [quality](../src/litagent/quality.py), [source binding tests](../tests/test_grounded_extraction_claims.py) |
 | Scoped Evaluation v3 and strict delivery | verified offline; full coverage and scientific support 1.0 required; no formal live baseline | [batched evaluator](../src/litagent/eval/batched.py), [tests](../tests/test_batched_evaluation.py) |
-| Converged writer with fixed chapter requests | execution-v6 verified offline; no new live result for this repair | [writer](../src/litagent/writing_v2.py), [chapter regressions](../tests/test_writer_sections.py), [review](writer-sections-review-20261024.md) |
+| Converged writer with fixed chapter requests | execution-v6 verified offline; live draft compiled, Reviewer budget blocked; science unverified | [writer](../src/litagent/writing_v2.py), [chapter regressions](../tests/test_writer_sections.py), [bounded result](../benchmarks/survey/results/frozen-writer-three-domain-20261024-005/README.md) |
+| Complete-input budget adapter | execution-v7 implemented; actual-draft offline request reconstruction fits; no new live science result | [review](native-input-review-20261024.md), [regressions](../tests/test_native_report_input.py) |
 | Lite / Pro stage routing | live calls observed; no controlled quality gain established | [routing](../src/litagent/llm/routing.py), [tests](../tests/test_stage_model_routing.py), [public diagnostic](../src/litagent/static/presentation/manifest.json) |
 | Native array writing and inline schema | verified offline; original invalid response remains rejected | [codec](../src/litagent/native_wire.py), [regressions](../tests/test_native_schema_inline.py) |
 | Staged body / summary generation | verified offline; first staged body JSON failed; flat frozen-input follow-up JSON parsed but card schema failed | [staged writer](../src/litagent/staged_generation.py), [SDK regression tests](../tests/test_staged_native_generation.py), [bounded result](../benchmarks/survey/results/survey-reliability-20261021-001/README.md) |
@@ -129,4 +130,13 @@ request; the host assembles and validates the complete body before summaries.
 Execution-v6 passed 4,274 default offline tests. SDK regressions cover Pro/Lite
 routing, separate request accounting, no downstream budget borrowing and no replay
 of a cancelled prefix. Existing scientific gates and two shared repairs remain.
-No paid request was made for this repair, and its live quality effect is unverified.
+No paid request was made during that offline repair. Its subsequent
+[fixed live campaign](../benchmarks/survey/results/frozen-writer-three-domain-20261024-005/README.md)
+completed five chapters and summaries with six Pro requests / 76,146 known tokens.
+Reviewer input required a 151,731 reservation against 117,964 context allowance;
+it was refused before transmission. Evaluation did not run, strict delivery is
+0/3, and the two other cases were not started. This establishes one compiled draft,
+not scientific quality. A read-only replay of all six bound inputs reproduced its
+compiled SHA. The generic archived failure is preserved alongside the underlying
+Reviewer budget diagnostic. A separate mocked inventory exposed another oversized
+global request; those scripted verdicts are not scientific measurements.

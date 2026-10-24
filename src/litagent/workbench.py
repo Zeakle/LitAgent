@@ -129,13 +129,17 @@ class RunOptions(Contract):
         if self.generation_strategy == "single_v1":
             payload.pop("generation_strategy")
         elif self.generation_strategy == "body_summary_v2":
-            from litagent.body_quality import WRITER_CONTENT_CONTRACT
+            from litagent.body_quality import (
+                NATIVE_REPORT_INPUT_CONTRACT,
+                WRITER_CONTENT_CONTRACT,
+            )
             from litagent.writing_v2 import EXECUTION_CONTRACT, PROVIDER_SCHEMA_CONTRACT
 
             payload["generation_contract"] = "grounded-writer-v1"
             payload["writer_execution_contract"] = EXECUTION_CONTRACT
             payload["writer_provider_schema_contract"] = PROVIDER_SCHEMA_CONTRACT
             payload["writer_content_contract"] = WRITER_CONTENT_CONTRACT
+            payload["writer_input_contract"] = NATIVE_REPORT_INPUT_CONTRACT
             payload["writing_scope_policy"] = "frozen_union_v1"
         else:
             from litagent.staged_generation import CONTRACT as generation_contract

@@ -698,6 +698,12 @@ def build_evaluation_request(
         # Keep the canonical schema for validation; the provider receives it natively.
         wire_payload = {k: v for k, v in payload.items() if k != "schema"}
         wire_payload["response_schema_contract"] = EVALUATION_ENCODING_CONTRACT
+    if payload.get("global_output_contract") == "host-global-completeness-v1":
+        from litagent.eval.batched import GLOBAL_INPUT_INSTRUCTION, global_input_payload
+
+        if "report_input_contract" in payload:
+            wire_payload = global_input_payload(wire_payload)
+            prompt += GLOBAL_INPUT_INSTRUCTION
     return [
         {"role": "system", "content": prompt},
         {
@@ -2096,6 +2102,10 @@ async def evaluate_scoped(
         == "grounded-writer-v1"
     ):
         result["writer_bindings"] = context["writing_bindings"]
+        if context["writing_bindings"].get("input_contract"):
+            result["report_input_contract"] = context["writing_bindings"][
+                "input_contract"
+            ]
         if (
             context["writing_bindings"].get("content_contract")
             == WRITER_CONTENT_CONTRACT
@@ -2369,6 +2379,13 @@ async def _evaluate_scoped(*, llm, survey, context, config) -> dict:
                 == WRITER_CONTENT_CONTRACT
             ):
                 payload["writer_content_contract"] = WRITER_CONTENT_CONTRACT
+            from litagent.body_quality import NATIVE_REPORT_INPUT_CONTRACT
+
+            if (
+                context["writing_bindings"].get("input_contract")
+                == NATIVE_REPORT_INPUT_CONTRACT
+            ):
+                payload["report_input_contract"] = NATIVE_REPORT_INPUT_CONTRACT
         if context.get("quality_policy") == "strict_auto_v2":
             payload["source_fidelity_contract"] = SOURCE_FIDELITY_CONTRACT
             payload["global_consistency_contract"] = GLOBAL_CONSISTENCY_CONTRACT
