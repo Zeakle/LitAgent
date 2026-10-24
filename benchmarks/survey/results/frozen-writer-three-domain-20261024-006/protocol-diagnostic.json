@@ -1,0 +1,31 @@
+{
+  "phase": "summary_initial",
+  "failure": {
+    "family": "protocol",
+    "code": "writer_json_invalid",
+    "diagnostics": [
+      {
+        "offset": 1085,
+        "line": 1,
+        "column": 1086,
+        "message": "Expecting ',' delimiter",
+        "raw_sha256": "118ddea9168f879c488e1934c49e87b3dc6f563a1ea3815281503e0006b7c326"
+      }
+    ]
+  },
+  "raw_characters": 1085,
+  "raw_bytes": 2177,
+  "raw_sha256": "118ddea9168f879c488e1934c49e87b3dc6f563a1ea3815281503e0006b7c326",
+  "finish_reason": "stop",
+  "usage": {
+    "prompt_tokens": 10677,
+    "completion_tokens": 555,
+    "usage_available": true
+  },
+  "response_start_character": "{",
+  "response_end_character": "}",
+  "json_error": "Expecting ',' delimiter",
+  "offset": 1085,
+  "line": 1,
+  "column": 1086
+}

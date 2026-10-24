@@ -34,3 +34,9 @@ Reviewer 原先同时接收完整 draft 和逐句 source_quote。现在每句只
 相关回归 232 项通过；最终默认 `pytest -v` 为 **4295 passed、25 deselected、8 warnings**，本批 10 个 Python 文件 Black/isort 及 `git diff --check` 通过。16 个保护路径与 468 份旧执行源码副本 SHA 一致，005 归档、journal、状态及费用保持；公开 JSON/HTML 同源，CSV 三题分母与 76,146 tokens 一致。桌面／390px、中英文、键盘切换及折叠诊断验收完成，console 错误为零。005 没有最终报告，不声称本次已有新 PDF/Word 正文视觉验收。首轮旧 journal 断言及回环端口环境限制已单独保留，未跳过安全回归。
 
 私有重建和验收记录位于 `artifacts/acceptance/native-input-20261024/`。原 005、所有失败及历史费用均保留，新增付费调用为零；新的真实三域结果尚未产生。
+
+## 随后有界真实验收
+
+离线修复提交为 `2c1b4bb`。后续 [006](../benchmarks/survey/results/frozen-writer-three-domain-20261024-006/README.md) 固定三域各一次，首题五章均通过本地契约，摘要响应却在 1,085 字符处因非法 JSON 拒绝。实际 6 Pro／76,416 tokens，输出仅 555／20,000、finish=stop、零重试及新增未知。Reviewer／Evaluation 未运行，另两题按技术停机规则未启动，严格交付仍为 0/3。
+
+469 份执行源码及 20 个保护路径一致；费用、响应及失败保留，不续跑、不追加到通过。累计 744 请求／4,109,029 已知 tokens，旧 1,030,414 未知保守占用独立保留。本组没有检验到预算投影的真实下游效果，不能把离线可构造表述为科学验收成功。
