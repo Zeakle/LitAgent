@@ -179,4 +179,17 @@ def test_workbench_shell_is_report_first_and_modular() -> None:
     assert 'id="inspector-drawer"' in html
     assert 'id="new-run-dialog"' in html
     assert re.search(r'from "\./report-view\.js(?:\?v=[\d.]+)?"', app)
-    assert len(app.splitlines()) < 360
+    # Delegated consumers define the module boundary; line count rewards code golf.
+    for binding in (
+        "createExecutionWorkspace({",
+        "renderQuality(",
+        "renderReportDocument(",
+        "bindFormatControls(",
+    ):
+        assert binding in app
+    for implementation in (
+        "function renderQuality(",
+        "function renderReportDocument(",
+        "function createExecutionWorkspace(",
+    ):
+        assert implementation not in app

@@ -237,7 +237,15 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
     };
     const earlier = editorialBound ? history.prior_history : history;
     show(editorialBound ? (en ? "Source-version initial Evaluation" : "来源版本首次 Evaluation") : (en ? "Initial Evaluation" : "首次 Evaluation"),earlier.initial_evaluation,"",false);
-    for(const [i,attempt] of (earlier.attempts || []).entries())show(`${editorialBound ? (en ? "Source-version repair candidate" : "来源版本修复候选") : (en ? "Repair candidate" : "修复候选")} ${i+1}`,attempt.candidate_evaluation,attempt.reason_code,attempt.committed);
+    let candidateNumber = 0;
+    for(const attempt of earlier.attempts || []) {
+      if(attempt.attempted === false) {
+        show(en ? "Repair preflight · no request sent" : "修复预检 · 未发送请求",null,attempt.reason_code,false);
+      } else {
+        candidateNumber += 1;
+        show(`${editorialBound ? (en ? "Source-version repair candidate" : "来源版本修复候选") : (en ? "Repair candidate" : "修复候选")} ${candidateNumber}`,attempt.candidate_evaluation,attempt.reason_code,attempt.committed);
+      }
+    }
     if(editorialBound)node(section,"p",en ? "Local cleanup removed one confirmed redundant sentence. Earlier evaluations belong to source versions; the current report was assessed in full again." : "本地整理移除一条已确认重复句。前序评估属于来源版本；当前正文已重新完整核验。");
     show(en ? "Final report Evaluation" : "最终正文 Evaluation",history.final_evaluation,"",true);
   }

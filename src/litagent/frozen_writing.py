@@ -144,9 +144,10 @@ def read_bundle(path):
 class FrozenSelector:
     """Supply an immutable selection without executing retrieval or extraction."""
 
-    def __init__(self, bundle):
+    def __init__(self, bundle, *, trace_hook=None):
         """Initialize immutable inputs and durable ownership."""
         self.bundle = copy.deepcopy(bundle)
+        self.trace_hook = trace_hook
 
     async def select(self, query, ledger, **kwargs):
         """Return the frozen selection only for its original question and ledger."""
@@ -156,6 +157,19 @@ class FrozenSelector:
         for eid, item in selection.selected_items.items():
             if eid not in ledger or ledger[eid].get("paper_id") != item["paper_id"]:
                 raise ValueError("frozen_writing_ledger_conflict")
+        if self.trace_hook:
+            self.trace_hook(
+                "evidence.retrieve.complete",
+                {
+                    "operation_id": "frozen-selection:" + self.bundle["source_run_id"],
+                    "name": "Frozen prior evidence selection",
+                    "output": selection.to_dict(),
+                    "execution": "reused_frozen_input",
+                    "source_run_id": self.bundle["source_run_id"],
+                    "source_artifact_sha256": self.bundle.get("archive_sha256"),
+                    "elapsed_ms": 0,
+                },
+            )
         return selection
 
 
@@ -181,7 +195,7 @@ async def run_frozen(agent, bundle, run_id, *, transport=None):
     evaluation = agent._stage_llm("evaluation")
     agent._synthesis = SynthesisWorker(
         generation,
-        evidence_selector=FrozenSelector(bundle),
+        evidence_selector=FrozenSelector(bundle, trace_hook=agent._trace_hook),
         context_config=cfg.context,
         trace_hook=agent._trace_hook,
         methodology_provider=lambda task: copy.deepcopy(bundle["methodology"]),

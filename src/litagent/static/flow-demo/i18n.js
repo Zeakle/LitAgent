@@ -1,5 +1,6 @@
 const dictionaries = {
   "zh-CN": {
+    loadHistory: "加载其他运行记录",
     executionStatus: "执行状态", executionCompleted: "执行结束",
     metricSkipped: "已跳过／未核验",
     cancelDialog: "取消",
@@ -49,6 +50,7 @@ const dictionaries = {
     focusSelected: "定位选中节点", toggleFullscreen: "切换全屏", timelineCategory: "时间线类别", secondsShort: "秒",
   },
   en: {
+    loadHistory: "Load other runs",
     executionStatus: "Execution", executionCompleted: "Execution finished",
     metricSkipped: "Skipped / unverified",
     cancelDialog: "Cancel",

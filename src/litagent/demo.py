@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import math
 from pathlib import Path
@@ -76,7 +77,7 @@ def _normalize_evidence(item: Any, fallback_id: str = "") -> dict[str, Any] | No
     if not evidence_id:
         return None
     locator = value.get("source_locator") or value.get("locator") or ""
-    return {
+    result = {
         "evidence_id": evidence_id,
         "paper_id": str(value.get("paper_id") or ""),
         "paper_title": str(value.get("paper_title") or value.get("title") or ""),
@@ -85,6 +86,25 @@ def _normalize_evidence(item: Any, fallback_id: str = "") -> dict[str, Any] | No
         "locator": locator,
         "confidence": value.get("confidence"),
     }
+    # These are existing source fields, not metadata inferred from a model claim.
+    for key in (
+        "supporting_text",
+        "source_locator",
+        "chunk_key",
+        "section",
+        "page",
+        "block_index",
+        "bbox",
+        "source_spans",
+        "content_hash",
+        "raw_content_hash",
+        "evidence_version",
+        "fact_fields",
+        "record_identity",
+    ):
+        if key in value:
+            result[key] = copy.deepcopy(value[key])
+    return result
 
 
 def _extract_evidence(nodes: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -118,9 +138,73 @@ def _extract_evidence(nodes: Mapping[str, Any]) -> list[dict[str, Any]]:
     return normalized
 
 
-def extract_report_evidence(nodes: Mapping[str, Any]) -> list[dict[str, Any]]:
+def extract_report_evidence(
+    nodes: Mapping[str, Any], *, report: Mapping[str, Any] | None = None
+) -> list[dict[str, Any]]:
     """Expose the same host-selected evidence used by reading and audit views."""
-    return _extract_evidence(nodes)
+    if not report:
+        return _extract_evidence(nodes)
+    metadata = _mapping(report.get("metadata"))
+    bindings = _mapping(metadata.get("writing_bindings"))
+    if (
+        bindings.get("writer_contract") != "grounded-writer-v1"
+        and metadata.get("generation_strategy") != "body_summary_v2"
+    ):
+        return _extract_evidence(nodes)
+    survey = report.get("survey")
+    if (
+        bindings.get("writer_contract") != "grounded-writer-v1"
+        or not isinstance(survey, str)
+        or hashlib.sha256(survey.encode()).hexdigest() != bindings.get("report_sha256")
+    ):
+        return []
+    from litagent.context.evidence_selector import EvidenceSelection
+    from litagent.quality import digest, validate_fact_snapshot
+
+    cards = _mapping(metadata.get("fact_cards"))
+    snapshot = metadata.get("evidence_snapshot_sha256")
+    if not cards or any(not isinstance(card, Mapping) for card in cards.values()):
+        return []
+    candidates = {}
+    for node_id, node in nodes.items():
+        node = _mapping(node)
+        output = _mapping(node.get("output"))
+        if str(node_id).startswith("evidence.retrieve") or str(
+            node.get("kind", "")
+        ).startswith("evidence.retrieve"):
+            pool = _mapping(output.get("selected_items"))
+        elif output.get("generation_strategy") == "body_summary_v2":
+            selection = _mapping(output.get("evidence_selection"))
+            if (
+                selection.get("valid") is False
+                or selection.get("writing_scope_policy") != "frozen_union_v1"
+                or output.get("evidence_snapshot_sha256") != snapshot
+                or digest(_mapping(output.get("fact_cards"))) != snapshot
+            ):
+                continue
+            try:
+                pool = EvidenceSelection.from_dict(selection).selected_items
+            except (ValueError, TypeError, KeyError):
+                continue
+        else:
+            continue
+        if not pool or any(not isinstance(item, Mapping) for item in pool.values()):
+            continue
+        try:
+            validate_fact_snapshot(cards, pool, snapshot)
+        except (ValueError, TypeError, KeyError):
+            continue
+        if {card.get("evidence_id") for card in cards.values()} != set(pool):
+            continue
+        candidates[digest(pool)] = pool
+    # Ambiguous worker snapshots are not a reason to choose the latest source.
+    if len(candidates) != 1:
+        return []
+    return [
+        evidence
+        for eid, item in next(iter(candidates.values())).items()
+        if (evidence := _normalize_evidence(item, eid)) is not None
+    ]
 
 
 def project_flow_demo_view(
@@ -220,7 +304,7 @@ def project_flow_demo_view(
             "reason_codes": [artifact.get("error") or "report_not_generated"],
         }
     survey = str(report.get("survey") or "")
-    evidence = _extract_evidence(nodes)
+    evidence = extract_report_evidence(nodes, report=report)
     evidence_by_id = {
         item["evidence_id"]: item
         for item in evidence

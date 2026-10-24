@@ -458,8 +458,10 @@ async def test_plain_survey_freezes_its_own_artifact_without_lookup_or_mutation(
     monkeypatch.setattr(api.app.state, "report_audit_service", service)
     lookup = MagicMock(side_effect=AssertionError("No archive lookup is permitted"))
     monkeypatch.setattr(api, "_flow_artifact", lookup)
-    monkeypatch.setattr(api, "extract_report_evidence", lambda _: evidence)
+    extract = MagicMock(return_value=evidence)
+    monkeypatch.setattr(api, "extract_report_evidence", extract)
     await api._submit_automatic_artifact(artifact, options())
+    extract.assert_called_once_with(artifact["nodes"], report=report)
     frozen = service.submit_automatic.call_args.args[0]
     assert frozen["source_run_id"] == "plain-api"
     assert frozen["source_report_revision"] == 1

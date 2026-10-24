@@ -1047,7 +1047,7 @@ async def _resolve_formatting_source(task_id: str, revision: int):
     )
     ledger = {
         i["evidence_id"]: i
-        for i in extract_report_evidence(artifact.get("nodes") or {})
+        for i in extract_report_evidence(artifact.get("nodes") or {}, report=report)
     }
     return (
         version,
@@ -1179,7 +1179,7 @@ async def _submit_automatic_artifact(artifact: dict, options: RunOptions) -> Non
     )
     ledger = {
         item["evidence_id"]: item
-        for item in extract_report_evidence(artifact.get("nodes") or {})
+        for item in extract_report_evidence(artifact.get("nodes") or {}, report=report)
     }
     snapshot = _audit_snapshot_from_source(version, report, ledger, artifact)
     await (await _report_audit_service()).submit_automatic(

@@ -8,6 +8,42 @@ import pytest
 
 
 @pytest.mark.parametrize("locale", ["zh-CN", "en"])
+def test_unsent_repair_preflight_is_distinct_from_a_failed_paid_candidate(locale):
+    """Preserve both diagnostics without inventing a repair call or changing history."""
+    script = r"""
+const fs=require('node:fs');
+(async()=>{
+ class E{constructor(){this.children=[];this.dataset={};this.textContent='';}append(...x){this.children.push(...x);}replaceChildren(...x){this.children=x;}addEventListener(){}setAttribute(){}}
+ global.document={createElement:()=>new E()};
+ const {renderQuality}=await import('data:text/javascript;base64,'+fs.readFileSync(process.argv[1]+'/quality-view.js').toString('base64'));
+ const history={version:'version-bound-evaluation-history-v1',source_report_sha256:'bound',attempts:[
+   {attempted:false,reason_code:'writer_assessment_incomplete',candidate_evaluation:null},
+   {attempted:true,reason_code:'sent_candidate_failed',candidate_evaluation:null}
+ ]};
+ const original=JSON.stringify(history),root=new E(),walk=e=>[e,...e.children.flatMap(walk)],en=process.argv[2]==='en';
+ renderQuality(root,{}, {},{},()=>{},x=>x,{locale:process.argv[2],sha:'bound',evaluationHistory:history});
+ const text=walk(root).map(e=>e.textContent).join(' ');
+ for(const expected of [en?'Repair preflight · no request sent':'修复预检 · 未发送请求',en?'Repair candidate 1':'修复候选 1','writer_assessment_incomplete','sent_candidate_failed'])if(!text.includes(expected))throw Error(expected);
+ if(text.includes(en?'Repair candidate 2':'修复候选 2'))throw Error('unsent preflight consumed candidate ordinal');
+ if(JSON.stringify(history)!==original)throw Error('source history changed');
+})().catch(e=>{console.error(e);process.exit(1)});
+"""
+    result = subprocess.run(
+        [
+            shutil.which("node") or "node",
+            "-e",
+            script,
+            str(Path("src/litagent/static/flow-demo").resolve()),
+            locale,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("locale", ["zh-CN", "en"])
 def test_failed_writer_is_not_historical_evaluation_or_placeholder_analysis(locale):
     script = r"""
 const fs=require('node:fs');

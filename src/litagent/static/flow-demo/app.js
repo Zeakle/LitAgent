@@ -1,15 +1,15 @@
-import { bindAuditControls, bindAutomaticAuditPreferences } from "./audit-controls.js?v=15.10.6.152-writer-v2";
+import { bindAuditControls, bindAutomaticAuditPreferences } from "./audit-controls.js?v=15.10.6.161-source-view";
 import { bindFormatControls } from "./format-controls.js?v=15.10.10";
 import { createApiClient, openEventStream } from "./api-client.js";
-import { createBenchmarkController } from "./benchmark-controller.js?v=15.10.6.152-writer-v2";
-import { renderBenchmarkDetail, renderBenchmarkList, renderBenchmarkObservation } from "./benchmark-view.js?v=15.10.6.152-writer-v2";
-import { adaptArchiveView, adaptInteractiveView, chooseDefaultSection, normalizeRunList } from "./adapters.js?v=15.10.6.152-writer-v2";
+import { createBenchmarkController } from "./benchmark-controller.js?v=15.10.6.161-source-view";
+import { renderBenchmarkDetail, renderBenchmarkList, renderBenchmarkObservation } from "./benchmark-view.js?v=15.10.6.161-source-view";
+import { adaptArchiveView, adaptInteractiveView, chooseDefaultSection, normalizeRunList } from "./adapters.js?v=15.10.6.161-source-view";
 import { evidenceMap, renderEvidenceList } from "./evidence-view.js";
 import { createExecutionWorkspace } from "./execution-workspace.js";
 import { renderExecutionInspector } from "./execution-inspector.js";
 import { renderHistory } from "./history-view.js";
-import { applyTranslations, translator } from "./i18n.js?v=15.10.6.152-writer-v2";
-import { renderQuality, locateReportDiagnostic } from "./quality-view.js?v=15.10.6.152-writer-v2";
+import { applyTranslations, translator } from "./i18n.js?v=15.10.6.161-source-view";
+import { renderQuality, locateReportDiagnostic } from "./quality-view.js?v=15.10.6.161-source-view";
 import { renderOutline, renderReportDocument, renderSearchRecords } from "./report-view.js?v=15.10.10";
 import { renderReview } from "./review-view.js?v=15.10.5-strict";
 import { createWorkbenchStore } from "./state.js";
@@ -21,6 +21,7 @@ let independentAuditState = null;
 const citationPreferences = new Map();
 let eventSource = null;
 let inspectorTrigger = null;
+let historyLoading = false;
 const benchmarkState = { results: [], selectedId: null, detail: null, observation: null, loaded: false };
 const api = createApiClient(() => context?.operation_token);
 const executionWorkspace = createExecutionWorkspace({ store, t, onInspect: setInspector });
@@ -64,7 +65,7 @@ function setInspector(selection, trigger = null) {
   }
   const description = document.createElement("dl");
   const fields = selection.kind === "evidence"
-    ? ["evidence_id", "paper_id", "paper_title", "content_scope", "locator", "confidence", "text"]
+    ? ["evidence_id", "paper_id", "paper_title", "content_scope", "locator", "confidence", "text", "supporting_text"]
     : [];
   if (fields.length) {
     for (const item of selection.references || [selection.value]) {
@@ -253,21 +254,48 @@ async function refreshLegacy(runId, query) {
 
 async function selectRun(key, preferredSection = null) {
   eventSource?.close(); api.abort(); store.update({ sectionWasUserSelected: Boolean(preferredSection) });
-  const identity = store.get().runs.find((item) => item.key === key); if (!identity) return;
+  const identity = store.get().runs.find((item) => item.key === key); if (!identity) return false;
+  store.update({ selectedRunKey: key, view: null, inspector: null, loading: true });
   if (identity.source === "interactive") await refreshInteractive(identity.runId, preferredSection);
   else {
     const epoch = store.beginRequest();
-    try { const raw = await api.json(`/flow-demo/runs/${encodeURIComponent(identity.runId)}/view${citationPreferences.has(identity.runId) ? "?citation_style=" + citationPreferences.get(identity.runId) : ""}`); if (!store.isCurrent(epoch)) return; const view = adaptArchiveView(raw, identity); store.update({ selectedRunKey: key, view, activeSection: preferredSection || chooseDefaultSection(view), loading: false }); }
-    catch (error) { if (store.isCurrent(epoch)) { store.update({ loading: false, error }); setNotice(`${t("operationFailed")}: ${error.message}`, "error"); } }
+    try {
+      const raw = await api.json(`/flow-demo/runs/${encodeURIComponent(identity.runId)}/view${citationPreferences.has(identity.runId) ? "?citation_style=" + citationPreferences.get(identity.runId) : ""}`);
+      if (!store.isCurrent(epoch)) return false;
+      if (raw.summary?.run_id && raw.summary.run_id !== identity.runId) throw new Error("archive_run_identity_mismatch");
+      const resolved = { ...identity, query: raw.summary?.query || identity.query, status: raw.summary?.status || identity.status };
+      const view = adaptArchiveView(raw, resolved);
+      store.update({ selectedRunKey: key, runs: store.get().runs.map(item => item.key === key ? resolved : item), view, activeSection: preferredSection || chooseDefaultSection(view), loading: false });
+    } catch (error) {
+      if (!store.isCurrent(epoch)) return false;
+      store.update({ loading: false, error });
+      if (error.name !== "AbortError") setNotice(`${t("operationFailed")}: ${error.message}`, "error");
+    }
   }
+  if (store.get().selectedRunKey !== key) return false;
   history.replaceState(null, "", `?run=${encodeURIComponent(key)}&view=${encodeURIComponent(store.get().activeSection)}`);
   $("#run-sidebar").dataset.open = "false"; $("#sidebar-scrim").hidden = true;
+  return Boolean(store.get().view);
 }
 
 async function loadRunList(preferred = null) {
+  const selection = store.get().selectedRunKey, epoch = store.get().requestEpoch;
   const [interactive, archives] = await Promise.all([api.json("/workbench/runs"), api.json("/flow-demo/runs")]);
-  const runs = normalizeRunList(interactive, archives); store.update({ runs });
-  const key = preferred || store.get().selectedRunKey || runs[0]?.key; if (key && key !== store.get().selectedRunKey) await selectRun(key, new URLSearchParams(location.search).get("view"));
+  const runs = normalizeRunList(interactive, archives);
+  const selected = store.get().runs.find(item => item.key === store.get().selectedRunKey);
+  if (selected && !runs.some(item => item.key === selected.key)) runs.unshift(selected);
+  store.update({ runs });
+  const unchanged = store.isCurrent(epoch) && selection === store.get().selectedRunKey;
+  const key = (unchanged && preferred) || store.get().selectedRunKey || runs[0]?.key;
+  if (key && key !== store.get().selectedRunKey) await selectRun(key, new URLSearchParams(location.search).get("view"));
+}
+
+async function reloadHistory() {
+  if (historyLoading) return;
+  historyLoading = true; $("#load-run-history").disabled = true;
+  try { await loadRunList(); }
+  catch (error) { if (error.name !== "AbortError") setNotice(`${t("operationFailed")}: ${error.message}`, "error"); }
+  finally { historyLoading = false; $("#load-run-history").disabled = false; }
 }
 
 async function submitReview(action, values, form) {
@@ -300,12 +328,18 @@ async function initialize() {
     for (const select of [$("#new-citation-style"), $("#export-style")]) for (const option of select.options) if (!["numbered", "evidence"].includes(option.value)) option.disabled = true;
     $("#new-citation-style").value = "numbered"; setNotice(t("engineUnavailable"), "error");
   }
-  const params = new URLSearchParams(location.search); await loadRunList(params.get("run"));
+  const params = new URLSearchParams(location.search), requested = params.get("run");
+  const direct = /^(archive|sample):(.+)$/.exec(requested || "");
+  if (direct) {
+    store.update({ runs: [{ key: requested, runId: direct[2], source: direct[1], query: "", status: "unknown" }] });
+    await selectRun(requested, params.get("view"));
+  } else await loadRunList(requested);
   if (params.get("view") === "benchmark") setSection("benchmark", false);
 }
 store.subscribe(render);
 document.querySelectorAll("[data-section]").forEach((tab) => tab.addEventListener("click", () => setSection(tab.dataset.section)));
 $("#run-search").addEventListener("input", render);
+$("#load-run-history").addEventListener("click", reloadHistory);
 $("#benchmark-refresh").addEventListener("click", loadBenchmarks);
 $("#close-inspector").addEventListener("click", () => setInspector(null));
 $("#open-new-run").addEventListener("click", () => $("#new-run-dialog").showModal());
