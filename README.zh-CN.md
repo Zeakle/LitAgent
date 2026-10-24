@@ -70,13 +70,15 @@ flowchart LR
 reranker 改善排名但显著增加延迟，因此没有切为默认。全文配置同时改变索引材料，
 不能把差异全部归因于排名算法。[完整结果与解释边界](./benchmarks/rag/RESULTS.md)。
 
-最新冻结证据写作验收：**1/3 题启动**、**1 次 Pro 请求／10,104 tokens**，
-显式 low 思考配置的引言 JSON 非法，未触及输出或时间上限；摘要、Reviewer 和 Evaluation 均未运行，
+最新冻结证据写作验收：**1/3 题启动**、**1 次 HTTP 请求**，
+Responses 适配器发送的 `background` 字段被服务以 HTTP 400 拒绝，未生成正文。
+未返回 usage，保留 **56,129 tokens 未知保守占用**，不能声称实际费用为零；摘要、Reviewer 和 Evaluation 均未运行，
 严格交付 **0/3**，未重新检索或提取。
 早期端到端诊断为 **27 请求／126,023 tokens**，也在 Evaluation 前停止；正式 **0/15**。
 这些是技术失败，不能当作科学支持率零分。
 历史单次 NeRF 在旧策略下交付成功，不代表当前严格策略成功，也不证明质量增益。
-[最新写作验收](./benchmarks/survey/results/frozen-writer-three-domain-20261025-009/README.md) ·
+[最新写作验收](./benchmarks/survey/results/frozen-writer-three-domain-20261025-010/README.md) ·
+[供应商字段映射审查](./docs/native-transport-review-20261025.md) ·
 [思考配置与预算审查](./docs/native-thinking-review-20261024.md) ·
 [章节生成离线修复](./docs/writer-sections-review-20261024.md) ·
 [完整材料预算修复](./docs/native-input-review-20261024.md) ·

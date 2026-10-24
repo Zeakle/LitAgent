@@ -1,0 +1,18 @@
+{
+  "suite_id": "frozen-writer-three-domain-20261025-010",
+  "identity": "ad23cfa8bf70b85a8842b804a8c417682f1a71d47d8f15eb01cdc660ec216797",
+  "source_commit": "690778d88e1f6b830deb0224b814c36252022f9b",
+  "http_status": 400,
+  "provider_code": "InvalidParameter",
+  "rejected_parameter": "background",
+  "received_usage": false,
+  "scientific_assessment": "not_run",
+  "requests": 1,
+  "unknown_conservative_tokens": 56129,
+  "retries": 0,
+  "strict_passed": 0,
+  "planned": 3,
+  "model_capability_assessed": false,
+  "archive_sha256": "945ae743d5b4b3541bd9fa45c07c90cd1ca9d08b769bc6246157fdd8ebbc9d41",
+  "journal_sha256": "abf1aa5f8a2e779c1c53de8743f8135d6a748df851f77ec8ad37cdbbd41579fd"
+}

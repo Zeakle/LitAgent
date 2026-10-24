@@ -1,6 +1,6 @@
 # 同 schema 的供应商传输兼容审查
 
-**步骤177为离线兼容审查；步骤178已实现可选运行时映射，仍未调用真实 Responses 服务。** [009](../benchmarks/survey/results/frozen-writer-three-domain-20261025-009/README.md)仍为严格交付 0/3，Evaluation 未开始。low 的实际传递和 reasoning 明细已经验证，不能继续把调参当作已证明的协议修复。
+**步骤178离线通过；步骤180真实请求被 HTTP 400 拒绝，供应商字段兼容尚未完成。** [010](../benchmarks/survey/results/frozen-writer-three-domain-20261025-010/README.md)严格交付 0/3，正文和 Evaluation 未开始。low 的实际传递和 reasoning 明细曾在009验证，不能继续把调参或 SDK 模拟测试当作协议已修复的证据。
 
 保留 `grounded-writer-v1` 的全部字段、层级、出处、完整原文和本地校验，只审查现有 LLM 层内的供应商字段映射。没有新 Agent、模型、来源、正文协议或更高预算。Responses 同样是 beta，官方支持该接口不等于真实输出一定可靠。[官方结构化输出说明](https://docs.volcengine.com/docs/ark/responses-api-structured-output?lang=zh)
 
@@ -23,6 +23,10 @@ SDK 的原响应接口可以取得 HTTP body；当前版本的 `parse()` 不需�
 步骤177确定的实施门禁包括 completed/incomplete/refusal/failed/cancelled/未知 output 的解析、完整模型身份、usage 主计费及 reasoning 子集、私有原包与脱敏 trace、预留／取消／超时／零重试。已知 usage 的协议失败不能再加一次 unknown 占用；不得自动回退 Chat 或重新发出结果未知的请求。默认 Chat 和旧归档语义保持，API 方式必须进入冻结身份。
 
 候选方向通过离线审查只说明值得实现受控映射，不证明它解决 009，也不保证三域严格通过。Phase 14.5 保持 `in_progress`。
+
+步骤180的真实010请求暴露了适配错误：OpenAI SDK 接受的 `background=false` 不被方舟服务接受，返回 HTTP400 / InvalidParameter / unknown field background。请求没有进入正文生成，服务没有返回 usage；1次外部请求保留56,129未知占用，不能写成免费或完整用量。技术停机阻止了另两题，0重试、0修复、0份正文，科学状态未核验。累计753请求、4,238,381已知tokens、1,086,543未知保守占用。
+
+这是供应商字段审查遗漏，不能归因于模型能力。SDK 能序列化及 HTTP 替身通过，不证明服务支持所有 OpenAI 参数。重新核对的[方舟创建响应接口](https://console.volcengine.com/ark/region:cn-beijing/docs/create-model-responses-api)明确支持 `store=false` 和 `stream=false`，没有列出 `background`、`truncation`。后续先冻结供应商支持字段表，说明同步返回、完整输入及上下文拒绝的实现边界，并检查响应字段和未知占用继承；不能删除报错字段后重发010，或继续宣称已有服务端禁裁剪控制。
 
 
 步骤178的运行时实现保留默认 Chat，只有服务端固定 `writer_reviewer_low_responses_v1` 清单选择 Responses。首次正文、摘要、Reviewer 及共享修复的接口选择进入日志和恢复身份；Reviewer 可以独立选择 Chat。Evaluation 继续走原接口。没有新增普通 API 配置字段，没有改变旧默认 fingerprint 或增加重试、材料裁剪和 JSON 补全。
