@@ -52,3 +52,13 @@ JSON、CSV、Markdown 和 HTML 展示同源模式与输出额度；页面首部�
 [配置入口回归](../tests/test_writer_thinking_profile.py)覆盖显式模式、旧门禁、默认配置不变、输出／模型／预算漂移、manifest 身份、CLI 不得覆盖及四格式同源。相关 132 项通过，页面相关最终 38 项通过；最终默认 **4369 passed、25 deselected、8 warnings**，2 个改动 Python 文件格式及差异检查通过。首轮测试发现 consumer 误读配置层级，已按真实 `build_config_summary.effective` 修复，没有伪造扁平 fixture。
 
 此入口只建立可验证的实验配置，不证明开启思考能解决 007 的非法 JSON。下一次真实验收仍须单独冻结源码、三域完整材料、配置和累计账本，各题一次、技术或未知用量即停，失败保留，不追加至通过。
+
+## 随后真实验收：008 停于总输出上限
+
+[008](../benchmarks/survey/results/frozen-writer-three-domain-20261024-008/README.md)使用提交 `edfbc13`、476 份源码和原三域材料。引言通过本地契约，耗时 253.5 秒、9,206 输入＋11,652 输出 tokens；分类章耗时 260.6 秒、10,518 输入＋20,000 输出，`finish_reason=length`，正文字符数为零。它未触发 300 秒超时，不能把本次失败归因于超时。
+
+2 次 Pro 请求共 51,376 已知 tokens，完整 usage、零重试、新增未知为零。没有摘要、Reviewer、Evaluation、修复或最终报告，另两题未运行，严格交付仍为 0/3。保持总上限后拒绝了不完整输出，没有补 JSON、扩大额度或追加试跑。
+
+返回的 reasoning 字符数并非计费 tokens；当前 normalizer 没有持久化可选 reasoning-token 明细，不能事后推算精确的思考占比。此结果证明总输出门禁生效，不证明启用思考提高了正文质量，也不证明此前非法 JSON 的原因已经解决。
+
+28 个保护路径、476 份执行源码、原结果保持。LangFuse 读回 2 个 generation／51,376 tokens、`max_completion_tokens` 元数据及科学 I/O 为空，不声称完整 trace 树。四格式同源与三题分母、桌面／390px、中英文、键盘及 console 零错误／警告已核对。历史累计 751 次模型请求／4,228,277 已知 tokens，旧 1,030,414 未知保守占用继续单列。Phase 14.5 保持 `in_progress`。
