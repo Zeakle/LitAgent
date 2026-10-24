@@ -1,0 +1,42 @@
+{
+  "suite": "frozen-writer-three-domain-20261025-009",
+  "identity": "3a1fbd2fa95728973d01c52ff8cbe03f5f20a9cc0144f29dfa4036c3d38fe958",
+  "source_commit": "783a8aede5296ed51ce47015a90ef1a6fc08e0a5",
+  "failure_code": "writer_json_invalid",
+  "failed_stage": "body:introduction",
+  "finish_reason": "stop",
+  "output_limit_parameter": "max_completion_tokens",
+  "max_output_tokens": 20000,
+  "thinking_mode": "enabled",
+  "reasoning_effort": "low",
+  "prompt_tokens": 9208,
+  "completion_tokens": 896,
+  "reasoning_tokens": 343,
+  "reasoning_tokens_included_in_completion": true,
+  "known_tokens": 10104,
+  "elapsed_ms": 29646,
+  "raw_characters": 1082,
+  "raw_sha256": "ba8a6c250fc89875cc4a42593956cbbfe833f937b18ab5e59feedac28c126855",
+  "parse_offset": 1082,
+  "parse_line": 1,
+  "parse_column": 1083,
+  "remaining_open_containers": [
+    [
+      "{",
+      0
+    ],
+    [
+      "[",
+      50
+    ]
+  ],
+  "structure_only_redaction": "{\"title\":\"<value>\",\"introduction\":[{\"sentences\":[{\"text\":\"<value>\",\"fact_card_refs\":[\"<value>\"]},{\"text\":\"<value>\",\"fact_card_refs\":[\"<value>\"]},{\"text\":\"<value>\",\"fact_card_refs\":[\"<value>\"]},{\"text\":\"<value>\",\"fact_card_refs\":[\"<value>\"]},{\"text\":\"<value>\",\"fact_card_refs\":[\"<value>\",\"<value>\",\"<value>\",\"<value>\"]},{\"text\":\"<value>\",\"fact_card_refs\":[\"<value>\",\"<value>\",\"<value>\"]},{\"text\":\"<value>\",\"fact_card_refs\":[\"<value>\",\"<value>\",\"<value>\"]},{\"text\":\"<value>\",\"fact_card_refs\":[\"<value>\",\"<value>\",\"<value>\",\"<value>\",\"<value>\"]}]}",
+  "scientific_assessment": "not_run",
+  "new_requests": 1,
+  "new_unknown_hold": 0,
+  "retries": 0,
+  "strict_passed": 0,
+  "planned": 3,
+  "not_run": 2,
+  "latest_http_envelope_captured": false
+}

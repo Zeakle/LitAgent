@@ -78,3 +78,13 @@ SDK 现在转发显式 effort，并保留可选 `completion_tokens_details.reaso
 大报告预检在真实 Synthesis 重放 005 六份旧响应，完整 user payload／schema 与旧请求相同，草稿 SHA 仍为 `34e8fca38d54b469c098281a4e320798ac9ae6ccf75801991659adaab6002e4f`；Reviewer 使用离线替身。五章预留 56,129／58,775／64,036／71,282／77,208，摘要 58,648、Reviewer 107,328；ViT／NeRF 首章 62,386／62,512。以上只证明完整请求构造与参数接线，不是模型对 low 的真实生成、语义判断或未来全程预算保证。
 
 带“离线配置预览（无模型请求）”标识的页面完成桌面／390px、中英文、键盘及 console 零错误／警告验收，明确展示 `effort=low`；没有新最终正文，不宣称 PDF／Word 正文验收。下一步先提交后独立冻结三域配置，不续跑 008。真实严格结果仍为 0/3，Phase 14.5 继续 `in_progress`。
+
+## 随后真实验收：009 仍有非法 JSON
+
+[009](../benchmarks/survey/results/frozen-writer-three-domain-20261025-009/README.md)固定提交 `783a8ae`、478 份源码及原三域材料。首个引言请求约 29.6 秒，9,208 输入＋896 输出＝10,104 已知 tokens；其中 reasoning 343 已包含在输出中。`finish_reason=stop`，没有触及 20k 总输出或 300 秒超时，却在原 1,082 字符的 EOF 解析失败：章节数组和根对象仍未闭合。原字节及 SHA 保持，没有补结构接受。
+
+仅 1 个 Pro 请求，usage 完整、零重试／新增未知；摘要、Reviewer、Evaluation 和修复未运行，另两题未请求，最终报告 SHA 不可用，严格交付 0/3。LangFuse 已读回 low／343 reasoning 元数据、1 个 generation／10,104 tokens 及科学 I/O 为空，不声称完整 trace 树。明细及参数接线真实生效不等于协议或科学质量已改善。
+
+32 个保护路径、478 份执行源码、旧费用及评分保持，累计 752 请求／4,238,381 已知 tokens，旧 1,030,414 未知保守占用单列。四格式同源、三题分母及桌面／390px、中英文、键盘、console 零错误／警告已核对。009 未捕获 HTTP 原包，不能拿旧独立 HTTP 观测或本地 SDK 替身排除本次所有边界问题。
+
+后续停止付费调参，先离线核对同一 `grounded-writer-v1` schema 的供应商接口映射与响应解析。Responses API 同样支持结构化输出但仍为 beta；审查该映射是兼容性验证方向，不是它一定能解决失败的证据。[官方接口说明](https://docs.volcengine.com/docs/ark/responses-api-structured-output?lang=zh) 不修改科学门槛，不减少核心问题或替换冻结材料，Phase 14.5 仍 `in_progress`。

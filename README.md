@@ -84,16 +84,16 @@ Reranking improves ranking metrics but adds substantial latency; it is not the
 default. Full-text profiles change indexed material and are separate from pure
 ranking comparisons. [Full results and limitations](./benchmarks/rag/RESULTS.md).
 
-Latest frozen-evidence writing validation: **1/3 cases started**, **2 Pro requests /
-51,376 tokens**. The explicit thinking profile passed the introduction contract;
-taxonomy exhausted its 20,000-token total-output cap and returned no answer.
+Latest frozen-evidence writing validation: **1/3 cases started**, **1 Pro request /
+10,104 tokens**. The explicit low-thinking profile returned invalid introduction
+JSON before hitting either output or time limits.
 Summaries, Reviewer and Evaluation did not run; strict delivery **0/3**.
 No retrieval or extraction was repeated. The earlier end-to-end diagnostic used
 **27 requests / 126,023 tokens** and also stopped before Evaluation. Formal cases:
 **0/15 run**. These are technical failures, not measured scientific scores.
 An older single NeRF run passed an older, less strict policy; it is not success
 under the current policy or evidence of a quality improvement.
-[Latest writing validation](./benchmarks/survey/results/frozen-writer-three-domain-20261024-008/README.md) ·
+[Latest writing validation](./benchmarks/survey/results/frozen-writer-three-domain-20261025-009/README.md) ·
 [Thinking configuration and budget review](./docs/native-thinking-review-20261024.md) ·
 [Offline chapter-generation repair](./docs/writer-sections-review-20261024.md) ·
 [Complete-input budget repair](./docs/native-input-review-20261024.md) ·
