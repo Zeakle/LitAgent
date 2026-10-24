@@ -559,6 +559,7 @@ class WriterSession:
         trace_hook=None,
         thinking_mode="disabled",
         reasoning_effort=None,
+        provider_api="chat",
     ):
         """Initialize immutable inputs and durable ownership."""
         if thinking_mode not in ("provider_default", "enabled", "disabled"):
@@ -567,25 +568,31 @@ class WriterSession:
             reasoning_effort is not None and thinking_mode != "enabled"
         ):
             raise WriterError("writer_reasoning_configuration_invalid")
+        if provider_api not in ("chat", "responses"):
+            raise WriterError("writer_provider_api_invalid")
+        self.provider_api = provider_api
         self.thinking_mode = thinking_mode
         self.reasoning_effort = reasoning_effort
         self.llm, self.path, self.run_id = llm, Path(path), run_id
         self.packet, self.aliases, self.trace_hook = packet, aliases, trace_hook
         self.journal_path = Path(str(path) + ".writer-v2.json")
-        self.identity = digest(
-            [
-                CONTRACT,
-                EXECUTION_CONTRACT,
-                PROMPT_CONTRACT,
-                PROVIDER_SCHEMA_CONTRACT,
-                NATIVE_REPORT_INPUT_CONTRACT,
-                WRITER_CONTENT_CONTRACT,
-                thinking_mode,
-                reasoning_effort,
-                packet,
-                aliases,
-            ]
-        )
+        identity_parts = [
+            CONTRACT,
+            EXECUTION_CONTRACT,
+            PROMPT_CONTRACT,
+            PROVIDER_SCHEMA_CONTRACT,
+            NATIVE_REPORT_INPUT_CONTRACT,
+            WRITER_CONTENT_CONTRACT,
+            thinking_mode,
+            reasoning_effort,
+            packet,
+            aliases,
+        ]
+        if provider_api == "responses":
+            from litagent.llm.responses import RESPONSES_CONTRACT
+
+            identity_parts.append([provider_api, RESPONSES_CONTRACT])
+        self.identity = digest(identity_parts)
         if self.journal_path.exists():
             self.journal = json.loads(self.journal_path.read_text())
             if self.journal.get("identity") != self.identity:
@@ -602,6 +609,8 @@ class WriterSession:
                 "calls": {},
                 "candidates": [],
             }
+        if provider_api == "responses":
+            self.journal["generation_provider_api"] = provider_api
         self.state = load_targeted_repairs(self.path, run_id)
 
     def save(self):
@@ -620,6 +629,7 @@ class WriterSession:
         max_tokens=20000,
         thinking_mode=None,
         reasoning_effort=_INHERIT_EFFORT,
+        provider_api=None,
     ):
         """Journal a single checked request and never replay its response."""
         if name in self.journal["calls"]:
@@ -633,6 +643,9 @@ class WriterSession:
         budget = getattr(self.llm, "_cost_budget", None)
         reserved = False
         try:
+            api = self.provider_api if provider_api is None else provider_api
+            if api not in ("chat", "responses"):
+                raise WriterError("writer_provider_api_invalid")
             mode = self.thinking_mode if thinking_mode is None else thinking_mode
             if mode not in ("provider_default", "enabled", "disabled"):
                 raise WriterError("writer_thinking_mode_invalid")
@@ -652,11 +665,15 @@ class WriterSession:
             # Ark answer-only caps do not bound reasoning. The same reservation
             # must cover the entire completion whenever thinking may be active.
             limit_parameter = (
-                "max_tokens" if mode == "disabled" else "max_completion_tokens"
+                "max_output_tokens"
+                if api == "responses"
+                else ("max_tokens" if mode == "disabled" else "max_completion_tokens")
             )
             request_kwargs[limit_parameter] = max_tokens
             limit_identity = (
-                max_tokens if mode == "disabled" else {limit_parameter: max_tokens}
+                max_tokens
+                if mode == "disabled" and api == "chat"
+                else {limit_parameter: max_tokens}
             )
             if effort is not None:
                 request_kwargs["reasoning_effort"] = effort
@@ -665,6 +682,12 @@ class WriterSession:
             request_identity = [messages, rf, limit_identity, extra_body]
             if effort is not None:
                 request_identity.append({"reasoning_effort": effort})
+            if api == "responses":
+                from litagent.llm.responses import RESPONSES_CONTRACT
+
+                request_kwargs["provider_api"] = api
+                request_identity.append([api, RESPONSES_CONTRACT])
+                entry["provider_api"] = api
             entry.update(
                 input_sha256=digest(request_identity),
                 thinking_mode=mode,
@@ -718,19 +741,7 @@ class WriterSession:
                 transport_max_attempts=1,
                 **request_kwargs,
             )
-            reasoning = getattr(response, "reasoning_content", None)
-            entry.update(
-                status="response_received",
-                raw=response.content,
-                usage=response.usage,
-                model=response.model,
-                finish_reason=response.finish_reason,
-                request_id=response.request_id,
-                raw_sha256=hashlib.sha256(response.content.encode()).hexdigest(),
-                returned_reasoning_characters=(
-                    len(reasoning) if isinstance(reasoning, str) else None
-                ),
-            )
+            self.record_response(entry, response)
             self.save()
             if (
                 not isinstance(response.usage, dict)
@@ -743,6 +754,8 @@ class WriterSession:
                 raise WriterError("writer_usage_unknown", "interrupted")
             if response.finish_reason == "length":
                 raise WriterError("writer_output_truncated")
+            if getattr(response, "provider_error", None):
+                raise WriterError(response.provider_error)
             if response.finish_reason != "stop":
                 raise WriterError(
                     "writer_finish_reason_invalid",
@@ -750,6 +763,9 @@ class WriterSession:
                 )
             return parse_response(response.content, schema)
         except BaseException as exc:
+            received = getattr(exc, "response", None)
+            if received is not None and hasattr(received, "provider_receipt"):
+                self.record_response(entry, received)
             entry.update(
                 status=(
                     "cancelled_no_replay"
@@ -774,6 +790,31 @@ class WriterSession:
         finally:
             if reserved:
                 budget.release(reservation)
+
+    def record_response(self, entry, response):
+        """Save received evidence before any protocol, usage or identity rejection."""
+        reasoning = getattr(response, "reasoning_content", None)
+        entry.update(
+            status="response_received",
+            raw=response.content,
+            usage=response.usage,
+            model=response.model,
+            finish_reason=response.finish_reason,
+            request_id=response.request_id,
+            raw_sha256=hashlib.sha256(response.content.encode()).hexdigest(),
+            returned_reasoning_characters=(
+                len(reasoning) if isinstance(reasoning, str) else None
+            ),
+        )
+        receipt = getattr(response, "provider_receipt", None)
+        if isinstance(receipt, dict):
+            entry.update(
+                provider_receipt=receipt,
+                provider_error=response.provider_error,
+                provider_status=response.provider_status,
+                # The adapter intentionally does not expose reasoning summaries.
+                returned_reasoning_characters=None,
+            )
 
     async def initial_body(self):
         """Generate fixed chapters once, then validate the original full contract."""
@@ -1101,6 +1142,7 @@ async def synthesize(worker, task, cards, selection, methodology, requirements):
         trace_hook=worker._trace_hook,
         thinking_mode=getattr(worker, "_thinking_mode", "disabled"),
         reasoning_effort=getattr(worker, "_native_reasoning_effort", None),
+        provider_api=getattr(worker, "_native_provider_api", "chat"),
     )
     try:
         body = await session.initial_body()
@@ -1149,6 +1191,11 @@ async def synthesize(worker, task, cards, selection, methodology, requirements):
             "aliases": aliases,
             "generation_thinking_mode": session.thinking_mode,
             "generation_reasoning_effort": session.reasoning_effort,
+            **(
+                {"generation_provider_api": "responses"}
+                if session.provider_api == "responses"
+                else {}
+            ),
         },
         "report_language": language,
         "review_structure": "academic_v2",
@@ -1283,6 +1330,7 @@ async def review(worker, task):
         doc["aliases"],
         thinking_mode=doc.get("generation_thinking_mode", "disabled"),
         reasoning_effort=doc.get("generation_reasoning_effort"),
+        provider_api=doc.get("generation_provider_api", "chat"),
     )
     if source["writing_bindings"].get("input_contract") == NATIVE_REPORT_INPUT_CONTRACT:
         try:
@@ -1304,6 +1352,7 @@ async def review(worker, task):
         max_tokens=worker._config.review_max_tokens,
         thinking_mode=getattr(worker._config, "thinking_mode", "disabled"),
         reasoning_effort=getattr(worker, "_native_reasoning_effort", None),
+        provider_api=getattr(worker, "_native_provider_api", "chat"),
     )
     return {
         "score": 0.0 if result["issues"] else 1.0,
@@ -1364,6 +1413,7 @@ async def _repair_report(
         trace_hook=runner._trace_hook,
         thinking_mode=document.get("generation_thinking_mode", "disabled"),
         reasoning_effort=document.get("generation_reasoning_effort"),
+        provider_api=document.get("generation_provider_api", "chat"),
     )
     details = initial_evaluation.get("faithfulness", {}).get("details", {})
     # Invalid or incomplete assessments do not authorize a scientific rewrite.

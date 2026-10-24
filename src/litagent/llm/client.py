@@ -24,6 +24,13 @@ _active_timeout: ContextVar[float | None] = ContextVar("request_timeout", defaul
 
 def _output_limit(kwargs: dict, default: int) -> tuple[str, int]:
     """Resolve one wire limit before reserving or sending a provider request."""
+    if "max_output_tokens" in kwargs:
+        value = kwargs["max_output_tokens"]
+        if "max_tokens" in kwargs or "max_completion_tokens" in kwargs:
+            raise ValueError("output_limit_fields_conflict")
+        if type(value) is not int or value <= 0:
+            raise ValueError("output_limit_invalid")
+        return "max_output_tokens", value
     if "max_completion_tokens" in kwargs:
         value = kwargs["max_completion_tokens"]
         if "max_tokens" in kwargs:
@@ -87,6 +94,24 @@ class LLMResponse:
     reasoning_content: str = ""
     finish_reason: str | None = None
     request_id: str | None = None
+
+
+@dataclass
+class ResponsesLLMResponse(LLMResponse):
+    """Carry private native receipts without changing legacy response fields."""
+
+    provider_receipt: dict = field(default_factory=dict)
+    provider_error: str | None = None
+    provider_status: str | None = None
+
+
+class ProviderResponseError(ValueError):
+    """Expose a received private response without changing its billing state."""
+
+    def __init__(self, code, response):
+        """Keep the receipt available to the durable caller on identity failures."""
+        super().__init__(code)
+        self.response = response
 
 
 class BaseLLMClient(ABC):
@@ -203,12 +228,49 @@ class OpenAICompatibleClient(BaseLLMClient):
         """Retry transient provider failures with one lifecycle per attempt."""
         from openai import APIConnectionError, APIStatusError
 
-        _, output_limit = _output_limit(kwargs, self._max_tokens)
+        provider_api = kwargs.get("provider_api", "chat")
+        if provider_api not in ("chat", "responses"):
+            raise ValueError("provider_api_invalid")
+        limit_parameter, output_limit = _output_limit(kwargs, self._max_tokens)
+        if provider_api == "responses":
+            from litagent.llm.responses import build_responses_request
+
+            if "transport_max_attempts" in kwargs and (
+                type(kwargs["transport_max_attempts"]) is not int
+                or kwargs["transport_max_attempts"] != 1
+            ):
+                raise ValueError("responses_retries_unsupported")
+            if limit_parameter != "max_output_tokens":
+                raise ValueError("responses_output_limit_required")
+            if set(kwargs) - {
+                "provider_api",
+                "model",
+                "max_output_tokens",
+                "temperature",
+                "response_format",
+                "extra_body",
+                "reasoning_effort",
+                "transport_max_attempts",
+            }:
+                raise ValueError("responses_arguments_unsupported")
+            build_responses_request(
+                messages,
+                model=kwargs.get("model", self._model),
+                output_limit=output_limit,
+                response_format=kwargs.get("response_format"),
+                temperature=kwargs.get("temperature", self._temperature),
+                extra_body=kwargs.get("extra_body"),
+                reasoning_effort=kwargs.get("reasoning_effort"),
+            )
+        elif limit_parameter == "max_output_tokens":
+            raise ValueError("chat_output_limit_invalid")
         attempts = kwargs.pop("transport_max_attempts", self._transport_max_attempts)
         timeout = _active_timeout.get() or request_timeout_seconds(
             self, _timeout_stage()
         )
         self._check_request_deadline(timeout)
+        if provider_api == "responses":
+            attempts = 1
         strict = self._cost_budget is not None and self._cost_budget.strict
         if strict:
             attempts = 1
@@ -237,6 +299,8 @@ class OpenAICompatibleClient(BaseLLMClient):
                     raise
                 if not result.usage.get("usage_available"):
                     self._cost_budget.charge_unknown_usage(reservation)
+                    if isinstance(result, ResponsesLLMResponse):
+                        raise ProviderResponseError("strict_usage_incomplete", result)
                     raise ValueError("strict_usage_incomplete")
                 return result
             finally:
@@ -281,6 +345,8 @@ class OpenAICompatibleClient(BaseLLMClient):
 
     async def _chat_attempt(self, messages: list[dict], **kwargs) -> LLMResponse:
         """Generate a response and emit its complete I/O lifecycle."""
+        if kwargs.get("provider_api") == "responses":
+            return await self._responses_attempt(messages, **kwargs)
         model = kwargs.get("model", self._model)
         limit_parameter, max_tokens = _output_limit(kwargs, self._max_tokens)
         temperature = kwargs.get("temperature", self._temperature)
@@ -437,6 +503,112 @@ class OpenAICompatibleClient(BaseLLMClient):
                     "elapsed_ms": elapsed_ms,
                     "error_type": type(e).__name__,
                     "error": str(e)[:512],
+                    "usage_available": False,
+                },
+            )
+            raise
+
+    async def _responses_attempt(self, messages: list[dict], **kwargs) -> LLMResponse:
+        """Use one owned SDK request, retaining known charges on invalid output."""
+        from openai import APIStatusError
+
+        from litagent.llm.responses import (
+            build_responses_request,
+            normalize_responses,
+            private_receipt,
+        )
+
+        model = kwargs.get("model", self._model)
+        output_limit = kwargs["max_output_tokens"]
+        body = build_responses_request(
+            messages,
+            model=model,
+            output_limit=output_limit,
+            response_format=kwargs.get("response_format"),
+            temperature=kwargs.get("temperature", self._temperature),
+            extra_body=kwargs.get("extra_body"),
+            reasoning_effort=kwargs.get("reasoning_effort"),
+        )
+        op_id, started = uuid.uuid4().hex, time.perf_counter()
+        metadata = {
+            "operation_id": op_id,
+            "task_id": get_task_id(),
+            "model": model,
+            "provider_api": "responses",
+            "max_tokens": output_limit,
+            "output_limit_parameter": "max_output_tokens",
+            "reasoning_effort": kwargs.get("reasoning_effort"),
+        }
+        self._emit(
+            "llm.start",
+            {
+                **metadata,
+                "messages": messages,
+                "response_format": kwargs.get("response_format"),
+            },
+        )
+        try:
+            thinking = body.pop("thinking", None)
+            if thinking is not None:
+                body["extra_body"] = {"thinking": thinking}
+            if self._request_timeouts:
+                body["timeout"] = _active_timeout.get() or request_timeout_seconds(
+                    self, _timeout_stage()
+                )
+            try:
+                raw = await self._client.responses.with_raw_response.create(**body)
+                http_response = raw.http_response
+            except APIStatusError as exc:
+                # A received error can still carry billing; normalize before deciding
+                # whether the outer owner must retain an unknown reservation.
+                http_response = exc.response
+            receipt = private_receipt(http_response)
+            fields = normalize_responses(http_response.content)
+            if (
+                fields["usage"]["usage_available"]
+                and fields["usage"]["completion_tokens"] > output_limit
+            ):
+                fields.update(
+                    provider_error="responses_output_limit_exceeded",
+                    finish_reason="invalid",
+                )
+            if http_response.status_code != 200:
+                fields.update(
+                    provider_error=f"responses_http_{http_response.status_code}",
+                    finish_reason="invalid",
+                )
+            response = ResponsesLLMResponse(
+                **fields,
+                provider_receipt=receipt,
+                request_id=http_response.headers.get("x-request-id"),
+            )
+            if self._cost_budget and response.usage["usage_available"]:
+                self._cost_budget.record(response.usage)
+            self._emit(
+                "llm.complete",
+                {
+                    **metadata,
+                    "actual_model": response.model,
+                    "content": response.content,
+                    "messages": messages,
+                    **response.usage,
+                    "total_tokens": response.usage["prompt_tokens"]
+                    + response.usage["completion_tokens"],
+                    "elapsed_ms": int((time.perf_counter() - started) * 1000),
+                    "finish_reason": response.finish_reason,
+                    "request_id": response.request_id,
+                    "provider_status": response.provider_status,
+                    "provider_error": response.provider_error,
+                },
+            )
+            return response
+        except BaseException as exc:
+            self._emit(
+                "llm.failed",
+                {
+                    **metadata,
+                    "error_type": type(exc).__name__,
+                    "elapsed_ms": int((time.perf_counter() - started) * 1000),
                     "usage_available": False,
                 },
             )

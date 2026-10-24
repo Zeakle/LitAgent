@@ -209,6 +209,7 @@ class SynthesisWorker(Worker):
         repair_state_path_provider=None,
         received_native: Mapping | None = None,
         native_reasoning_effort: str | None = None,
+        native_provider_api: str = "chat",
     ):
         """Initialize the synthesis worker."""
         self._methodology_provider = methodology_provider
@@ -235,6 +236,9 @@ class SynthesisWorker(Worker):
         ):
             raise ValueError("native_reasoning_configuration_invalid")
         self._native_reasoning_effort = native_reasoning_effort
+        if native_provider_api not in ("chat", "responses"):
+            raise ValueError("native_provider_api_invalid")
+        self._native_provider_api = native_provider_api
 
         self._tools: list = []
         if skill_manager:
@@ -249,8 +253,8 @@ class SynthesisWorker(Worker):
         """Select evidence and generate a scoped survey draft."""
         if (
             self._native_reasoning_effort is not None
-            and task.input_data.get("generation_strategy") != "body_summary_v2"
-        ):
+            or self._native_provider_api != "chat"
+        ) and task.input_data.get("generation_strategy") != "body_summary_v2":
             raise ValueError("native_reasoning_strategy_invalid")
         repair_state = None
         if (

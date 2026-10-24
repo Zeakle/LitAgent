@@ -103,6 +103,9 @@ class RedactingTraceHook:
         "max_tokens",
         "output_limit_parameter",
         "reasoning_effort",
+        "provider_api",
+        "provider_status",
+        "provider_error",
         "reasoning_tokens",
         "reasoning_usage_available",
         "candidate_sha256",
@@ -560,6 +563,9 @@ def _event_input(event: str, data: dict[str, Any]) -> Any:
                 "max_tokens",
                 "output_limit_parameter",
                 "reasoning_effort",
+                "provider_api",
+                "provider_status",
+                "provider_error",
                 "temperature",
             )
             if key in data

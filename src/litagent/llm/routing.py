@@ -1,6 +1,11 @@
 """Bind stage models to one shared transport, budget, and trace lifecycle."""
 
-from litagent.llm.client import BaseLLMClient, OpenAICompatibleClient
+from litagent.llm.client import (
+    BaseLLMClient,
+    OpenAICompatibleClient,
+    ProviderResponseError,
+    ResponsesLLMResponse,
+)
 
 
 class ModelBoundClient(BaseLLMClient):
@@ -35,6 +40,8 @@ class ModelBoundClient(BaseLLMClient):
         if response.model != self._model:
             if self._cost_budget:
                 self._cost_budget.stop_after_worker_failure()
+            if isinstance(response, ResponsesLLMResponse):
+                raise ProviderResponseError("stage_model_identity_mismatch", response)
             raise ValueError("stage_model_identity_mismatch")
         return response
 

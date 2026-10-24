@@ -158,6 +158,7 @@ class ReviewerWorker(Worker):
         trusted_claim_context_max_chars: int = 4000,
         trace_hook=None,
         native_reasoning_effort: str | None = None,
+        native_provider_api: str = "chat",
     ):
         """Initialize the reviewer worker."""
         self._llm = llm
@@ -175,6 +176,9 @@ class ReviewerWorker(Worker):
         ):
             raise ValueError("native_reasoning_configuration_invalid")
         self._native_reasoning_effort = native_reasoning_effort
+        if native_provider_api not in ("chat", "responses"):
+            raise ValueError("native_provider_api_invalid")
+        self._native_provider_api = native_provider_api
         self._trusted_claim_recall_top_k = trusted_claim_recall_top_k
         self._trusted_claim_context_max_chars = trusted_claim_context_max_chars
         self._trusted_claim_cache: dict[str, str] = {}
@@ -215,8 +219,8 @@ class ReviewerWorker(Worker):
         """Review an upstream draft and enforce its evidence contract."""
         if (
             self._native_reasoning_effort is not None
-            and task.input_data.get("generation_strategy") != "body_summary_v2"
-        ):
+            or self._native_provider_api != "chat"
+        ) and task.input_data.get("generation_strategy") != "body_summary_v2":
             raise ValueError("native_reasoning_strategy_invalid")
         if task.input_data.get("generation_strategy") == "body_summary_v2":
             from litagent.writing_v2 import review

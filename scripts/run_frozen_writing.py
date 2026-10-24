@@ -47,13 +47,14 @@ LIMITS = {
 DISABLED_PROFILE = "disabled_v1"
 THINKING_PROFILE = "writer_reviewer_thinking_v1"
 LOW_THINKING_PROFILE = "writer_reviewer_low_thinking_v1"
+RESPONSES_PROFILE = "writer_reviewer_low_responses_v1"
 
 
 def profile_mode(profile):
     """Resolve only server-defined campaign modes, never arbitrary provider kwargs."""
     if profile == DISABLED_PROFILE:
         return "disabled"
-    if profile in (THINKING_PROFILE, LOW_THINKING_PROFILE):
+    if profile in (THINKING_PROFILE, LOW_THINKING_PROFILE, RESPONSES_PROFILE):
         return "enabled"
     raise ValueError("frozen_writing_profile_invalid")
 
@@ -61,6 +62,8 @@ def profile_mode(profile):
 def profile_parameters(profile):
     """Bind the single supported native effort without adding legacy config fields."""
     profile_mode(profile)
+    if profile == RESPONSES_PROFILE:
+        return {"native_reasoning_effort": "low", "native_provider_api": "responses"}
     return {"native_reasoning_effort": "low"} if profile == LOW_THINKING_PROFILE else {}
 
 
@@ -112,8 +115,11 @@ def profile_description(profile, summary):
             for role in ("extraction", "generation", "evaluation")
         },
     }
-    if profile == LOW_THINKING_PROFILE:
+    if profile in (LOW_THINKING_PROFILE, RESPONSES_PROFILE):
         result["reasoning_effort"] = "low"
+    if profile == RESPONSES_PROFILE:
+        result["provider_api"] = "responses"
+        result["output_limit_parameter"] = "max_output_tokens"
     return result
 
 
@@ -496,6 +502,7 @@ def export(root, state, manifest):
 
     for row in rows:
         row["writing_profile"] = writing_profile["id"]
+        row["provider_api"] = writing_profile.get("provider_api", "chat")
         row["reasoning_effort"] = writing_profile.get("reasoning_effort")
         for key in (
             "generation_thinking_mode",
@@ -546,6 +553,7 @@ def export(root, state, manifest):
     keys = [
         "case_id",
         "writing_profile",
+        "provider_api",
         "reasoning_effort",
         "reasoning_tokens",
         "reasoning_usage_complete",
@@ -641,7 +649,7 @@ def export(root, state, manifest):
         + "</pre></details>"
         for r in rows
     )
-    page = """<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LitAgent · Frozen writing validation</title><style>*{box-sizing:border-box}body{font:16px/1.6 system-ui;background:#f4f6fa;color:#172c43;max-width:1100px;padding:20px;margin:auto}section,header{background:white;padding:20px;margin:16px 0;border:1px solid #dbe2ee;border-radius:12px}h1{font-size:1.7rem}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}.stat{background:#edf2f9;padding:14px}.scroll{overflow:auto}table{width:100%;border-collapse:collapse}th,td{padding:10px;border-bottom:1px solid #ccc;text-align:left}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:.85em}button,a,summary{cursor:pointer}button{font:inherit;padding:8px}a{color:#135a9e}*:focus-visible{outline:3px solid #1679d2}summary{padding:12px 0}p{overflow-wrap:anywhere}@media(max-width:430px){body{padding:10px}section,header{padding:14px}h1{font-size:1.3rem}}</style><header><button id="locale">English / 中文</button><h1 id="title">三域冻结正文验收</h1><p id="scope">固定证据 → 正文 → Reviewer → Evaluation → 自动交付或失败归档；不重新检索。Judge/Jev关闭。</p><p id="profile"></p></header><section><div id="stats" class="grid"></div><p id="note">自动评测；人工校准未验证。未核验不等于通过，协议完成不等于科学通过。失败及未运行题均保留在分母。</p><p id="status"></p></section><section class="scroll"><table><thead><tr><th>Case</th><th>Generated</th><th>Evaluation</th><th>Delivered</th><th>Supported</th><th>Unsupported</th><th>Unverified</th><th>Detail</th></tr></thead><tbody>__ROWS__</tbody></table></section><section><h2>诊断 / Diagnostics</h2>__DETAILS__</section><section><a href="benchmark.json">JSON</a> · <a href="benchmark.csv">CSV</a> · <a href="benchmark.md">Markdown</a><pre id="usage"></pre></section><script id="data" type="application/json">__DATA__</script><script>const d=JSON.parse(document.getElementById('data').textContent);let en=false;function draw(){document.documentElement.lang=en?'en':'zh-CN';document.getElementById('title').textContent=en?'Three-domain frozen writing validation':'三域冻结正文验收';document.getElementById('scope').textContent=en?'Frozen evidence → writing → Reviewer → Evaluation → automatic delivery or archived failure. No retrieval. Judge/Jev disabled.':'固定证据 → 正文 → Reviewer → Evaluation → 自动交付或失败归档；不重新检索。Judge/Jev关闭。';document.getElementById('note').textContent=en?'Automatic evaluation; no human calibration. Unverified is not passed. Protocol completion is not scientific acceptance. Failures and unrun cases remain in the denominator.':'自动评测；人工校准未验证。未核验不等于通过，协议完成不等于科学通过。失败及未运行题均保留在分母。';const p=d.writing_profile;document.getElementById('profile').textContent=(en?'Frozen thinking profile: ':'冻结思考配置：')+p.id+' · '+(en?'Writing':'写作')+' '+p.generation_thinking_mode+' / Reviewer '+p.reviewer_thinking_mode+' / Evaluation '+p.evaluation_thinking_mode+' · '+(p.reasoning_effort?('effort='+p.reasoning_effort+' · '):'')+p.output_limit_parameter+' '+(p.generation_output_tokens??'—')+' / '+(p.reviewer_output_tokens??'—');document.getElementById('status').textContent=d.state+' · '+(d.stop_reason||'');let s=document.getElementById('stats');s.replaceChildren();for(const [k,v]of Object.entries({Planned:3,Run:d.run,Generated:d.generated,Evaluated:d.evaluation_completed,Delivered:d.passed})){let e=document.createElement('div');e.className='stat';e.textContent=k+' '+v+' / 3';s.append(e)}document.getElementById('usage').textContent=JSON.stringify({new_usage:d.new_usage,historical_usage:d.historical_usage,writing_profile:d.writing_profile,source_commit:d.source_commit,contract:d.contract},null,2)}document.getElementById('locale').onclick=()=>{en=!en;draw()};draw();</script></html>"""
+    page = """<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LitAgent · Frozen writing validation</title><style>*{box-sizing:border-box}body{font:16px/1.6 system-ui;background:#f4f6fa;color:#172c43;max-width:1100px;padding:20px;margin:auto}section,header{background:white;padding:20px;margin:16px 0;border:1px solid #dbe2ee;border-radius:12px}h1{font-size:1.7rem}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}.stat{background:#edf2f9;padding:14px}.scroll{overflow:auto}table{width:100%;border-collapse:collapse}th,td{padding:10px;border-bottom:1px solid #ccc;text-align:left}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:.85em}button,a,summary{cursor:pointer}button{font:inherit;padding:8px}a{color:#135a9e}*:focus-visible{outline:3px solid #1679d2}summary{padding:12px 0}p{overflow-wrap:anywhere}@media(max-width:430px){body{padding:10px}section,header{padding:14px}h1{font-size:1.3rem}}</style><header><button id="locale">English / 中文</button><h1 id="title">三域冻结正文验收</h1><p id="scope">固定证据 → 正文 → Reviewer → Evaluation → 自动交付或失败归档；不重新检索。Judge/Jev关闭。</p><p id="profile"></p></header><section><div id="stats" class="grid"></div><p id="note">自动评测；人工校准未验证。未核验不等于通过，协议完成不等于科学通过。失败及未运行题均保留在分母。</p><p id="status"></p></section><section class="scroll"><table><thead><tr><th>Case</th><th>Generated</th><th>Evaluation</th><th>Delivered</th><th>Supported</th><th>Unsupported</th><th>Unverified</th><th>Detail</th></tr></thead><tbody>__ROWS__</tbody></table></section><section><h2>诊断 / Diagnostics</h2>__DETAILS__</section><section><a href="benchmark.json">JSON</a> · <a href="benchmark.csv">CSV</a> · <a href="benchmark.md">Markdown</a><pre id="usage"></pre></section><script id="data" type="application/json">__DATA__</script><script>const d=JSON.parse(document.getElementById('data').textContent);let en=false;function draw(){document.documentElement.lang=en?'en':'zh-CN';document.getElementById('title').textContent=en?'Three-domain frozen writing validation':'三域冻结正文验收';document.getElementById('scope').textContent=en?'Frozen evidence → writing → Reviewer → Evaluation → automatic delivery or archived failure. No retrieval. Judge/Jev disabled.':'固定证据 → 正文 → Reviewer → Evaluation → 自动交付或失败归档；不重新检索。Judge/Jev关闭。';document.getElementById('note').textContent=en?'Automatic evaluation; no human calibration. Unverified is not passed. Protocol completion is not scientific acceptance. Failures and unrun cases remain in the denominator.':'自动评测；人工校准未验证。未核验不等于通过，协议完成不等于科学通过。失败及未运行题均保留在分母。';const p=d.writing_profile;document.getElementById('profile').textContent=(en?'Frozen thinking profile: ':'冻结思考配置：')+p.id+' · '+(p.provider_api||'chat')+' · '+(en?'Writing':'写作')+' '+p.generation_thinking_mode+' / Reviewer '+p.reviewer_thinking_mode+' / Evaluation '+p.evaluation_thinking_mode+' · '+(p.reasoning_effort?('effort='+p.reasoning_effort+' · '):'')+p.output_limit_parameter+' '+(p.generation_output_tokens??'—')+' / '+(p.reviewer_output_tokens??'—');document.getElementById('status').textContent=d.state+' · '+(d.stop_reason||'');let s=document.getElementById('stats');s.replaceChildren();for(const [k,v]of Object.entries({Planned:3,Run:d.run,Generated:d.generated,Evaluated:d.evaluation_completed,Delivered:d.passed})){let e=document.createElement('div');e.className='stat';e.textContent=k+' '+v+' / 3';s.append(e)}document.getElementById('usage').textContent=JSON.stringify({new_usage:d.new_usage,historical_usage:d.historical_usage,writing_profile:d.writing_profile,source_commit:d.source_commit,contract:d.contract},null,2)}document.getElementById('locale').onclick=()=>{en=!en;draw()};draw();</script></html>"""
     page = (
         page.replace("__ROWS__", table)
         .replace("__DETAILS__", details)
@@ -900,7 +908,12 @@ def main():
     p.add_argument("--accounting-parent", type=Path, action="append", default=[])
     p.add_argument(
         "--writing-profile",
-        choices=(DISABLED_PROFILE, THINKING_PROFILE, LOW_THINKING_PROFILE),
+        choices=(
+            DISABLED_PROFILE,
+            THINKING_PROFILE,
+            LOW_THINKING_PROFILE,
+            RESPONSES_PROFILE,
+        ),
         default=None,
     )
     g = p.add_mutually_exclusive_group(required=True)

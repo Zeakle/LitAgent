@@ -280,6 +280,9 @@ class LangFuseTracer:
                             key: data[key]
                             for key in (
                                 "reasoning_effort",
+                                "provider_api",
+                                "provider_status",
+                                "provider_error",
                                 "reasoning_tokens",
                                 "reasoning_usage_available",
                             )

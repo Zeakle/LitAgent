@@ -174,7 +174,13 @@ class FrozenSelector:
 
 
 async def run_frozen(
-    agent, bundle, run_id, *, transport=None, native_reasoning_effort=None
+    agent,
+    bundle,
+    run_id,
+    *,
+    transport=None,
+    native_reasoning_effort=None,
+    native_provider_api="chat",
 ):
     """Use real Synthesis, Reviewer, scheduler, assembly, Evaluation and acceptance."""
     if agent._wired:
@@ -184,6 +190,8 @@ async def run_frozen(
         and agent._config.adversarial.thinking_mode != "enabled"
     ):
         raise ValueError("native_reasoning_configuration_invalid")
+    if native_provider_api not in ("chat", "responses"):
+        raise ValueError("native_provider_api_invalid")
     selection = EvidenceSelection.from_dict(bundle["selection"])
     cards = build_fact_cards(selection.selected_items)
     if bundle.get("fact_cards_sha256") and digest(cards) != bundle["fact_cards_sha256"]:
@@ -208,6 +216,7 @@ async def run_frozen(
         methodology_provider=lambda task: copy.deepcopy(bundle["methodology"]),
         thinking_mode=cfg.adversarial.thinking_mode,
         native_reasoning_effort=native_reasoning_effort,
+        native_provider_api=native_provider_api,
         run_id_provider=lambda: agent._session_id,
         repair_state_path_provider=agent._targeted_repair_path,
     )
@@ -215,6 +224,7 @@ async def run_frozen(
         evaluation,
         config=cfg.adversarial,
         native_reasoning_effort=native_reasoning_effort,
+        native_provider_api=native_provider_api,
         context_config=cfg.context,
         trace_hook=agent._trace_hook,
     )
