@@ -84,12 +84,16 @@ Reranking improves ranking metrics but adds substantial latency; it is not the
 default. Full-text profiles change indexed material and are separate from pure
 ranking comparisons. [Full results and limitations](./benchmarks/rag/RESULTS.md).
 
-Survey: the latest published diagnostic ran **1/3 pilots**, used **27 requests /
-126,023 tokens**, and stopped on invalid Pro body JSON **before Evaluation**. Formal
-cases: **0/15 run**. This is a technical failure, not a measured scientific score.
+Latest frozen-evidence writing validation: **1/3 cases started**, **1 Pro request /
+13,179 tokens**, invalid JSON before Reviewer or Evaluation, strict delivery **0/3**.
+No retrieval or extraction was repeated. The earlier end-to-end diagnostic used
+**27 requests / 126,023 tokens** and also stopped before Evaluation. Formal cases:
+**0/15 run**. These are technical failures, not measured scientific scores.
 An older single NeRF run passed an older, less strict policy; it is not success
 under the current policy or evidence of a quality improvement.
-[Latest bounded trial](./benchmarks/survey/results/survey-reliability-20261021-001/README.md) ·
+[Latest writing validation](./benchmarks/survey/results/frozen-writer-three-domain-20261024-004/README.md) ·
+[Offline chapter-generation repair](./docs/writer-sections-review-20261024.md) ·
+[Earlier end-to-end trial](./benchmarks/survey/results/survey-reliability-20261021-001/README.md) ·
 [Survey methodology](./benchmarks/survey/README.md) ·
 [Packaged public records](./src/litagent/static/presentation/manifest.json).
 

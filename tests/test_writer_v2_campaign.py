@@ -118,6 +118,7 @@ def test_campaign_source_inventory_includes_new_consumers_and_tests():
     assert {
         "src/litagent/writing_v2.py",
         "src/litagent/frozen_writing.py",
+        "tests/test_writer_sections.py",
         "scripts/run_frozen_writing.py",
         "tests/test_writer_v2.py",
         "tests/test_writer_v2_campaign.py",

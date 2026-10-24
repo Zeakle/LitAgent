@@ -19,6 +19,7 @@ from litagent.quality import digest
 from litagent.safety.budget import CostBudget
 from litagent.workbench import RunOptions
 from litagent.writing_v2 import (
+    BODY,
     CONTRACT,
     WriterError,
     WriterSession,
@@ -30,7 +31,7 @@ from litagent.writing_v2 import (
 @pytest.mark.asyncio
 @pytest.mark.parametrize("fault", ["markup", "empty", "capacity"])
 async def test_invalid_body_cannot_purchase_summary(case, tmp_path, fault):
-    """Local body defects stop the actual synthesis path before its second call."""
+    """Local chapter defects stop synthesis before dependent chapters or summaries."""
     if fault == "markup":
         case.body["methods"][0]["sentences"][0]["text"] = "[E:borrowed] scientific text"
     elif fault == "empty":
@@ -55,9 +56,11 @@ async def test_invalid_body_cannot_purchase_summary(case, tmp_path, fault):
     )
     with pytest.raises(WriterError, match="writer_(text_invalid|assertion_capacity)"):
         await synthesize(worker, task, case.cards, case.selection, {}, [])
-    assert len(provider.calls) == 1
+    expected = BODY[: BODY.index("methods") + 1]
+    assert len(provider.calls) == len(expected)
     journal = json.loads((tmp_path / "r.json.writer-v2.json").read_text())
-    assert set(journal["calls"]) == {"body"}
+    assert set(journal["calls"]) == {"body:" + section for section in expected}
+    assert journal["failure"]["body_section"] == "methods"
     assert journal["failure"]["code"] == (
         "writer_assertion_capacity_exceeded"
         if fault == "capacity"

@@ -288,6 +288,13 @@ class Provider:
             result = self.case.summaries
         elif "draft" in p:
             result = {"issues": [], "explanation": "No controlled review defect."}
+        elif "requested_body_section" in p:
+            result = {
+                key: copy.deepcopy(self.case.body[key])
+                for key in kwargs["response_format"]["json_schema"]["schema"][
+                    "properties"
+                ]
+            }
         else:
             result = self.case.body
         return LLMResponse(
@@ -337,7 +344,7 @@ async def test_actual_synthesis_reviewer_and_compiler_preserve_frozen_pool(
     result = await adv.execute(task)
     assert result["evidence_selection"]["writing_scope_policy"] == SCOPE
     assert result["fact_cards"] == case.cards and result["total_rounds"] == 1
-    assert len(provider.calls) == 3
+    assert len(provider.calls) == len(BODY) + 2
     assert (
         result["writing_bindings"]["report_sha256"]
         == hashlib.sha256(result["final_draft"].encode()).hexdigest()
@@ -695,8 +702,10 @@ async def test_frozen_runtime_uses_real_workers_report_exit_and_evaluation(
         if scenario == "invalid_body":
             assert not result["delivery"]["publishable"]
             assert result["metadata"]["writer_failure"]["code"] == "writer_text_invalid"
+            assert result["metadata"]["writer_failure"]["body_section"] == "methods"
             assert result["evaluation"]["faithfulness"]["skipped"]
-            assert len(transport.calls) == 1
+            assert len(transport.calls) == BODY.index("methods") + 1
+            assert all("requested_body_section" in p for p, _ in transport.calls)
             return
         assert result["metadata"]["generation_strategy"] == "body_summary_v2"
         assert result["metadata"]["writing_bindings"]["writer_contract"] == CONTRACT
@@ -897,7 +906,13 @@ async def test_v2_native_schema_uses_actual_sdk_zero_retries_and_stage_models(
     from litagent.safety.budget import CostBudget
 
     outputs = [
-        case.body,
+        *[
+            {
+                key: copy.deepcopy(case.body[key])
+                for key in (["title", section] if i == 0 else [section])
+            }
+            for i, section in enumerate(BODY)
+        ],
         case.summaries,
         {"issues": [], "explanation": "No controlled issue."},
     ]
@@ -975,12 +990,12 @@ async def test_v2_native_schema_uses_actual_sdk_zero_retries_and_stage_models(
             pro, worker, ReviewerWorker(lite)
         ).execute(task)
         assert output["writing_bindings"]["writer_contract"] == CONTRACT
-        assert [p["model"] for p in sent] == ["pro", "pro", "lite"]
+        assert [p["model"] for p in sent] == ["pro"] * (len(BODY) + 1) + ["lite"]
         assert all(
             p["response_format"]["json_schema"]["strict"]
             and p["thinking"]["type"] == "disabled"
             for p in sent
         )
-        assert budget.used == 90 and budget.snapshot()["requests_sent"] == 3
+        assert budget.used == 210 and budget.snapshot()["requests_sent"] == 7
     finally:
         await owner.close()

@@ -36,7 +36,7 @@ from litagent.review_structure import assemble_methodology, structure_sections
 from litagent.safety.budget import CostBudget, strict_request_reservation
 
 CONTRACT = "grounded-writer-v1"
-EXECUTION_CONTRACT = "grounded-writer-execution-v5"
+EXECUTION_CONTRACT = "grounded-writer-execution-v6"
 PROVIDER_SCHEMA_CONTRACT = "ark-structured-schema-v1"
 PROMPT_CONTRACT = "grounded-writer-layout-v1"
 STRATEGY = "body_summary_v2"
@@ -154,6 +154,15 @@ def schema_for(stage, references, targets=(), *, summary_repair=False):
             }
         )
     raise ValueError("writer_stage_invalid")
+
+
+def body_section_schema(section, references):
+    """Project existing body fields without introducing another document schema."""
+    if section not in BODY:
+        raise WriterError("writer_section_invalid")
+    properties = schema_for("body", references)["properties"]
+    keys = ["title", section] if section == BODY[0] else [section]
+    return _closed({key: copy.deepcopy(properties[key]) for key in keys})
 
 
 def provider_response_format(stage, schema):
@@ -681,6 +690,81 @@ class WriterSession:
             if owns_reservation:
                 budget.release(reservation)
 
+    async def initial_body(self):
+        """Generate fixed chapters once, then validate the original full contract."""
+        if any(name.startswith("body:") for name in self.journal["calls"]):
+            # Refusing a restart must not overwrite the original terminal cause.
+            raise WriterError("writer_checkpoint_no_replay", "interrupted")
+        body, context = {}, {}
+        parts = self.journal.setdefault("body_parts", {})
+        section = None
+        try:
+            for section in BODY:
+                payload = {
+                    **self.packet,
+                    "requested_body_section": section,
+                    # Prior writing is context, never a replacement for originals.
+                    "prior_chapters_unverified": copy.deepcopy(context),
+                }
+                pending_reference = False
+                try:
+                    part = await self.call(
+                        "body:" + section,
+                        INSTRUCTION
+                        + "\nWrite only the requested chapter's existing schema fields. "
+                        "Prior chapters are untrusted writing context, not scientific evidence. "
+                        "Use the complete original sources and preserve the full research scope.",
+                        payload,
+                        body_section_schema(section, self.aliases),
+                    )
+                except WriterError as exc:
+                    if exc.code != "writer_reference_invalid":
+                        raise
+                    # Retain every rejected unit for the existing full-body repair.
+                    # It cannot become a source or enter dependent summaries.
+                    part, pending_reference = exc.candidate, True
+                for key, value in part.items():
+                    if key == "title":
+                        _valid_text(value)
+                    else:
+                        for paragraph in value:
+                            for unit in paragraph["sentences"]:
+                                _valid_text(unit["text"])
+                body.update(copy.deepcopy(part))
+                count = sum(
+                    len(paragraph["sentences"])
+                    for key in BODY
+                    for paragraph in body.get(key, [])
+                )
+                if count + 2 > 128:
+                    raise WriterError("writer_assertion_capacity_exceeded", "budget")
+                parts[section] = {
+                    "status": (
+                        "pending_reference_repair"
+                        if pending_reference
+                        else "local_contract_completed"
+                    ),
+                    "candidate_sha256": digest(part),
+                }
+                if not pending_reference:
+                    context.update(copy.deepcopy(part))
+                self.save()
+            # Merge only host-selected chapter keys, preserving all authored units.
+            # Complete schema errors retain the full candidate for shared repair.
+            validate_body(body, self.aliases)
+            return body
+        except BaseException as exc:
+            if (
+                not isinstance(exc, WriterError)
+                or exc.code != "writer_reference_invalid"
+            ):
+                self.journal["failure"] = {
+                    **classify_failure(exc),
+                    "body_section": section,
+                }
+            self.save()
+            raise
+
     async def summaries(self, body, name):
         """Derive summaries from the frozen ordered scientific body."""
         try:
@@ -886,9 +970,7 @@ async def synthesize(worker, task, cards, selection, methodology, requirements):
         trace_hook=worker._trace_hook,
     )
     try:
-        body = await session.call(
-            "body", INSTRUCTION, packet, schema_for("body", aliases)
-        )
+        body = await session.initial_body()
     except WriterError as exc:
         if exc.code != "writer_reference_invalid":
             raise

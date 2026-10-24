@@ -13,6 +13,7 @@ Phase 14.5 scientific acceptance remains in progress.
 | 15-case Survey benchmark | implementation and diagnostic pilots complete; formal controlled baseline pending | [dataset](../benchmarks/survey/dataset.yaml), [methodology](../benchmarks/survey/README.md) |
 | Evidence / fact-card preparation | verified offline; semantic fields remain unverified candidates | [quality](../src/litagent/quality.py), [source binding tests](../tests/test_grounded_extraction_claims.py) |
 | Scoped Evaluation v3 and strict delivery | verified offline; full coverage and scientific support 1.0 required; no formal live baseline | [batched evaluator](../src/litagent/eval/batched.py), [tests](../tests/test_batched_evaluation.py) |
+| Converged writer with fixed chapter requests | execution-v6 verified offline; no new live result for this repair | [writer](../src/litagent/writing_v2.py), [chapter regressions](../tests/test_writer_sections.py), [review](writer-sections-review-20261024.md) |
 | Lite / Pro stage routing | live calls observed; no controlled quality gain established | [routing](../src/litagent/llm/routing.py), [tests](../tests/test_stage_model_routing.py), [public diagnostic](../src/litagent/static/presentation/manifest.json) |
 | Native array writing and inline schema | verified offline; original invalid response remains rejected | [codec](../src/litagent/native_wire.py), [regressions](../tests/test_native_schema_inline.py) |
 | Staged body / summary generation | verified offline; first staged body JSON failed; flat frozen-input follow-up JSON parsed but card schema failed | [staged writer](../src/litagent/staged_generation.py), [SDK regression tests](../tests/test_staged_native_generation.py), [bounded result](../benchmarks/survey/results/survey-reliability-20261021-001/README.md) |
@@ -114,3 +115,18 @@ progress beyond the prior JSON blocker for one sample, not proof of scientific
 reliability. A later read-only view fix exposes the preserved capacity reason and
 distinguishes unsent repair preflight from actual repair requests. It does not
 alter archived scores, report SHA or execution status.
+
+The [content-guided fixed campaign](../benchmarks/survey/results/frozen-writer-three-domain-20261024-004/README.md)
+again stopped on the first Pro response: 13,179 known tokens, malformed JSON, no
+Reviewer or Evaluation, strict delivery 0/3. Early chapter nesting was observed;
+the 2,380 output tokens did not reach the 20,000 output allowance. This does not
+establish a specific remote cause or measure scientific ability.
+
+The subsequent [chapter-request repair](writer-sections-review-20261024.md) uses
+the same Synthesis Worker and full document contract, deriving five request schemas
+from existing chapter fields. All original sources remain available in every
+request; the host assembles and validates the complete body before summaries.
+Execution-v6 passed 4,274 default offline tests. SDK regressions cover Pro/Lite
+routing, separate request accounting, no downstream budget borrowing and no replay
+of a cancelled prefix. Existing scientific gates and two shared repairs remain.
+No paid request was made for this repair, and its live quality effect is unverified.
