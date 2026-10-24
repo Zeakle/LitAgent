@@ -208,6 +208,7 @@ class SynthesisWorker(Worker):
         run_id_provider=None,
         repair_state_path_provider=None,
         received_native: Mapping | None = None,
+        native_reasoning_effort: str | None = None,
     ):
         """Initialize the synthesis worker."""
         self._methodology_provider = methodology_provider
@@ -229,6 +230,11 @@ class SynthesisWorker(Worker):
         if thinking_mode not in {"provider_default", "enabled", "disabled"}:
             raise ValueError("unsupported thinking_mode")
         self._thinking_mode = thinking_mode
+        if native_reasoning_effort not in (None, "low") or (
+            native_reasoning_effort is not None and thinking_mode != "enabled"
+        ):
+            raise ValueError("native_reasoning_configuration_invalid")
+        self._native_reasoning_effort = native_reasoning_effort
 
         self._tools: list = []
         if skill_manager:
@@ -241,6 +247,11 @@ class SynthesisWorker(Worker):
 
     async def execute(self, task: SubTask) -> Any:
         """Select evidence and generate a scoped survey draft."""
+        if (
+            self._native_reasoning_effort is not None
+            and task.input_data.get("generation_strategy") != "body_summary_v2"
+        ):
+            raise ValueError("native_reasoning_strategy_invalid")
         repair_state = None
         if (
             task.input_data.get("quality_policy") == "strict_auto_v2"

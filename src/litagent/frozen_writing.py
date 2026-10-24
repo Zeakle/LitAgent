@@ -173,10 +173,17 @@ class FrozenSelector:
         return selection
 
 
-async def run_frozen(agent, bundle, run_id, *, transport=None):
+async def run_frozen(
+    agent, bundle, run_id, *, transport=None, native_reasoning_effort=None
+):
     """Use real Synthesis, Reviewer, scheduler, assembly, Evaluation and acceptance."""
     if agent._wired:
         raise ValueError("frozen_writing_requires_fresh_runtime")
+    if native_reasoning_effort not in (None, "low") or (
+        native_reasoning_effort is not None
+        and agent._config.adversarial.thinking_mode != "enabled"
+    ):
+        raise ValueError("native_reasoning_configuration_invalid")
     selection = EvidenceSelection.from_dict(bundle["selection"])
     cards = build_fact_cards(selection.selected_items)
     if bundle.get("fact_cards_sha256") and digest(cards) != bundle["fact_cards_sha256"]:
@@ -200,12 +207,14 @@ async def run_frozen(agent, bundle, run_id, *, transport=None):
         trace_hook=agent._trace_hook,
         methodology_provider=lambda task: copy.deepcopy(bundle["methodology"]),
         thinking_mode=cfg.adversarial.thinking_mode,
+        native_reasoning_effort=native_reasoning_effort,
         run_id_provider=lambda: agent._session_id,
         repair_state_path_provider=agent._targeted_repair_path,
     )
     agent._reviewer = ReviewerWorker(
         evaluation,
         config=cfg.adversarial,
+        native_reasoning_effort=native_reasoning_effort,
         context_config=cfg.context,
         trace_hook=agent._trace_hook,
     )

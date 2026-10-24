@@ -558,7 +558,10 @@ async def test_actual_v3_does_not_confuse_cross_chapter_permission_with_support(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("thinking_mode", ["disabled", "enabled"])
+@pytest.mark.parametrize(
+    "thinking_mode,native_reasoning_effort",
+    [("disabled", None), ("enabled", None), ("enabled", "low")],
+)
 @pytest.mark.parametrize(
     "scenario",
     [
@@ -571,7 +574,7 @@ async def test_actual_v3_does_not_confuse_cross_chapter_permission_with_support(
     ],
 )
 async def test_frozen_runtime_uses_real_workers_report_exit_and_evaluation(
-    case, tmp_path, monkeypatch, scenario, thinking_mode
+    case, tmp_path, monkeypatch, scenario, thinking_mode, native_reasoning_effort
 ):
     """Frozen runtime uses real workers report exit and evaluation."""
     from litagent.config import load_config
@@ -634,6 +637,7 @@ async def test_frozen_runtime_uses_real_workers_report_exit_and_evaluation(
                 )
             ):
                 assert kwargs["extra_body"] == {"thinking": {"type": thinking_mode}}
+                assert kwargs.get("reasoning_effort") == native_reasoning_effort
                 assert messages[0]["content"].count(PROMPT_CONTRACT) == 1
                 assert messages[0]["content"].count(WRITER_CONTENT_CONTRACT) == 1
             if "targets" in p:
@@ -712,7 +716,13 @@ async def test_frozen_runtime_uses_real_workers_report_exit_and_evaluation(
     agent._evaluation_progress_root = tmp_path / "evaluation"
     transport = Transport()
     try:
-        result = await run_frozen(agent, bundle, "test-frozen-v2", transport=transport)
+        result = await run_frozen(
+            agent,
+            bundle,
+            "test-frozen-v2",
+            transport=transport,
+            native_reasoning_effort=native_reasoning_effort,
+        )
         if scenario == "invalid_body":
             assert not result["delivery"]["publishable"]
             assert result["metadata"]["writer_failure"]["code"] == "writer_text_invalid"

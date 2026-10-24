@@ -298,6 +298,11 @@ class OpenAICompatibleClient(BaseLLMClient):
                 "output_limit_parameter": limit_parameter,
                 "temperature": temperature,
                 "response_format": kwargs.get("response_format"),
+                **(
+                    {"reasoning_effort": kwargs["reasoning_effort"]}
+                    if "reasoning_effort" in kwargs
+                    else {}
+                ),
             },
         )
 
@@ -314,6 +319,8 @@ class OpenAICompatibleClient(BaseLLMClient):
 
             if "extra_body" in kwargs:
                 create_kwargs["extra_body"] = kwargs["extra_body"]
+            if "reasoning_effort" in kwargs:
+                create_kwargs["reasoning_effort"] = kwargs["reasoning_effort"]
 
             if "tools" in kwargs and kwargs["tools"]:
                 create_kwargs["tools"] = kwargs["tools"]
@@ -335,6 +342,21 @@ class OpenAICompatibleClient(BaseLLMClient):
                 "completion_tokens": resp.usage.completion_tokens if resp.usage else 0,
                 "usage_available": resp.usage is not None,
             }
+            details = getattr(resp.usage, "completion_tokens_details", None)
+            reasoning_tokens = (
+                details.get("reasoning_tokens")
+                if isinstance(details, dict)
+                else getattr(details, "reasoning_tokens", None)
+            )
+            if reasoning_tokens is not None:
+                available = (
+                    type(reasoning_tokens) is int
+                    and type(usage["completion_tokens"]) is int
+                    and 0 <= reasoning_tokens <= usage["completion_tokens"]
+                )
+                usage["reasoning_usage_available"] = available
+                if available:
+                    usage["reasoning_tokens"] = reasoning_tokens
 
             tool_calls = []
             if choice.message.tool_calls:
@@ -388,6 +410,16 @@ class OpenAICompatibleClient(BaseLLMClient):
                     "actual_model": response.model,
                     "max_tokens": max_tokens,
                     "output_limit_parameter": limit_parameter,
+                    **(
+                        {"reasoning_effort": kwargs["reasoning_effort"]}
+                        if "reasoning_effort" in kwargs
+                        else {}
+                    ),
+                    **{
+                        k: usage[k]
+                        for k in ("reasoning_tokens", "reasoning_usage_available")
+                        if k in usage
+                    },
                 },
             )
 

@@ -108,6 +108,7 @@ def manifest(tmp_path, monkeypatch, configured):
 
     def read(path):
         return {
+            "query": "Offline public fixture question",
             "source_run_id": path.stem,
             "archive_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
             "selection": {"selected_items": []},
@@ -247,3 +248,135 @@ def test_public_exports_show_real_mode_and_keep_three_planned_cases(manifest):
     assert "source_run_id" not in json.dumps(public) and "api_key" not in json.dumps(
         public
     )
+
+
+def test_low_profile_binds_internal_parameters_without_changing_app_config(manifest):
+    """A fixed internal parameter changes campaign identity, not old config defaults."""
+    root, config = manifest
+    low = "writer_reviewer_low_thinking_v1"
+    original = campaign.validate(root, config)
+    target = root.with_name("low-suite")
+    effective = campaign.profile_config(config, low)
+    assert campaign.profile_parameters(low) == {"native_reasoning_effort": "low"}
+    campaign.prepare(target, effective, writing_profile=low)
+    frozen = campaign.validate(target, effective)
+    assert frozen["writing_parameters"] == {"native_reasoning_effort": "low"}
+    assert frozen["config"] == original["config"]
+    assert frozen["cases"] == original["cases"]
+    assert frozen["identity"] != original["identity"]
+    state = {"status": "prepared", "cases": []}
+    public = campaign.export(target, state, frozen)
+    assert public["writing_profile"]["reasoning_effort"] == "low"
+    assert all(r["reasoning_effort"] == "low" for r in public["cases"])
+
+
+@pytest.mark.parametrize(
+    "parameters",
+    [
+        None,
+        {},
+        {"native_reasoning_effort": "high"},
+        {"native_reasoning_effort": "low", "budget": 1000000},
+    ],
+)
+def test_low_profile_rejects_missing_or_changed_frozen_parameters(manifest, parameters):
+    """Digest recomputation must not grant new server parameters or wider budgets."""
+    root, config = manifest
+    low = "writer_reviewer_low_thinking_v1"
+    target = root.with_name("low-suite")
+    effective = campaign.profile_config(config, low)
+    campaign.prepare(target, effective, writing_profile=low)
+    frozen = json.loads((target / "manifest.json").read_text())
+    if parameters is None:
+        frozen.pop("writing_parameters")
+    else:
+        frozen["writing_parameters"] = parameters
+    frozen["identity"] = campaign.digest(
+        {k: v for k, v in frozen.items() if k != "identity"}
+    )
+    atomic_json(target / "manifest.json", frozen)
+    with pytest.raises(ValueError, match="parameters"):
+        campaign.validate(target, effective)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("complete_detail", [True, False])
+async def test_driver_keeps_optional_reasoning_separate_from_primary_cost(
+    manifest, monkeypatch, complete_detail
+):
+    """Exercise the actual driver, recorder and exporters at the external run boundary."""
+    from litagent.safety.budget import CostBudget
+    from litagent.writing_v2 import WriterError
+
+    root, config = manifest
+    profile = "writer_reviewer_low_thinking_v1"
+    cfg = campaign.profile_config(config, profile)
+    cfg.observability.enabled = False
+    target = root.with_name("low-driver")
+    campaign.prepare(target, cfg, writing_profile=profile)
+
+    async def external_run(agent, bundle, run_id, *, native_reasoning_effort=None):
+        assert native_reasoning_effort == "low"
+        budget = CostBudget()
+        budget.configure_strict(halt_on_unknown_usage=True)
+        agent._cost_budget = budget
+        for i in range(2):
+            budget.begin_request()
+            details = (
+                {
+                    "reasoning_tokens": 70 if i == 0 else 0,
+                    "reasoning_usage_available": True,
+                }
+                if i == 0 or complete_detail
+                else {}
+            )
+            usage = {
+                "prompt_tokens": 20,
+                "completion_tokens": 100,
+                "usage_available": True,
+                **details,
+            }
+            budget.record(usage)
+            data = {
+                "operation_id": str(i),
+                "model": "pro",
+                "messages": [],
+                "max_tokens": 20000,
+                "output_limit_parameter": "max_completion_tokens",
+                "reasoning_effort": "low",
+            }
+            agent._trace_hook("llm.start", data)
+            agent._trace_hook(
+                "llm.complete",
+                {
+                    **data,
+                    **usage,
+                    "total_tokens": 120,
+                    "content": "",
+                    "finish_reason": "length",
+                },
+            )
+        raise WriterError("writer_output_truncated")
+
+    monkeypatch.setattr(campaign, "run_frozen", external_run)
+    state = await campaign.execute(target, cfg)
+    assert state["status"] == "stopped" and len(state["cases"]) == 1
+    row = state["cases"][0]
+    assert (
+        row["usage_complete"] is True
+        and row["known_tokens"] == 240
+        and row["unknown_hold"] == 0
+    )
+    assert row["reasoning_usage_complete"] is complete_detail
+    assert row["reasoning_tokens"] == (70 if complete_detail else None)
+    assert row["reasoning_usage_available_requests"] == (2 if complete_detail else 1)
+    out = Path("benchmarks/survey/results") / target.name
+    public = json.loads((out / "benchmark.json").read_text())
+    assert (
+        public["new_usage"]["known_tokens"] == 240
+        and public["passed"] == 0
+        and public["not_run"] == 2
+    )
+    csv_rows = list(csv.DictReader((out / "benchmark.csv").open()))
+    assert csv_rows[0]["reasoning_tokens"] == ("70" if complete_detail else "")
+    assert "Details complete" in (out / "benchmark.md").read_text()

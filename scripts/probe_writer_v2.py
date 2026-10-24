@@ -145,6 +145,7 @@ def build_manifest(config):
             Path("artifacts/acceptance/frozen-writer-three-domain-20261024-005"),
             Path("artifacts/acceptance/frozen-writer-three-domain-20261024-006"),
             Path("artifacts/acceptance/frozen-writer-three-domain-20261024-007"),
+            Path("artifacts/acceptance/frozen-writer-three-domain-20261024-008"),
         ],
     )
     files = [

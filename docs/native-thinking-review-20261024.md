@@ -62,3 +62,19 @@ JSON、CSV、Markdown 和 HTML 展示同源模式与输出额度；页面首部�
 返回的 reasoning 字符数并非计费 tokens；当前 normalizer 没有持久化可选 reasoning-token 明细，不能事后推算精确的思考占比。此结果证明总输出门禁生效，不证明启用思考提高了正文质量，也不证明此前非法 JSON 的原因已经解决。
 
 28 个保护路径、476 份执行源码、原结果保持。LangFuse 读回 2 个 generation／51,376 tokens、`max_completion_tokens` 元数据及科学 I/O 为空，不声称完整 trace 树。四格式同源与三题分母、桌面／390px、中英文、键盘及 console 零错误／警告已核对。历史累计 751 次模型请求／4,228,277 已知 tokens，旧 1,030,414 未知保守占用继续单列。Phase 14.5 保持 `in_progress`。
+
+## 固定 low 强度与明细消费（2026-10-25，仅离线）
+
+新增固定配置 `writer_reviewer_low_thinking_v1`，显式发送 `reasoning_effort=low`。它由服务端冻结参数进入真实 Synthesis、摘要、Reviewer 和共享修复，不增加普通 AppConfig 字段，不改变旧默认配置指纹。旧两种配置保留原含义；新参数进入 manifest、journal、输入身份和宿主文档，执行身份升级为 v11。Reviewer 可以独立省略 effort，不会误继承生成侧设置。
+
+总输出仍为生成 20,000／Reviewer 4,096；Evaluation 16,384、每题 500k／64、原超时、两次共享修复及科学支持率 1.0 保持。`low` 只是间接调节思考长度，不保证回答空间、耗时或科学质量，不能据此扩大额度或接受不完整正文。[官方思考控制说明](https://docs.volcengine.com/docs/ark/deep-thinking?lang=en)
+
+SDK 现在转发显式 effort，并保留可选 `completion_tokens_details.reasoning_tokens`。明细只作为 completion 的子集展示，不再次计费；缺失保持不可用，畸形解析值标为明细无效，不改已知主计费。缺主 usage 仍按原门禁停止。SDK 会先转换部分原始类型，例如 HTTP 布尔值可能被转换为整数；本层检查 SDK 暴露值，不宣称验证了原始 HTTP 类型。它不依据思考摘要字符数补算 tokens，也不将明细用于科学门禁。
+
+真实 SDK／HTTP 替身、独立 Reviewer、两次共享修复及实际 Synthesis→Reviewer→唯一报告出口→Evaluation 的正反例均通过。原 008 空正文及 `length` 响应仍被拒绝，007 坏 JSON 仍非法。实际 driver／recorder／四格式导出验证了完整与部分明细：部分缺失时不提供推算总数，主计费保持。LangFuse 只增加安全标量元数据，不把 reasoning 另列为计费 usage，不传思考正文。
+
+相关回归 **217 项通过**；最终默认 **4412 passed、25 deselected、8 warnings**，12 个改动 Python 文件 Black/isort 及差异检查通过。32 个保护路径、476 份旧源码、008 原运行归档及 journal 保持，累计费用不变，探针继承链补至 008。本离线批新增付费请求为零。
+
+大报告预检在真实 Synthesis 重放 005 六份旧响应，完整 user payload／schema 与旧请求相同，草稿 SHA 仍为 `34e8fca38d54b469c098281a4e320798ac9ae6ccf75801991659adaab6002e4f`；Reviewer 使用离线替身。五章预留 56,129／58,775／64,036／71,282／77,208，摘要 58,648、Reviewer 107,328；ViT／NeRF 首章 62,386／62,512。以上只证明完整请求构造与参数接线，不是模型对 low 的真实生成、语义判断或未来全程预算保证。
+
+带“离线配置预览（无模型请求）”标识的页面完成桌面／390px、中英文、键盘及 console 零错误／警告验收，明确展示 `effort=low`；没有新最终正文，不宣称 PDF／Word 正文验收。下一步先提交后独立冻结三域配置，不续跑 008。真实严格结果仍为 0/3，Phase 14.5 继续 `in_progress`。

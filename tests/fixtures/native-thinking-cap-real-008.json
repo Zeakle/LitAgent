@@ -1,0 +1,8 @@
+{
+  "fixture_kind": "original_empty_content_and_normalized_usage_not_scientific_evidence",
+  "source_response_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "content": "",
+  "finish_reason": "length",
+  "max_completion_tokens": 20000,
+  "usage": {"prompt_tokens": 10518, "completion_tokens": 20000, "usage_available": true}
+}

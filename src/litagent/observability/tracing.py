@@ -276,6 +276,15 @@ class LangFuseTracer:
                         ),
                         "usage_available": available,
                         "usage_complete": complete,
+                        **{
+                            key: data[key]
+                            for key in (
+                                "reasoning_effort",
+                                "reasoning_tokens",
+                                "reasoning_usage_available",
+                            )
+                            if key in data
+                        },
                     },
                 }
                 # Missing provider usage must not become a fabricated zero cost.

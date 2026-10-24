@@ -157,6 +157,7 @@ class ReviewerWorker(Worker):
         trusted_claim_recall_top_k: int = 0,
         trusted_claim_context_max_chars: int = 4000,
         trace_hook=None,
+        native_reasoning_effort: str | None = None,
     ):
         """Initialize the reviewer worker."""
         self._llm = llm
@@ -168,6 +169,12 @@ class ReviewerWorker(Worker):
         )
         self._skill_manager = skill_manager
         self._config = config or AdversarialConfig()
+        if native_reasoning_effort not in (None, "low") or (
+            native_reasoning_effort is not None
+            and self._config.thinking_mode != "enabled"
+        ):
+            raise ValueError("native_reasoning_configuration_invalid")
+        self._native_reasoning_effort = native_reasoning_effort
         self._trusted_claim_recall_top_k = trusted_claim_recall_top_k
         self._trusted_claim_context_max_chars = trusted_claim_context_max_chars
         self._trusted_claim_cache: dict[str, str] = {}
@@ -206,6 +213,11 @@ class ReviewerWorker(Worker):
 
     async def execute(self, task: SubTask) -> Any:
         """Review an upstream draft and enforce its evidence contract."""
+        if (
+            self._native_reasoning_effort is not None
+            and task.input_data.get("generation_strategy") != "body_summary_v2"
+        ):
+            raise ValueError("native_reasoning_strategy_invalid")
         if task.input_data.get("generation_strategy") == "body_summary_v2":
             from litagent.writing_v2 import review
 
