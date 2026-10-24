@@ -271,6 +271,9 @@ class LangFuseTracer:
                         "elapsed_ms": data.get("elapsed_ms", 0),
                         "finish_reason": data.get("finish_reason"),
                         "max_tokens": data.get("max_tokens"),
+                        "output_limit_parameter": data.get(
+                            "output_limit_parameter", "max_tokens"
+                        ),
                         "usage_available": available,
                         "usage_complete": complete,
                     },

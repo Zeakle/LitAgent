@@ -101,6 +101,7 @@ class RedactingTraceHook:
         "quality_policy",
         "finish_reason",
         "max_tokens",
+        "output_limit_parameter",
         "candidate_sha256",
         "contract_version",
         "diagnostic_count",
@@ -550,7 +551,13 @@ def _event_input(event: str, data: dict[str, Any]) -> Any:
     if event == "llm.start":
         return {
             key: data[key]
-            for key in ("model", "messages", "max_tokens", "temperature")
+            for key in (
+                "model",
+                "messages",
+                "max_tokens",
+                "output_limit_parameter",
+                "temperature",
+            )
             if key in data
         }
     if event == "tool.start":

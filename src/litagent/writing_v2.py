@@ -37,7 +37,7 @@ from litagent.review_structure import assemble_methodology, structure_sections
 from litagent.safety.budget import CostBudget, strict_request_reservation
 
 CONTRACT = "grounded-writer-v1"
-EXECUTION_CONTRACT = "grounded-writer-execution-v9"
+EXECUTION_CONTRACT = "grounded-writer-execution-v10"
 PROVIDER_SCHEMA_CONTRACT = "ark-structured-schema-v1"
 PROMPT_CONTRACT = "grounded-writer-native-intent-v2"
 STRATEGY = "body_summary_v2"
@@ -630,11 +630,21 @@ class WriterSession:
                 None if mode == "provider_default" else {"thinking": {"type": mode}}
             )
             request_kwargs = {} if extra_body is None else {"extra_body": extra_body}
+            # Ark answer-only caps do not bound reasoning. The same reservation
+            # must cover the entire completion whenever thinking may be active.
+            limit_parameter = (
+                "max_tokens" if mode == "disabled" else "max_completion_tokens"
+            )
+            request_kwargs[limit_parameter] = max_tokens
+            limit_identity = (
+                max_tokens if mode == "disabled" else {limit_parameter: max_tokens}
+            )
             rf = provider_response_format(stage, schema)
             messages = request_messages(system, payload, schema)
             entry.update(
-                input_sha256=digest([messages, rf, max_tokens, extra_body]),
+                input_sha256=digest([messages, rf, limit_identity, extra_body]),
                 thinking_mode=mode,
+                output_limit_parameter=limit_parameter,
                 schema_sha256=digest(schema),
                 provider_schema_contract=PROVIDER_SCHEMA_CONTRACT,
                 prompt_contract=PROMPT_CONTRACT,
@@ -679,7 +689,6 @@ class WriterSession:
                 self.llm,
                 messages,
                 stage=stage,
-                max_tokens=max_tokens,
                 response_format=rf,
                 transport_max_attempts=1,
                 **request_kwargs,

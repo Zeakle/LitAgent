@@ -30,3 +30,13 @@
 本离线批新增付费调用为零。历史累计 749 次模型请求／4,176,901 已知 tokens，以及旧 1,030,414 未知保守占用分别保留。私有验收记录在 `artifacts/acceptance/writer-thinking-20261024/`。没有前端或新报告变更，不宣称新增 PDF/Word 视觉验收。
 
 Phase 14.5 保持 `in_progress`。三域真实严格通过的目标尚未完成。
+
+## 完整输出预算修复（execution-v10，仅离线）
+
+在上述配置接线之后，继续修复总输出参数：原生写作在 `disabled` 时保持原 `max_tokens`；在 `enabled` 或可能开启思考的 `provider_default` 时，用同额 `max_completion_tokens` 约束思考与回答合计。两字段不会同传，SDK 也不会额外补上默认 `max_tokens`。20k 仍是完整输出预留，思考会占用回答空间；不保证额外获得 20k 回答，触顶仍拒绝交付。
+
+共享客户端按实际总上限预留；参数冲突或非法值在请求计数和传输前拒绝。Journal 输入身份包含实际字段，执行版本更新为 v10；旧记录和 checkpoint 不被改写。事件保留历史数值字段 `max_tokens` 作为宿主预留口径，同时用 `output_limit_parameter` 明示实际 API 参数，脱敏记录和 LangFuse 保留该安全元数据。
+
+新增 [总输出回归](../tests/test_completion_output_limit.py) 经真实 SDK、HTTP 替身及 shared CostBudget 检查字段互斥、小于默认值的显式上限、额度不足、超时及缺 usage。响应未知时保留完整预留占用，不自动重发；completion 内的 reasoning 仍不重复计费。原生写作还覆盖 `length`、仅 reasoning、非法 JSON 均不能放行。替身不能证明真实供应商一定遵守参数，也不能证明科学支持。
+
+本批相关 **172 项通过**；最终默认 **4352 passed、25 deselected、8 warnings**，6 个改动 Python 文件格式及差异检查通过。24 个保护路径、472 份旧源码副本、007 原归档及 journal 不变。本批新增付费零，默认仍 disabled，原套件模式门禁未放宽，真实严格结果仍 0/3。后续使用独立冻结配置验收，不续跑旧终态。

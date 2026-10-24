@@ -28,6 +28,9 @@ def assert_mode(kwargs, mode):
         assert "extra_body" not in kwargs
     else:
         assert kwargs["extra_body"] == {"thinking": {"type": mode}}
+    key = "max_tokens" if mode == "disabled" else "max_completion_tokens"
+    other = "max_completion_tokens" if key == "max_tokens" else "max_tokens"
+    assert key in kwargs and other not in kwargs
 
 
 @pytest.mark.asyncio
@@ -172,9 +175,9 @@ async def test_summary_and_shared_repair_keep_frozen_mode(case, tmp_path, mode):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("mode", ["enabled", "disabled", "provider_default"])
-@pytest.mark.parametrize("reason_only", [False, True])
+@pytest.mark.parametrize("fault", ["valid", "reason_only", "length"])
 async def test_real_sdk_preserves_mode_schema_identity_and_counts_reasoning_once(
-    case, tmp_path, mode, reason_only
+    case, tmp_path, mode, fault
 ):
     """Mock only HTTP; reasoning stays outside the scientific result and its prompts."""
     budget = CostBudget()
@@ -190,7 +193,10 @@ async def test_real_sdk_preserves_mode_schema_identity_and_counts_reasoning_once
             assert "thinking" not in payload
         else:
             assert payload["thinking"] == {"type": mode}
-        assert payload["model"] == "pro" and payload["max_tokens"] == 20000
+        key = "max_tokens" if mode == "disabled" else "max_completion_tokens"
+        other = "max_completion_tokens" if key == "max_tokens" else "max_tokens"
+        assert payload["model"] == "pro" and payload[key] == 20000
+        assert other not in payload
         assert payload["response_format"]["type"] == "json_schema"
         assert budget._reserved_tokens == strict_request_reservation(
             payload["messages"], 20000, payload["response_format"]
@@ -207,10 +213,12 @@ async def test_real_sdk_preserves_mode_schema_identity_and_counts_reasoning_once
                         "index": 0,
                         "message": {
                             "role": "assistant",
-                            "content": "" if reason_only else json.dumps(case.body),
+                            "content": (
+                                "" if fault == "reason_only" else json.dumps(case.body)
+                            ),
                             "reasoning_content": secret_thought,
                         },
-                        "finish_reason": "stop",
+                        "finish_reason": "length" if fault == "length" else "stop",
                     }
                 ],
                 "usage": {
@@ -245,8 +253,11 @@ async def test_real_sdk_preserves_mode_schema_identity_and_counts_reasoning_once
         thinking_mode=mode,
     )
     try:
-        if reason_only:
-            with pytest.raises(WriterError, match="json_invalid"):
+        if fault != "valid":
+            with pytest.raises(
+                WriterError,
+                match="output_truncated" if fault == "length" else "json_invalid",
+            ):
                 await s.call(
                     "body",
                     "Write source-backed science.",
@@ -265,9 +276,16 @@ async def test_real_sdk_preserves_mode_schema_identity_and_counts_reasoning_once
             )
         entry = s.journal["calls"]["body"]
         extra = None if mode == "provider_default" else {"thinking": {"type": mode}}
+        key = "max_tokens" if mode == "disabled" else "max_completion_tokens"
+        limit = 20000 if mode == "disabled" else {key: 20000}
         assert entry["thinking_mode"] == mode and entry["input_sha256"] == digest(
-            [sent[0]["messages"], sent[0]["response_format"], 20000, extra]
+            [sent[0]["messages"], sent[0]["response_format"], limit, extra]
         )
+        assert entry["output_limit_parameter"] == key
+        for event, data in events:
+            if event in {"llm.start", "llm.complete"}:
+                assert data["output_limit_parameter"] == key
+                assert data["max_tokens"] == 20000
         assert entry["returned_reasoning_characters"] == len(secret_thought)
         assert secret_thought not in json.dumps(
             s.journal

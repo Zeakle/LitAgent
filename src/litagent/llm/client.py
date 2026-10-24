@@ -22,6 +22,19 @@ logger = get_logger("llm.client")
 _active_timeout: ContextVar[float | None] = ContextVar("request_timeout", default=None)
 
 
+def _output_limit(kwargs: dict, default: int) -> tuple[str, int]:
+    """Resolve one wire limit before reserving or sending a provider request."""
+    if "max_completion_tokens" in kwargs:
+        value = kwargs["max_completion_tokens"]
+        if "max_tokens" in kwargs:
+            raise ValueError("output_limit_fields_conflict")
+        if type(value) is not int or value <= 0:
+            raise ValueError("output_limit_invalid")
+        return "max_completion_tokens", value
+    # Preserve legacy answer-only requests and defaults unchanged.
+    return "max_tokens", kwargs.get("max_tokens", default)
+
+
 class RequestDeadlineExceeded(TimeoutError):
     """Reject a request locally when its complete time reservation cannot fit."""
 
@@ -190,6 +203,7 @@ class OpenAICompatibleClient(BaseLLMClient):
         """Retry transient provider failures with one lifecycle per attempt."""
         from openai import APIConnectionError, APIStatusError
 
+        _, output_limit = _output_limit(kwargs, self._max_tokens)
         attempts = kwargs.pop("transport_max_attempts", self._transport_max_attempts)
         timeout = _active_timeout.get() or request_timeout_seconds(
             self, _timeout_stage()
@@ -200,7 +214,7 @@ class OpenAICompatibleClient(BaseLLMClient):
             attempts = 1
             reservation = strict_request_reservation(
                 messages,
-                kwargs.get("max_tokens", self._max_tokens),
+                output_limit,
                 kwargs.get("response_format"),
             )
             if reservation > int(131072 * 0.9):
@@ -268,7 +282,7 @@ class OpenAICompatibleClient(BaseLLMClient):
     async def _chat_attempt(self, messages: list[dict], **kwargs) -> LLMResponse:
         """Generate a response and emit its complete I/O lifecycle."""
         model = kwargs.get("model", self._model)
-        max_tokens = kwargs.get("max_tokens", self._max_tokens)
+        limit_parameter, max_tokens = _output_limit(kwargs, self._max_tokens)
         temperature = kwargs.get("temperature", self._temperature)
         op_id = uuid.uuid4().hex
         t0 = time.perf_counter()
@@ -281,6 +295,7 @@ class OpenAICompatibleClient(BaseLLMClient):
                 "model": model,
                 "messages": messages,
                 "max_tokens": max_tokens,
+                "output_limit_parameter": limit_parameter,
                 "temperature": temperature,
                 "response_format": kwargs.get("response_format"),
             },
@@ -290,7 +305,7 @@ class OpenAICompatibleClient(BaseLLMClient):
             create_kwargs: dict = {
                 "model": model,
                 "messages": messages,
-                "max_tokens": max_tokens,
+                limit_parameter: max_tokens,
                 "temperature": temperature,
             }
 
@@ -372,6 +387,7 @@ class OpenAICompatibleClient(BaseLLMClient):
                     "request_id": response.request_id,
                     "actual_model": response.model,
                     "max_tokens": max_tokens,
+                    "output_limit_parameter": limit_parameter,
                 },
             )
 
