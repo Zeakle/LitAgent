@@ -158,12 +158,145 @@ def test_content_fingerprint_preserves_conditions_and_exact_citation_ownership(
         "```json\n{}\n```",
         '{"a":null}',
         "[" * 65,
+        "{}" * 1024 + "{",
     ],
 )
 def test_scanner_is_bounded_and_rejects_ambiguous_values(raw):
     """No code fences, duplicate keys, incomplete strings or invented coercions."""
     with pytest.raises(WriterError):
         scan_native_strings(raw)
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "floating_paragraph",
+        "floating_unit",
+        "empty_container",
+        "extra_array",
+        "nested_root",
+        "root_array",
+        "second_root",
+        "nested_title",
+    ],
+)
+def test_layout_ownership_requires_actual_container_ancestry(case, fault):
+    """Complete text cannot borrow ownership from a previously seen layout key."""
+    unit = copy.deepcopy(case.body["taxonomy"][0]["sentences"][0])
+    if fault == "floating_paragraph":
+        value = {"taxonomy": [], "sentences": [unit]}
+    elif fault == "floating_unit":
+        value = {"taxonomy": [{"sentences": []}, unit]}
+    elif fault == "empty_container":
+        value = {"taxonomy": [{}, {"sentences": [unit]}]}
+    elif fault == "extra_array":
+        value = {"taxonomy": [[{"sentences": [unit]}]]}
+    elif fault == "nested_root":
+        value = {"taxonomy": {"taxonomy": [{"sentences": [unit]}]}}
+    elif fault == "root_array":
+        value = [{"taxonomy": [{"sentences": [unit]}]}]
+    elif fault == "second_root":
+        raw = json.dumps({"taxonomy": [{"sentences": [unit]}]}) + "{}"
+        with pytest.raises(WriterError):
+            intact_unit_footprint(raw, body_section_schema("taxonomy", case.aliases))
+        return
+    else:
+        value = {"introduction": [{"title": "Misplaced", "sentences": [unit]}]}
+    with pytest.raises(WriterError):
+        intact_unit_footprint(
+            json.dumps(value),
+            body_section_schema(
+                "introduction" if fault == "nested_title" else "taxonomy", case.aliases
+            ),
+        )
+
+
+@pytest.mark.parametrize(
+    "chapter_array,sentence_array",
+    [(True, True), (True, False), (False, True), (False, False)],
+)
+def test_singleton_containers_preserve_unambiguous_paragraph_ownership(
+    case, chapter_array, sentence_array
+):
+    """Missing singleton array brackets do not grant any new layout ownership."""
+    unit = copy.deepcopy(case.body["taxonomy"][0]["sentences"][0])
+    paragraph = {"sentences": [unit] if sentence_array else unit}
+    value = {"taxonomy": [paragraph] if chapter_array else paragraph}
+    schema = body_section_schema("taxonomy", case.aliases)
+    proof = intact_unit_footprint(json.dumps(value)[:-1], schema)
+    valid = intact_unit_footprint(
+        json.dumps({"taxonomy": [{"sentences": [unit]}]}), schema
+    )
+    assert proof["semantic"] == valid["semantic"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("floating", ["paragraph", "unit"])
+async def test_misplaced_units_fail_before_reemission_request(case, tmp_path, floating):
+    """No shared attempt or extra request may be spent assigning invented roles."""
+    sent = []
+
+    def handler(request):
+        wire = json.loads(request.content)
+        data = json.loads(wire["input"][1]["content"])
+        sent.append(data)
+        assert "shape_reemission" not in data
+        section = data["requested_body_section"]
+        if section == "introduction":
+            value = {k: copy.deepcopy(case.body[k]) for k in ("title", section)}
+        else:
+            assert section == "taxonomy"
+            unit = copy.deepcopy(case.body[section][0]["sentences"][0])
+            value = (
+                {"taxonomy": [], "sentences": [unit]}
+                if floating == "paragraph"
+                else {"taxonomy": [{"sentences": []}, unit]}
+            )
+        return httpx.Response(200, json=envelope(json.dumps(value)))
+
+    owner, budget, _ = await owner_for(handler)
+    session = session_for(owner, case, tmp_path, reemission_contract=POLICY)
+    token = set_task_id("synthesis")
+    try:
+        with pytest.raises(WriterError, match="unassigned"):
+            await session.initial_body()
+        assert len(sent) == 2 and budget.used == 240
+        assert not session.state["attempts"]
+        assert list(session.journal["body_parts"]) == ["introduction"]
+        assert session.journal["calls"]["body:taxonomy"]["status"] == "failed_no_replay"
+    finally:
+        reset_task_id(token)
+        await owner.close()
+
+
+def test_v1_reemission_is_read_only_and_cannot_resume_as_v2(case, tmp_path):
+    """Historical profile descriptions preserve their actual contract version."""
+    from litagent.writing_v2 import LEGACY_INTACT_UNIT_REEMISSION_CONTRACT as OLD_POLICY
+
+    assert POLICY == "intact-unit-reemission-v2"
+    assert (
+        campaign.profile_description(campaign.LEGACY_REEMISSION_PROFILE, {})[
+            "reemission_contract"
+        ]
+        == OLD_POLICY
+    )
+    assert (
+        campaign.profile_parameters(campaign.LEGACY_REEMISSION_PROFILE)[
+            "native_reemission_contract"
+        ]
+        == OLD_POLICY
+    )
+    with pytest.raises(ValueError, match="read_only"):
+        campaign.check_profile(None, campaign.LEGACY_REEMISSION_PROFILE)
+    with pytest.raises(WriterError, match="configuration"):
+        WriterSession(
+            Provider(case),
+            tmp_path / "old.json",
+            "old",
+            case.packet,
+            case.aliases,
+            reemission_contract=OLD_POLICY,
+        )
 
 
 @pytest.mark.asyncio

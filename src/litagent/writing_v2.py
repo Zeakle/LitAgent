@@ -44,7 +44,8 @@ PROMPT_CONTRACT = "grounded-writer-native-intent-v2"
 STRATEGY = "body_summary_v2"
 SCOPE = "frozen_union_v1"
 SHAPE_RECOVERY_CONTRACT = "lossless-array-reemission-v1"
-INTACT_UNIT_REEMISSION_CONTRACT = "intact-unit-reemission-v1"
+LEGACY_INTACT_UNIT_REEMISSION_CONTRACT = "intact-unit-reemission-v1"
+INTACT_UNIT_REEMISSION_CONTRACT = "intact-unit-reemission-v2"
 _INHERIT_EFFORT = object()
 BODY = tuple(k for k in ROLES if k not in {"abstract", "conclusion"})
 INSTRUCTION = """Write an academic literature review in the requested language using ONLY
@@ -336,6 +337,7 @@ def scan_native_strings(raw):
             continue
         if len(tokens) >= 16384 or len(stack) > 64 or len(objects) > 1024:
             raise WriterError("writer_reemission_scan_limit")
+        ancestors = tuple(frame[2] for frame in stack)
         if ch == '"':
             try:
                 value, end = decoder.raw_decode(raw, i)
@@ -347,7 +349,7 @@ def scan_native_strings(raw):
                 after += 1
             is_key = after < len(raw) and raw[after] == ":"
             if is_key:
-                frame = next((v for v in reversed(stack) if v[0] == "{"), None)
+                frame = stack[-1] if stack and stack[-1][0] == "{" else None
                 if frame is None or value in frame[1]:
                     raise WriterError("writer_reemission_duplicate_or_unscoped_key")
                 frame[1].add(value)
@@ -358,6 +360,7 @@ def scan_native_strings(raw):
                     "end": end,
                     "value": value,
                     "is_key": is_key,
+                    "ancestors": ancestors,
                 }
             )
             i = end
@@ -367,14 +370,16 @@ def scan_native_strings(raw):
         if ch in "{[":
             if ch == "{":
                 objects.append(len(tokens))
-            stack.append((ch, set()))
+                if len(objects) > 1024:
+                    raise WriterError("writer_reemission_scan_limit")
+            stack.append((ch, set(), len(tokens)))
             if len(stack) > 64:
                 raise WriterError("writer_reemission_scan_limit")
         elif ch in "}]":
             if not stack or stack[-1][0] != ("{" if ch == "}" else "["):
                 raise WriterError("writer_reemission_ambiguous_container")
             stack.pop()
-        tokens.append({"kind": ch, "start": i, "end": i + 1})
+        tokens.append({"kind": ch, "start": i, "end": i + 1, "ancestors": ancestors})
         i += 1
     return {"tokens": tokens, "object_indices": objects}
 
@@ -427,6 +432,8 @@ def intact_unit_footprint(raw, schema):
 
     decoder = json.JSONDecoder(object_pairs_hook=unique)
     tokens = scan["tokens"]
+    if not tokens or tokens[0]["kind"] != "{":
+        raise WriterError("writer_reemission_root_unassigned")
     units = {}
     last_end = -1
     for index in scan["object_indices"]:
@@ -463,14 +470,23 @@ def intact_unit_footprint(raw, schema):
         raise WriterError("writer_assertion_capacity_exceeded", "budget")
 
     sections, current, paragraph, title = {}, None, None, None
+    roots_by_container, layout_containers, unit_tokens = {}, {0}, set()
     bindings, i = [], 0
     while i < len(tokens):
         token = tokens[i]
         if i in units:
             end, record = units[i]
-            if current is None or paragraph is None:
+            if (
+                current is None
+                or paragraph is None
+                or token["ancestors"] != paragraph["unit_parents"]
+                or (
+                    paragraph["direct_unit"] is not None
+                    and i != paragraph["direct_unit"]
+                )
+            ):
                 raise WriterError("writer_reemission_unit_unassigned")
-            paragraph.append(record)
+            paragraph["records"].append(record)
             bindings.append(
                 {
                     "start": token["start"],
@@ -480,26 +496,62 @@ def intact_unit_footprint(raw, schema):
                 }
             )
             while i < len(tokens) and tokens[i]["start"] < end:
+                unit_tokens.add(i)
                 i += 1
             continue
         if token["kind"] != "string":
             i += 1
             continue
         key = token["value"]
+        ancestors = token["ancestors"]
         if not token["is_key"]:
             raise WriterError("writer_reemission_uncovered_string")
         if key in roots:
+            if ancestors != (0,):
+                raise WriterError("writer_reemission_root_unassigned")
             if key in sections:
                 raise WriterError("writer_reemission_root_repeated")
-            sections[key], current, paragraph = [], key, None
-        elif key == "sentences":
-            if current is None:
-                raise WriterError("writer_reemission_paragraph_unassigned")
-            paragraph = []
-            sections[current].append(paragraph)
-        elif key == "title" and "title" in properties and title is None:
             if (
                 i + 2 >= len(tokens)
+                or tokens[i + 1]["kind"] != ":"
+                or tokens[i + 2]["kind"] not in {"[", "{"}
+            ):
+                raise WriterError("writer_reemission_root_unassigned")
+            roots_by_container[i + 2] = key
+            layout_containers.add(i + 2)
+            sections[key], current, paragraph = [], key, None
+        elif key == "sentences":
+            # A layout key owns only its explicit children. The preceding key
+            # in token order grants no authority over a later sibling object.
+            owner = (
+                roots_by_container.get(ancestors[1]) if len(ancestors) >= 2 else None
+            )
+            if (
+                owner is None
+                or ancestors[0] != 0
+                or tokens[ancestors[-1]]["kind"] != "{"
+                or len(ancestors) != (3 if tokens[ancestors[1]]["kind"] == "[" else 2)
+                or i + 2 >= len(tokens)
+                or tokens[i + 1]["kind"] != ":"
+                or tokens[i + 2]["kind"] not in {"[", "{"}
+            ):
+                raise WriterError("writer_reemission_paragraph_unassigned")
+            current = owner
+            records = []
+            is_array = tokens[i + 2]["kind"] == "["
+            paragraph = {
+                "records": records,
+                "unit_parents": ancestors + (i + 2,) if is_array else ancestors,
+                "direct_unit": None if is_array else i + 2,
+            }
+            layout_containers.add(ancestors[-1])
+            if is_array:
+                layout_containers.add(i + 2)
+            sections[current].append(records)
+        elif key == "title" and "title" in properties and title is None:
+            if (
+                ancestors != (0,)
+                or i + 2 >= len(tokens)
                 or tokens[i + 1]["kind"] != ":"
                 or tokens[i + 2]["kind"] != "string"
                 or tokens[i + 2]["is_key"]
@@ -513,6 +565,13 @@ def intact_unit_footprint(raw, schema):
         else:
             raise WriterError("writer_reemission_unknown_field")
         i += 1
+    if any(
+        token["kind"] in {"{", "["}
+        and index not in layout_containers
+        and index not in unit_tokens
+        for index, token in enumerate(tokens)
+    ):
+        raise WriterError("writer_reemission_container_unassigned")
     if set(sections) != set(roots) or ("title" in properties) != (title is not None):
         raise WriterError("writer_reemission_root_coverage_invalid")
     for key, paragraphs in sections.items():

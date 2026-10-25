@@ -626,7 +626,7 @@ async def test_actual_frozen_runtime_sdk_evaluation_and_shared_repair(
             native_provider_api="responses",
             native_shape_recovery=shape_recovery is True,
             native_reemission_contract=(
-                "intact-unit-reemission-v1" if shape_recovery == "intact" else None
+                "intact-unit-reemission-v2" if shape_recovery == "intact" else None
             ),
         )
         assert result["metadata"]["generation_strategy"] == "body_summary_v2"
@@ -668,7 +668,7 @@ async def test_actual_frozen_runtime_sdk_evaluation_and_shared_repair(
                 2 if unsupported else 1
             )
         if shape_recovery == "intact":
-            assert journal["reemission_contract"] == "intact-unit-reemission-v1"
+            assert journal["reemission_contract"] == "intact-unit-reemission-v2"
             assert journal["calls"]["summary_initial"]["resolved_by"] == "repair_1"
             assert len(result["metadata"]["targeted_repair_state"]["attempts"]) == 2
         if unsupported:

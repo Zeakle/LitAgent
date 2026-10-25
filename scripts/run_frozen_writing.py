@@ -51,7 +51,8 @@ LOW_THINKING_PROFILE = "writer_reviewer_low_thinking_v1"
 LEGACY_RESPONSES_PROFILE = "writer_reviewer_low_responses_v1"
 RESPONSES_PROFILE = "writer_reviewer_low_responses_v2"
 SHAPE_PROFILE = "writer_reviewer_low_responses_shape_v1"
-REEMISSION_PROFILE = "writer_reviewer_low_responses_reemit_v1"
+LEGACY_REEMISSION_PROFILE = "writer_reviewer_low_responses_reemit_v1"
+REEMISSION_PROFILE = "writer_reviewer_low_responses_reemit_v2"
 CONSERVATIVE_ACCOUNTING = "carry_terminal_rejection_v1"
 
 
@@ -66,6 +67,7 @@ def profile_mode(profile):
         LEGACY_RESPONSES_PROFILE,
         SHAPE_PROFILE,
         REEMISSION_PROFILE,
+        LEGACY_REEMISSION_PROFILE,
     ):
         return "enabled"
     raise ValueError("frozen_writing_profile_invalid")
@@ -79,16 +81,26 @@ def profile_parameters(profile):
         LEGACY_RESPONSES_PROFILE,
         SHAPE_PROFILE,
         REEMISSION_PROFILE,
+        LEGACY_REEMISSION_PROFILE,
     ):
-        from litagent.writing_v2 import INTACT_UNIT_REEMISSION_CONTRACT
+        from litagent.writing_v2 import (
+            INTACT_UNIT_REEMISSION_CONTRACT,
+            LEGACY_INTACT_UNIT_REEMISSION_CONTRACT,
+        )
 
         return {
             "native_reasoning_effort": "low",
             "native_provider_api": "responses",
             **({"native_shape_recovery": True} if profile == SHAPE_PROFILE else {}),
             **(
-                {"native_reemission_contract": INTACT_UNIT_REEMISSION_CONTRACT}
-                if profile == REEMISSION_PROFILE
+                {
+                    "native_reemission_contract": (
+                        INTACT_UNIT_REEMISSION_CONTRACT
+                        if profile == REEMISSION_PROFILE
+                        else LEGACY_INTACT_UNIT_REEMISSION_CONTRACT
+                    )
+                }
+                if profile in (REEMISSION_PROFILE, LEGACY_REEMISSION_PROFILE)
                 else {}
             ),
         }
@@ -107,7 +119,7 @@ def profile_config(config, profile):
 
 def check_profile(config, profile):
     """Reuse the unchanged baseline gate while checking the explicit mode separately."""
-    if profile == LEGACY_RESPONSES_PROFILE:
+    if profile in (LEGACY_RESPONSES_PROFILE, LEGACY_REEMISSION_PROFILE):
         raise ValueError("frozen_writing_profile_read_only")
     if config.adversarial.thinking_mode != profile_mode(profile):
         raise ValueError("frozen_writing_profile_mode_conflict")
@@ -151,6 +163,7 @@ def profile_description(profile, summary):
         LEGACY_RESPONSES_PROFILE,
         SHAPE_PROFILE,
         REEMISSION_PROFILE,
+        LEGACY_REEMISSION_PROFILE,
     ):
         result["reasoning_effort"] = "low"
     if profile in (
@@ -158,10 +171,16 @@ def profile_description(profile, summary):
         LEGACY_RESPONSES_PROFILE,
         SHAPE_PROFILE,
         REEMISSION_PROFILE,
+        LEGACY_REEMISSION_PROFILE,
     ):
         result["provider_api"] = "responses"
         result["output_limit_parameter"] = "max_output_tokens"
-    if profile in (RESPONSES_PROFILE, SHAPE_PROFILE, REEMISSION_PROFILE):
+    if profile in (
+        RESPONSES_PROFILE,
+        SHAPE_PROFILE,
+        REEMISSION_PROFILE,
+        LEGACY_REEMISSION_PROFILE,
+    ):
         from litagent.llm.responses import RESPONSES_CONTRACT
 
         result.update(
@@ -175,10 +194,17 @@ def profile_description(profile, summary):
         from litagent.writing_v2 import SHAPE_RECOVERY_CONTRACT
 
         result["shape_recovery_contract"] = SHAPE_RECOVERY_CONTRACT
-    if profile == REEMISSION_PROFILE:
-        from litagent.writing_v2 import INTACT_UNIT_REEMISSION_CONTRACT
+    if profile in (REEMISSION_PROFILE, LEGACY_REEMISSION_PROFILE):
+        from litagent.writing_v2 import (
+            INTACT_UNIT_REEMISSION_CONTRACT,
+            LEGACY_INTACT_UNIT_REEMISSION_CONTRACT,
+        )
 
-        result["reemission_contract"] = INTACT_UNIT_REEMISSION_CONTRACT
+        result["reemission_contract"] = (
+            INTACT_UNIT_REEMISSION_CONTRACT
+            if profile == REEMISSION_PROFILE
+            else LEGACY_INTACT_UNIT_REEMISSION_CONTRACT
+        )
     return result
 
 
@@ -572,7 +598,13 @@ def prepare(root, config, *, accounting_parents=(), writing_profile=DISABLED_PRO
     )["cumulative"]
     policy = (
         CONSERVATIVE_ACCOUNTING
-        if writing_profile in (RESPONSES_PROFILE, SHAPE_PROFILE, REEMISSION_PROFILE)
+        if writing_profile
+        in (
+            RESPONSES_PROFILE,
+            SHAPE_PROFILE,
+            REEMISSION_PROFILE,
+            LEGACY_REEMISSION_PROFILE,
+        )
         else "reject"
     )
     history, receipts = accounting_history(
@@ -655,7 +687,12 @@ def validate(root, config):
     policy = (
         CONSERVATIVE_ACCOUNTING
         if m.get("writing_profile")
-        in (RESPONSES_PROFILE, SHAPE_PROFILE, REEMISSION_PROFILE)
+        in (
+            RESPONSES_PROFILE,
+            SHAPE_PROFILE,
+            REEMISSION_PROFILE,
+            LEGACY_REEMISSION_PROFILE,
+        )
         else "reject"
     )
     if m.get("accounting_policy", "reject") != policy:
@@ -1335,6 +1372,7 @@ def main():
             RESPONSES_PROFILE,
             SHAPE_PROFILE,
             REEMISSION_PROFILE,
+            LEGACY_REEMISSION_PROFILE,
         ),
         default=None,
     )
