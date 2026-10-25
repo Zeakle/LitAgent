@@ -114,3 +114,51 @@ async def test_actual_campaign_consumes_api_and_exports_failure_without_resettin
     assert rows[0]["provider_api"] == "responses"
     assert "max_output_tokens" in (public_root / "benchmark.md").read_text()
     assert await campaign.execute(target, config) == state
+
+
+def test_legacy_responses_profile_can_be_described_but_not_prepared(manifest):
+    """Historical v1 remains readable without silently reinterpreting its wire format."""
+    root, config = manifest
+    from litagent.contracts import build_config_summary
+
+    description = campaign.profile_description(
+        campaign.LEGACY_RESPONSES_PROFILE,
+        build_config_summary(config, "strict_auto_v2"),
+    )
+    assert description["provider_api"] == "responses"
+    assert "mapping_contract" not in description
+    target = root.with_name("forbidden-legacy")
+    with pytest.raises(ValueError, match="profile_read_only"):
+        campaign.prepare(
+            target, config, writing_profile=campaign.LEGACY_RESPONSES_PROFILE
+        )
+    assert not target.exists()
+
+
+def test_new_profile_identity_binds_provider_and_accounting_contract(manifest):
+    """Omitting the conservative policy cannot turn a new manifest into an old one."""
+    root, config = manifest
+    target = root.with_name("new-contract")
+    campaign.prepare(target, config, writing_profile=campaign.RESPONSES_PROFILE)
+    value = campaign.validate(target, config)
+    assert value["accounting_policy"] == campaign.CONSERVATIVE_ACCOUNTING
+    description = campaign.profile_description(
+        campaign.RESPONSES_PROFILE, value["config"]
+    )
+    assert description["mapping_contract"] == "ark-responses-mapping-v2"
+    assert description["server_truncation_control"] == "unavailable"
+    value.pop("accounting_policy")
+    value["identity"] = campaign.digest(
+        {k: v for k, v in value.items() if k != "identity"}
+    )
+    atomic_json(target / "manifest.json", value)
+    with pytest.raises(ValueError, match="policy_conflict"):
+        campaign.validate(target, config)
+
+
+def test_untracked_vendor_fixture_is_in_the_frozen_inventory():
+    """The independently checked provider directory must not disappear before commit."""
+    assert (
+        Path("tests/fixtures/ark-responses-fields-20261025.json")
+        in campaign.source_paths()
+    )

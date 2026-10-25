@@ -4,6 +4,7 @@ import asyncio
 import base64
 import copy
 import hashlib
+import inspect
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -72,12 +73,38 @@ async def owner_for(handler, *, allowance=500000):
         trace_hook=lambda e, d: events.append((e, d)),
     )
     await owner.close()
+
+    async def checked_transport(request):
+        if request.url.path.endswith("/responses"):
+            catalog = json.loads(
+                (
+                    Path(__file__).parent
+                    / "fixtures/ark-responses-fields-20261025.json"
+                ).read_text()
+            )
+            body = json.loads(request.content)
+            unknown = set(body) - set(catalog["request_fields"])
+            if unknown:
+                return httpx.Response(
+                    400,
+                    json={
+                        "error": {
+                            "code": "InvalidParameter",
+                            "message": 'json: unknown field "'
+                            + sorted(unknown)[0]
+                            + '"',
+                        }
+                    },
+                )
+        value = handler(request)
+        return await value if inspect.isawaitable(value) else value
+
     owner._client = AsyncOpenAI(
         base_url="https://offline.invalid/api/v3",
         api_key="offline",
         max_retries=0,
         http_client=httpx.AsyncClient(
-            transport=httpx.MockTransport(handler), trust_env=False
+            transport=httpx.MockTransport(checked_transport), trust_env=False
         ),
     )
     return owner, budget, events
@@ -150,8 +177,8 @@ async def test_sdk_preserves_complete_input_schema_cap_and_private_raw(case, tmp
         assert body["reasoning"] == {"effort": "low"} and body["thinking"] == {
             "type": "enabled"
         }
-        assert body["store"] is body["background"] is body["stream"] is False
-        assert body["truncation"] == "disabled"
+        assert body["store"] is body["stream"] is False
+        assert not {"background", "truncation"} & body.keys()
         entry = session.journal["calls"]["body"]
         receipt = entry["provider_receipt"]
         assert base64.b64decode(receipt["request_body_base64"]) == sent[0][1]
@@ -184,7 +211,6 @@ async def test_sdk_preserves_complete_input_schema_cap_and_private_raw(case, tmp
         "incomplete",
         "failed",
         "cancelled",
-        "queued",
         "refusal",
         "unknown_output",
         "bad_role",
@@ -272,7 +298,17 @@ async def test_received_failures_keep_known_bill_once_and_never_replay(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "fault", ["missing_usage", "bad_primary", "timeout", "cancel", "malformed_envelope"]
+    "fault",
+    [
+        "missing_usage",
+        "bad_primary",
+        "timeout",
+        "cancel",
+        "malformed_envelope",
+        "queued",
+        "in_progress",
+        "unknown_status",
+    ],
 )
 async def test_unknown_primary_retains_full_hold_and_stops_without_retry(
     case, tmp_path, fault
@@ -289,6 +325,9 @@ async def test_unknown_primary_retains_full_hold_and_stops_without_retry(
         if fault == "malformed_envelope":
             return httpx.Response(200, content=b"{")
         value = envelope(json.dumps(case.body))
+        if fault in {"queued", "in_progress", "unknown_status"}:
+            value["status"] = fault
+            return httpx.Response(200, json=value)
         value["usage"] = (
             None
             if fault == "missing_usage"
@@ -768,3 +807,34 @@ async def test_reviewer_can_choose_chat_without_reinterpreting_generation(
         assert budget.used == 840
     finally:
         await owner.close()
+
+
+@pytest.mark.asyncio
+async def test_response_mapping_version_rejects_an_old_checkpoint(
+    case, tmp_path, monkeypatch
+):
+    """The business schema stays fixed while v1 and v2 transport identities differ."""
+    from litagent.llm import responses as mapping
+
+    monkeypatch.setattr(mapping, "RESPONSES_CONTRACT", "ark-responses-mapping-v1")
+    old = WriterSession(
+        Provider(case),
+        tmp_path / "r.json",
+        "r",
+        case.packet,
+        case.aliases,
+        provider_api="responses",
+    )
+    old.save()
+    before = old.journal_path.read_bytes()
+    monkeypatch.setattr(mapping, "RESPONSES_CONTRACT", "ark-responses-mapping-v2")
+    with pytest.raises(WriterError, match="identity_conflict"):
+        WriterSession(
+            Provider(case),
+            tmp_path / "r.json",
+            "r",
+            case.packet,
+            case.aliases,
+            provider_api="responses",
+        )
+    assert old.journal_path.read_bytes() == before

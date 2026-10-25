@@ -7,10 +7,24 @@ import copy
 import hashlib
 import json
 import math
+import re
 
 from litagent.safety.budget import strict_request_reservation
 
-RESPONSES_CONTRACT = "ark-responses-mapping-v1"
+RESPONSES_CONTRACT = "ark-responses-mapping-v2"
+ARK_NATIVE_FIELDS = frozenset(
+    {
+        "model",
+        "input",
+        "text",
+        "max_output_tokens",
+        "temperature",
+        "store",
+        "stream",
+        "thinking",
+        "reasoning",
+    }
+)
 
 
 def build_responses_request(
@@ -75,12 +89,12 @@ def build_responses_request(
         "max_output_tokens": output_limit,
         "temperature": temperature,
         "store": False,
-        "background": False,
-        "truncation": "disabled",
         "stream": False,
         **(copy.deepcopy(extra_body) if extra_body else {}),
         **({"reasoning": {"effort": reasoning_effort}} if reasoning_effort else {}),
     }
+    if set(body) - ARK_NATIVE_FIELDS:
+        raise ValueError("responses_provider_field_invalid")
     # Keep the same canonical reservation shared by caller-owned repairs and SDK.
     # Refuse an oversized envelope instead of silently borrowing downstream funds.
     encoded = json.dumps(body, ensure_ascii=False, allow_nan=False).encode("utf-8")
@@ -163,6 +177,17 @@ def normalize_responses(raw: bytes) -> dict:
             }
             else "unknown"
         )
+    if (
+        status not in ("completed", "incomplete", "failed", "cancelled")
+        and body.get("error") is None
+    ):
+        # Nonterminal or unknown states may contain provisional counters, not a
+        # settled bill. Keep the original numbers only in the private HTTP body.
+        result["usage"] = {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "usage_available": False,
+        }
     output = body.get("output")
     texts, invalid = [], False
     if not isinstance(output, list) or not output:
@@ -242,8 +267,14 @@ def private_receipt(response) -> dict:
     """Retain exact HTTP bytes locally, excluding credentials and cookie headers."""
     request = response.request
     sent, received = request.content, response.content
+    host = request.url.host
+    host = "[" + host + "]" if ":" in host else host
+    origin = request.url.scheme + "://" + host
+    if request.url.port is not None:
+        origin += ":" + str(request.url.port)
     return {
         "contract": RESPONSES_CONTRACT,
+        "origin": origin,
         "endpoint": request.url.path,
         "status_code": response.status_code,
         "request_body_base64": base64.b64encode(sent).decode("ascii"),
@@ -260,4 +291,58 @@ def private_receipt(response) -> dict:
             )
             if name in response.headers
         },
+    }
+
+
+def decode_private_receipt(receipt):
+    """Validate stored HTTP bytes before using them as local evidence."""
+    try:
+        if receipt["contract"] not in {"ark-responses-mapping-v1", RESPONSES_CONTRACT}:
+            raise ValueError("receipt_version")
+        decoded = []
+        for prefix in ("request", "response"):
+            raw = base64.b64decode(receipt[prefix + "_body_base64"], validate=True)
+            if hashlib.sha256(raw).hexdigest() != receipt[prefix + "_sha256"]:
+                raise ValueError("receipt_hash")
+            value = json.loads(
+                raw, object_pairs_hook=_object, parse_constant=_invalid_constant
+            )
+            if not isinstance(value, dict):
+                raise ValueError("receipt_object")
+            decoded.append(value)
+        if (
+            type(receipt["status_code"]) is not int
+            or not 100 <= receipt["status_code"] <= 599
+        ):
+            raise ValueError("receipt_status")
+        if not isinstance(receipt["endpoint"], str) or not receipt["endpoint"].endswith(
+            "/responses"
+        ):
+            raise ValueError("receipt_endpoint")
+        return tuple(decoded)
+    except (KeyError, TypeError, ValueError, UnicodeDecodeError) as exc:
+        raise ValueError("responses_receipt_invalid") from exc
+
+
+def receipt_diagnostic(receipt):
+    """Project only bounded identifiers; raw error prose and bodies remain private."""
+    _, response = decode_private_receipt(receipt)
+    error = response.get("error")
+    error = error if isinstance(error, dict) else {}
+    code, parameter = error.get("code"), error.get("param")
+    safe = lambda value: isinstance(value, str) and re.fullmatch(
+        r"[A-Za-z_][A-Za-z0-9_]{0,63}", value
+    )
+    if not safe(parameter):
+        message = error.get("message")
+        match = (
+            re.search(r'unknown field "([A-Za-z_][A-Za-z0-9_]{0,63})"', message)
+            if isinstance(message, str)
+            else None
+        )
+        parameter = match.group(1) if match else None
+    return {
+        "http_status": receipt["status_code"],
+        "provider_error_code": code if safe(code) else None,
+        "rejected_parameter": parameter if safe(parameter) else None,
     }

@@ -1,0 +1,10 @@
+{
+  "catalog_version": "ark-create-responses-fields-20261025-v1",
+  "observed_at": "2026-10-25",
+  "source_url": "https://github.com/volcengine/volcengine-python-sdk/blob/master/volcenginesdkarkruntime/resources/responses/responses.py",
+  "source_scope": "AsyncResponses.create keyword parameters and POST body (web snapshot; Git commit not resolved)",
+  "docs_url": "https://console.volcengine.com/ark/region:cn-beijing/docs/create-model-responses-api",
+  "request_fields": ["input", "model", "instructions", "max_output_tokens", "parallel_tool_calls", "previous_response_id", "thinking", "store", "caching", "stream", "temperature", "text", "tool_choice", "tools", "top_p", "max_tool_calls", "context_management", "expire_at", "reasoning", "session", "service_tier"],
+  "unsupported_openai_fields": ["background", "truncation"],
+  "literal_copy_of_official_implementation": false
+}

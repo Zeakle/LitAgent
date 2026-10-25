@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import base64
 import csv
 import hashlib
 import html
@@ -47,14 +48,21 @@ LIMITS = {
 DISABLED_PROFILE = "disabled_v1"
 THINKING_PROFILE = "writer_reviewer_thinking_v1"
 LOW_THINKING_PROFILE = "writer_reviewer_low_thinking_v1"
-RESPONSES_PROFILE = "writer_reviewer_low_responses_v1"
+LEGACY_RESPONSES_PROFILE = "writer_reviewer_low_responses_v1"
+RESPONSES_PROFILE = "writer_reviewer_low_responses_v2"
+CONSERVATIVE_ACCOUNTING = "carry_terminal_rejection_v1"
 
 
 def profile_mode(profile):
     """Resolve only server-defined campaign modes, never arbitrary provider kwargs."""
     if profile == DISABLED_PROFILE:
         return "disabled"
-    if profile in (THINKING_PROFILE, LOW_THINKING_PROFILE, RESPONSES_PROFILE):
+    if profile in (
+        THINKING_PROFILE,
+        LOW_THINKING_PROFILE,
+        RESPONSES_PROFILE,
+        LEGACY_RESPONSES_PROFILE,
+    ):
         return "enabled"
     raise ValueError("frozen_writing_profile_invalid")
 
@@ -62,7 +70,7 @@ def profile_mode(profile):
 def profile_parameters(profile):
     """Bind the single supported native effort without adding legacy config fields."""
     profile_mode(profile)
-    if profile == RESPONSES_PROFILE:
+    if profile in (RESPONSES_PROFILE, LEGACY_RESPONSES_PROFILE):
         return {"native_reasoning_effort": "low", "native_provider_api": "responses"}
     return {"native_reasoning_effort": "low"} if profile == LOW_THINKING_PROFILE else {}
 
@@ -79,6 +87,8 @@ def profile_config(config, profile):
 
 def check_profile(config, profile):
     """Reuse the unchanged baseline gate while checking the explicit mode separately."""
+    if profile == LEGACY_RESPONSES_PROFILE:
+        raise ValueError("frozen_writing_profile_read_only")
     if config.adversarial.thinking_mode != profile_mode(profile):
         raise ValueError("frozen_writing_profile_mode_conflict")
     if profile == DISABLED_PROFILE:
@@ -115,11 +125,21 @@ def profile_description(profile, summary):
             for role in ("extraction", "generation", "evaluation")
         },
     }
-    if profile in (LOW_THINKING_PROFILE, RESPONSES_PROFILE):
+    if profile in (LOW_THINKING_PROFILE, RESPONSES_PROFILE, LEGACY_RESPONSES_PROFILE):
         result["reasoning_effort"] = "low"
-    if profile == RESPONSES_PROFILE:
+    if profile in (RESPONSES_PROFILE, LEGACY_RESPONSES_PROFILE):
         result["provider_api"] = "responses"
         result["output_limit_parameter"] = "max_output_tokens"
+    if profile == RESPONSES_PROFILE:
+        from litagent.llm.responses import RESPONSES_CONTRACT
+
+        result.update(
+            mapping_contract=RESPONSES_CONTRACT,
+            storage=False,
+            stream=False,
+            host_input="complete",
+            server_truncation_control="unavailable",
+        )
     return result
 
 
@@ -147,12 +167,233 @@ def source_paths():
         list(Path("src/litagent").rglob("*.py"))
         + list(Path("scripts").glob("*.py"))
         + list(Path("tests").rglob("*.py"))
+        + list(Path("tests/fixtures").rglob("*.json"))
     )
     return sorted({p for p in paths if p.is_file() and "__pycache__" not in str(p)})
 
 
-def accounting_history(history, parents):
+def bound_native_receipt(start, end, journal):
+    """Bind exactly one private HTTP receipt to the frozen host request identity."""
+    from litagent.llm.responses import ARK_NATIVE_FIELDS, decode_private_receipt
+    from litagent.quality import digest as writer_digest
+    from litagent.safety.budget import strict_request_reservation
+
+    matches = []
+    for call in journal.get("calls", {}).values():
+        receipt = call.get("provider_receipt")
+        if not isinstance(receipt, dict):
+            continue
+        request, response = decode_private_receipt(receipt)
+        rf = start.get("response_format")
+        cap = start.get("max_tokens")
+        mode, effort = call.get("thinking_mode"), call.get("reasoning_effort")
+        extra = None if mode == "provider_default" else {"thinking": {"type": mode}}
+        identity = [start.get("messages"), rf, {"max_output_tokens": cap}, extra]
+        if effort is not None:
+            identity.append({"reasoning_effort": effort})
+        identity.append(["responses", receipt["contract"]])
+        if call.get("input_sha256") != writer_digest(identity):
+            continue
+        if (
+            not isinstance(rf, dict)
+            or rf.get("type") != "json_schema"
+            or type(cap) is not int
+            or not 0 < cap <= 20000
+            or set(request)
+            - (
+                ARK_NATIVE_FIELDS
+                | (
+                    {"background", "truncation"}
+                    if receipt["contract"].endswith("-v1")
+                    else set()
+                )
+            )
+            or (
+                receipt["contract"].endswith("-v1")
+                and (
+                    request.get("background") is not False
+                    or request.get("truncation") != "disabled"
+                )
+            )
+            or request.get("input") != start.get("messages")
+            or request.get("text")
+            != {"format": {"type": "json_schema", **rf["json_schema"]}}
+            or request.get("model") != start.get("model")
+            or request.get("max_output_tokens") != cap
+            or request.get("thinking") != (extra or {}).get("thinking")
+            or request.get("reasoning") != ({"effort": effort} if effort else None)
+            or request.get("store") is not False
+            or request.get("stream") is not False
+            or call.get("provider_api") != "responses"
+            or start.get("provider_api") != "responses"
+            or start.get("output_limit_parameter") != "max_output_tokens"
+            or end.get("model") != start.get("model")
+            or end.get("messages") != start.get("messages")
+            or call.get("provider_schema_sha256")
+            != writer_digest(rf["json_schema"]["schema"])
+            or call.get("reservation")
+            != strict_request_reservation(start["messages"], cap, rf)
+            or len(base64.b64decode(receipt["request_body_base64"], validate=True))
+            + cap
+            > call.get("reservation", 0)
+            or start.get("reasoning_effort") != effort
+            or call.get("max_tokens") != cap
+            or call.get("output_limit_parameter") != "max_output_tokens"
+        ):
+            raise ValueError("frozen_accounting_receipt_binding_invalid")
+        matches.append((call, receipt, request, response))
+    if len(matches) != 1:
+        raise ValueError("frozen_accounting_receipt_binding_missing_or_ambiguous")
+    return matches[0]
+
+
+def conservative_rejection_receipt(root, manifest, state, row, archive, starts, ends):
+    """Carry a complete uncertain charge; never fabricate a received usage record."""
+    from litagent.observability.context import reset_task_id, set_task_id
+    from litagent.safety import budget as budget_module
+    from litagent.safety.budget import CostBudget, strict_request_reservation
+
+    budget_path = "src/litagent/safety/budget.py"
+    budget_sha = hashlib.sha256(Path(budget_module.__file__).read_bytes()).hexdigest()
+    saved_budget = root / "source" / budget_path
+    if (
+        state.get("status") != "stopped"
+        or row.get("publishable") is not False
+        or manifest.get("version") != VERSION
+        or manifest.get("limits") != LIMITS
+        or archive.get("config") != manifest.get("config")
+        or archive.get("config_fingerprint")
+        != manifest.get("config", {}).get("fingerprint")
+        or manifest.get("source_hashes", {}).get(budget_path) != budget_sha
+        or not saved_budget.exists()
+        or hashlib.sha256(saved_budget.read_bytes()).hexdigest() != budget_sha
+        or any(e["event"] == "llm.retry" for e in archive["events"])
+    ):
+        raise ValueError("frozen_accounting_unknown_proof_missing")
+    path = Path("artifacts/targeted-repairs", row["run_id"] + ".json.writer-v2.json")
+    journal = json.loads(path.read_text())
+    reconstructed = CostBudget(max_tokens=LIMITS["per_case_tokens"])
+    reconstructed.configure_strict(halt_on_unknown_usage=True)
+    total_unknown, rejection_calls = 0, []
+    indexed = {e["operation_id"]: e for e in ends}
+    expected_model = manifest.get("config", {}).get("effective", {}).get("llm", {})
+    routes = expected_model.get("model_routing", {})
+    for start in starts:
+        end = indexed[start["operation_id"]]
+        cap = start.get("max_tokens")
+        if type(cap) is not int or not 0 < cap <= 20000:
+            raise ValueError("frozen_accounting_cap_invalid")
+        reservation = strict_request_reservation(
+            start.get("messages"), cap, start.get("response_format")
+        )
+        if not isinstance(start.get("task_id"), str) or not start["task_id"]:
+            raise ValueError("frozen_accounting_task_invalid")
+        context = set_task_id(start["task_id"])
+        reserved = False
+        try:
+            reconstructed.reserve(reservation)
+            reserved = True
+            reconstructed.begin_request()
+            if end.get("usage_available") is True:
+                reconstructed.record(end)
+            else:
+                call, receipt, request, response = bound_native_receipt(
+                    start, end, journal
+                )
+                code = receipt["status_code"]
+                route = (
+                    "evaluation" if call.get("stage") == "reviewer" else "generation"
+                )
+                if (
+                    not 400 <= code < 500
+                    or not isinstance(response.get("error"), dict)
+                    or "usage" in response
+                    or response.get("output")
+                    or call.get("status") != "failed_no_replay"
+                    or call.get("usage", {}).get("usage_available") is not False
+                    or end.get("provider_error") != "responses_http_" + str(code)
+                    or request.get("model")
+                    != routes.get(route, expected_model.get("model"))
+                    or receipt["endpoint"] != "/api/v3/responses"
+                    or (
+                        receipt.get("origin") is not None
+                        and receipt["origin"] != expected_model.get("origin")
+                    )
+                    or cap
+                    != (
+                        manifest["config"]["effective"]
+                        .get("adversarial", {})
+                        .get("review_max_tokens")
+                        if route == "evaluation"
+                        else expected_model.get("max_tokens")
+                    )
+                    or call.get("thinking_mode") != "enabled"
+                    or call.get("reasoning_effort") != "low"
+                ):
+                    raise ValueError("frozen_accounting_unknown_not_terminal_rejection")
+                reconstructed.charge_unknown_usage(reservation)
+                total_unknown += reservation
+                rejection_calls.append(
+                    {
+                        "operation_id": start["operation_id"],
+                        "reservation": reservation,
+                        "request_sha256": receipt["request_sha256"],
+                        "response_sha256": receipt["response_sha256"],
+                        "http_status": code,
+                        "origin_evidence": (
+                            "recorded_http_origin"
+                            if receipt.get("origin")
+                            else "frozen_config_origin_only"
+                        ),
+                    }
+                )
+        finally:
+            reset_task_id(context)
+            # Every successful reserve is released even when proof validation fails.
+            if reserved:
+                reconstructed.release(reservation)
+    snapshot = reconstructed.snapshot()
+    if (
+        type(row.get("unknown_hold")) is not int
+        or row["unknown_hold"] != total_unknown
+        or total_unknown <= 0
+        or snapshot["used_tokens"] != row["known_tokens"] + total_unknown
+        or snapshot["requests_sent"] != row["requests"]
+        or row.get("usage_complete") is not False
+    ):
+        raise ValueError("frozen_accounting_unknown_amount_invalid")
+    actual = row.get("budget_snapshot")
+    if actual is not None:
+        restored = CostBudget.from_snapshot(actual)
+        for key in (
+            "max_tokens",
+            "used_tokens",
+            "requests_sent",
+            "phase_usage",
+            "usage_uncertain",
+            "call_count",
+        ):
+            if restored.snapshot().get(key) != snapshot.get(key):
+                raise ValueError("frozen_accounting_budget_snapshot_invalid")
+    return {
+        "version": CONSERVATIVE_ACCOUNTING,
+        "unknown_hold": total_unknown,
+        "journal_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        "budget_evidence": (
+            "persisted_snapshot"
+            if actual is not None
+            else "reconstructed_from_frozen_records"
+        ),
+        "budget_source_sha256": budget_sha,
+        "conservative_snapshot": snapshot,
+        "rejections": rejection_calls,
+    }
+
+
+def accounting_history(history, parents, *, unknown_policy="reject"):
     """Carry a verified terminal prefix forward without refunding or duplicating calls."""
+    if unknown_policy not in ("reject", CONSERVATIVE_ACCOUNTING):
+        raise ValueError("frozen_accounting_policy_invalid")
     history, receipts, seen, seen_archives = dict(history), [], set(), set()
     for parent in parents:
         root = Path(parent)
@@ -186,8 +427,12 @@ def accounting_history(history, parents):
         rows = state.get("cases", [state])
         archives = {}
         requests, tokens = 0, 0
+        conservative = []
         for row in rows:
-            if row.get("usage_complete") is not True or row.get("unknown_hold", 0):
+            uncertain = row.get("usage_complete") is not True or row.get(
+                "unknown_hold", 0
+            )
+            if uncertain and unknown_policy == "reject":
                 raise ValueError("frozen_accounting_usage_unknown")
             run_id = row.get("run_id", root.name)
             if Path(run_id).name != run_id:
@@ -210,7 +455,9 @@ def accounting_history(history, parents):
                 or len({e["operation_id"] for e in starts}) != len(starts)
                 or {e["operation_id"] for e in starts}
                 != {e["operation_id"] for e in ends}
-                or any(e.get("usage_available") is not True for e in ends)
+                or any(
+                    e.get("usage_available") is not True and not uncertain for e in ends
+                )
                 or any(
                     any(
                         type(e.get(k)) is not int or e[k] < 0
@@ -218,10 +465,20 @@ def accounting_history(history, parents):
                     )
                     or e["total_tokens"] != e["prompt_tokens"] + e["completion_tokens"]
                     for e in ends
+                    if e.get("usage_available") is True
                 )
-                or sum(e["total_tokens"] for e in ends) != row["known_tokens"]
+                or sum(
+                    e["total_tokens"] for e in ends if e.get("usage_available") is True
+                )
+                != row["known_tokens"]
             ):
                 raise ValueError("frozen_accounting_archive_usage_invalid")
+            if uncertain:
+                conservative.append(
+                    conservative_rejection_receipt(
+                        root, manifest, state, row, archive, starts, ends
+                    )
+                )
             requests += row["requests"]
             tokens += row["known_tokens"]
             archives[str(path)] = hashlib.sha256(path.read_bytes()).hexdigest()
@@ -234,10 +491,22 @@ def accounting_history(history, parents):
                 "requests": requests,
                 "known_tokens": tokens,
                 "history_before": dict(history),
+                **(
+                    {
+                        "conservative_rejections": conservative,
+                        "unknown_hold": sum(r["unknown_hold"] for r in conservative),
+                    }
+                    if conservative
+                    else {}
+                ),
             }
         )
         history["model_requests"] += requests
         history["model_known_tokens"] += tokens
+        if conservative:
+            history["model_unknown_conservative_tokens"] = history.get(
+                "model_unknown_conservative_tokens", 0
+            ) + sum(r["unknown_hold"] for r in conservative)
     return history, receipts
 
 
@@ -262,7 +531,12 @@ def prepare(root, config, *, accounting_parents=(), writing_profile=DISABLED_PRO
             "artifacts/acceptance/survey-reliability-20261022-004/acceptance-summary.json"
         ).read_text()
     )["cumulative"]
-    history, receipts = accounting_history(history, accounting_parents)
+    policy = (
+        CONSERVATIVE_ACCOUNTING if writing_profile == RESPONSES_PROFILE else "reject"
+    )
+    history, receipts = accounting_history(
+        history, accounting_parents, unknown_policy=policy
+    )
     manifest = {
         "version": VERSION,
         "suite_id": root.name,
@@ -291,6 +565,8 @@ def prepare(root, config, *, accounting_parents=(), writing_profile=DISABLED_PRO
         manifest["writing_profile"] = writing_profile
     if profile_parameters(writing_profile):
         manifest["writing_parameters"] = profile_parameters(writing_profile)
+    if policy != "reject":
+        manifest["accounting_policy"] = policy
     if receipts:
         manifest["accounting_receipts"] = receipts
     manifest["runtime"] = runtime_identity()
@@ -335,10 +611,19 @@ def validate(root, config):
         m.get("writing_profile", DISABLED_PROFILE)
     ):
         raise ValueError("frozen_writing_parameters_conflict")
+    policy = (
+        CONSERVATIVE_ACCOUNTING
+        if m.get("writing_profile") == RESPONSES_PROFILE
+        else "reject"
+    )
+    if m.get("accounting_policy", "reject") != policy:
+        raise ValueError("frozen_accounting_policy_conflict")
     if m.get("accounting_receipts"):
         receipts = m["accounting_receipts"]
         history, verified = accounting_history(
-            receipts[0]["history_before"], [r["root"] for r in receipts]
+            receipts[0]["history_before"],
+            [r["root"] for r in receipts],
+            unknown_policy=policy,
         )
         if history != m["history"] or verified != receipts:
             raise ValueError("frozen_campaign_accounting_changed")
@@ -388,6 +673,48 @@ def evaluation_diagnostic(report):
         "processed_assertions": count(stages.get("processed_assertions")),
         "scientific_unverified": count(details.get("unverified_count")),
     }
+
+
+def transport_diagnostic(run_id):
+    """Read only a receipt bound to the exact archive, never free error prose."""
+    from litagent.llm.responses import receipt_diagnostic
+
+    if not isinstance(run_id, str) or Path(run_id).name != run_id:
+        return None
+    archive_path = Path("artifacts/runs", run_id + ".json")
+    journal_path = Path("artifacts/targeted-repairs", run_id + ".json.writer-v2.json")
+    if not archive_path.exists() or not journal_path.exists():
+        return None
+    try:
+        archive = json.loads(archive_path.read_text())
+        journal = json.loads(journal_path.read_text())
+        if archive.get("run_id") != run_id:
+            return None
+        ends = {
+            e["data"]["operation_id"]: e["data"]
+            for e in archive["events"]
+            if e["event"] == "llm.complete"
+        }
+        for event in reversed(archive["events"]):
+            if (
+                event["event"] != "llm.start"
+                or event["data"].get("provider_api") != "responses"
+            ):
+                continue
+            start = event["data"]
+            end = ends.get(start["operation_id"])
+            if not end or not end.get("provider_error"):
+                continue
+            _, receipt, _, _ = bound_native_receipt(start, end, journal)
+            return {
+                **receipt_diagnostic(receipt),
+                "usage_available": end.get("usage_available") is True,
+                "archive_sha256": hashlib.sha256(archive_path.read_bytes()).hexdigest(),
+                "journal_sha256": hashlib.sha256(journal_path.read_bytes()).hexdigest(),
+            }
+    except (KeyError, ValueError, TypeError, OSError):
+        return None
+    return None
 
 
 def export(root, state, manifest):
@@ -457,6 +784,12 @@ def export(root, state, manifest):
                 for a in not_sent.values()
             ]
     for row in rows:
+        diagnostic = transport_diagnostic(row.get("run_id"))
+        if diagnostic:
+            row["transport_diagnostic"] = diagnostic
+        for key in ("http_status", "provider_error_code", "rejected_parameter"):
+            row[key] = (diagnostic or {}).get(key)
+    for row in rows:
         if row.get("failure_code") != "writer_json_invalid" or not row.get("run_id"):
             continue
         journal = Path(
@@ -496,9 +829,15 @@ def export(root, state, manifest):
 
     def reason(row):
         """Display the bound evaluator cause while preserving the original run state."""
-        return row.get("evaluation_diagnostic", {}).get("reason_code") or row.get(
+        cause = row.get("evaluation_diagnostic", {}).get("reason_code") or row.get(
             "failure_code", ""
         )
+        if row.get("http_status"):
+            cause += " / HTTP " + str(row["http_status"])
+            cause += " / " + (row.get("provider_error_code") or "unavailable")
+            if row.get("rejected_parameter"):
+                cause += " / " + row["rejected_parameter"]
+        return cause
 
     for row in rows:
         row["writing_profile"] = writing_profile["id"]
@@ -520,7 +859,7 @@ def export(root, state, manifest):
 
     public = {
         "version": VERSION,
-        "view_version": "frozen-writing-view-v6",
+        "view_version": "frozen-writing-view-v7",
         "suite_id": root.name,
         "identity": manifest["identity"],
         "source_commit": manifest["source_commit"],
@@ -580,6 +919,9 @@ def export(root, state, manifest):
         "report_sha256",
         "failure_family",
         "failure_code",
+        "http_status",
+        "provider_error_code",
+        "rejected_parameter",
         "evaluation_reason",
         "expected_assertions",
         "processed_assertions",
@@ -649,7 +991,7 @@ def export(root, state, manifest):
         + "</pre></details>"
         for r in rows
     )
-    page = """<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LitAgent · Frozen writing validation</title><style>*{box-sizing:border-box}body{font:16px/1.6 system-ui;background:#f4f6fa;color:#172c43;max-width:1100px;padding:20px;margin:auto}section,header{background:white;padding:20px;margin:16px 0;border:1px solid #dbe2ee;border-radius:12px}h1{font-size:1.7rem}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}.stat{background:#edf2f9;padding:14px}.scroll{overflow:auto}table{width:100%;border-collapse:collapse}th,td{padding:10px;border-bottom:1px solid #ccc;text-align:left}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:.85em}button,a,summary{cursor:pointer}button{font:inherit;padding:8px}a{color:#135a9e}*:focus-visible{outline:3px solid #1679d2}summary{padding:12px 0}p{overflow-wrap:anywhere}@media(max-width:430px){body{padding:10px}section,header{padding:14px}h1{font-size:1.3rem}}</style><header><button id="locale">English / 中文</button><h1 id="title">三域冻结正文验收</h1><p id="scope">固定证据 → 正文 → Reviewer → Evaluation → 自动交付或失败归档；不重新检索。Judge/Jev关闭。</p><p id="profile"></p></header><section><div id="stats" class="grid"></div><p id="note">自动评测；人工校准未验证。未核验不等于通过，协议完成不等于科学通过。失败及未运行题均保留在分母。</p><p id="status"></p></section><section class="scroll"><table><thead><tr><th>Case</th><th>Generated</th><th>Evaluation</th><th>Delivered</th><th>Supported</th><th>Unsupported</th><th>Unverified</th><th>Detail</th></tr></thead><tbody>__ROWS__</tbody></table></section><section><h2>诊断 / Diagnostics</h2>__DETAILS__</section><section><a href="benchmark.json">JSON</a> · <a href="benchmark.csv">CSV</a> · <a href="benchmark.md">Markdown</a><pre id="usage"></pre></section><script id="data" type="application/json">__DATA__</script><script>const d=JSON.parse(document.getElementById('data').textContent);let en=false;function draw(){document.documentElement.lang=en?'en':'zh-CN';document.getElementById('title').textContent=en?'Three-domain frozen writing validation':'三域冻结正文验收';document.getElementById('scope').textContent=en?'Frozen evidence → writing → Reviewer → Evaluation → automatic delivery or archived failure. No retrieval. Judge/Jev disabled.':'固定证据 → 正文 → Reviewer → Evaluation → 自动交付或失败归档；不重新检索。Judge/Jev关闭。';document.getElementById('note').textContent=en?'Automatic evaluation; no human calibration. Unverified is not passed. Protocol completion is not scientific acceptance. Failures and unrun cases remain in the denominator.':'自动评测；人工校准未验证。未核验不等于通过，协议完成不等于科学通过。失败及未运行题均保留在分母。';const p=d.writing_profile;document.getElementById('profile').textContent=(en?'Frozen thinking profile: ':'冻结思考配置：')+p.id+' · '+(p.provider_api||'chat')+' · '+(en?'Writing':'写作')+' '+p.generation_thinking_mode+' / Reviewer '+p.reviewer_thinking_mode+' / Evaluation '+p.evaluation_thinking_mode+' · '+(p.reasoning_effort?('effort='+p.reasoning_effort+' · '):'')+p.output_limit_parameter+' '+(p.generation_output_tokens??'—')+' / '+(p.reviewer_output_tokens??'—');document.getElementById('status').textContent=d.state+' · '+(d.stop_reason||'');let s=document.getElementById('stats');s.replaceChildren();for(const [k,v]of Object.entries({Planned:3,Run:d.run,Generated:d.generated,Evaluated:d.evaluation_completed,Delivered:d.passed})){let e=document.createElement('div');e.className='stat';e.textContent=k+' '+v+' / 3';s.append(e)}document.getElementById('usage').textContent=JSON.stringify({new_usage:d.new_usage,historical_usage:d.historical_usage,writing_profile:d.writing_profile,source_commit:d.source_commit,contract:d.contract},null,2)}document.getElementById('locale').onclick=()=>{en=!en;draw()};draw();</script></html>"""
+    page = """<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LitAgent · Frozen writing validation</title><style>*{box-sizing:border-box}body{font:16px/1.6 system-ui;background:#f4f6fa;color:#172c43;max-width:1100px;padding:20px;margin:auto}section,header{background:white;padding:20px;margin:16px 0;border:1px solid #dbe2ee;border-radius:12px}h1{font-size:1.7rem}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}.stat{background:#edf2f9;padding:14px}.scroll{overflow:auto}table{width:100%;border-collapse:collapse}th,td{padding:10px;border-bottom:1px solid #ccc;text-align:left}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:.85em}button,a,summary{cursor:pointer}button{font:inherit;padding:8px}a{color:#135a9e}*:focus-visible{outline:3px solid #1679d2}summary{padding:12px 0}p{overflow-wrap:anywhere}@media(max-width:430px){body{padding:10px}section,header{padding:14px}h1{font-size:1.3rem}}</style><header><button id="locale">English / 中文</button><h1 id="title">三域冻结正文验收</h1><p id="scope">固定证据 → 正文 → Reviewer → Evaluation → 自动交付或失败归档；不重新检索。Judge/Jev关闭。</p><p id="profile"></p><p id="transport"></p></header><section><div id="stats" class="grid"></div><p id="note">自动评测；人工校准未验证。未核验不等于通过，协议完成不等于科学通过。失败及未运行题均保留在分母。</p><p id="status"></p></section><section class="scroll"><table><thead><tr><th>Case</th><th>Generated</th><th>Evaluation</th><th>Delivered</th><th>Supported</th><th>Unsupported</th><th>Unverified</th><th>Detail</th></tr></thead><tbody>__ROWS__</tbody></table></section><section><h2>诊断 / Diagnostics</h2>__DETAILS__</section><section><a href="benchmark.json">JSON</a> · <a href="benchmark.csv">CSV</a> · <a href="benchmark.md">Markdown</a><pre id="usage"></pre></section><script id="data" type="application/json">__DATA__</script><script>const d=JSON.parse(document.getElementById('data').textContent);let en=false;function draw(){document.documentElement.lang=en?'en':'zh-CN';document.getElementById('title').textContent=en?'Three-domain frozen writing validation':'三域冻结正文验收';document.getElementById('scope').textContent=en?'Frozen evidence → writing → Reviewer → Evaluation → automatic delivery or archived failure. No retrieval. Judge/Jev disabled.':'固定证据 → 正文 → Reviewer → Evaluation → 自动交付或失败归档；不重新检索。Judge/Jev关闭。';document.getElementById('note').textContent=en?'Automatic evaluation; no human calibration. Unverified is not passed. Protocol completion is not scientific acceptance. Failures and unrun cases remain in the denominator.':'自动评测；人工校准未验证。未核验不等于通过，协议完成不等于科学通过。失败及未运行题均保留在分母。';const t=d.cases.filter(r=>r.transport_diagnostic).map(r=>r.case_id+' · HTTP '+r.http_status+' · '+(r.provider_error_code||'—')+' · '+(r.rejected_parameter||'—')).join('; ');document.getElementById('transport').textContent=t?((en?'Provider diagnosis (usage unknown is not zero cost): ':'供应商诊断（未知用量不等于零费用）：')+t):'';const p=d.writing_profile;document.getElementById('profile').textContent=(en?'Frozen thinking profile: ':'冻结思考配置：')+p.id+' · '+(p.provider_api||'chat')+' · '+(en?'Writing':'写作')+' '+p.generation_thinking_mode+' / Reviewer '+p.reviewer_thinking_mode+' / Evaluation '+p.evaluation_thinking_mode+' · '+(p.reasoning_effort?('effort='+p.reasoning_effort+' · '):'')+p.output_limit_parameter+' '+(p.generation_output_tokens??'—')+' / '+(p.reviewer_output_tokens??'—');document.getElementById('status').textContent=d.state+' · '+(d.stop_reason||'');let s=document.getElementById('stats');s.replaceChildren();for(const [k,v]of Object.entries({Planned:3,Run:d.run,Generated:d.generated,Evaluated:d.evaluation_completed,Delivered:d.passed})){let e=document.createElement('div');e.className='stat';e.textContent=k+' '+v+' / 3';s.append(e)}document.getElementById('usage').textContent=JSON.stringify({new_usage:d.new_usage,historical_usage:d.historical_usage,writing_profile:d.writing_profile,source_commit:d.source_commit,contract:d.contract},null,2)}document.getElementById('locale').onclick=()=>{en=!en;draw()};draw();</script></html>"""
     page = (
         page.replace("__ROWS__", table)
         .replace("__DETAILS__", details)
@@ -777,6 +1119,7 @@ async def _execute(root, config):
             known_tokens=known,
             unknown_hold=max(0, budget.get("used_tokens", 0) - known),
             usage_complete=not budget.get("usage_uncertain", False),
+            budget_snapshot=budget,
             elapsed_ms=round((time.monotonic() - start) * 1000),
             trace_url=tracer.trace_url if tracer else None,
             reasoning_tokens=(
