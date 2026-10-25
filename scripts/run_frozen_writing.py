@@ -50,6 +50,7 @@ THINKING_PROFILE = "writer_reviewer_thinking_v1"
 LOW_THINKING_PROFILE = "writer_reviewer_low_thinking_v1"
 LEGACY_RESPONSES_PROFILE = "writer_reviewer_low_responses_v1"
 RESPONSES_PROFILE = "writer_reviewer_low_responses_v2"
+SHAPE_PROFILE = "writer_reviewer_low_responses_shape_v1"
 CONSERVATIVE_ACCOUNTING = "carry_terminal_rejection_v1"
 
 
@@ -62,6 +63,7 @@ def profile_mode(profile):
         LOW_THINKING_PROFILE,
         RESPONSES_PROFILE,
         LEGACY_RESPONSES_PROFILE,
+        SHAPE_PROFILE,
     ):
         return "enabled"
     raise ValueError("frozen_writing_profile_invalid")
@@ -70,8 +72,12 @@ def profile_mode(profile):
 def profile_parameters(profile):
     """Bind the single supported native effort without adding legacy config fields."""
     profile_mode(profile)
-    if profile in (RESPONSES_PROFILE, LEGACY_RESPONSES_PROFILE):
-        return {"native_reasoning_effort": "low", "native_provider_api": "responses"}
+    if profile in (RESPONSES_PROFILE, LEGACY_RESPONSES_PROFILE, SHAPE_PROFILE):
+        return {
+            "native_reasoning_effort": "low",
+            "native_provider_api": "responses",
+            **({"native_shape_recovery": True} if profile == SHAPE_PROFILE else {}),
+        }
     return {"native_reasoning_effort": "low"} if profile == LOW_THINKING_PROFILE else {}
 
 
@@ -125,12 +131,17 @@ def profile_description(profile, summary):
             for role in ("extraction", "generation", "evaluation")
         },
     }
-    if profile in (LOW_THINKING_PROFILE, RESPONSES_PROFILE, LEGACY_RESPONSES_PROFILE):
+    if profile in (
+        LOW_THINKING_PROFILE,
+        RESPONSES_PROFILE,
+        LEGACY_RESPONSES_PROFILE,
+        SHAPE_PROFILE,
+    ):
         result["reasoning_effort"] = "low"
-    if profile in (RESPONSES_PROFILE, LEGACY_RESPONSES_PROFILE):
+    if profile in (RESPONSES_PROFILE, LEGACY_RESPONSES_PROFILE, SHAPE_PROFILE):
         result["provider_api"] = "responses"
         result["output_limit_parameter"] = "max_output_tokens"
-    if profile == RESPONSES_PROFILE:
+    if profile in (RESPONSES_PROFILE, SHAPE_PROFILE):
         from litagent.llm.responses import RESPONSES_CONTRACT
 
         result.update(
@@ -140,6 +151,10 @@ def profile_description(profile, summary):
             host_input="complete",
             server_truncation_control="unavailable",
         )
+    if profile == SHAPE_PROFILE:
+        from litagent.writing_v2 import SHAPE_RECOVERY_CONTRACT
+
+        result["shape_recovery_contract"] = SHAPE_RECOVERY_CONTRACT
     return result
 
 
@@ -532,7 +547,9 @@ def prepare(root, config, *, accounting_parents=(), writing_profile=DISABLED_PRO
         ).read_text()
     )["cumulative"]
     policy = (
-        CONSERVATIVE_ACCOUNTING if writing_profile == RESPONSES_PROFILE else "reject"
+        CONSERVATIVE_ACCOUNTING
+        if writing_profile in (RESPONSES_PROFILE, SHAPE_PROFILE)
+        else "reject"
     )
     history, receipts = accounting_history(
         history, accounting_parents, unknown_policy=policy
@@ -613,7 +630,7 @@ def validate(root, config):
         raise ValueError("frozen_writing_parameters_conflict")
     policy = (
         CONSERVATIVE_ACCOUNTING
-        if m.get("writing_profile") == RESPONSES_PROFILE
+        if m.get("writing_profile") in (RESPONSES_PROFILE, SHAPE_PROFILE)
         else "reject"
     )
     if m.get("accounting_policy", "reject") != policy:
@@ -715,6 +732,29 @@ def transport_diagnostic(run_id):
     except (KeyError, ValueError, TypeError, OSError):
         return None
     return None
+
+
+def repair_accounting(run_id):
+    """Project persisted shared attempts, including failures before a report exists."""
+    from litagent.quality import load_targeted_repairs
+
+    if not isinstance(run_id, str) or Path(run_id).name != run_id:
+        raise ValueError("frozen_repair_identity_invalid")
+    path = Path("artifacts/targeted-repairs", run_id + ".json")
+    if not path.exists():
+        return None
+    state = load_targeted_repairs(path, run_id)
+    return {
+        "repairs": len(state["attempts"]),
+        "repair_history": [
+            {
+                key: (safe_reason(a[key]) if key == "error_code" else a[key])
+                for key in ("index", "stage", "status", "kind", "error_code")
+                if key in a
+            }
+            for a in state["attempts"]
+        ],
+    }
 
 
 def export(root, state, manifest):
@@ -843,6 +883,7 @@ def export(root, state, manifest):
         row["writing_profile"] = writing_profile["id"]
         row["provider_api"] = writing_profile.get("provider_api", "chat")
         row["reasoning_effort"] = writing_profile.get("reasoning_effort")
+        row["shape_recovery_contract"] = writing_profile.get("shape_recovery_contract")
         for key in (
             "generation_thinking_mode",
             "reviewer_thinking_mode",
@@ -859,7 +900,7 @@ def export(root, state, manifest):
 
     public = {
         "version": VERSION,
-        "view_version": "frozen-writing-view-v7",
+        "view_version": "frozen-writing-view-v8",
         "suite_id": root.name,
         "identity": manifest["identity"],
         "source_commit": manifest["source_commit"],
@@ -894,6 +935,7 @@ def export(root, state, manifest):
         "writing_profile",
         "provider_api",
         "reasoning_effort",
+        "shape_recovery_contract",
         "reasoning_tokens",
         "reasoning_usage_complete",
         "reasoning_usage_available_requests",
@@ -908,6 +950,7 @@ def export(root, state, manifest):
         "status",
         "generated",
         "evaluation",
+        "repairs",
         "publishable",
         "supported",
         "unsupported",
@@ -944,6 +987,8 @@ def export(root, state, manifest):
         + "\n```\n"
     )
     md += f"\n新增已知用量{public['new_usage']['known_tokens']} tokens，未知保守占用{public['new_usage']['unknown_hold']}，{public['new_usage']['requests']}请求。历史用量独立保留，不重复计算提取费用。失败和未运行题不移出分母，不追加到通过。\n\n[JSON](benchmark.json) · [CSV](benchmark.csv) · [HTML](benchmark.html)\n"
+    md += "\n共享修复次数 / Shared repair attempts (limit 2; missing history unavailable)\n\n|Case|Attempts|\n|---|---|\n"
+    md += "".join(f"|{r['case_id']}|{display(r.get('repairs'))}|\n" for r in rows)
     if any("reasoning_usage_complete" in r for r in rows):
         md += "\n思考明细是 completion 的子集，不再次累计；缺失时不推算。\n\n|Case|Reasoning tokens|Details complete|Available requests / all requests|\n|---|---|---|---|\n"
         md += "".join(
@@ -960,6 +1005,7 @@ def export(root, state, manifest):
                 "case_id",
                 "generated",
                 "evaluation",
+                "repairs",
                 "publishable",
                 "supported",
                 "unsupported",
@@ -993,7 +1039,8 @@ def export(root, state, manifest):
     )
     page = """<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LitAgent · Frozen writing validation</title><style>*{box-sizing:border-box}body{font:16px/1.6 system-ui;background:#f4f6fa;color:#172c43;max-width:1100px;padding:20px;margin:auto}section,header{background:white;padding:20px;margin:16px 0;border:1px solid #dbe2ee;border-radius:12px}h1{font-size:1.7rem}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}.stat{background:#edf2f9;padding:14px}.scroll{overflow:auto}table{width:100%;border-collapse:collapse}th,td{padding:10px;border-bottom:1px solid #ccc;text-align:left}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:.85em}button,a,summary{cursor:pointer}button{font:inherit;padding:8px}a{color:#135a9e}*:focus-visible{outline:3px solid #1679d2}summary{padding:12px 0}p{overflow-wrap:anywhere}@media(max-width:430px){body{padding:10px}section,header{padding:14px}h1{font-size:1.3rem}}</style><header><button id="locale">English / 中文</button><h1 id="title">三域冻结正文验收</h1><p id="scope">固定证据 → 正文 → Reviewer → Evaluation → 自动交付或失败归档；不重新检索。Judge/Jev关闭。</p><p id="profile"></p><p id="transport"></p></header><section><div id="stats" class="grid"></div><p id="note">自动评测；人工校准未验证。未核验不等于通过，协议完成不等于科学通过。失败及未运行题均保留在分母。</p><p id="status"></p></section><section class="scroll"><table><thead><tr><th>Case</th><th>Generated</th><th>Evaluation</th><th>Delivered</th><th>Supported</th><th>Unsupported</th><th>Unverified</th><th>Detail</th></tr></thead><tbody>__ROWS__</tbody></table></section><section><h2>诊断 / Diagnostics</h2>__DETAILS__</section><section><a href="benchmark.json">JSON</a> · <a href="benchmark.csv">CSV</a> · <a href="benchmark.md">Markdown</a><pre id="usage"></pre></section><script id="data" type="application/json">__DATA__</script><script>const d=JSON.parse(document.getElementById('data').textContent);let en=false;function draw(){document.documentElement.lang=en?'en':'zh-CN';document.getElementById('title').textContent=en?'Three-domain frozen writing validation':'三域冻结正文验收';document.getElementById('scope').textContent=en?'Frozen evidence → writing → Reviewer → Evaluation → automatic delivery or archived failure. No retrieval. Judge/Jev disabled.':'固定证据 → 正文 → Reviewer → Evaluation → 自动交付或失败归档；不重新检索。Judge/Jev关闭。';document.getElementById('note').textContent=en?'Automatic evaluation; no human calibration. Unverified is not passed. Protocol completion is not scientific acceptance. Failures and unrun cases remain in the denominator.':'自动评测；人工校准未验证。未核验不等于通过，协议完成不等于科学通过。失败及未运行题均保留在分母。';const t=d.cases.filter(r=>r.transport_diagnostic).map(r=>r.case_id+' · HTTP '+r.http_status+' · '+(r.provider_error_code||'—')+' · '+(r.rejected_parameter||'—')).join('; ');document.getElementById('transport').textContent=t?((en?'Provider diagnosis (usage unknown is not zero cost): ':'供应商诊断（未知用量不等于零费用）：')+t):'';const p=d.writing_profile;document.getElementById('profile').textContent=(en?'Frozen thinking profile: ':'冻结思考配置：')+p.id+' · '+(p.provider_api||'chat')+' · '+(en?'Writing':'写作')+' '+p.generation_thinking_mode+' / Reviewer '+p.reviewer_thinking_mode+' / Evaluation '+p.evaluation_thinking_mode+' · '+(p.reasoning_effort?('effort='+p.reasoning_effort+' · '):'')+p.output_limit_parameter+' '+(p.generation_output_tokens??'—')+' / '+(p.reviewer_output_tokens??'—');document.getElementById('status').textContent=d.state+' · '+(d.stop_reason||'');let s=document.getElementById('stats');s.replaceChildren();for(const [k,v]of Object.entries({Planned:3,Run:d.run,Generated:d.generated,Evaluated:d.evaluation_completed,Delivered:d.passed})){let e=document.createElement('div');e.className='stat';e.textContent=k+' '+v+' / 3';s.append(e)}document.getElementById('usage').textContent=JSON.stringify({new_usage:d.new_usage,historical_usage:d.historical_usage,writing_profile:d.writing_profile,source_commit:d.source_commit,contract:d.contract},null,2)}document.getElementById('locale').onclick=()=>{en=!en;draw()};draw();</script></html>"""
     page = (
-        page.replace("__ROWS__", table)
+        page.replace("<th>Delivered</th>", "<th>Repairs</th><th>Delivered</th>")
+        .replace("__ROWS__", table)
         .replace("__DETAILS__", details)
         .replace(
             "__DATA__", json.dumps(public, ensure_ascii=False).replace("<", "\\u003c")
@@ -1220,6 +1267,9 @@ async def _execute(root, config):
                 "status"
             ) == "response_received" and not reviewed.get("failure")
             entry["compiled_report_sha256"] = journal.get("draft_sha256")
+            repair_usage = repair_accounting(run_id)
+            if repair_usage is not None:
+                entry.update(repair_usage)
         if entry["unknown_hold"] or not entry["usage_complete"]:
             failure = {"family": "interrupted", "code": "usage_unknown"}
         failure = failure or (
@@ -1256,6 +1306,7 @@ def main():
             THINKING_PROFILE,
             LOW_THINKING_PROFILE,
             RESPONSES_PROFILE,
+            SHAPE_PROFILE,
         ),
         default=None,
     )

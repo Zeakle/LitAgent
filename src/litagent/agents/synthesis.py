@@ -210,6 +210,7 @@ class SynthesisWorker(Worker):
         received_native: Mapping | None = None,
         native_reasoning_effort: str | None = None,
         native_provider_api: str = "chat",
+        native_shape_recovery: bool = False,
     ):
         """Initialize the synthesis worker."""
         self._methodology_provider = methodology_provider
@@ -239,6 +240,9 @@ class SynthesisWorker(Worker):
         if native_provider_api not in ("chat", "responses"):
             raise ValueError("native_provider_api_invalid")
         self._native_provider_api = native_provider_api
+        if type(native_shape_recovery) is not bool:
+            raise ValueError("native_shape_recovery_configuration_invalid")
+        self._native_shape_recovery = native_shape_recovery
 
         self._tools: list = []
         if skill_manager:

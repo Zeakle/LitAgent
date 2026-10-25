@@ -470,11 +470,12 @@ async def test_chat_identity_unchanged_and_responses_cannot_resume_it(case, tmp_
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("shape_recovery", [False, True])
 @pytest.mark.parametrize(
     "unsupported,missing_records", [(False, False), (True, False), (False, True)]
 )
 async def test_actual_frozen_runtime_sdk_evaluation_and_shared_repair(
-    case, tmp_path, monkeypatch, unsupported, missing_records
+    case, tmp_path, monkeypatch, unsupported, missing_records, shape_recovery
 ):
     """Only HTTP is replaced across writing, review, assembly, v3 and acceptance."""
     from litagent.config import load_config
@@ -509,6 +510,14 @@ async def test_actual_frozen_runtime_sdk_evaluation_and_shared_repair(
         controlled = await (evaluator if is_eval else provider).chat(
             messages, response_format=rf
         )
+        if (
+            shape_recovery
+            and payload.get("requested_body_section") == "taxonomy"
+            and "shape_reemission" not in payload
+        ):
+            original = json.loads(controlled.content)
+            original["taxonomy"] = original["taxonomy"][0]
+            controlled.content = json.dumps(original)
         if native:
             assert not is_eval and body["reasoning"] == {"effort": "low"}
             response = envelope(controlled.content, model=body["model"])
@@ -606,6 +615,7 @@ async def test_actual_frozen_runtime_sdk_evaluation_and_shared_repair(
             "offline-responses",
             native_reasoning_effort="low",
             native_provider_api="responses",
+            native_shape_recovery=shape_recovery,
         )
         assert result["metadata"]["generation_strategy"] == "body_summary_v2"
         details = result["evaluation"]["faithfulness"]["details"]
@@ -626,14 +636,23 @@ async def test_actual_frozen_runtime_sdk_evaluation_and_shared_repair(
         if missing_records:
             assert "method_checks" in details["strict_acceptance"]["failure_codes"]
         assert result["metadata"]["automatic_acceptance"]["actor"] == "system"
-        assert [b["model"] for b in sent[:7]] == ["pro"] * 6 + ["lite"]
-        assert all(b["max_output_tokens"] == 20000 for b in sent[:6])
-        assert sent[6]["max_output_tokens"] == 4096
+        generation_count = 7 if shape_recovery else 6
+        assert [b["model"] for b in sent[: generation_count + 1]] == [
+            "pro"
+        ] * generation_count + ["lite"]
+        assert all(b["max_output_tokens"] == 20000 for b in sent[:generation_count])
+        assert sent[generation_count]["max_output_tokens"] == 4096
         assert agent._cost_budget.used == 120 * len(sent)
         journal = json.loads(
             Path(str(agent._targeted_repair_state_path) + ".writer-v2.json").read_text()
         )
         assert journal["generation_provider_api"] == "responses"
+        if shape_recovery:
+            assert journal["shape_recovery_contract"] == "lossless-array-reemission-v1"
+            assert journal["calls"]["body:taxonomy"]["resolved_by"] == "repair_0"
+            assert len(result["metadata"]["targeted_repair_state"]["attempts"]) == (
+                2 if unsupported else 1
+            )
         if unsupported:
             assert len(journal["candidates"]) <= 2
             repair_calls = [

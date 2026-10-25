@@ -181,6 +181,7 @@ async def run_frozen(
     transport=None,
     native_reasoning_effort=None,
     native_provider_api="chat",
+    native_shape_recovery=False,
 ):
     """Use real Synthesis, Reviewer, scheduler, assembly, Evaluation and acceptance."""
     if agent._wired:
@@ -192,6 +193,8 @@ async def run_frozen(
         raise ValueError("native_reasoning_configuration_invalid")
     if native_provider_api not in ("chat", "responses"):
         raise ValueError("native_provider_api_invalid")
+    if type(native_shape_recovery) is not bool:
+        raise ValueError("native_shape_recovery_configuration_invalid")
     selection = EvidenceSelection.from_dict(bundle["selection"])
     cards = build_fact_cards(selection.selected_items)
     if bundle.get("fact_cards_sha256") and digest(cards) != bundle["fact_cards_sha256"]:
@@ -217,6 +220,7 @@ async def run_frozen(
         thinking_mode=cfg.adversarial.thinking_mode,
         native_reasoning_effort=native_reasoning_effort,
         native_provider_api=native_provider_api,
+        native_shape_recovery=native_shape_recovery,
         run_id_provider=lambda: agent._session_id,
         repair_state_path_provider=agent._targeted_repair_path,
     )
