@@ -51,6 +51,7 @@ LOW_THINKING_PROFILE = "writer_reviewer_low_thinking_v1"
 LEGACY_RESPONSES_PROFILE = "writer_reviewer_low_responses_v1"
 RESPONSES_PROFILE = "writer_reviewer_low_responses_v2"
 SHAPE_PROFILE = "writer_reviewer_low_responses_shape_v1"
+REEMISSION_PROFILE = "writer_reviewer_low_responses_reemit_v1"
 CONSERVATIVE_ACCOUNTING = "carry_terminal_rejection_v1"
 
 
@@ -64,6 +65,7 @@ def profile_mode(profile):
         RESPONSES_PROFILE,
         LEGACY_RESPONSES_PROFILE,
         SHAPE_PROFILE,
+        REEMISSION_PROFILE,
     ):
         return "enabled"
     raise ValueError("frozen_writing_profile_invalid")
@@ -72,11 +74,23 @@ def profile_mode(profile):
 def profile_parameters(profile):
     """Bind the single supported native effort without adding legacy config fields."""
     profile_mode(profile)
-    if profile in (RESPONSES_PROFILE, LEGACY_RESPONSES_PROFILE, SHAPE_PROFILE):
+    if profile in (
+        RESPONSES_PROFILE,
+        LEGACY_RESPONSES_PROFILE,
+        SHAPE_PROFILE,
+        REEMISSION_PROFILE,
+    ):
+        from litagent.writing_v2 import INTACT_UNIT_REEMISSION_CONTRACT
+
         return {
             "native_reasoning_effort": "low",
             "native_provider_api": "responses",
             **({"native_shape_recovery": True} if profile == SHAPE_PROFILE else {}),
+            **(
+                {"native_reemission_contract": INTACT_UNIT_REEMISSION_CONTRACT}
+                if profile == REEMISSION_PROFILE
+                else {}
+            ),
         }
     return {"native_reasoning_effort": "low"} if profile == LOW_THINKING_PROFILE else {}
 
@@ -136,12 +150,18 @@ def profile_description(profile, summary):
         RESPONSES_PROFILE,
         LEGACY_RESPONSES_PROFILE,
         SHAPE_PROFILE,
+        REEMISSION_PROFILE,
     ):
         result["reasoning_effort"] = "low"
-    if profile in (RESPONSES_PROFILE, LEGACY_RESPONSES_PROFILE, SHAPE_PROFILE):
+    if profile in (
+        RESPONSES_PROFILE,
+        LEGACY_RESPONSES_PROFILE,
+        SHAPE_PROFILE,
+        REEMISSION_PROFILE,
+    ):
         result["provider_api"] = "responses"
         result["output_limit_parameter"] = "max_output_tokens"
-    if profile in (RESPONSES_PROFILE, SHAPE_PROFILE):
+    if profile in (RESPONSES_PROFILE, SHAPE_PROFILE, REEMISSION_PROFILE):
         from litagent.llm.responses import RESPONSES_CONTRACT
 
         result.update(
@@ -155,6 +175,10 @@ def profile_description(profile, summary):
         from litagent.writing_v2 import SHAPE_RECOVERY_CONTRACT
 
         result["shape_recovery_contract"] = SHAPE_RECOVERY_CONTRACT
+    if profile == REEMISSION_PROFILE:
+        from litagent.writing_v2 import INTACT_UNIT_REEMISSION_CONTRACT
+
+        result["reemission_contract"] = INTACT_UNIT_REEMISSION_CONTRACT
     return result
 
 
@@ -548,7 +572,7 @@ def prepare(root, config, *, accounting_parents=(), writing_profile=DISABLED_PRO
     )["cumulative"]
     policy = (
         CONSERVATIVE_ACCOUNTING
-        if writing_profile in (RESPONSES_PROFILE, SHAPE_PROFILE)
+        if writing_profile in (RESPONSES_PROFILE, SHAPE_PROFILE, REEMISSION_PROFILE)
         else "reject"
     )
     history, receipts = accounting_history(
@@ -630,7 +654,8 @@ def validate(root, config):
         raise ValueError("frozen_writing_parameters_conflict")
     policy = (
         CONSERVATIVE_ACCOUNTING
-        if m.get("writing_profile") in (RESPONSES_PROFILE, SHAPE_PROFILE)
+        if m.get("writing_profile")
+        in (RESPONSES_PROFILE, SHAPE_PROFILE, REEMISSION_PROFILE)
         else "reject"
     )
     if m.get("accounting_policy", "reject") != policy:
@@ -884,6 +909,7 @@ def export(root, state, manifest):
         row["provider_api"] = writing_profile.get("provider_api", "chat")
         row["reasoning_effort"] = writing_profile.get("reasoning_effort")
         row["shape_recovery_contract"] = writing_profile.get("shape_recovery_contract")
+        row["reemission_contract"] = writing_profile.get("reemission_contract")
         for key in (
             "generation_thinking_mode",
             "reviewer_thinking_mode",
@@ -936,6 +962,7 @@ def export(root, state, manifest):
         "provider_api",
         "reasoning_effort",
         "shape_recovery_contract",
+        "reemission_contract",
         "reasoning_tokens",
         "reasoning_usage_complete",
         "reasoning_usage_available_requests",
@@ -1307,6 +1334,7 @@ def main():
             LOW_THINKING_PROFILE,
             RESPONSES_PROFILE,
             SHAPE_PROFILE,
+            REEMISSION_PROFILE,
         ),
         default=None,
     )

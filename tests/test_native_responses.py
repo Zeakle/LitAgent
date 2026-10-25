@@ -470,7 +470,7 @@ async def test_chat_identity_unchanged_and_responses_cannot_resume_it(case, tmp_
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("shape_recovery", [False, True])
+@pytest.mark.parametrize("shape_recovery", [False, True, "intact"])
 @pytest.mark.parametrize(
     "unsupported,missing_records", [(False, False), (True, False), (False, True)]
 )
@@ -516,8 +516,17 @@ async def test_actual_frozen_runtime_sdk_evaluation_and_shared_repair(
             and "shape_reemission" not in payload
         ):
             original = json.loads(controlled.content)
-            original["taxonomy"] = original["taxonomy"][0]
-            controlled.content = json.dumps(original)
+            if shape_recovery == "intact":
+                controlled.content = json.dumps(original)[:-1]
+            else:
+                original["taxonomy"] = original["taxonomy"][0]
+                controlled.content = json.dumps(original)
+        if (
+            shape_recovery == "intact"
+            and "body_units" in payload
+            and "shape_reemission" not in payload
+        ):
+            controlled.content = controlled.content[:-1]
         if native:
             assert not is_eval and body["reasoning"] == {"effort": "low"}
             response = envelope(controlled.content, model=body["model"])
@@ -615,7 +624,10 @@ async def test_actual_frozen_runtime_sdk_evaluation_and_shared_repair(
             "offline-responses",
             native_reasoning_effort="low",
             native_provider_api="responses",
-            native_shape_recovery=shape_recovery,
+            native_shape_recovery=shape_recovery is True,
+            native_reemission_contract=(
+                "intact-unit-reemission-v1" if shape_recovery == "intact" else None
+            ),
         )
         assert result["metadata"]["generation_strategy"] == "body_summary_v2"
         details = result["evaluation"]["faithfulness"]["details"]
@@ -636,7 +648,9 @@ async def test_actual_frozen_runtime_sdk_evaluation_and_shared_repair(
         if missing_records:
             assert "method_checks" in details["strict_acceptance"]["failure_codes"]
         assert result["metadata"]["automatic_acceptance"]["actor"] == "system"
-        generation_count = 7 if shape_recovery else 6
+        generation_count = (
+            8 if shape_recovery == "intact" else 7 if shape_recovery else 6
+        )
         assert [b["model"] for b in sent[: generation_count + 1]] == [
             "pro"
         ] * generation_count + ["lite"]
@@ -647,12 +661,16 @@ async def test_actual_frozen_runtime_sdk_evaluation_and_shared_repair(
             Path(str(agent._targeted_repair_state_path) + ".writer-v2.json").read_text()
         )
         assert journal["generation_provider_api"] == "responses"
-        if shape_recovery:
+        if shape_recovery is True:
             assert journal["shape_recovery_contract"] == "lossless-array-reemission-v1"
             assert journal["calls"]["body:taxonomy"]["resolved_by"] == "repair_0"
             assert len(result["metadata"]["targeted_repair_state"]["attempts"]) == (
                 2 if unsupported else 1
             )
+        if shape_recovery == "intact":
+            assert journal["reemission_contract"] == "intact-unit-reemission-v1"
+            assert journal["calls"]["summary_initial"]["resolved_by"] == "repair_1"
+            assert len(result["metadata"]["targeted_repair_state"]["attempts"]) == 2
         if unsupported:
             assert len(journal["candidates"]) <= 2
             repair_calls = [
