@@ -84,19 +84,19 @@ Reranking improves ranking metrics but adds substantial latency; it is not the
 default. Full-text profiles change indexed material and are separate from pure
 ranking comparisons. [Full results and limitations](./benchmarks/rag/RESULTS.md).
 
-Latest frozen-evidence writing validation: **1/3 cases started**, **1 HTTP request**,
-rejected with **HTTP 403 / AccountOverdueError** before model output. No body,
-summaries, Reviewer or Evaluation completed; strict delivery **0/3**. Usage was not
-returned, so the full **56,129-token conservative hold** remains; this is not a
-measured token charge or proof of zero billing. The new body/summary re-emission
-path is verified offline but could not be exercised in this live attempt.
-The previous run's five requests / 62,995 known tokens and all earlier holds are preserved.
+Latest frozen-evidence writing validation after account recovery: **1/3 cases
+started**, **1 HTTP request / 11,184 known tokens**. The response omitted the
+required paragraph wrapper despite the native strict schema. The host rejected
+the ambiguous unit placement before a recovery request. No full body, summaries,
+Reviewer or Evaluation completed; strict delivery **0/3**, repairs **0/2**.
+The earlier account-rejection run and its **56,129-token conservative unknown
+hold** remain preserved; that hold is not a measured token charge.
 No retrieval or extraction was repeated. The earlier end-to-end diagnostic used
 **27 requests / 126,023 tokens** and also stopped before Evaluation. Formal cases:
 **0/15 run**. These are technical failures, not measured scientific scores.
 An older single NeRF run passed an older, less strict policy; it is not success
 under the current policy or evidence of a quality improvement.
-[Latest writing validation](./benchmarks/survey/results/frozen-writer-three-domain-20261025-013/README.md) ·
+[Latest writing validation](./benchmarks/survey/results/frozen-writer-three-domain-20261025-014/README.md) ·
 [Provider mapping review](./docs/native-transport-review-20261025.md) ·
 [Thinking configuration and budget review](./docs/native-thinking-review-20261024.md) ·
 [Offline chapter-generation repair](./docs/writer-sections-review-20261024.md) ·
