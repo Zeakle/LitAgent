@@ -84,18 +84,19 @@ Reranking improves ranking metrics but adds substantial latency; it is not the
 default. Full-text profiles change indexed material and are separate from pure
 ranking comparisons. [Full results and limitations](./benchmarks/rag/RESULTS.md).
 
-Latest frozen-evidence writing validation: **1/3 cases started**, **5 HTTP requests /
-62,995 known tokens**. One bounded shape re-emission preserved text and references
-and passed the original schema. A later comparison chapter ended with invalid
-JSON; the host stopped before a complete body, summaries, Reviewer or Evaluation.
-Strict delivery **0/3**. One of two shared repair attempts was used.
-The previous field-rejection run and its **56,129 unknown token hold** are preserved.
+Latest frozen-evidence writing validation: **1/3 cases started**, **1 HTTP request**,
+rejected with **HTTP 403 / AccountOverdueError** before model output. No body,
+summaries, Reviewer or Evaluation completed; strict delivery **0/3**. Usage was not
+returned, so the full **56,129-token conservative hold** remains; this is not a
+measured token charge or proof of zero billing. The new body/summary re-emission
+path is verified offline but could not be exercised in this live attempt.
+The previous run's five requests / 62,995 known tokens and all earlier holds are preserved.
 No retrieval or extraction was repeated. The earlier end-to-end diagnostic used
 **27 requests / 126,023 tokens** and also stopped before Evaluation. Formal cases:
 **0/15 run**. These are technical failures, not measured scientific scores.
 An older single NeRF run passed an older, less strict policy; it is not success
 under the current policy or evidence of a quality improvement.
-[Latest writing validation](./benchmarks/survey/results/frozen-writer-three-domain-20261025-012/README.md) ·
+[Latest writing validation](./benchmarks/survey/results/frozen-writer-three-domain-20261025-013/README.md) ·
 [Provider mapping review](./docs/native-transport-review-20261025.md) ·
 [Thinking configuration and budget review](./docs/native-thinking-review-20261024.md) ·
 [Offline chapter-generation repair](./docs/writer-sections-review-20261024.md) ·
