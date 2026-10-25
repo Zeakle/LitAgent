@@ -85,10 +85,12 @@ default. Full-text profiles change indexed material and are separate from pure
 ranking comparisons. [Full results and limitations](./benchmarks/rag/RESULTS.md).
 
 Latest frozen-evidence writing validation after account recovery: **1/3 cases
-started**, **1 HTTP request / 11,184 known tokens**. The response omitted the
-required paragraph wrapper despite the native strict schema. The host rejected
-the ambiguous unit placement before a recovery request. No full body, summaries,
-Reviewer or Evaluation completed; strict delivery **0/3**, repairs **0/2**.
+started**, **9 HTTP requests / 149,128 known tokens**, with complete usage.
+Five body chapters and the abstract/conclusion compiled after **2/2** shared
+protocol recoveries. Lite Reviewer then exhausted its 4,096-token output cap
+entirely on reasoning and returned no review answer. Evaluation did not run;
+strict delivery remains **0/3**, with two cases not started. The intermediate
+draft is unverified and is not a delivered report or a scientific success.
 The earlier account-rejection run and its **56,129-token conservative unknown
 hold** remain preserved; that hold is not a measured token charge.
 No retrieval or extraction was repeated. The earlier end-to-end diagnostic used
@@ -96,7 +98,7 @@ No retrieval or extraction was repeated. The earlier end-to-end diagnostic used
 **0/15 run**. These are technical failures, not measured scientific scores.
 An older single NeRF run passed an older, less strict policy; it is not success
 under the current policy or evidence of a quality improvement.
-[Latest writing validation](./benchmarks/survey/results/frozen-writer-three-domain-20261025-014/README.md) ·
+[Latest writing validation](./benchmarks/survey/results/frozen-writer-three-domain-20261025-015/README.md) ·
 [Provider mapping review](./docs/native-transport-review-20261025.md) ·
 [Thinking configuration and budget review](./docs/native-thinking-review-20261024.md) ·
 [Offline chapter-generation repair](./docs/writer-sections-review-20261024.md) ·

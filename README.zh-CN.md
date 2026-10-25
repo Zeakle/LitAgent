@@ -70,15 +70,16 @@ flowchart LR
 reranker 改善排名但显著增加延迟，因此没有切为默认。全文配置同时改变索引材料，
 不能把差异全部归因于排名算法。[完整结果与解释边界](./benchmarks/rag/RESULTS.md)。
 
-账户恢复后的最新冻结写作验收：**1/3 题启动**、**1 次请求／11,184 已知tokens**。
-响应省略了原生strict schema要求的段落层；宿主因单元归属不明确，在追加恢复请求前拒绝。
-没有完整正文、摘要、Reviewer或Evaluation，严格交付 **0/3**，修复次数 **0/2**。
+账户恢复后的最新冻结写作验收：**1/3 题启动**、**9 次请求／149,128 已知tokens**，用量完整。
+五个正文章节及摘要、结论完成编译，共享协议恢复次数 **2/2**。
+随后Lite Reviewer的4,096输出tokens全部用于思考，没有审阅答案，Evaluation未运行。
+严格交付仍为 **0/3**，另外两题未启动。中间草稿明确标为未核验，不作为已交付报告或科学通过。
 旧账户拒绝运行及其 **56,129 tokens 未知保守占用**保持；该占用不是实测消耗。
 历史失败与费用均未清零，未重新检索或提取。
 早期端到端诊断为 **27 请求／126,023 tokens**，也在 Evaluation 前停止；正式 **0/15**。
 这些是技术失败，不能当作科学支持率零分。
 历史单次 NeRF 在旧策略下交付成功，不代表当前严格策略成功，也不证明质量增益。
-[最新写作验收](./benchmarks/survey/results/frozen-writer-three-domain-20261025-014/README.md) ·
+[最新写作验收](./benchmarks/survey/results/frozen-writer-three-domain-20261025-015/README.md) ·
 [供应商字段映射审查](./docs/native-transport-review-20261025.md) ·
 [思考配置与预算审查](./docs/native-thinking-review-20261024.md) ·
 [章节生成离线修复](./docs/writer-sections-review-20261024.md) ·
