@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "suite_id": "frozen-writer-three-domain-20261025-011",
+  "identity": "ae30c535a7b041bcd682054c82fcfa0996123d84929ca9fd12df93445510c3d5",
+  "source_commit": "0b900250265a01d5a4fb0a0d1fa9ec269c9409f3",
+  "case_id": "few-shot-metric",
+  "call": "body:taxonomy",
+  "http_status": 200,
+  "provider_status": "completed",
+  "finish_reason": "stop",
+  "strict_requested": true,
+  "schema_issues": [
+    {
+      "path": [
+        "taxonomy"
+      ],
+      "validator": "type",
+      "expected": "array",
+      "actual_type": "dict"
+    }
+  ],
+  "raw_response_sha256": "56afc099c7c8dc7a03f21b7802d747248af7f340368c86a43e105299ebc1726c",
+  "private_http_response_sha256": "3ba93a4b7ca1c551428f060763e055551ebe1abda7cb1b35c928f480906028ed",
+  "adapter_preserves_output": true,
+  "evaluation": "not_started",
+  "scientific_score": null,
+  "repairs": 0,
+  "retries": 0,
+  "new_usage": {
+    "requests": 2,
+    "known_tokens": 22014,
+    "unknown_hold": 0,
+    "request_hold": 0
+  },
+  "cumulative": {
+    "initial_generation_rounds": 35,
+    "model_requests": 755,
+    "model_known_tokens": 4260395,
+    "model_unknown_conservative_tokens": 1086543,
+    "jev_requests": 67,
+    "jev_conservative_input_tokens": 756769,
+    "judge_requests": 0,
+    "jev_usage_complete": false
+  },
+  "request_format_equal_to_provider_echo": true,
+  "provider_service_tier": "default"
+}
