@@ -99,6 +99,7 @@ No retrieval or extraction was repeated. The earlier end-to-end diagnostic used
 An older single NeRF run passed an older, less strict policy; it is not success
 under the current policy or evidence of a quality improvement.
 [Latest writing validation](./benchmarks/survey/results/frozen-writer-three-domain-20261025-015/README.md) ·
+[Offline Reviewer configuration repair](./docs/reviewer-role-review-20261026.md) ·
 [Provider mapping review](./docs/native-transport-review-20261025.md) ·
 [Thinking configuration and budget review](./docs/native-thinking-review-20261024.md) ·
 [Offline chapter-generation repair](./docs/writer-sections-review-20261024.md) ·

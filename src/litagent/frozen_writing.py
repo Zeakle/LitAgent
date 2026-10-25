@@ -188,10 +188,13 @@ async def run_frozen(
     native_provider_api="chat",
     native_shape_recovery=False,
     native_reemission_contract=None,
+    native_reviewer_thinking_mode=None,
 ):
     """Use real Synthesis, Reviewer, scheduler, assembly, Evaluation and acceptance."""
     if agent._wired:
         raise ValueError("frozen_writing_requires_fresh_runtime")
+    if native_reviewer_thinking_mode not in (None, "disabled"):
+        raise ValueError("native_reviewer_thinking_configuration_invalid")
     if native_reasoning_effort not in (None, "low") or (
         native_reasoning_effort is not None
         and agent._config.adversarial.thinking_mode != "enabled"
@@ -235,10 +238,19 @@ async def run_frozen(
         run_id_provider=lambda: agent._session_id,
         repair_state_path_provider=agent._targeted_repair_path,
     )
+    # Preserve the writer's immutable mode while explicitly clearing inherited
+    # effort for the answer-only Reviewer. Never mutate the shared app config.
+    reviewer_config = cfg.adversarial
+    reviewer_effort = native_reasoning_effort
+    if native_reviewer_thinking_mode == "disabled":
+        reviewer_config = cfg.adversarial.model_copy(
+            update={"thinking_mode": "disabled"}, deep=True
+        )
+        reviewer_effort = None
     agent._reviewer = ReviewerWorker(
         evaluation,
-        config=cfg.adversarial,
-        native_reasoning_effort=native_reasoning_effort,
+        config=reviewer_config,
+        native_reasoning_effort=reviewer_effort,
         native_provider_api=native_provider_api,
         context_config=cfg.context,
         trace_hook=agent._trace_hook,

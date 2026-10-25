@@ -480,3 +480,63 @@ def test_prepared_profile_rejects_rehashed_policy_drift(manifest, tamper):
         atomic_json(target / "manifest.json", value)
         with pytest.raises(ValueError, match="parameters_conflict"):
             campaign.validate(target, config)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failed_stage", ["experiments", "summary_initial"])
+async def test_exhausted_reemission_preserves_original_protocol_stop(
+    case, tmp_path, failed_stage
+):
+    """Two used attempts cannot relabel a third protocol failure as scientific quality."""
+    sent = []
+
+    def handler(request):
+        wire = json.loads(request.content)
+        payload = json.loads(wire["input"][1]["content"])
+        sent.append(payload)
+        is_summary = "body_units" in payload
+        section = "summary_initial" if is_summary else payload["requested_body_section"]
+        value = (
+            copy.deepcopy(case.summaries)
+            if is_summary
+            else {
+                k: copy.deepcopy(case.body[k])
+                for k in wire["text"]["format"]["schema"]["properties"]
+            }
+        )
+        raw = json.dumps(value)
+        if "shape_reemission" not in payload and section in {
+            "taxonomy",
+            "methods",
+            failed_stage,
+        }:
+            raw = raw[:-1]
+        return httpx.Response(200, json=envelope(raw))
+
+    owner, budget, _ = await owner_for(handler)
+    session = session_for(owner, case, tmp_path, reemission_contract=POLICY)
+    token = set_task_id("synthesis")
+    try:
+        with pytest.raises(WriterError) as error:
+            body = await session.initial_body()
+            await session.summaries(body, "summary_initial")
+        assert error.value.family == "protocol"
+        assert error.value.code == "writer_json_invalid"
+        assert error.value.diagnostics[0]["reason"] == "writer_repair_limit"
+        assert session.journal["failure"]["family"] == "protocol"
+        assert len(session.state["attempts"]) == 2
+        assert len(sent) == (6 if failed_stage == "experiments" else 8)
+        assert budget.used == 120 * len(sent)
+        call = "body:experiments" if failed_stage == "experiments" else failed_stage
+        assert (
+            session.journal["calls"][call]["failure"]["code"] == "writer_json_invalid"
+        )
+        assert "resolved_by" not in session.journal["calls"][call]
+        before = session.journal_path.read_bytes()
+        restarted = session_for(owner, case, tmp_path, reemission_contract=POLICY)
+        with pytest.raises(WriterError, match="no_replay"):
+            await restarted.initial_body()
+        assert session.journal_path.read_bytes() == before
+    finally:
+        reset_task_id(token)
+        await owner.close()

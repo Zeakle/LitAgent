@@ -80,6 +80,7 @@ reranker 改善排名但显著增加延迟，因此没有切为默认。全文�
 这些是技术失败，不能当作科学支持率零分。
 历史单次 NeRF 在旧策略下交付成功，不代表当前严格策略成功，也不证明质量增益。
 [最新写作验收](./benchmarks/survey/results/frozen-writer-three-domain-20261025-015/README.md) ·
+[Reviewer独立配置离线修复](./docs/reviewer-role-review-20261026.md) ·
 [供应商字段映射审查](./docs/native-transport-review-20261025.md) ·
 [思考配置与预算审查](./docs/native-thinking-review-20261024.md) ·
 [章节生成离线修复](./docs/writer-sections-review-20261024.md) ·

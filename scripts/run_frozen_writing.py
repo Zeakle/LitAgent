@@ -53,6 +53,7 @@ RESPONSES_PROFILE = "writer_reviewer_low_responses_v2"
 SHAPE_PROFILE = "writer_reviewer_low_responses_shape_v1"
 LEGACY_REEMISSION_PROFILE = "writer_reviewer_low_responses_reemit_v1"
 REEMISSION_PROFILE = "writer_reviewer_low_responses_reemit_v2"
+ROLE_PROFILE = "writer_low_reviewer_disabled_responses_reemit_v2"
 CONSERVATIVE_ACCOUNTING = "carry_terminal_rejection_v1"
 
 
@@ -67,6 +68,7 @@ def profile_mode(profile):
         LEGACY_RESPONSES_PROFILE,
         SHAPE_PROFILE,
         REEMISSION_PROFILE,
+        ROLE_PROFILE,
         LEGACY_REEMISSION_PROFILE,
     ):
         return "enabled"
@@ -81,6 +83,7 @@ def profile_parameters(profile):
         LEGACY_RESPONSES_PROFILE,
         SHAPE_PROFILE,
         REEMISSION_PROFILE,
+        ROLE_PROFILE,
         LEGACY_REEMISSION_PROFILE,
     ):
         from litagent.writing_v2 import (
@@ -90,17 +93,23 @@ def profile_parameters(profile):
 
         return {
             "native_reasoning_effort": "low",
+            **(
+                {"native_reviewer_thinking_mode": "disabled"}
+                if profile == ROLE_PROFILE
+                else {}
+            ),
             "native_provider_api": "responses",
             **({"native_shape_recovery": True} if profile == SHAPE_PROFILE else {}),
             **(
                 {
                     "native_reemission_contract": (
                         INTACT_UNIT_REEMISSION_CONTRACT
-                        if profile == REEMISSION_PROFILE
+                        if profile in (REEMISSION_PROFILE, ROLE_PROFILE)
                         else LEGACY_INTACT_UNIT_REEMISSION_CONTRACT
                     )
                 }
-                if profile in (REEMISSION_PROFILE, LEGACY_REEMISSION_PROFILE)
+                if profile
+                in (REEMISSION_PROFILE, ROLE_PROFILE, LEGACY_REEMISSION_PROFILE)
                 else {}
             ),
         }
@@ -142,7 +151,7 @@ def profile_description(profile, summary):
     result = {
         "id": profile,
         "generation_thinking_mode": mode,
-        "reviewer_thinking_mode": mode,
+        "reviewer_thinking_mode": "disabled" if profile == ROLE_PROFILE else mode,
         "evaluation_thinking_mode": "disabled",
         "output_limit_parameter": (
             "max_tokens" if mode == "disabled" else "max_completion_tokens"
@@ -157,12 +166,15 @@ def profile_description(profile, summary):
             for role in ("extraction", "generation", "evaluation")
         },
     }
+    if profile == ROLE_PROFILE:
+        result["reviewer_reasoning_effort"] = None
     if profile in (
         LOW_THINKING_PROFILE,
         RESPONSES_PROFILE,
         LEGACY_RESPONSES_PROFILE,
         SHAPE_PROFILE,
         REEMISSION_PROFILE,
+        ROLE_PROFILE,
         LEGACY_REEMISSION_PROFILE,
     ):
         result["reasoning_effort"] = "low"
@@ -171,6 +183,7 @@ def profile_description(profile, summary):
         LEGACY_RESPONSES_PROFILE,
         SHAPE_PROFILE,
         REEMISSION_PROFILE,
+        ROLE_PROFILE,
         LEGACY_REEMISSION_PROFILE,
     ):
         result["provider_api"] = "responses"
@@ -179,6 +192,7 @@ def profile_description(profile, summary):
         RESPONSES_PROFILE,
         SHAPE_PROFILE,
         REEMISSION_PROFILE,
+        ROLE_PROFILE,
         LEGACY_REEMISSION_PROFILE,
     ):
         from litagent.llm.responses import RESPONSES_CONTRACT
@@ -194,7 +208,7 @@ def profile_description(profile, summary):
         from litagent.writing_v2 import SHAPE_RECOVERY_CONTRACT
 
         result["shape_recovery_contract"] = SHAPE_RECOVERY_CONTRACT
-    if profile in (REEMISSION_PROFILE, LEGACY_REEMISSION_PROFILE):
+    if profile in (REEMISSION_PROFILE, ROLE_PROFILE, LEGACY_REEMISSION_PROFILE):
         from litagent.writing_v2 import (
             INTACT_UNIT_REEMISSION_CONTRACT,
             LEGACY_INTACT_UNIT_REEMISSION_CONTRACT,
@@ -202,7 +216,7 @@ def profile_description(profile, summary):
 
         result["reemission_contract"] = (
             INTACT_UNIT_REEMISSION_CONTRACT
-            if profile == REEMISSION_PROFILE
+            if profile in (REEMISSION_PROFILE, ROLE_PROFILE)
             else LEGACY_INTACT_UNIT_REEMISSION_CONTRACT
         )
     return result
@@ -603,6 +617,7 @@ def prepare(root, config, *, accounting_parents=(), writing_profile=DISABLED_PRO
             RESPONSES_PROFILE,
             SHAPE_PROFILE,
             REEMISSION_PROFILE,
+            ROLE_PROFILE,
             LEGACY_REEMISSION_PROFILE,
         )
         else "reject"
@@ -693,6 +708,7 @@ def validate(root, config):
             RESPONSES_PROFILE,
             SHAPE_PROFILE,
             REEMISSION_PROFILE,
+            ROLE_PROFILE,
             LEGACY_REEMISSION_PROFILE,
         )
         else "reject"
@@ -1111,7 +1127,7 @@ def export(root, state, manifest):
         + "</pre></details>"
         for r in rows
     )
-    page = """<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LitAgent · Frozen writing validation</title><style>*{box-sizing:border-box}body{font:16px/1.6 system-ui;background:#f4f6fa;color:#172c43;max-width:1100px;padding:20px;margin:auto}section,header{background:white;padding:20px;margin:16px 0;border:1px solid #dbe2ee;border-radius:12px}h1{font-size:1.7rem}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}.stat{background:#edf2f9;padding:14px}.scroll{overflow:auto}table{width:100%;border-collapse:collapse}th,td{padding:10px;border-bottom:1px solid #ccc;text-align:left}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:.85em}button,a,summary{cursor:pointer}button{font:inherit;padding:8px}a{color:#135a9e}*:focus-visible{outline:3px solid #1679d2}summary{padding:12px 0}p{overflow-wrap:anywhere}@media(max-width:430px){body{padding:10px}section,header{padding:14px}h1{font-size:1.3rem}}</style><header><button id="locale">English / 中文</button><h1 id="title">三域冻结正文验收</h1><p id="scope">固定证据 → 正文 → Reviewer → Evaluation → 自动交付或失败归档；不重新检索。Judge/Jev关闭。</p><p id="profile"></p><p id="transport"></p></header><section><div id="stats" class="grid"></div><p id="note">自动评测；人工校准未验证。未核验不等于通过，协议完成不等于科学通过。失败及未运行题均保留在分母。</p><p id="status"></p></section><section class="scroll"><table><thead><tr><th>Case</th><th>Generated</th><th>Evaluation</th><th>Delivered</th><th>Supported</th><th>Unsupported</th><th>Unverified</th><th>Detail</th></tr></thead><tbody>__ROWS__</tbody></table></section><section><h2>诊断 / Diagnostics</h2>__DETAILS__</section><section><a href="benchmark.json">JSON</a> · <a href="benchmark.csv">CSV</a> · <a href="benchmark.md">Markdown</a><pre id="usage"></pre></section><script id="data" type="application/json">__DATA__</script><script>const d=JSON.parse(document.getElementById('data').textContent);let en=false;function draw(){document.documentElement.lang=en?'en':'zh-CN';document.getElementById('title').textContent=en?'Three-domain frozen writing validation':'三域冻结正文验收';document.getElementById('scope').textContent=en?'Frozen evidence → writing → Reviewer → Evaluation → automatic delivery or archived failure. No retrieval. Judge/Jev disabled.':'固定证据 → 正文 → Reviewer → Evaluation → 自动交付或失败归档；不重新检索。Judge/Jev关闭。';document.getElementById('note').textContent=en?'Automatic evaluation; no human calibration. Unverified is not passed. Protocol completion is not scientific acceptance. Failures and unrun cases remain in the denominator.':'自动评测；人工校准未验证。未核验不等于通过，协议完成不等于科学通过。失败及未运行题均保留在分母。';const t=d.cases.filter(r=>r.transport_diagnostic).map(r=>r.case_id+' · HTTP '+r.http_status+' · '+(r.provider_error_code||'—')+' · '+(r.rejected_parameter||'—')).join('; ');document.getElementById('transport').textContent=t?((en?'Provider diagnosis (usage unknown is not zero cost): ':'供应商诊断（未知用量不等于零费用）：')+t):'';const p=d.writing_profile;document.getElementById('profile').textContent=(en?'Frozen thinking profile: ':'冻结思考配置：')+p.id+' · '+(p.provider_api||'chat')+' · '+(en?'Writing':'写作')+' '+p.generation_thinking_mode+' / Reviewer '+p.reviewer_thinking_mode+' / Evaluation '+p.evaluation_thinking_mode+' · '+(p.reasoning_effort?('effort='+p.reasoning_effort+' · '):'')+p.output_limit_parameter+' '+(p.generation_output_tokens??'—')+' / '+(p.reviewer_output_tokens??'—');document.getElementById('status').textContent=d.state+' · '+(d.stop_reason||'');let s=document.getElementById('stats');s.replaceChildren();for(const [k,v]of Object.entries({Planned:3,Run:d.run,Generated:d.generated,Evaluated:d.evaluation_completed,Delivered:d.passed})){let e=document.createElement('div');e.className='stat';e.textContent=k+' '+v+' / 3';s.append(e)}document.getElementById('usage').textContent=JSON.stringify({new_usage:d.new_usage,historical_usage:d.historical_usage,writing_profile:d.writing_profile,writer_prompt_contract:d.writer_prompt_contract??'unavailable',source_commit:d.source_commit,contract:d.contract},null,2)}document.getElementById('locale').onclick=()=>{en=!en;draw()};draw();</script></html>"""
+    page = """<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LitAgent · Frozen writing validation</title><style>*{box-sizing:border-box}body{font:16px/1.6 system-ui;background:#f4f6fa;color:#172c43;max-width:1100px;padding:20px;margin:auto}section,header{background:white;padding:20px;margin:16px 0;border:1px solid #dbe2ee;border-radius:12px}h1{font-size:1.7rem}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}.stat{background:#edf2f9;padding:14px}.scroll{overflow:auto}table{width:100%;border-collapse:collapse}th,td{padding:10px;border-bottom:1px solid #ccc;text-align:left}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:.85em}button,a,summary{cursor:pointer}button{font:inherit;padding:8px}a{color:#135a9e}*:focus-visible{outline:3px solid #1679d2}summary{padding:12px 0}p{overflow-wrap:anywhere}@media(max-width:430px){body{padding:10px}section,header{padding:14px}h1{font-size:1.3rem}}</style><header><button id="locale">English / 中文</button><h1 id="title">三域冻结正文验收</h1><p id="scope">固定证据 → 正文 → Reviewer → Evaluation → 自动交付或失败归档；不重新检索。Judge/Jev关闭。</p><p id="profile"></p><p id="transport"></p></header><section><div id="stats" class="grid"></div><p id="note">自动评测；人工校准未验证。未核验不等于通过，协议完成不等于科学通过。失败及未运行题均保留在分母。</p><p id="status"></p></section><section class="scroll"><table><thead><tr><th>Case</th><th>Generated</th><th>Evaluation</th><th>Delivered</th><th>Supported</th><th>Unsupported</th><th>Unverified</th><th>Detail</th></tr></thead><tbody>__ROWS__</tbody></table></section><section><h2>诊断 / Diagnostics</h2>__DETAILS__</section><section><a href="benchmark.json">JSON</a> · <a href="benchmark.csv">CSV</a> · <a href="benchmark.md">Markdown</a><pre id="usage"></pre></section><script id="data" type="application/json">__DATA__</script><script>const d=JSON.parse(document.getElementById('data').textContent);let en=false;function draw(){document.documentElement.lang=en?'en':'zh-CN';document.getElementById('title').textContent=en?'Three-domain frozen writing validation':'三域冻结正文验收';document.getElementById('scope').textContent=en?'Frozen evidence → writing → Reviewer → Evaluation → automatic delivery or archived failure. No retrieval. Judge/Jev disabled.':'固定证据 → 正文 → Reviewer → Evaluation → 自动交付或失败归档；不重新检索。Judge/Jev关闭。';document.getElementById('note').textContent=en?'Automatic evaluation; no human calibration. Unverified is not passed. Protocol completion is not scientific acceptance. Failures and unrun cases remain in the denominator.':'自动评测；人工校准未验证。未核验不等于通过，协议完成不等于科学通过。失败及未运行题均保留在分母。';const t=d.cases.filter(r=>r.transport_diagnostic).map(r=>r.case_id+' · HTTP '+r.http_status+' · '+(r.provider_error_code||'—')+' · '+(r.rejected_parameter||'—')).join('; ');document.getElementById('transport').textContent=t?((en?'Provider diagnosis (usage unknown is not zero cost): ':'供应商诊断（未知用量不等于零费用）：')+t):'';const p=d.writing_profile;document.getElementById('profile').textContent=(en?'Frozen thinking profile: ':'冻结思考配置：')+p.id+' · '+(p.provider_api||'chat')+' · '+(en?'Writing':'写作')+' '+p.generation_thinking_mode+' / Reviewer '+p.reviewer_thinking_mode+' / Evaluation '+p.evaluation_thinking_mode+' · '+(p.reasoning_effort?((p.reviewer_thinking_mode==='disabled'?'writing effort=':'effort=')+p.reasoning_effort+' · '):'')+p.output_limit_parameter+' '+(p.generation_output_tokens??'—')+' / '+(p.reviewer_output_tokens??'—');document.getElementById('status').textContent=d.state+' · '+(d.stop_reason||'');let s=document.getElementById('stats');s.replaceChildren();for(const [k,v]of Object.entries({Planned:3,Run:d.run,Generated:d.generated,Evaluated:d.evaluation_completed,Delivered:d.passed})){let e=document.createElement('div');e.className='stat';e.textContent=k+' '+v+' / 3';s.append(e)}document.getElementById('usage').textContent=JSON.stringify({new_usage:d.new_usage,historical_usage:d.historical_usage,writing_profile:d.writing_profile,writer_prompt_contract:d.writer_prompt_contract??'unavailable',source_commit:d.source_commit,contract:d.contract},null,2)}document.getElementById('locale').onclick=()=>{en=!en;draw()};draw();</script></html>"""
     page = (
         page.replace("<th>Delivered</th>", "<th>Repairs</th><th>Delivered</th>")
         .replace("__ROWS__", table)
@@ -1382,6 +1398,7 @@ def main():
             RESPONSES_PROFILE,
             SHAPE_PROFILE,
             REEMISSION_PROFILE,
+            ROLE_PROFILE,
             LEGACY_REEMISSION_PROFILE,
         ),
         default=None,

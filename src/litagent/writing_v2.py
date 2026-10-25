@@ -1223,9 +1223,7 @@ class WriterSession:
         original_system=None,
     ):
         """Spend one shared attempt on a separately validated, verbatim re-emission."""
-        if len(self.state["attempts"]) >= 2:
-            raise WriterError("writer_repair_limit", "quality")
-        original = self.journal["calls"][failed_call]
+        original = self.journal["calls"].get(failed_call, {})
         raw = original.get("raw")
         if (
             not (self.shape_recovery or self.reemission_contract)
@@ -1265,6 +1263,20 @@ class WriterSession:
                 "writer_reemission_ineligible"
                 if self.reemission_contract
                 else "writer_shape_recovery_ineligible"
+            )
+        if len(self.state["attempts"]) >= 2:
+            # Exhaustion cannot turn malformed provider output into a scientific
+            # refusal: the campaign must retain its technical-stop behavior.
+            raise WriterError(
+                original["failure"]["code"],
+                "protocol",
+                [
+                    {
+                        "reason": "writer_repair_limit",
+                        "limit": 2,
+                        "failed_call": failed_call,
+                    }
+                ],
             )
         if self.reemission_contract:
             proof = intact_unit_footprint(raw, schema)

@@ -470,12 +470,19 @@ async def test_chat_identity_unchanged_and_responses_cannot_resume_it(case, tmp_
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("reviewer_disabled", [False, True])
 @pytest.mark.parametrize("shape_recovery", [False, True, "intact"])
 @pytest.mark.parametrize(
     "unsupported,missing_records", [(False, False), (True, False), (False, True)]
 )
 async def test_actual_frozen_runtime_sdk_evaluation_and_shared_repair(
-    case, tmp_path, monkeypatch, unsupported, missing_records, shape_recovery
+    case,
+    tmp_path,
+    monkeypatch,
+    unsupported,
+    missing_records,
+    shape_recovery,
+    reviewer_disabled,
 ):
     """Only HTTP is replaced across writing, review, assembly, v3 and acceptance."""
     from litagent.config import load_config
@@ -528,7 +535,15 @@ async def test_actual_frozen_runtime_sdk_evaluation_and_shared_repair(
         ):
             controlled.content = controlled.content[:-1]
         if native:
-            assert not is_eval and body["reasoning"] == {"effort": "low"}
+            assert not is_eval
+            is_reviewer = body["model"] == "lite"
+            assert body["thinking"] == {
+                "type": "disabled" if is_reviewer and reviewer_disabled else "enabled"
+            }
+            if is_reviewer and reviewer_disabled:
+                assert "reasoning" not in body
+            else:
+                assert body["reasoning"] == {"effort": "low"}
             response = envelope(controlled.content, model=body["model"])
             return httpx.Response(200, json=response)
         assert is_eval and request.url.path.endswith("/chat/completions")
@@ -625,6 +640,7 @@ async def test_actual_frozen_runtime_sdk_evaluation_and_shared_repair(
             native_reasoning_effort="low",
             native_provider_api="responses",
             native_shape_recovery=shape_recovery is True,
+            native_reviewer_thinking_mode="disabled" if reviewer_disabled else None,
             native_reemission_contract=(
                 "intact-unit-reemission-v2" if shape_recovery == "intact" else None
             ),
@@ -656,6 +672,13 @@ async def test_actual_frozen_runtime_sdk_evaluation_and_shared_repair(
         ] * generation_count + ["lite"]
         assert all(b["max_output_tokens"] == 20000 for b in sent[:generation_count])
         assert sent[generation_count]["max_output_tokens"] == 4096
+        assert config.adversarial.thinking_mode == "enabled"
+        assert agent._reviewer._config.thinking_mode == (
+            "disabled" if reviewer_disabled else "enabled"
+        )
+        assert agent._reviewer._native_reasoning_effort == (
+            None if reviewer_disabled else "low"
+        )
         assert agent._cost_budget.used == 120 * len(sent)
         journal = json.loads(
             Path(str(agent._targeted_repair_state_path) + ".writer-v2.json").read_text()

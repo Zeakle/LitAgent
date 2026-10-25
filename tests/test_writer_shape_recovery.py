@@ -208,14 +208,26 @@ async def test_two_shapes_exhaust_the_same_semantic_repair_ledger(case, tmp_path
     owner, _, _ = await owner_for(handler)
     session = session_for(owner, case, tmp_path, shape_recovery=True)
     try:
-        with pytest.raises(WriterError, match="writer_repair_limit"):
+        with pytest.raises(WriterError, match="writer_schema_invalid") as error:
             await session.initial_body()
+        assert error.value.family == "protocol"
+        assert error.value.diagnostics[0]["reason"] == "writer_repair_limit"
         state = load_targeted_repairs(session.path, "r")
         assert len(state["attempts"]) == 2
         assert all(a["status"] == "completed" for a in state["attempts"])
         assert len(sent) == 6 and "repair_2" not in session.journal["calls"]
         with pytest.raises(ValueError, match="limit_exceeded"):
             begin_targeted_repair(state, "evaluation", "a" * 64)
+        targets = {
+            "u1": {
+                "path": ["introduction", 0, 0],
+                "original": copy.deepcopy(case.body["introduction"][0]["sentences"][0]),
+            }
+        }
+        with pytest.raises(WriterError, match="writer_repair_limit") as patch_error:
+            await session.patch(case.body, targets, cause="Scientific repair")
+        assert patch_error.value.family == "quality"
+        assert len(sent) == 6 and len(session.state["attempts"]) == 2
     finally:
         await owner.close()
 
