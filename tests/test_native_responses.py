@@ -661,6 +661,16 @@ async def test_actual_frozen_runtime_sdk_evaluation_and_shared_repair(
             Path(str(agent._targeted_repair_state_path) + ".writer-v2.json").read_text()
         )
         assert journal["generation_provider_api"] == "responses"
+        assert journal["prompt_contract"] == "grounded-writer-native-intent-v3"
+        assert (
+            result["metadata"]["writer_document"]["generation_prompt_contract"]
+            == journal["prompt_contract"]
+        )
+        for wire in sent:
+            if "input" in wire:
+                assert "Native output type map" in wire["input"][0]["content"]
+            else:
+                assert "Native output type map" not in wire["messages"][0]["content"]
         if shape_recovery is True:
             assert journal["shape_recovery_contract"] == "lossless-array-reemission-v1"
             assert journal["calls"]["body:taxonomy"]["resolved_by"] == "repair_0"

@@ -34,6 +34,60 @@ def configured():
     return config
 
 
+@pytest.mark.parametrize(
+    "version", [None, "grounded-writer-native-intent-v2", "unknown"]
+)
+def test_manifest_rejects_rehashed_prompt_version_drift(manifest, version):
+    """Source preparation cannot omit or relabel the actual writer prompt."""
+    from litagent.report_audit import digest
+    from litagent.writing_v2 import PROMPT_CONTRACT
+
+    root, config = manifest
+    value = campaign.validate(root, config)
+    assert value["writer_prompt_contract"] == PROMPT_CONTRACT
+    if version is None:
+        value.pop("writer_prompt_contract")
+    else:
+        value["writer_prompt_contract"] = version
+    value["identity"] = digest({k: v for k, v in value.items() if k != "identity"})
+    atomic_json(root / "manifest.json", value)
+    with pytest.raises(ValueError, match="identity_conflict"):
+        campaign.validate(root, config)
+
+
+@pytest.mark.parametrize("historical", [False, True])
+def test_prompt_export_uses_frozen_metadata_and_never_infers_history(
+    manifest, historical
+):
+    """All formats share the stored version; an absent historical value is unknown."""
+    from litagent.writing_v2 import PROMPT_CONTRACT
+
+    root, config = manifest
+    value = campaign.validate(root, config)
+    if historical:
+        value.pop("writer_prompt_contract")
+    state = {"identity": value["identity"], "status": "offline_fixture", "cases": []}
+    public = campaign.export(root, state, value)
+    expected = None if historical else PROMPT_CONTRACT
+    assert public["writer_prompt_contract"] == expected
+    out = Path("benchmarks/survey/results") / root.name
+    rows = list(csv.DictReader((out / "benchmark.csv").open()))
+    assert all(r["writer_prompt_contract"] == (expected or "") for r in rows)
+    assert (
+        "Writer prompt: " + (expected or "unavailable")
+        in (out / "benchmark.md").read_text()
+    )
+    html = (out / "benchmark.html").read_text()
+    assert (
+        json.loads(
+            html.split('<script id="data" type="application/json">')[1].split(
+                "</script>"
+            )[0]
+        )
+        == public
+    )
+
+
 def test_old_model_gate_stays_disabled_and_new_profile_is_explicit(configured):
     """The new mode cannot silently alter the baseline or shared app config."""
     check_models(configured)

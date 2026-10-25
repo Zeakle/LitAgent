@@ -19,7 +19,13 @@ from litagent.llm.routing import ModelBoundClient
 from litagent.orchestrator.task_graph import SubTask
 from litagent.quality import digest
 from litagent.safety.budget import CostBudget, strict_request_reservation
-from litagent.writing_v2 import WriterError, WriterSession, review, schema_for
+from litagent.writing_v2 import (
+    PROMPT_CONTRACT,
+    WriterError,
+    WriterSession,
+    review,
+    schema_for,
+)
 
 
 def assert_mode(kwargs, mode):
@@ -84,10 +90,11 @@ async def test_actual_synthesis_and_reviewer_honor_independent_modes(
 async def test_historical_document_without_mode_keeps_disabled_generation_identity(
     case, tmp_path
 ):
-    """Missing historical metadata means old actual disabled behavior, not new config."""
+    """Missing thinking metadata keeps disabled mode under a separately bound prompt."""
     from test_native_report_input import source
 
     value = source(case)
+    value["writer_document"]["generation_prompt_contract"] = PROMPT_CONTRACT
     provider = Provider(case)
     session = WriterSession(
         provider, tmp_path / "r.json", "r", case.packet, case.aliases
