@@ -212,6 +212,7 @@ class SynthesisWorker(Worker):
         native_provider_api: str = "chat",
         native_shape_recovery: bool = False,
         native_reemission_contract: str | None = None,
+        native_syntax_policy: str | None = None,
     ):
         """Initialize the synthesis worker."""
         self._methodology_provider = methodology_provider
@@ -244,7 +245,10 @@ class SynthesisWorker(Worker):
         if type(native_shape_recovery) is not bool:
             raise ValueError("native_shape_recovery_configuration_invalid")
         self._native_shape_recovery = native_shape_recovery
-        from litagent.writing_v2 import INTACT_UNIT_REEMISSION_CONTRACT
+        from litagent.writing_v2 import (
+            EOF_CONTAINER_POLICY,
+            INTACT_UNIT_REEMISSION_CONTRACT,
+        )
 
         if native_reemission_contract not in (
             None,
@@ -252,6 +256,12 @@ class SynthesisWorker(Worker):
         ) or (native_shape_recovery and native_reemission_contract is not None):
             raise ValueError("native_reemission_configuration_invalid")
         self._native_reemission_contract = native_reemission_contract
+        if native_syntax_policy not in (None, EOF_CONTAINER_POLICY) or (
+            native_syntax_policy is not None
+            and (native_shape_recovery or native_reemission_contract)
+        ):
+            raise ValueError("native_syntax_policy_invalid")
+        self._native_syntax_policy = native_syntax_policy
 
         self._tools: list = []
         if skill_manager:

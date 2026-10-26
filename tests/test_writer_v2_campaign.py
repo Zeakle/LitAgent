@@ -569,7 +569,7 @@ def test_protocol_export_binds_only_current_unresolved_error(
     public = campaign.export(tmp_path / "suite", state, manifest)
     assert state == original and path.read_bytes() == before_journal
     assert public["source_commit"] == "actual-run-source"
-    assert public["view_version"] == "frozen-writing-view-v10"
+    assert public["view_version"] == "frozen-writing-view-v11"
     assert public["passed"] == 0 and public["cases"][0]["failure_code"] == failure_code
     row = public["cases"][0]
     out = tmp_path / "benchmarks/survey/results/suite"

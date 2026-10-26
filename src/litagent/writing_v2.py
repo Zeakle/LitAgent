@@ -46,6 +46,7 @@ SCOPE = "frozen_union_v1"
 SHAPE_RECOVERY_CONTRACT = "lossless-array-reemission-v1"
 LEGACY_INTACT_UNIT_REEMISSION_CONTRACT = "intact-unit-reemission-v1"
 INTACT_UNIT_REEMISSION_CONTRACT = "intact-unit-reemission-v2"
+EOF_CONTAINER_POLICY = "grounded-writer-eof-containers-v1"
 _INHERIT_EFFORT = object()
 BODY = tuple(k for k in ROLES if k not in {"abstract", "conclusion"})
 INSTRUCTION = """Write an academic literature review in the requested language using ONLY
@@ -656,6 +657,44 @@ def intact_unit_footprint(raw, schema):
     }
 
 
+def normalize_eof_response(raw, schema):
+    """Derive a closed candidate without changing any received scientific unit."""
+    scan = scan_native_strings(raw)
+    stack = []
+    for token in scan["tokens"]:
+        kind = token["kind"]
+        if kind in ("{", "["):
+            stack.append(kind)
+        elif kind in ("}", "]"):
+            # The bounded scanner has already checked matching container types.
+            stack.pop()
+    if not stack:
+        raise WriterError("writer_eof_ineligible")
+    suffix = "".join("}" if kind == "{" else "]" for kind in reversed(stack))
+    candidate_raw = raw + suffix
+    value = parse_response(candidate_raw, schema)
+    original = intact_unit_footprint(raw, schema)
+    candidate = intact_unit_footprint(candidate_raw, schema)
+    if (
+        original["semantic"] != candidate["semantic"]
+        or original["units"] != candidate["units"]
+        or not original["coverage_complete"]
+        or not candidate["coverage_complete"]
+    ):
+        raise WriterError("writer_eof_semantic_conflict")
+    return value, {
+        "policy": EOF_CONTAINER_POLICY,
+        "suffix": suffix,
+        "raw_sha256": original["raw_sha256"],
+        "candidate_sha256": candidate["raw_sha256"],
+        "schema_sha256": original["schema_sha256"],
+        "semantic_sha256": digest(original["semantic"]),
+        "units": original["units"],
+        "coverage_complete": True,
+        "scientific_assessment": "not_verified",
+    }
+
+
 def source_packet(cards, selection, query, requirements, language):
     """Preserve full originals once and distinguish recommendations from permission."""
     if not cards or selection.writing_scope_policy != SCOPE:
@@ -932,6 +971,7 @@ class WriterSession:
         provider_api="chat",
         shape_recovery=False,
         reemission_contract=None,
+        syntax_policy=None,
     ):
         """Initialize immutable inputs and durable ownership."""
         if thinking_mode not in ("provider_default", "enabled", "disabled"):
@@ -950,6 +990,11 @@ class WriterSession:
             raise WriterError("writer_reemission_configuration_invalid")
         self.shape_recovery = shape_recovery
         self.reemission_contract = reemission_contract
+        if syntax_policy not in (None, EOF_CONTAINER_POLICY) or (
+            syntax_policy is not None and (shape_recovery or reemission_contract)
+        ):
+            raise WriterError("writer_syntax_policy_invalid")
+        self.syntax_policy = syntax_policy
         self.provider_api = provider_api
         self.thinking_mode = thinking_mode
         self.reasoning_effort = reasoning_effort
@@ -976,6 +1021,8 @@ class WriterSession:
             identity_parts.append(["shape_recovery", SHAPE_RECOVERY_CONTRACT])
         if reemission_contract:
             identity_parts.append(["reemission_contract", reemission_contract])
+        if syntax_policy:
+            identity_parts.append(["syntax_policy", syntax_policy])
         self.identity = digest(identity_parts)
         if self.journal_path.exists():
             self.journal = json.loads(self.journal_path.read_text())
@@ -999,6 +1046,8 @@ class WriterSession:
             self.journal["shape_recovery_contract"] = SHAPE_RECOVERY_CONTRACT
         if reemission_contract:
             self.journal["reemission_contract"] = reemission_contract
+        if syntax_policy:
+            self.journal["syntax_policy"] = syntax_policy
         self.state = load_targeted_repairs(self.path, run_id)
 
     def save(self):
@@ -1153,7 +1202,61 @@ class WriterSession:
                     "writer_finish_reason_invalid",
                     diagnostics=[{"finish_reason": response.finish_reason}],
                 )
-            return parse_response(response.content, schema)
+            try:
+                return parse_response(response.content, schema)
+            except WriterError as original:
+                eligible = (
+                    self.syntax_policy == EOF_CONTAINER_POLICY
+                    and original.code == "writer_json_invalid"
+                    and (
+                        (stage == "synthesis" and name in {f"body:{k}" for k in BODY})
+                        or (stage == "summary" and name == "summary_initial")
+                    )
+                )
+                if not eligible:
+                    raise
+                entry["original_syntax_failure"] = classify_failure(original)
+                self.save()
+                try:
+                    value, normalization = normalize_eof_response(
+                        response.content, schema
+                    )
+                except WriterError as rejected:
+                    # Keep the received JSON error as the terminal cause. Neither
+                    # an enum-only candidate nor a partial unit authorizes repair.
+                    entry["syntax_normalization_rejected"] = classify_failure(rejected)
+                    raise original from rejected
+                normalization.update(
+                    provider_schema_sha256=entry["provider_schema_sha256"],
+                    input_sha256=entry["input_sha256"],
+                )
+                entry.update(
+                    normalized_raw=response.content + normalization["suffix"],
+                    syntax_normalization=normalization,
+                )
+                self.save()
+                if self.trace_hook:
+                    self.trace_hook(
+                        "writer.syntax_normalized",
+                        {
+                            "task_id": get_task_id() or "synthesis",
+                            "contract_version": self.syntax_policy,
+                            "phase": stage,
+                            "input_sha256": normalization["input_sha256"],
+                            "candidate_sha256": normalization["candidate_sha256"],
+                            "count": len(normalization["units"]),
+                            "status": "syntax_only_not_verified",
+                            "binding": {
+                                k: normalization[k]
+                                for k in (
+                                    "raw_sha256",
+                                    "schema_sha256",
+                                    "provider_schema_sha256",
+                                )
+                            },
+                        },
+                    )
+                return value
         except BaseException as exc:
             received = getattr(exc, "response", None)
             if received is not None and hasattr(received, "provider_receipt"):
@@ -1848,6 +1951,7 @@ async def synthesize(worker, task, cards, selection, methodology, requirements):
         provider_api=getattr(worker, "_native_provider_api", "chat"),
         shape_recovery=getattr(worker, "_native_shape_recovery", False),
         reemission_contract=getattr(worker, "_native_reemission_contract", None),
+        syntax_policy=getattr(worker, "_native_syntax_policy", None),
     )
     try:
         body = await session.initial_body()
@@ -1897,6 +2001,11 @@ async def synthesize(worker, task, cards, selection, methodology, requirements):
             "generation_thinking_mode": session.thinking_mode,
             "generation_reasoning_effort": session.reasoning_effort,
             "generation_prompt_contract": PROMPT_CONTRACT,
+            **(
+                {"generation_syntax_policy": session.syntax_policy}
+                if session.syntax_policy
+                else {}
+            ),
             **(
                 {"generation_reemission_contract": session.reemission_contract}
                 if session.reemission_contract
@@ -2051,6 +2160,7 @@ async def review(worker, task):
         provider_api=doc.get("generation_provider_api", "chat"),
         shape_recovery=doc.get("shape_recovery_contract") == SHAPE_RECOVERY_CONTRACT,
         reemission_contract=doc.get("generation_reemission_contract"),
+        syntax_policy=doc.get("generation_syntax_policy"),
     )
     if source["writing_bindings"].get("input_contract") == NATIVE_REPORT_INPUT_CONTRACT:
         try:
@@ -2139,6 +2249,7 @@ async def _repair_report(
         shape_recovery=document.get("shape_recovery_contract")
         == SHAPE_RECOVERY_CONTRACT,
         reemission_contract=document.get("generation_reemission_contract"),
+        syntax_policy=document.get("generation_syntax_policy"),
     )
     details = initial_evaluation.get("faithfulness", {}).get("details", {})
     # Invalid or incomplete assessments do not authorize a scientific rewrite.

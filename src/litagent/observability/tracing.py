@@ -100,6 +100,26 @@ class LangFuseTracer:
                     },
                 )
 
+        elif event == "writer.syntax_normalized":
+            span = self._spans.get(data.get("task_id", "")) or self._root
+            if span:
+                span.update(
+                    metadata={
+                        "writing_syntax": {
+                            key: data.get(key)
+                            for key in (
+                                "contract_version",
+                                "phase",
+                                "input_sha256",
+                                "candidate_sha256",
+                                "count",
+                                "status",
+                                "binding",
+                            )
+                        }
+                    }
+                )
+
         elif event == "targeted_repair.state":
             span = self._spans.get(data.get("task_id", "")) or self._root
             if span:

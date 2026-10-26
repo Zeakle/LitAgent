@@ -21,6 +21,7 @@ from litagent.quality import build_fact_cards, coverage_requirements, digest
 from litagent.safety.budget import CostBudget
 from litagent.workbench import RunOptions, VerificationOptions
 from litagent.writing_v2 import (
+    EOF_CONTAINER_POLICY,
     INTACT_UNIT_REEMISSION_CONTRACT,
     SCOPE,
     STRATEGY,
@@ -189,12 +190,18 @@ async def run_frozen(
     native_shape_recovery=False,
     native_reemission_contract=None,
     native_reviewer_thinking_mode=None,
+    native_syntax_policy=None,
 ):
     """Use real Synthesis, Reviewer, scheduler, assembly, Evaluation and acceptance."""
     if agent._wired:
         raise ValueError("frozen_writing_requires_fresh_runtime")
     if native_reviewer_thinking_mode not in (None, "disabled"):
         raise ValueError("native_reviewer_thinking_configuration_invalid")
+    if native_syntax_policy not in (None, EOF_CONTAINER_POLICY) or (
+        native_syntax_policy is not None
+        and (native_shape_recovery or native_reemission_contract)
+    ):
+        raise ValueError("native_syntax_policy_invalid")
     if native_reasoning_effort not in (None, "low") or (
         native_reasoning_effort is not None
         and agent._config.adversarial.thinking_mode != "enabled"
@@ -235,6 +242,7 @@ async def run_frozen(
         native_provider_api=native_provider_api,
         native_shape_recovery=native_shape_recovery,
         native_reemission_contract=native_reemission_contract,
+        native_syntax_policy=native_syntax_policy,
         run_id_provider=lambda: agent._session_id,
         repair_state_path_provider=agent._targeted_repair_path,
     )
