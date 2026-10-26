@@ -25,6 +25,7 @@ from litagent.eval.scoped import (
     Contract,
     ScopedEvaluationError,
     UnitDecision,
+    _request_identity,
     _require_ids,
     build_evaluation_request,
 )
@@ -397,7 +398,19 @@ GLOBAL_CONSISTENCY_CONTRACT = "located-global-checks-v2"
 NOTICE_PROMPT = "\nThe host_scope_notice_catalog contains fixed statements about this report's scope. Exact standalone catalog statements are report organization, not paper evidence, and cannot answer scientific coverage requirements. Never exempt surrounding scientific statements. The open-problems section must discuss a source-supported scientific limitation rather than only scope notices. For the full-report response, include limitations: adequate, claim_ids and explanation. Adequate requires a concrete limitation, trade-off, applicability boundary or evidence-supported open problem in that section; an unrelated correct fact or a scope notice is insufficient. Cite only actual scientific claim IDs in that section. Evidence support is independently checked by the host.\n"
 
 
-def global_prompt(payload: dict) -> str:
+def global_prompt(payload: dict, *, native_unit_ownership: bool = False) -> str:
+    """Match the complete caller prompt before estimating or sending a request."""
+    from litagent.body_quality import NATIVE_OWNERSHIP_INSTRUCTION
+
+    if type(native_unit_ownership) is not bool:
+        raise ValueError("evaluation_native_ownership_configuration_invalid")
+    prompt = _global_prompt(payload)
+    if native_unit_ownership and NATIVE_OWNERSHIP_INSTRUCTION not in prompt:
+        prompt += NATIVE_OWNERSHIP_INSTRUCTION
+    return prompt
+
+
+def _global_prompt(payload: dict) -> str:
     """Keep ordinary citations separate from concrete report inconsistencies."""
     if (
         payload.get("global_consistency_contract") != GLOBAL_CONSISTENCY_CONTRACT
@@ -585,6 +598,73 @@ def _validate_decision_consistency(claim, decision, payload) -> None:
         )
 
 
+def build_global_payload(payload: dict, progress: dict) -> dict:
+    """Construct the unchanged complete report input independently of verdicts."""
+    global_payload = {
+        **(
+            {"report_input_contract": NATIVE_REPORT_INPUT_CONTRACT}
+            if payload.get("report_input_contract") == NATIVE_REPORT_INPUT_CONTRACT
+            else {}
+        ),
+        **(
+            {"writer_content_contract": WRITER_CONTENT_CONTRACT}
+            if payload.get("writer_content_contract") == WRITER_CONTENT_CONTRACT
+            else {}
+        ),
+        **(
+            {
+                "body_analysis_contract": payload["body_analysis_contract"],
+                "analysis_ownership_contract": ANALYSIS_OWNERSHIP_CONTRACT,
+                "analysis_claim_ids_by_section": analysis_claim_ids_by_section(
+                    payload["assertions"], payload["report_structure"]
+                ),
+                "analysis_duties": ROLES,
+            }
+            if payload.get("body_analysis_contract")
+            else {}
+        ),
+        **(
+            {"host_scope_notice_catalog": payload["host_scope_notice_catalog"]}
+            if "host_scope_notice_catalog" in payload
+            else {}
+        ),
+        **(
+            {"global_consistency_contract": payload["global_consistency_contract"]}
+            if "global_consistency_contract" in payload
+            else {}
+        ),
+        **(
+            {"source_applicability_contract": payload["source_applicability_contract"]}
+            if "source_applicability_contract" in payload
+            else {}
+        ),
+        **(
+            {"host_scope_notice_bindings": payload["host_scope_notice_bindings"]}
+            if "host_scope_notice_bindings" in payload
+            else {}
+        ),
+        "source_units": payload["source_units"],
+        "assertions": payload["assertions"],
+        "unit_inventory": payload["unit_inventory"],
+        "fragment_inventory": progress.get("fragment_inventory", []),
+        "report_structure": payload["report_structure"],
+        "coverage_requirements": payload.get("coverage_requirements", []),
+        "schema": global_review_schema(payload),
+    }
+    if payload.get("body_analysis_contract") == "body-analysis-v1":
+        global_payload.update(
+            global_output_contract="host-global-completeness-v1",
+            expected_source_unit_ids=[
+                u["source_unit_id"] for u in payload["source_units"]
+            ],
+            expected_requirement_ids=[
+                r["requirement_id"] for r in payload.get("coverage_requirements", [])
+            ],
+            excluded_unit_inventory=global_payload.pop("unit_inventory"),
+        )
+    return global_payload
+
+
 async def assess_batches(
     payload: dict,
     call: Callable,
@@ -593,11 +673,57 @@ async def assess_batches(
     checkpoint=None,
     *,
     on_rejected=None,
+    on_global_rejected=None,
+    check_global_request=None,
 ):
     """Assess all batches and then independently verify global completeness."""
     plans = plan_batches(payload, config, on_rejected=on_rejected)
     progress["expected_batches"] = len(plans)
     progress["batches"] = []
+    global_payload = build_global_payload(payload, progress)
+    global_system = global_prompt(
+        global_payload,
+        native_unit_ownership=payload.get("native_unit_ownership_contract")
+        == "grounded-writer-v1",
+    )
+    messages, response_format = build_evaluation_request(global_system, global_payload)
+    reservation = strict_request_reservation(
+        messages, config.max_tokens, response_format
+    )
+    context_limit = int(config.context_tokens * (1 - config.strict_context_margin))
+    progress["global_preflight"] = {
+        "contract_version": "full-assessment-preflight-v1",
+        "status": "checked",
+        "input_sha256": _request_identity(messages, response_format),
+        "reserved_tokens": reservation,
+        "context_tokens": context_limit,
+        "budget_checked": False,
+    }
+    rejection = (
+        "evaluation_context_budget_exceeded" if reservation > context_limit else None
+    )
+    if rejection is None and check_global_request is not None:
+        try:
+            if check_global_request(global_system, global_payload) != reservation:
+                raise ValueError("evaluation_preflight_request_identity_invalid")
+            progress["global_preflight"]["budget_checked"] = True
+        except ValueError as exc:
+            rejection = str(exc)
+    if rejection is not None:
+        progress["global_preflight"]["status"] = "rejected_not_sent"
+        if on_global_rejected:
+            try:
+                on_global_rejected(rejection, global_payload)
+            except Exception:
+                pass
+        if checkpoint:
+            try:
+                checkpoint(progress)
+            except Exception:
+                pass
+        raise ValueError(rejection)
+    if checkpoint:
+        checkpoint(progress)
     decisions, batch_units = [], []
     for index, item in enumerate(plans):
         identity = hashlib.sha256(
@@ -679,73 +805,11 @@ async def assess_batches(
             raise
         if checkpoint:
             checkpoint(progress)
-    global_payload = {
-        **(
-            {"report_input_contract": NATIVE_REPORT_INPUT_CONTRACT}
-            if payload.get("report_input_contract") == NATIVE_REPORT_INPUT_CONTRACT
-            else {}
-        ),
-        **(
-            {"writer_content_contract": WRITER_CONTENT_CONTRACT}
-            if payload.get("writer_content_contract") == WRITER_CONTENT_CONTRACT
-            else {}
-        ),
-        **(
-            {
-                "body_analysis_contract": payload["body_analysis_contract"],
-                "analysis_ownership_contract": ANALYSIS_OWNERSHIP_CONTRACT,
-                "analysis_claim_ids_by_section": analysis_claim_ids_by_section(
-                    payload["assertions"], payload["report_structure"]
-                ),
-                "analysis_duties": ROLES,
-            }
-            if payload.get("body_analysis_contract")
-            else {}
-        ),
-        **(
-            {"host_scope_notice_catalog": payload["host_scope_notice_catalog"]}
-            if "host_scope_notice_catalog" in payload
-            else {}
-        ),
-        **(
-            {"global_consistency_contract": payload["global_consistency_contract"]}
-            if "global_consistency_contract" in payload
-            else {}
-        ),
-        **(
-            {"source_applicability_contract": payload["source_applicability_contract"]}
-            if "source_applicability_contract" in payload
-            else {}
-        ),
-        **(
-            {"host_scope_notice_bindings": payload["host_scope_notice_bindings"]}
-            if "host_scope_notice_bindings" in payload
-            else {}
-        ),
-        "source_units": payload["source_units"],
-        "assertions": payload["assertions"],
-        "unit_inventory": payload["unit_inventory"],
-        "fragment_inventory": progress.get("fragment_inventory", []),
-        "report_structure": payload["report_structure"],
-        "coverage_requirements": payload.get("coverage_requirements", []),
-        "schema": global_review_schema(payload),
-    }
-    if payload.get("body_analysis_contract") == "body-analysis-v1":
-        global_payload.update(
-            global_output_contract="host-global-completeness-v1",
-            expected_source_unit_ids=[
-                u["source_unit_id"] for u in payload["source_units"]
-            ],
-            expected_requirement_ids=[
-                r["requirement_id"] for r in payload.get("coverage_requirements", [])
-            ],
-            excluded_unit_inventory=global_payload.pop("unit_inventory"),
-        )
     progress["global_check"] = "started_no_replay"
     if checkpoint:
         checkpoint(progress)
     try:
-        response = await call(global_prompt(global_payload), global_payload)
+        response = await call(global_system, global_payload)
         global_result = global_review_type(payload).model_validate_json(
             response.content
         )

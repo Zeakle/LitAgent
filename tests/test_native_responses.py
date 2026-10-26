@@ -471,7 +471,7 @@ async def test_chat_identity_unchanged_and_responses_cannot_resume_it(case, tmp_
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("reviewer_disabled", [False, True])
-@pytest.mark.parametrize("shape_recovery", [False, True, "intact", "eof"])
+@pytest.mark.parametrize("shape_recovery", [False, True, "intact", "eof", "eof_focus"])
 @pytest.mark.parametrize(
     "unsupported,missing_records", [(False, False), (True, False), (False, True)]
 )
@@ -523,13 +523,13 @@ async def test_actual_frozen_runtime_sdk_evaluation_and_shared_repair(
             and "shape_reemission" not in payload
         ):
             original = json.loads(controlled.content)
-            if shape_recovery in ("intact", "eof"):
+            if shape_recovery in ("intact", "eof", "eof_focus"):
                 controlled.content = json.dumps(original)[:-1]
             else:
                 original["taxonomy"] = original["taxonomy"][0]
                 controlled.content = json.dumps(original)
         if (
-            shape_recovery in ("intact", "eof")
+            shape_recovery in ("intact", "eof", "eof_focus")
             and "body_units" in payload
             and "shape_reemission" not in payload
         ):
@@ -642,7 +642,12 @@ async def test_actual_frozen_runtime_sdk_evaluation_and_shared_repair(
             native_shape_recovery=shape_recovery is True,
             native_reviewer_thinking_mode="disabled" if reviewer_disabled else None,
             native_syntax_policy=(
-                "grounded-writer-eof-containers-v1" if shape_recovery == "eof" else None
+                "grounded-writer-eof-containers-v1"
+                if shape_recovery in ("eof", "eof_focus")
+                else None
+            ),
+            native_writing_plan=(
+                "grounded-writer-focused-v1" if shape_recovery == "eof_focus" else None
             ),
             native_reemission_contract=(
                 "intact-unit-reemission-v2" if shape_recovery == "intact" else None
@@ -651,6 +656,13 @@ async def test_actual_frozen_runtime_sdk_evaluation_and_shared_repair(
         assert result["metadata"]["generation_strategy"] == "body_summary_v2"
         details = result["evaluation"]["faithfulness"]["details"]
         assert details["coverage"]["complete"]
+        preflight = details["stages"]["global_preflight"]
+        global_request = next(
+            r for r in details["stages"]["requests"] if r["phase"] == "global"
+        )
+        assert preflight["status"] == "checked"
+        assert preflight["input_sha256"] == global_request["input_sha256"]
+        assert preflight["reserved_tokens"] == global_request["reserved_tokens"]
         assert result["evaluation"]["faithfulness"]["score"] == (
             0.0 if unsupported else 1.0
         )
@@ -707,7 +719,7 @@ async def test_actual_frozen_runtime_sdk_evaluation_and_shared_repair(
             assert journal["reemission_contract"] == "intact-unit-reemission-v2"
             assert journal["calls"]["summary_initial"]["resolved_by"] == "repair_1"
             assert len(result["metadata"]["targeted_repair_state"]["attempts"]) == 2
-        if shape_recovery == "eof":
+        if shape_recovery in ("eof", "eof_focus"):
             assert journal["syntax_policy"] == "grounded-writer-eof-containers-v1"
             assert (
                 result["metadata"]["writer_document"]["generation_syntax_policy"]
@@ -719,6 +731,21 @@ async def test_actual_frozen_runtime_sdk_evaluation_and_shared_repair(
             assert set(
                 k for k, v in journal["calls"].items() if "syntax_normalization" in v
             ) == {"body:taxonomy", "summary_initial"}
+        if shape_recovery == "eof_focus":
+            assert journal["writing_plan"]["contract"] == "grounded-writer-focused-v1"
+            assert (
+                result["metadata"]["writer_document"]["generation_writing_plan"]
+                == journal["writing_plan"]["contract"]
+            )
+            assert (
+                result["metadata"]["writing_bindings"]["writing_plan_contract"]
+                == journal["writing_plan"]["contract"]
+            )
+            for wire in sent:
+                if "input" in wire:
+                    data = json.loads(wire["input"][1]["content"])
+                    assert data["writing_plan"] == journal["writing_plan"]
+                    assert "HOST WRITING PLAN" in wire["input"][0]["content"]
         if unsupported:
             assert len(journal["candidates"]) <= 2
             repair_calls = [

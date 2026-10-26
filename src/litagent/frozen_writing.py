@@ -26,6 +26,7 @@ from litagent.writing_v2 import (
     SCOPE,
     STRATEGY,
     source_packet,
+    writing_plan_spec,
 )
 
 CASES = (
@@ -191,12 +192,16 @@ async def run_frozen(
     native_reemission_contract=None,
     native_reviewer_thinking_mode=None,
     native_syntax_policy=None,
+    native_writing_plan=None,
 ):
     """Use real Synthesis, Reviewer, scheduler, assembly, Evaluation and acceptance."""
     if agent._wired:
         raise ValueError("frozen_writing_requires_fresh_runtime")
     if native_reviewer_thinking_mode not in (None, "disabled"):
         raise ValueError("native_reviewer_thinking_configuration_invalid")
+    writing_plan_spec(native_writing_plan)
+    if native_writing_plan is not None and native_syntax_policy != EOF_CONTAINER_POLICY:
+        raise ValueError("native_writing_plan_configuration_invalid")
     if native_syntax_policy not in (None, EOF_CONTAINER_POLICY) or (
         native_syntax_policy is not None
         and (native_shape_recovery or native_reemission_contract)
@@ -243,6 +248,7 @@ async def run_frozen(
         native_shape_recovery=native_shape_recovery,
         native_reemission_contract=native_reemission_contract,
         native_syntax_policy=native_syntax_policy,
+        native_writing_plan=native_writing_plan,
         run_id_provider=lambda: agent._session_id,
         repair_state_path_provider=agent._targeted_repair_path,
     )

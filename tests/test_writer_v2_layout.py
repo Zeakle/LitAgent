@@ -321,13 +321,22 @@ async def test_real_sdk_uses_final_layout_for_identity_and_full_reservation(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("summary", [False, True])
+@pytest.mark.parametrize("focused", [False, True])
 async def test_patch_preflight_and_transport_share_the_same_layout(
-    case, tmp_path, summary
+    case, tmp_path, summary, focused
 ):
     """Body and derived-summary repairs cannot preflight a shorter hidden prompt."""
+    from litagent.writing_v2 import EOF_CONTAINER_POLICY, FOCUSED_WRITING_PLAN
+
     provider = Provider(case, decline=True)
     session = WriterSession(
-        provider, tmp_path / "r.json", "r", case.packet, case.aliases
+        provider,
+        tmp_path / "r.json",
+        "r",
+        case.packet,
+        case.aliases,
+        syntax_policy=EOF_CONTAINER_POLICY if focused else None,
+        writing_plan=FOCUSED_WRITING_PLAN if focused else None,
     )
     doc = case.summaries if summary else case.body
     section = "abstract" if summary else "methods"

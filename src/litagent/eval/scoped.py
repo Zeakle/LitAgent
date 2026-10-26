@@ -2367,6 +2367,7 @@ async def _evaluate_scoped(*, llm, survey, context, config) -> dict:
             SOURCE_FIDELITY_CONTRACT,
             assess_batches,
             batch_prompt,
+            global_prompt,
         )
 
         if context.get("body_quality") == "analysis_v1":
@@ -2412,6 +2413,29 @@ async def _evaluate_scoped(*, llm, survey, context, config) -> dict:
                 response_format=evaluation_response_format(rejected),
             )
 
+        def on_global_rejected(reason, rejected):
+            _record_request_rejection(
+                llm,
+                global_prompt(rejected, native_unit_ownership=bool(native_fragments)),
+                rejected,
+                reason=reason,
+                phase="global_planning",
+                config=config,
+                progress=progress,
+                checkpoint=context.get("evaluation_checkpoint"),
+                response_format=evaluation_response_format(rejected),
+            )
+
+        def check_global_request(prompt, projected):
+            messages, native_format = build_evaluation_request(prompt, projected)
+            return check_request_budget(
+                llm,
+                messages,
+                config.max_tokens,
+                int(config.context_tokens * (1 - config.strict_context_margin)),
+                response_format=native_format,
+            )
+
         return await assess_batches(
             payload,
             call,
@@ -2419,6 +2443,8 @@ async def _evaluate_scoped(*, llm, survey, context, config) -> dict:
             progress,
             context.get("evaluation_checkpoint"),
             on_rejected=on_rejected,
+            on_global_rejected=on_global_rejected,
+            check_global_request=check_global_request,
         )
 
     total_timeout = config.total_timeout_seconds or config.timeout_seconds * (

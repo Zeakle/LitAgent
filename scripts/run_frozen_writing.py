@@ -31,7 +31,13 @@ from litagent.observability.recorder import (
 from litagent.observability.tracing import LangFuseTracer
 from litagent.report_audit import atomic_json, digest
 from litagent.runner import LitAgent, RunPolicy
-from litagent.writing_v2 import CONTRACT, PROMPT_CONTRACT, classify_failure
+from litagent.writing_v2 import (
+    CONTRACT,
+    FOCUSED_WRITING_PLAN,
+    PROMPT_CONTRACT,
+    classify_failure,
+    writing_plan_spec,
+)
 from scripts.run_stage_model_quality import check_models
 
 VERSION = "frozen-writing-three-domain-v1"
@@ -77,9 +83,12 @@ def profile_mode(profile):
     raise ValueError("frozen_writing_profile_invalid")
 
 
-def profile_parameters(profile):
+def profile_parameters(profile, *, writing_plan=None):
     """Bind the single supported native effort without adding legacy config fields."""
     profile_mode(profile)
+    writing_plan_spec(writing_plan)
+    if writing_plan is not None and profile != EOF_PROFILE:
+        raise ValueError("frozen_writing_plan_configuration_invalid")
     if profile in (
         RESPONSES_PROFILE,
         LEGACY_RESPONSES_PROFILE,
@@ -96,6 +105,11 @@ def profile_parameters(profile):
         )
 
         return {
+            **(
+                {"native_writing_plan": writing_plan}
+                if writing_plan is not None
+                else {}
+            ),
             "native_reasoning_effort": "low",
             **(
                 {"native_reviewer_thinking_mode": "disabled"}
@@ -135,8 +149,9 @@ def profile_config(config, profile):
     return result
 
 
-def check_profile(config, profile):
+def check_profile(config, profile, *, writing_plan=None):
     """Reuse the unchanged baseline gate while checking the explicit mode separately."""
+    profile_parameters(profile, writing_plan=writing_plan)
     if profile in (LEGACY_RESPONSES_PROFILE, LEGACY_REEMISSION_PROFILE):
         raise ValueError("frozen_writing_profile_read_only")
     if config.adversarial.thinking_mode != profile_mode(profile):
@@ -151,8 +166,9 @@ def check_profile(config, profile):
     check_models(baseline)
 
 
-def profile_description(profile, summary):
+def profile_description(profile, summary, *, writing_plan=None):
     """Publish only mode and output metadata that belongs to the frozen config."""
+    profile_parameters(profile, writing_plan=writing_plan)
     mode = profile_mode(profile)
     summary = summary.get("effective", {})
     llm = summary.get("llm", {})
@@ -237,6 +253,8 @@ def profile_description(profile, summary):
         from litagent.writing_v2 import EOF_CONTAINER_POLICY
 
         result["syntax_policy"] = EOF_CONTAINER_POLICY
+    if writing_plan is not None:
+        result["writing_plan"] = writing_plan_spec(writing_plan)
     return result
 
 
@@ -607,9 +625,16 @@ def accounting_history(history, parents, *, unknown_policy="reject"):
     return history, receipts
 
 
-def prepare(root, config, *, accounting_parents=(), writing_profile=DISABLED_PROFILE):
+def prepare(
+    root,
+    config,
+    *,
+    accounting_parents=(),
+    writing_profile=DISABLED_PROFILE,
+    writing_plan=None,
+):
     """Freeze all three materials and the same source before any paid request."""
-    check_profile(config, writing_profile)
+    check_profile(config, writing_profile, writing_plan=writing_plan)
     root = Path(root)
     if root.exists():
         raise ValueError("frozen_campaign_already_exists")
@@ -671,8 +696,13 @@ def prepare(root, config, *, accounting_parents=(), writing_profile=DISABLED_PRO
     manifest["limits"] = dict(LIMITS)
     if writing_profile != DISABLED_PROFILE:
         manifest["writing_profile"] = writing_profile
-    if profile_parameters(writing_profile):
-        manifest["writing_parameters"] = profile_parameters(writing_profile)
+    if profile_parameters(writing_profile, writing_plan=writing_plan):
+        manifest["writing_parameters"] = profile_parameters(
+            writing_profile, writing_plan=writing_plan
+        )
+    if writing_plan is not None:
+        manifest["writing_plan"] = writing_plan
+        manifest["writing_plan_spec"] = writing_plan_spec(writing_plan)
     if policy != "reject":
         manifest["accounting_policy"] = policy
     if receipts:
@@ -715,11 +745,17 @@ def validate(root, config):
         != list(CASES)
     ):
         raise ValueError("frozen_campaign_identity_conflict")
-    check_profile(config, m.get("writing_profile", DISABLED_PROFILE))
+    check_profile(
+        config,
+        m.get("writing_profile", DISABLED_PROFILE),
+        writing_plan=m.get("writing_plan"),
+    )
     if m.get("writing_parameters", {}) != profile_parameters(
-        m.get("writing_profile", DISABLED_PROFILE)
+        m.get("writing_profile", DISABLED_PROFILE), writing_plan=m.get("writing_plan")
     ):
         raise ValueError("frozen_writing_parameters_conflict")
+    if m.get("writing_plan_spec") != writing_plan_spec(m.get("writing_plan")):
+        raise ValueError("frozen_writing_plan_identity_conflict")
     policy = (
         CONSERVATIVE_ACCOUNTING
         if m.get("writing_profile")
@@ -1044,7 +1080,9 @@ def export(root, state, manifest):
     """Publish one sanitized data source with separate execution and quality outcomes."""
     executed = state["cases"]
     writing_profile = profile_description(
-        manifest.get("writing_profile", DISABLED_PROFILE), manifest.get("config", {})
+        manifest.get("writing_profile", DISABLED_PROFILE),
+        manifest.get("config", {}),
+        writing_plan=manifest.get("writing_plan"),
     )
     rows = [
         next(
@@ -1147,6 +1185,7 @@ def export(root, state, manifest):
 
     for row in rows:
         row["writing_profile"] = writing_profile["id"]
+        row["writing_plan"] = manifest.get("writing_plan")
         row["syntax_policy"] = writing_profile.get("syntax_policy")
         receipts = syntax_normalizations(row.get("run_id"), row["syntax_policy"])
         row["syntax_normalizations"] = receipts
@@ -1208,6 +1247,7 @@ def export(root, state, manifest):
     keys = [
         "case_id",
         "writing_profile",
+        "writing_plan",
         "provider_api",
         "reasoning_effort",
         "shape_recovery_contract",
@@ -1435,7 +1475,10 @@ async def _execute(root, config):
                 agent,
                 row["bundle"],
                 run_id,
-                **profile_parameters(m.get("writing_profile", DISABLED_PROFILE)),
+                **profile_parameters(
+                    m.get("writing_profile", DISABLED_PROFILE),
+                    writing_plan=m.get("writing_plan"),
+                ),
             )
         except BaseException as exc:
             failure = classify_failure(exc)
@@ -1599,6 +1642,7 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--root", type=Path, required=True)
     p.add_argument("--accounting-parent", type=Path, action="append", default=[])
+    p.add_argument("--writing-plan", choices=(FOCUSED_WRITING_PLAN,), default=None)
     p.add_argument(
         "--writing-profile",
         choices=(
@@ -1622,6 +1666,8 @@ def main():
         p.error("--accounting-parent is frozen during --prepare only")
     if args.live and args.writing_profile is not None:
         p.error("--writing-profile is frozen during --prepare only")
+    if args.live and args.writing_plan is not None:
+        p.error("--writing-plan is frozen during --prepare only")
     cfg = load_config()
     profile = (
         (args.writing_profile or DISABLED_PROFILE)
@@ -1637,6 +1683,7 @@ def main():
             cfg,
             accounting_parents=args.accounting_parent,
             writing_profile=profile,
+            writing_plan=args.writing_plan,
         )
         if args.prepare
         else asyncio.run(execute(args.root, cfg))

@@ -213,6 +213,7 @@ class SynthesisWorker(Worker):
         native_shape_recovery: bool = False,
         native_reemission_contract: str | None = None,
         native_syntax_policy: str | None = None,
+        native_writing_plan: str | None = None,
     ):
         """Initialize the synthesis worker."""
         self._methodology_provider = methodology_provider
@@ -248,6 +249,7 @@ class SynthesisWorker(Worker):
         from litagent.writing_v2 import (
             EOF_CONTAINER_POLICY,
             INTACT_UNIT_REEMISSION_CONTRACT,
+            writing_plan_spec,
         )
 
         if native_reemission_contract not in (
@@ -262,6 +264,13 @@ class SynthesisWorker(Worker):
         ):
             raise ValueError("native_syntax_policy_invalid")
         self._native_syntax_policy = native_syntax_policy
+        writing_plan_spec(native_writing_plan)
+        if (
+            native_writing_plan is not None
+            and native_syntax_policy != EOF_CONTAINER_POLICY
+        ):
+            raise ValueError("native_writing_plan_configuration_invalid")
+        self._native_writing_plan = native_writing_plan
 
         self._tools: list = []
         if skill_manager:

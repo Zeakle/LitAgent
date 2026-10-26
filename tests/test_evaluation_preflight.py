@@ -123,7 +123,10 @@ async def test_batch_planning_rejection_retains_complete_material_and_exact_prom
 
 
 @pytest.mark.asyncio
-async def test_global_context_rejection_preserves_completed_batches_without_a_score():
+@pytest.mark.parametrize("broken_checkpoint", [False, True])
+async def test_global_context_rejection_preserves_inventory_without_sending_batches(
+    broken_checkpoint,
+):
     survey, context = materials(42)
     baseline = BatchLLM()
     await evaluate_scoped(
@@ -134,15 +137,58 @@ async def test_global_context_rejection_preserves_completed_batches_without_a_sc
     limit = global_size - 1
     assert max(earlier_sizes) < limit
     config = EvalConfig(context_tokens=int(limit / 0.9))
+    if broken_checkpoint:
+
+        def checkpoint(progress):
+            if "global_preflight" in progress:
+                raise OSError("unavailable checkpoint")
+
+        context["evaluation_checkpoint"] = checkpoint
     llm = BatchLLM()
     local, _ = capture_hooks(llm)
     with pytest.raises(ScopedEvaluationError) as error:
         await evaluate_scoped(llm=llm, survey=survey, context=context, config=config)
-    assert len(llm.calls) == 4 and llm.batches == 3
-    assert error.value.details["stages"]["processed_assertions"] == 42
+    assert len(llm.calls) == 1 and llm.batches == 0
+    assert error.value.details["stages"]["processed_assertions"] == 0
     assert not error.value.details["coverage"]["complete"]
     assert "score" not in error.value.details
-    assert local[-1][1]["phase"] == "global"
+    assert local[-1][1]["phase"] == "global_planning"
+    assert_reconstructable(local[-1][1])
+    assert json.loads(local[-1][1]["messages"][1]["content"]) == baseline.calls[-1]
+    assert (
+        error.value.details["stages"]["global_preflight"]["reserved_tokens"]
+        == global_size
+    )
+
+
+@pytest.mark.asyncio
+async def test_global_run_budget_is_checked_before_support_requests():
+    survey, context = materials(42)
+    baseline = BatchLLM()
+    await evaluate_scoped(
+        llm=baseline, survey=survey, context=context, config=EvalConfig()
+    )
+    global_size = request_size(GLOBAL_PROMPT, baseline.calls[-1], 16384)
+    llm = BatchLLM()
+    budget = CostBudget(max_tokens=global_size - 1)
+    budget.configure_strict()
+    original_chat = llm.chat
+
+    async def inventory_then_insufficient_balance(*args, **kwargs):
+        response = await original_chat(*args, **kwargs)
+        # Model a known remaining balance after the independent inventory.
+        llm._cost_budget = budget
+        return response
+
+    llm.chat = inventory_then_insufficient_balance
+    local, _ = capture_hooks(llm)
+    with pytest.raises(ScopedEvaluationError) as error:
+        await evaluate_scoped(
+            llm=llm, survey=survey, context=context, config=EvalConfig()
+        )
+    assert str(error.value) == "evaluation_run_budget_exceeded"
+    assert len(llm.calls) == 1 and llm.batches == 0
+    assert local[-1][1]["phase"] == "global_planning"
     assert_reconstructable(local[-1][1])
 
 
