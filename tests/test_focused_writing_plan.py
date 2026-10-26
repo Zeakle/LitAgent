@@ -20,6 +20,7 @@ from litagent.writing_v2 import (
     BODY,
     EOF_CONTAINER_POLICY,
     FOCUSED_WRITING_PLAN,
+    RANGE_WRITING_PLAN,
     WriterError,
     WriterSession,
     check_writing_plan,
@@ -271,7 +272,10 @@ async def test_invalid_runtime_plan_stops_before_any_client_or_budget_initializa
 
 
 @pytest.mark.asyncio
-async def test_compact_fully_supported_fixture_still_fails_missing_core_coverage(case):
+@pytest.mark.parametrize("plan", [FOCUSED_WRITING_PLAN, RANGE_WRITING_PLAN])
+async def test_compact_fully_supported_fixture_still_fails_missing_core_coverage(
+    case, plan
+):
     """Small prose and a scripted support ratio of 1.0 cannot replace the question."""
     draft, bindings = compile_document(
         case.body,
@@ -279,7 +283,7 @@ async def test_compact_fully_supported_fixture_still_fails_missing_core_coverage
         case.cards,
         case.aliases,
         "en",
-        writing_plan=FOCUSED_WRITING_PLAN,
+        writing_plan=plan,
     )
 
     class MissingCore(EvaluatorTransport):
@@ -326,7 +330,8 @@ async def test_compact_fully_supported_fixture_still_fails_missing_core_coverage
 
 
 @pytest.mark.asyncio
-async def test_focused_unit_budget_cannot_hide_150_atomic_claims(case):
+@pytest.mark.parametrize("plan", [FOCUSED_WRITING_PLAN, RANGE_WRITING_PLAN])
+async def test_focused_unit_budget_cannot_hide_150_atomic_claims(case, plan):
     """Even a locally legal plan must fail an independently expanded inventory."""
     from litagent.eval.scoped import ScopedEvaluationError
 
@@ -356,7 +361,7 @@ async def test_focused_unit_budget_cannot_hide_150_atomic_claims(case):
         case.cards,
         case.aliases,
         "en",
-        writing_plan=FOCUSED_WRITING_PLAN,
+        writing_plan=plan,
     )
     context = {
         "query": case.packet["query"],

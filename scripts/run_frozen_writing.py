@@ -35,6 +35,7 @@ from litagent.writing_v2 import (
     CONTRACT,
     FOCUSED_WRITING_PLAN,
     PROMPT_CONTRACT,
+    RANGE_WRITING_PLAN,
     classify_failure,
     writing_plan_spec,
 )
@@ -1642,7 +1643,11 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--root", type=Path, required=True)
     p.add_argument("--accounting-parent", type=Path, action="append", default=[])
-    p.add_argument("--writing-plan", choices=(FOCUSED_WRITING_PLAN,), default=None)
+    p.add_argument(
+        "--writing-plan",
+        choices=(FOCUSED_WRITING_PLAN, RANGE_WRITING_PLAN),
+        default=None,
+    )
     p.add_argument(
         "--writing-profile",
         choices=(

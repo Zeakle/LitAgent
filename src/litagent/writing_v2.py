@@ -48,6 +48,7 @@ LEGACY_INTACT_UNIT_REEMISSION_CONTRACT = "intact-unit-reemission-v1"
 INTACT_UNIT_REEMISSION_CONTRACT = "intact-unit-reemission-v2"
 EOF_CONTAINER_POLICY = "grounded-writer-eof-containers-v1"
 FOCUSED_WRITING_PLAN = "grounded-writer-focused-v1"
+RANGE_WRITING_PLAN = "grounded-writer-focused-range-v1"
 _INHERIT_EFFORT = object()
 BODY = tuple(k for k in ROLES if k not in {"abstract", "conclusion"})
 FOCUSED_PLAN_INSTRUCTION = """
@@ -102,11 +103,11 @@ def writing_plan_spec(plan):
     """Return the explicit host budget without changing any legacy default."""
     if plan is None:
         return None
-    if plan != FOCUSED_WRITING_PLAN:
+    if plan not in (FOCUSED_WRITING_PLAN, RANGE_WRITING_PLAN):
         raise WriterError("writer_writing_plan_invalid")
     body_max, summary_max = 66, 3
-    return {
-        "contract": FOCUSED_WRITING_PLAN,
+    spec = {
+        "contract": plan,
         "body_target_units": {
             "introduction": 4,
             "taxonomy": 6,
@@ -128,6 +129,19 @@ def writing_plan_spec(plan):
         "core_coverage_required": True,
         "scientific_assessment": "not_verified",
     }
+    if plan == RANGE_WRITING_PLAN:
+        spec.update(
+            repair_scope_contract="host-paragraph-ranges-v1",
+            priority_card_limits={
+                "introduction": 2,
+                "taxonomy": 3,
+                "methods": 6,
+                "experiments": 4,
+                "open_problems": 4,
+            },
+            capacity_failure_family="quality",
+        )
+    return spec
 
 
 def check_writing_plan(document, plan):
@@ -156,7 +170,81 @@ def check_writing_plan(document, plan):
             {"section": "body", "units": body_count, "maximum": spec["body_max_units"]}
         )
     if excess:
-        raise WriterError("writer_writing_plan_capacity_exceeded", "budget", excess)
+        error = WriterError(
+            "writer_writing_plan_capacity_exceeded",
+            "quality" if plan == RANGE_WRITING_PLAN else "budget",
+            excess,
+        )
+        if plan == RANGE_WRITING_PLAN:
+            error.candidate = copy.deepcopy(document)
+        raise error
+
+
+def capacity_repair_targets(document, plan):
+    """Authorize complete paragraph ranges without deleting or merging paragraphs."""
+    if plan != RANGE_WRITING_PLAN:
+        raise WriterError("writer_range_plan_required")
+    spec = writing_plan_spec(plan)
+    summary = set(document) == {"abstract", "conclusion"}
+    sections = ("abstract", "conclusion") if summary else BODY
+    if not summary and set(document) != {"title", *BODY}:
+        raise WriterError("writer_capacity_snapshot_incomplete")
+    counts, floors = {}, {}
+    for key in sections:
+        try:
+            sizes = [len(p["sentences"]) for p in document[key]]
+        except (KeyError, TypeError):
+            raise WriterError("writer_capacity_snapshot_invalid") from None
+        if not sizes or min(sizes) < 1:
+            raise WriterError("writer_capacity_snapshot_invalid")
+        counts[key], floors[key] = sum(sizes), len(sizes)
+    limits = {
+        key: min(
+            counts[key],
+            (
+                spec["summary_section_max_units"]
+                if summary
+                else spec["body_section_max_units"][key]
+            ),
+        )
+        for key in sections
+    }
+    if any(floors[k] > limits[k] for k in sections):
+        raise WriterError("writer_capacity_repair_unavailable", "quality")
+    if not summary:
+        while sum(limits.values()) > spec["body_max_units"]:
+            candidates = [
+                k
+                for k in reversed(BODY)
+                if limits[k] > max(floors[k], spec["body_target_units"][k])
+            ]
+            if not candidates:
+                raise WriterError("writer_capacity_repair_unavailable", "quality")
+            limits[candidates[0]] -= 1
+    targets = {}
+    for key in sections:
+        sizes = [len(p["sentences"]) for p in document[key]]
+        allocated = [1] * len(sizes)
+        while sum(allocated) < limits[key]:
+            for pi, size in enumerate(sizes):
+                if sum(allocated) == limits[key]:
+                    break
+                if allocated[pi] < size:
+                    allocated[pi] += 1
+        for pi, (size, maximum) in enumerate(zip(sizes, allocated)):
+            if size <= maximum:
+                continue
+            original = copy.deepcopy(document[key][pi]["sentences"])
+            targets[f"capacity:{key}:{pi}"] = {
+                "path": [key, pi, 0],
+                "end": size,
+                "original": original,
+                "original_sha256": digest(original),
+                "snapshot_sha256": digest(document),
+                "maximum": maximum,
+                "explanation": "Rewrite only this complete original range within its unit ceiling. Preserve core questions, method owners, conditions and actual support. Select necessary distinct findings; never pack independent claims or weaken conditions to evade Evaluation. Explicitly decline if this cannot be done safely.",
+            }
+    return targets
 
 
 def classify_failure(exc):
@@ -876,12 +964,15 @@ def validate_body(body, aliases, *, writing_plan=None):
     return units
 
 
-def validate_targets(body, targets, *, summary_repair=False):
+def validate_targets(body, targets, *, summary_repair=False, allow_ranges=False):
     """Bind every requested edit to a distinct current unit before any paid call."""
     if not isinstance(targets, dict) or not targets:
         raise WriterError("writer_no_editable_targets", "quality")
+    if type(allow_ranges) is not bool:
+        raise WriterError("writer_patch_identity_invalid")
     allowed = {"abstract", "conclusion"} if summary_repair else set(BODY)
     seen = set()
+    intervals = []
     for target in targets.values():
         path = target.get("path") if isinstance(target, dict) else None
         if (
@@ -896,11 +987,29 @@ def validate_targets(body, targets, *, summary_repair=False):
         seen.add(tuple(path))
         section, pi, si = path
         try:
-            current = body[section][pi]["sentences"][si]
+            sentences = body[section][pi]["sentences"]
+            current = sentences[si]
         except (KeyError, IndexError, TypeError):
             raise WriterError("writer_patch_identity_invalid") from None
-        if current != target.get("original"):
+        end = si + 1
+        if "end" in target:
+            end = target["end"]
+            if (
+                not allow_ranges
+                or type(end) is not int
+                or not si < end <= len(sentences)
+                or target.get("snapshot_sha256") != digest(body)
+                or target.get("original_sha256") != digest(sentences[si:end])
+                or type(target.get("maximum")) is not int
+                or not 1 <= target["maximum"] <= 30
+            ):
+                raise WriterError("writer_patch_identity_invalid")
+            current = sentences[si:end]
+        if current != target.get("original") or any(
+            section == s and pi == p and si < b and a < end for s, p, a, b in intervals
+        ):
             raise WriterError("writer_patch_identity_invalid")
+        intervals.append((section, pi, si, end))
 
 
 def _check_summary_capacity(texts, language):
@@ -1158,11 +1267,61 @@ class WriterSession:
     def planned_input(self, system, payload):
         """Use identical host plan inputs in transaction checks and transport."""
         if self.writing_plan_spec is not None:
-            return system + FOCUSED_PLAN_INSTRUCTION, {
+            system += FOCUSED_PLAN_INSTRUCTION
+            if self.writing_plan == RANGE_WRITING_PLAN:
+                recommendations = self.packet.get("chapter_recommendations")
+                if (
+                    not isinstance(recommendations, dict)
+                    or set(recommendations) != set(BODY)
+                    or any(
+                        not isinstance(refs, list)
+                        or any(
+                            not isinstance(ref, str) or ref not in self.aliases
+                            for ref in refs
+                        )
+                        for refs in recommendations.values()
+                    )
+                ):
+                    raise WriterError("writer_chapter_recommendations_invalid")
+                system = system.replace(
+                    "HOST WRITING PLAN " + FOCUSED_WRITING_PLAN + ":",
+                    "HOST WRITING PLAN " + RANGE_WRITING_PLAN + ":",
+                )
+                system += "\nHost priority cards are a concise starting point, not mandatory paper-by-paper coverage or a citation whitelist. The original question and explicit requirements take priority. All frozen cards and originals remain available. Do not expand every recommendation into a fixed number of findings or paragraphs; choose necessary distinct findings within chapter duties."
+            return system, {
                 **payload,
                 "writing_plan": self.writing_plan_spec,
+                **(
+                    {
+                        "host_priority_card_refs": {
+                            key: refs[
+                                : self.writing_plan_spec["priority_card_limits"][key]
+                            ]
+                            for key, refs in self.packet[
+                                "chapter_recommendations"
+                            ].items()
+                        }
+                    }
+                    if self.writing_plan == RANGE_WRITING_PLAN
+                    else {}
+                ),
             }
         return system, payload
+
+    def check_response_plan(self, name, value, stage):
+        """Keep valid overlong chapters isolated until a complete snapshot exists."""
+        if self.writing_plan is None or not (
+            name in {f"body:{k}" for k in BODY} or stage == "summary"
+        ):
+            return
+        try:
+            check_writing_plan(value, self.writing_plan)
+        except WriterError as exc:
+            if self.writing_plan != RANGE_WRITING_PLAN or not name.startswith("body:"):
+                raise
+            self.journal["calls"][name]["capacity_staging"] = classify_failure(exc)
+            self.journal["calls"][name]["capacity_candidate_sha256"] = digest(value)
+            self.save()
 
     async def call(
         self,
@@ -1314,10 +1473,7 @@ class WriterSession:
                 )
             try:
                 value = parse_response(response.content, schema)
-                if self.writing_plan is not None and (
-                    name in {f"body:{k}" for k in BODY} or stage == "summary"
-                ):
-                    check_writing_plan(value, self.writing_plan)
+                self.check_response_plan(name, value, stage)
                 return value
             except WriterError as original:
                 eligible = (
@@ -1371,7 +1527,7 @@ class WriterSession:
                             },
                         },
                     )
-                check_writing_plan(value, self.writing_plan)
+                self.check_response_plan(name, value, stage)
                 return value
         except BaseException as exc:
             received = getattr(exc, "response", None)
@@ -1680,16 +1836,21 @@ class WriterSession:
                         for p in paragraphs
                     )
                     remaining_sections = len(BODY) - BODY.index(section) - 1
+                    maximum = min(
+                        self.writing_plan_spec["body_section_max_units"][section],
+                        self.writing_plan_spec["body_max_units"]
+                        - used
+                        - remaining_sections,
+                    )
                     payload["writing_plan_progress"] = {
                         "completed_body_units": used,
                         "requested_section_target": self.writing_plan_spec[
                             "body_target_units"
                         ][section],
-                        "requested_section_maximum": min(
-                            self.writing_plan_spec["body_section_max_units"][section],
-                            self.writing_plan_spec["body_max_units"]
-                            - used
-                            - remaining_sections,
+                        "requested_section_maximum": (
+                            max(1, maximum)
+                            if self.writing_plan == RANGE_WRITING_PLAN
+                            else maximum
                         ),
                         "remaining_core_sections": remaining_sections,
                     }
@@ -1751,19 +1912,34 @@ class WriterSession:
                             for unit in paragraph["sentences"]:
                                 _valid_text(unit["text"])
                 body.update(copy.deepcopy(part))
-                check_writing_plan(body, self.writing_plan)
+                if self.writing_plan != RANGE_WRITING_PLAN:
+                    check_writing_plan(body, self.writing_plan)
                 count = sum(
                     len(paragraph["sentences"])
                     for key in BODY
                     for paragraph in body.get(key, [])
                 )
                 if count + 2 > 128:
-                    raise WriterError("writer_assertion_capacity_exceeded", "budget")
+                    raise WriterError(
+                        "writer_assertion_capacity_exceeded",
+                        (
+                            "quality"
+                            if self.writing_plan == RANGE_WRITING_PLAN
+                            else "budget"
+                        ),
+                    )
                 parts[section] = {
                     "status": (
-                        "pending_reference_repair"
-                        if pending_reference
-                        else "local_contract_completed"
+                        "pending_capacity_repair"
+                        if self.writing_plan == RANGE_WRITING_PLAN
+                        and self.journal["calls"]["body:" + section].get(
+                            "capacity_staging"
+                        )
+                        else (
+                            "pending_reference_repair"
+                            if pending_reference
+                            else "local_contract_completed"
+                        )
                     ),
                     "candidate_sha256": digest(part),
                 }
@@ -1866,7 +2042,14 @@ class WriterSession:
                 raise
 
     def reserve_followup(
-        self, messages, rf, report_size, claim_count, *, include_summary=True
+        self,
+        messages,
+        rf,
+        report_size,
+        claim_count,
+        *,
+        include_summary=True,
+        include_reviewer=False,
     ):
         """Keep enough real run capacity for a repair, summaries and full reassessment."""
         if type(claim_count) is not int or not 1 <= claim_count <= 128:
@@ -1886,8 +2069,14 @@ class WriterSession:
             (batches + 2) * 16384 + (batches + 2) * report_size + batches * full_sources
         )
         summary = report_size + 20000 + 2048 if include_summary else 0
+        # An initial local repair precedes Reviewer. Retain its full admissible
+        # request rather than guessing future bindings or shrinking source text.
+        reviewer = int(131072 * 0.9) if include_reviewer else 0
         needed = (
-            strict_request_reservation(messages, 20000, rf) + summary + reassessment
+            strict_request_reservation(messages, 20000, rf)
+            + summary
+            + reassessment
+            + reviewer
         )
         snapshot = budget.snapshot()
         if (
@@ -1908,6 +2097,7 @@ class WriterSession:
                         "projected_model_assertions": projected_claims,
                         "reassessment_reservation": reassessment,
                         "summary_reservation": summary,
+                        "reviewer_reservation": reviewer,
                         "repair_reservation": strict_request_reservation(
                             messages, 20000, rf
                         ),
@@ -1917,8 +2107,19 @@ class WriterSession:
 
     async def patch(self, body, targets, *, cause, claim_count=128, summary_body=None):
         """Repair only authorized units within the shared two-attempt limit."""
+        if self.writing_plan == RANGE_WRITING_PLAN:
+            targets = copy.deepcopy(targets)
         try:
-            validate_targets(body, targets, summary_repair=summary_body is not None)
+            if self.writing_plan == RANGE_WRITING_PLAN and summary_body is not None:
+                validate_body(
+                    summary_body, self.aliases, writing_plan=self.writing_plan
+                )
+            validate_targets(
+                body,
+                targets,
+                summary_repair=summary_body is not None,
+                allow_ranges=self.writing_plan == RANGE_WRITING_PLAN,
+            )
             if len(self.state["attempts"]) >= 2:
                 raise WriterError("writer_repair_limit", "quality")
         except WriterError as exc:
@@ -1949,16 +2150,33 @@ class WriterSession:
         )
         if summary_body is not None:
             payload["body_units"] = body_units(summary_body)
+            if self.writing_plan == RANGE_WRITING_PLAN:
+                payload["summary_source_body_sha256"] = digest(summary_body)
             system += "\nSummary premises must be actual frozen body units, supplied as untrusted data."
+        if self.writing_plan == RANGE_WRITING_PLAN:
+            system += "\nSome host targets authorize a complete continuous original range within one paragraph. Replace exactly that range, preserving every unaffected unit and paragraph. Respect each maximum; never drop a core requirement, hide independent assertions in one unit, or delete conditions. The replacement remains independently unverified."
         try:
             rf = provider_response_format("repair", schema)
             planned_system, planned_payload = self.planned_input(system, payload)
             messages = request_messages(planned_system, planned_payload, schema)
+            report_size = len(json.dumps(body, ensure_ascii=False).encode())
+            if self.writing_plan == RANGE_WRITING_PLAN and summary_body is not None:
+                report_size += len(
+                    json.dumps(summary_body, ensure_ascii=False).encode()
+                )
             self.reserve_followup(
                 messages,
                 rf,
-                len(json.dumps(body, ensure_ascii=False).encode()),
+                report_size,
                 claim_count,
+                **(
+                    {
+                        "include_reviewer": cause == "local",
+                        "include_summary": summary_body is None,
+                    }
+                    if self.writing_plan == RANGE_WRITING_PLAN
+                    else {}
+                ),
             )
             check_grounded_request_budget(
                 self.llm,
@@ -1995,6 +2213,17 @@ class WriterSession:
                 p["target_id"] for p in result["patches"]
             } != set(targets):
                 raise WriterError("writer_patch_coverage_invalid")
+            if (
+                self.writing_plan == RANGE_WRITING_PLAN
+                and digest(body) != payload["body_sha256"]
+            ):
+                raise WriterError("writer_patch_identity_invalid")
+            if (
+                self.writing_plan == RANGE_WRITING_PLAN
+                and summary_body is not None
+                and digest(summary_body) != payload["summary_source_body_sha256"]
+            ):
+                raise WriterError("writer_patch_identity_invalid")
             candidate = copy.deepcopy(body)
             replacements = {p["target_id"]: p["sentences"] for p in result["patches"]}
             ordered = sorted(
@@ -2002,9 +2231,20 @@ class WriterSession:
             )
             for tid in ordered:
                 section, pi, si = targets[tid]["path"]
-                if body[section][pi]["sentences"][si] != targets[tid]["original"]:
+                end = targets[tid].get("end", si + 1)
+                original = (
+                    body[section][pi]["sentences"][si:end]
+                    if "end" in targets[tid]
+                    else body[section][pi]["sentences"][si]
+                )
+                if original != targets[tid]["original"]:
                     raise WriterError("writer_patch_identity_invalid")
-                candidate[section][pi]["sentences"][si : si + 1] = replacements[tid]
+                if (
+                    "end" in targets[tid]
+                    and len(replacements[tid]) > targets[tid]["maximum"]
+                ):
+                    raise WriterError("writer_patch_capacity_exceeded", "quality")
+                candidate[section][pi]["sentences"][si:end] = replacements[tid]
             parse_response(
                 json.dumps(candidate),
                 (
@@ -2074,6 +2314,112 @@ class WriterSession:
         finally:
             self.save()
 
+            if self.writing_plan == RANGE_WRITING_PLAN:
+                emit_targeted_repair(
+                    self.trace_hook, self.state, get_task_id() or "synthesis"
+                )
+
+
+async def repair_capacity_snapshot(
+    session, document, *, diagnostics=(), summary_body=None
+):
+    """Use the existing shared attempts to rewrite only authorized complete ranges."""
+    if len(session.state["attempts"]) >= 2:
+        raise WriterError("writer_repair_limit", "quality")
+    if any(
+        r.get("snapshot_sha256") == digest(document)
+        for r in session.journal.get("capacity_candidates", [])
+    ):
+        raise WriterError("writer_capacity_snapshot_no_replay", "interrupted")
+    targets = capacity_repair_targets(document, session.writing_plan)
+    for diagnostic in diagnostics:
+        section, pi, _, si, _, _ = diagnostic["path"]
+        if any(
+            t["path"][0] == section
+            and t["path"][1] == pi
+            and t["path"][2] <= si < t.get("end", t["path"][2] + 1)
+            for t in targets.values()
+        ):
+            continue
+        targets[f"reference:{section}:{pi}:{si}"] = {
+            "path": [section, pi, si],
+            "original": copy.deepcopy(document[section][pi]["sentences"][si]),
+            "explanation": (
+                "Correct the unknown body premise using only provided frozen body_units."
+                if summary_body is not None
+                else "Correct the unknown source using only the complete frozen pool, preserving actual facts and necessary conditions."
+            ),
+        }
+    # Preserve the original draft, including every rejected unit. Candidates may
+    # complete local checks but cannot receive a scientific verdict here.
+    record = {
+        "original": copy.deepcopy(document),
+        "snapshot_sha256": digest(document),
+        "targets": copy.deepcopy(targets),
+        "status": "pending_local_repair",
+    }
+    session.journal.setdefault("capacity_candidates", []).append(record)
+    session.save()
+    while True:
+        before = len(session.state["attempts"])
+        try:
+            candidate = await session.patch(
+                document,
+                targets,
+                cause="local",
+                claim_count=128,
+                summary_body=summary_body,
+            )
+            record.update(
+                candidate=copy.deepcopy(candidate),
+                candidate_sha256=digest(candidate),
+                status="locally_valid_unverified",
+                scientific_assessment="not_verified",
+            )
+            resolved = "repair_" + str(session.state["attempts"][-1]["index"])
+            for name, call in session.journal["calls"].items():
+                repairable_failure = call.get("failure", {}).get("code") in {
+                    "writer_writing_plan_capacity_exceeded",
+                    "writer_reference_invalid",
+                }
+                body_target = (
+                    name.startswith("body:")
+                    and name.split(":", 1)[1] in document
+                    and (call.get("capacity_staging") or repairable_failure)
+                )
+                summary_target = (
+                    summary_body is not None
+                    and name == "summary_initial"
+                    and repairable_failure
+                )
+                if not call.get("resolved_by") and (body_target or summary_target):
+                    call["resolved_by"] = resolved
+            for target in targets.values():
+                key = target["path"][0]
+                if key in session.journal.get("body_parts", {}):
+                    session.journal["body_parts"][key].update(
+                        status="locally_repaired_unverified", resolved_by=resolved
+                    )
+            session.journal.pop("failure", None)
+            session.save()
+            return candidate
+        except BaseException as exc:
+            record.update(status="rejected", failure=classify_failure(exc))
+            session.save()
+            if not (
+                isinstance(exc, WriterError)
+                and exc.family == "quality"
+                and exc.code
+                in {
+                    "writer_writing_plan_capacity_exceeded",
+                    "writer_patch_capacity_exceeded",
+                    "writer_repair_duplicate",
+                    "writer_repair_no_progress",
+                }
+                and before < len(session.state["attempts"]) < 2
+            ):
+                raise
+
 
 async def synthesize(worker, task, cards, selection, methodology, requirements):
     """Use the existing synthesis worker and immutable extraction outputs."""
@@ -2103,22 +2449,49 @@ async def synthesize(worker, task, cards, selection, methodology, requirements):
     try:
         body = await session.initial_body()
     except WriterError as exc:
-        if exc.code != "writer_reference_invalid":
+        if session.writing_plan == RANGE_WRITING_PLAN and exc.code in {
+            "writer_reference_invalid",
+            "writer_writing_plan_capacity_exceeded",
+        }:
+            body = await repair_capacity_snapshot(
+                session,
+                exc.candidate,
+                diagnostics=(
+                    exc.diagnostics if exc.code == "writer_reference_invalid" else ()
+                ),
+            )
+        else:
+            if exc.code != "writer_reference_invalid":
+                raise
+            body = exc.candidate
+            targets = {}
+            for d in exc.diagnostics:
+                section, pi, _, si, _, _ = d["path"]
+                key = f"{section}:{pi}:{si}"
+                targets[key] = {
+                    "path": [section, pi, si],
+                    "original": body[section][pi]["sentences"][si],
+                    "explanation": "Unknown card ID; correct sentence and actual source within the frozen pool. Never guess an ID from its number.",
+                }
+            body = await session.patch(
+                body, targets, cause="local", claim_count=len(body_units(body))
+            )
+    try:
+        summaries = await session.summaries(body, "summary_initial")
+    except WriterError as exc:
+        if session.writing_plan != RANGE_WRITING_PLAN or exc.code not in {
+            "writer_writing_plan_capacity_exceeded",
+            "writer_reference_invalid",
+        }:
             raise
-        body = exc.candidate
-        targets = {}
-        for d in exc.diagnostics:
-            section, pi, _, si, _, _ = d["path"]
-            key = f"{section}:{pi}:{si}"
-            targets[key] = {
-                "path": [section, pi, si],
-                "original": body[section][pi]["sentences"][si],
-                "explanation": "Unknown card ID; correct sentence and actual source within the frozen pool. Never guess an ID from its number.",
-            }
-        body = await session.patch(
-            body, targets, cause="local", claim_count=len(body_units(body))
+        summaries = await repair_capacity_snapshot(
+            session,
+            exc.candidate,
+            summary_body=body,
+            diagnostics=(
+                exc.diagnostics if exc.code == "writer_reference_invalid" else ()
+            ),
         )
-    summaries = await session.summaries(body, "summary_initial")
     try:
         draft, bindings = compile_document(
             body,

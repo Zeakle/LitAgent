@@ -471,7 +471,10 @@ async def test_chat_identity_unchanged_and_responses_cannot_resume_it(case, tmp_
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("reviewer_disabled", [False, True])
-@pytest.mark.parametrize("shape_recovery", [False, True, "intact", "eof", "eof_focus"])
+@pytest.mark.parametrize(
+    "shape_recovery",
+    [False, True, "intact", "eof", "eof_focus", "range", "range_summary"],
+)
 @pytest.mark.parametrize(
     "unsupported,missing_records", [(False, False), (True, False), (False, True)]
 )
@@ -493,6 +496,7 @@ async def test_actual_frozen_runtime_sdk_evaluation_and_shared_repair(
     provider = Provider(case, decline=unsupported)
     evaluator = EvaluatorTransport(unsupported=unsupported)
     sent = []
+    range_mode = shape_recovery in ("range", "range_summary")
 
     async def handler(request):
         body = json.loads(request.content)
@@ -517,8 +521,63 @@ async def test_actual_frozen_runtime_sdk_evaluation_and_shared_repair(
         controlled = await (evaluator if is_eval else provider).chat(
             messages, response_format=rf
         )
+        if range_mode and payload.get("requested_body_section") == "methods":
+            original = case.body["methods"][0]["sentences"][0]
+            controlled.content = json.dumps(
+                {
+                    "methods": [
+                        {
+                            "sentences": [
+                                {
+                                    **original,
+                                    "text": f"Premise {chr(65+pi)}{chr(97+si)}: {original['text']}",
+                                }
+                                for si in range(3)
+                            ]
+                        }
+                        for pi in range(12)
+                    ]
+                }
+            )
+        if (
+            range_mode
+            and "targets" in payload
+            and any("end" in t for t in payload["targets"].values())
+        ):
+            controlled.content = json.dumps(
+                {
+                    "outcome": "patched",
+                    "explanation": "Controlled range replacement, independently unverified.",
+                    "patches": [
+                        {"target_id": tid, "sentences": t["original"][: t["maximum"]]}
+                        for tid, t in payload["targets"].items()
+                    ],
+                }
+            )
+        if shape_recovery == "range_summary" and "body_units" in payload:
+            if "targets" not in payload:
+                summary = json.loads(controlled.content)
+                summary["abstract"][0]["sentences"][0]["body_unit_refs"] = ["u999"]
+                controlled.content = json.dumps(summary)
+            else:
+                controlled.content = json.dumps(
+                    {
+                        "outcome": "patched",
+                        "explanation": "Controlled summary reference replacement.",
+                        "patches": [
+                            {
+                                "target_id": tid,
+                                "sentences": [
+                                    {**t["original"], "body_unit_refs": ["u1"]}
+                                ],
+                            }
+                            for tid, t in payload["targets"].items()
+                        ],
+                    }
+                )
         if (
             shape_recovery
+            and not range_mode
             and payload.get("requested_body_section") == "taxonomy"
             and "shape_reemission" not in payload
         ):
@@ -643,11 +702,17 @@ async def test_actual_frozen_runtime_sdk_evaluation_and_shared_repair(
             native_reviewer_thinking_mode="disabled" if reviewer_disabled else None,
             native_syntax_policy=(
                 "grounded-writer-eof-containers-v1"
-                if shape_recovery in ("eof", "eof_focus")
+                if shape_recovery in ("eof", "eof_focus", "range", "range_summary")
                 else None
             ),
             native_writing_plan=(
-                "grounded-writer-focused-v1" if shape_recovery == "eof_focus" else None
+                "grounded-writer-focused-range-v1"
+                if range_mode
+                else (
+                    "grounded-writer-focused-v1"
+                    if shape_recovery == "eof_focus"
+                    else None
+                )
             ),
             native_reemission_contract=(
                 "intact-unit-reemission-v2" if shape_recovery == "intact" else None
@@ -655,7 +720,9 @@ async def test_actual_frozen_runtime_sdk_evaluation_and_shared_repair(
         )
         assert result["metadata"]["generation_strategy"] == "body_summary_v2"
         details = result["evaluation"]["faithfulness"]["details"]
-        assert details["coverage"]["complete"]
+        assert details["coverage"]["complete"], {
+            k: details.get(k) for k in ("error", "skipped_reason", "reason_code")
+        }
         preflight = details["stages"]["global_preflight"]
         global_request = next(
             r for r in details["stages"]["requests"] if r["phase"] == "global"
@@ -680,7 +747,9 @@ async def test_actual_frozen_runtime_sdk_evaluation_and_shared_repair(
             assert "method_checks" in details["strict_acceptance"]["failure_codes"]
         assert result["metadata"]["automatic_acceptance"]["actor"] == "system"
         generation_count = (
-            8 if shape_recovery == "intact" else 7 if shape_recovery is True else 6
+            8
+            if shape_recovery in ("intact", "range_summary")
+            else 7 if shape_recovery in (True, "range") else 6
         )
         assert [b["model"] for b in sent[: generation_count + 1]] == [
             "pro"
@@ -746,6 +815,37 @@ async def test_actual_frozen_runtime_sdk_evaluation_and_shared_repair(
                     data = json.loads(wire["input"][1]["content"])
                     assert data["writing_plan"] == journal["writing_plan"]
                     assert "HOST WRITING PLAN" in wire["input"][0]["content"]
+        if range_mode:
+            assert (
+                journal["writing_plan"]["repair_scope_contract"]
+                == "host-paragraph-ranges-v1"
+            )
+            record = journal["capacity_candidates"][0]
+            assert sum(len(p["sentences"]) for p in record["original"]["methods"]) == 36
+            assert (
+                sum(len(p["sentences"]) for p in record["candidate"]["methods"]) == 24
+            )
+            assert record["scientific_assessment"] == "not_verified"
+            assert len(result["metadata"]["targeted_repair_state"]["attempts"]) == (
+                2 if unsupported or shape_recovery == "range_summary" else 1
+            )
+            assert journal["calls"]["body:methods"]["resolved_by"] == "repair_0"
+            if shape_recovery == "range_summary":
+                assert journal["calls"]["summary_initial"]["resolved_by"] == "repair_1"
+                summary_record = journal["capacity_candidates"][1]
+                assert summary_record["original"]["abstract"][0]["sentences"][0][
+                    "body_unit_refs"
+                ] == ["u999"]
+                assert summary_record["candidate"]["abstract"][0]["sentences"][0][
+                    "body_unit_refs"
+                ] == ["u1"]
+            repair_position = next(
+                i
+                for i, wire in enumerate(sent)
+                if "targets"
+                in json.loads(wire.get("input", [{}, {"content": "{}"}])[1]["content"])
+            )
+            assert repair_position == 5
         if unsupported:
             assert len(journal["candidates"]) <= 2
             repair_calls = [
