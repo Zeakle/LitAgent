@@ -1,0 +1,223 @@
+{
+  "case_id": "few-shot-metric",
+  "source_commit": "fa760bf6c1e162759482f979285a82fd94e3e37c",
+  "identity": "2f9c151744144af47ba3b49775d234b63d0d5ee18d8b37801d9d323ff619624d",
+  "writer_prompt_contract": "grounded-writer-native-intent-v3",
+  "new_requests": 6,
+  "new_known_tokens": 83749,
+  "new_unknown_hold": 0,
+  "reasoning_tokens_included": 2409,
+  "elapsed_ms": 223977,
+  "pro_requests": 6,
+  "lite_requests": 0,
+  "complete_body_generated": false,
+  "summary_generated": false,
+  "reviewer_completed": false,
+  "evaluation": "not_run",
+  "strict_delivered": 0,
+  "planned_cases": 3,
+  "unrun_cases": 2,
+  "repairs": 2,
+  "third_repair_sent": false,
+  "final_failure": {
+    "family": "protocol",
+    "code": "writer_json_invalid",
+    "diagnostics": [
+      {
+        "reason": "writer_repair_limit",
+        "limit": 2,
+        "failed_call": "body:experiments"
+      }
+    ],
+    "stage": "native_reemission_preflight",
+    "failed_call": "body:experiments",
+    "request_sent": false,
+    "body_section": "experiments"
+  },
+  "compiled_report_sha256": null,
+  "report_sha256": null,
+  "scientific_score": null,
+  "calls": [
+    {
+      "name": "body:introduction",
+      "stage": "synthesis",
+      "status": "response_received",
+      "http_status": 200,
+      "provider_status": "completed",
+      "model": "doubao-seed-2-1-pro-260915",
+      "thinking_mode": "enabled",
+      "reasoning_effort": "low",
+      "output_limit": 20000,
+      "input_tokens": 9338,
+      "output_tokens": 1014,
+      "known_tokens": 10352,
+      "reasoning_tokens_included": 433,
+      "raw_characters": 1249,
+      "raw_sha256": "fb6ffb78e018cb581a233cfa500db389e7bdbc891a009c2e19e5a6cf6b2bc8ea",
+      "raw_error": {},
+      "resolved_by": null,
+      "native_schema_echo_equal": true,
+      "actual_service_tier": "default"
+    },
+    {
+      "name": "body:taxonomy",
+      "stage": "synthesis",
+      "status": "failed_no_replay",
+      "http_status": 200,
+      "provider_status": "completed",
+      "model": "doubao-seed-2-1-pro-260915",
+      "thinking_mode": "enabled",
+      "reasoning_effort": "low",
+      "output_limit": 20000,
+      "input_tokens": 9792,
+      "output_tokens": 1614,
+      "known_tokens": 11406,
+      "reasoning_tokens_included": 475,
+      "raw_characters": 2330,
+      "raw_sha256": "c3de576dbc0cc4defb0bbd0350d50609f199c962a0e45f1bf84dac7c9019e6b1",
+      "raw_error": {
+        "family": "protocol",
+        "code": "writer_json_invalid",
+        "diagnostics": [
+          {
+            "offset": 2330,
+            "line": 1,
+            "column": 2331,
+            "message": "Expecting ',' delimiter",
+            "raw_sha256": "c3de576dbc0cc4defb0bbd0350d50609f199c962a0e45f1bf84dac7c9019e6b1"
+          }
+        ]
+      },
+      "resolved_by": "repair_0",
+      "native_schema_echo_equal": true,
+      "complete_units_for_readonly_audit": 22,
+      "raw_string_coverage_for_reemission_audit": true,
+      "actual_service_tier": "default"
+    },
+    {
+      "name": "repair_0",
+      "stage": "repair",
+      "status": "response_received",
+      "http_status": 200,
+      "provider_status": "completed",
+      "model": "doubao-seed-2-1-pro-260915",
+      "thinking_mode": "enabled",
+      "reasoning_effort": "low",
+      "output_limit": 20000,
+      "input_tokens": 13345,
+      "output_tokens": 1201,
+      "known_tokens": 14546,
+      "reasoning_tokens_included": 61,
+      "raw_characters": 2332,
+      "raw_sha256": "c380331796bcad2e4e5de88ecae317b705ba4d68de87845d1a4e09eb4e7c4186",
+      "raw_error": {},
+      "resolved_by": null,
+      "native_schema_echo_equal": true,
+      "actual_service_tier": "default"
+    },
+    {
+      "name": "body:methods",
+      "stage": "synthesis",
+      "status": "failed_no_replay",
+      "http_status": 200,
+      "provider_status": "completed",
+      "model": "doubao-seed-2-1-pro-260915",
+      "thinking_mode": "enabled",
+      "reasoning_effort": "low",
+      "output_limit": 20000,
+      "input_tokens": 11035,
+      "output_tokens": 2482,
+      "known_tokens": 13517,
+      "reasoning_tokens_included": 674,
+      "raw_characters": 3893,
+      "raw_sha256": "f126b6217406cc6562384dd65e58e91081d33c9287a913a00d4ae243da14ea91",
+      "raw_error": {
+        "family": "protocol",
+        "code": "writer_json_invalid",
+        "diagnostics": [
+          {
+            "offset": 3893,
+            "line": 1,
+            "column": 3894,
+            "message": "Expecting ',' delimiter",
+            "raw_sha256": "f126b6217406cc6562384dd65e58e91081d33c9287a913a00d4ae243da14ea91"
+          }
+        ]
+      },
+      "resolved_by": "repair_1",
+      "native_schema_echo_equal": true,
+      "complete_units_for_readonly_audit": 42,
+      "raw_string_coverage_for_reemission_audit": true,
+      "actual_service_tier": "default"
+    },
+    {
+      "name": "repair_1",
+      "stage": "repair",
+      "status": "response_received",
+      "http_status": 200,
+      "provider_status": "completed",
+      "model": "doubao-seed-2-1-pro-260915",
+      "thinking_mode": "enabled",
+      "reasoning_effort": "low",
+      "output_limit": 20000,
+      "input_tokens": 17108,
+      "output_tokens": 2170,
+      "known_tokens": 19278,
+      "reasoning_tokens_included": 360,
+      "raw_characters": 3895,
+      "raw_sha256": "d41240004754f479edc65e9c7cea9fd6b6b2634a147c4486daf55485a05a949d",
+      "raw_error": {},
+      "resolved_by": null,
+      "native_schema_echo_equal": true,
+      "actual_service_tier": "default"
+    },
+    {
+      "name": "body:experiments",
+      "stage": "synthesis",
+      "status": "failed_no_replay",
+      "http_status": 200,
+      "provider_status": "completed",
+      "model": "doubao-seed-2-1-pro-260915",
+      "thinking_mode": "enabled",
+      "reasoning_effort": "low",
+      "output_limit": 20000,
+      "input_tokens": 13031,
+      "output_tokens": 1619,
+      "known_tokens": 14650,
+      "reasoning_tokens_included": 406,
+      "raw_characters": 2538,
+      "raw_sha256": "b93374a5caf3623d5481a9f5ea0d072936514c5b9ef3cca1524f330fdb66d6f1",
+      "raw_error": {
+        "family": "protocol",
+        "code": "writer_json_invalid",
+        "diagnostics": [
+          {
+            "offset": 2538,
+            "line": 1,
+            "column": 2539,
+            "message": "Expecting ',' delimiter",
+            "raw_sha256": "b93374a5caf3623d5481a9f5ea0d072936514c5b9ef3cca1524f330fdb66d6f1"
+          }
+        ]
+      },
+      "resolved_by": null,
+      "native_schema_echo_equal": true,
+      "complete_units_for_readonly_audit": 18,
+      "raw_string_coverage_for_reemission_audit": true,
+      "actual_service_tier": "default"
+    }
+  ],
+  "cumulative": {
+    "model_requests": 777,
+    "model_known_tokens": 4567451,
+    "model_unknown_conservative_tokens": 1142672,
+    "jev_requests": 67,
+    "judge_requests": 0
+  },
+  "trace_url": "http://localhost:3000/project/litagent-local-project/traces/71b7ce9103b4906588c9daa56e570e28",
+  "completed_body_chapters": [
+    "introduction",
+    "taxonomy",
+    "methods"
+  ]
+}

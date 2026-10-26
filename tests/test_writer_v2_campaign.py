@@ -434,3 +434,168 @@ def test_public_link_does_not_claim_a_report_for_failed_generation(
     public = json.loads((out / "benchmark.json").read_text())
     assert public["cases"][0]["report_sha256"] == report_sha
     assert public["planned"] == 3 and public["run"] == 1 and public["passed"] == 0
+
+
+def json_failure_call(raw, *, resolved_by=None):
+    """Generate diagnostics through the actual writer parser, without a transport."""
+    from litagent.writing_v2 import WriterError, parse_response
+
+    with pytest.raises(WriterError) as error:
+        parse_response(raw, {})
+    assert error.value.code == "writer_json_invalid"
+    result = {
+        "stage": "synthesis",
+        "raw": raw,
+        "raw_sha256": hashlib.sha256(raw.encode()).hexdigest(),
+        "finish_reason": "stop",
+        "failure": {
+            "code": error.value.code,
+            "family": error.value.family,
+            "diagnostics": error.value.diagnostics,
+        },
+    }
+    if resolved_by:
+        result["resolved_by"] = resolved_by
+    return result
+
+
+@pytest.mark.parametrize(
+    "scenario,expected",
+    [
+        ("bound", "body:experiments"),
+        ("repair_call", "repair_1"),
+        ("legacy_unique", "body:experiments"),
+        ("legacy_ambiguous", None),
+        ("bound_missing", None),
+        ("bound_resolved", None),
+        ("different_error", None),
+        ("conflicting_terminal", None),
+        ("invalid_sidecar", None),
+        ("path_escape", None),
+        ("missing_diagnostics", None),
+        ("offset_bool", None),
+        ("offset_negative", None),
+        ("offset_overflow", None),
+        ("offset_wrong_in_range", None),
+        ("call_sha_conflict", None),
+        ("diagnostic_sha_conflict", None),
+        ("bad_stage", None),
+        ("stage_object", None),
+        ("finish_object", None),
+    ],
+)
+def test_protocol_export_binds_only_current_unresolved_error(
+    tmp_path, monkeypatch, scenario, expected
+):
+    """Resolved failures cannot impersonate the current location in any format."""
+    monkeypatch.chdir(tmp_path)
+    early = json_failure_call(
+        '{"taxonomy": [\n {"sentences": []}', resolved_by="repair_0"
+    )
+    final = json_failure_call('{"experiments": [\n  {"sentences": []}')
+    journal = {
+        "calls": {"body:taxonomy": early, "body:experiments": final},
+        "failure": {"code": "writer_json_invalid", "failed_call": "body:experiments"},
+    }
+    run_id = "bound"
+    failure_code = "writer_json_invalid"
+    if scenario == "repair_call":
+        journal["calls"]["repair_1"] = json_failure_call('{"experiments": [')
+        journal["failure"]["call"] = "repair_1"
+    if scenario.startswith("legacy"):
+        journal.pop("failure")
+    if scenario == "legacy_ambiguous":
+        early.pop("resolved_by")
+    if scenario == "bound_missing":
+        journal["failure"]["failed_call"] = "missing"
+    if scenario == "bound_resolved":
+        journal["failure"]["failed_call"] = "body:taxonomy"
+    if scenario == "different_error":
+        failure_code = "responses_incomplete"
+    if scenario == "conflicting_terminal":
+        journal["failure"]["code"] = "responses_incomplete"
+    if scenario == "path_escape":
+        run_id = "../escape"
+    diagnostic = final["failure"]["diagnostics"][0]
+    if scenario == "missing_diagnostics":
+        final["failure"]["diagnostics"] = []
+    if scenario.startswith("offset_"):
+        diagnostic["offset"] = {
+            "offset_bool": True,
+            "offset_negative": -1,
+            "offset_overflow": len(final["raw"]) + 1,
+            "offset_wrong_in_range": 1,
+        }[scenario]
+    if scenario == "call_sha_conflict":
+        final["raw_sha256"] = "f" * 64
+    if scenario == "diagnostic_sha_conflict":
+        diagnostic["raw_sha256"] = "f" * 64
+    if scenario == "bad_stage":
+        final["stage"] = "untrusted scientific prose"
+    if scenario == "stage_object":
+        final["stage"] = {"text": "must not be published"}
+    if scenario == "finish_object":
+        final["finish_reason"] = {"text": "must not be published"}
+    path = Path("artifacts/targeted-repairs", run_id + ".json.writer-v2.json")
+    atomic_json(path, journal)
+    if scenario == "invalid_sidecar":
+        path.write_text("not JSON")
+    before_journal = path.read_bytes()
+    state = {
+        "identity": "suite",
+        "status": "stopped",
+        "cases": [
+            {
+                "case_id": campaign.CASES[0][0],
+                "run_id": run_id,
+                "status": "blocked",
+                "generated": False,
+                "evaluation": "not_complete",
+                "publishable": False,
+                "requests": 6,
+                "known_tokens": 100,
+                "failure_code": failure_code,
+                "protocol_diagnostic": {"obsolete": "must be replaced"},
+            }
+        ],
+    }
+    original = copy.deepcopy(state)
+    manifest = {
+        "identity": "suite",
+        "source_commit": "actual-run-source",
+        "history": {},
+        "limits": dict(campaign.LIMITS),
+    }
+    public = campaign.export(tmp_path / "suite", state, manifest)
+    assert state == original and path.read_bytes() == before_journal
+    assert public["source_commit"] == "actual-run-source"
+    assert public["view_version"] == "frozen-writing-view-v10"
+    assert public["passed"] == 0 and public["cases"][0]["failure_code"] == failure_code
+    row = public["cases"][0]
+    out = tmp_path / "benchmarks/survey/results/suite"
+    html = (out / "benchmark.html").read_text()
+    assert (
+        json.loads(
+            html.split('<script id="data" type="application/json">')[1].split(
+                "</script>"
+            )[0]
+        )
+        == public
+    )
+    csv_row = list(csv.DictReader((out / "benchmark.csv").open()))[0]
+    if expected is None:
+        assert "protocol_diagnostic" not in row
+        assert row["protocol_call"] is None and csv_row["protocol_call"] == ""
+    else:
+        call = journal["calls"][expected]
+        bound = row["protocol_diagnostic"]
+        assert bound["call"] == csv_row["protocol_call"] == expected
+        assert (
+            bound["raw_response_sha256"]
+            == call["raw_sha256"]
+            == csv_row["protocol_raw_response_sha256"]
+        )
+        assert bound["offset"] == len(call["raw"]) == int(csv_row["protocol_offset"])
+        markdown = (out / "benchmark.md").read_text()
+        assert expected in markdown and call["raw_sha256"] in markdown
+        assert bound["scientific_assessment"] == "not_run"

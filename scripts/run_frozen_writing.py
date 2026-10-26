@@ -837,6 +837,104 @@ def repair_accounting(run_id):
     }
 
 
+def writer_protocol_diagnostic(run_id, failure_code):
+    """Locate the terminal unresolved JSON error without borrowing recovered calls."""
+    if (
+        failure_code != "writer_json_invalid"
+        or not isinstance(run_id, str)
+        or Path(run_id).name != run_id
+    ):
+        return None
+    path = Path("artifacts/targeted-repairs", run_id + ".json.writer-v2.json")
+    try:
+        journal = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return None
+    if not isinstance(journal, dict) or not isinstance(journal.get("calls"), dict):
+        return None
+    calls = journal["calls"]
+    failure = journal.get("failure", {})
+    if failure is None:
+        failure = {}
+    if not isinstance(failure, dict) or failure.get("code") not in (None, failure_code):
+        return None
+
+    def unresolved(call):
+        """Retain only the exact failure family that the view is explaining."""
+        return (
+            isinstance(call, dict)
+            and call.get("resolved_by") is None
+            and isinstance(call.get("failure"), dict)
+            and call["failure"].get("code") == failure_code
+        )
+
+    # A failed repair has its own call; failed_call may still name the original.
+    if "call" in failure or "failed_call" in failure:
+        name = failure.get("call") or failure.get("failed_call")
+        if not isinstance(name, str) or not unresolved(calls.get(name)):
+            return None
+    else:
+        candidates = [name for name, call in calls.items() if unresolved(call)]
+        # Historical object order cannot prove which of multiple failures is current.
+        if len(candidates) != 1:
+            return None
+        name = candidates[0]
+    if not isinstance(name, str) or not re.fullmatch(r"[a-z][a-z0-9:_-]{0,127}", name):
+        return None
+    call = calls[name]
+    if not isinstance(call.get("stage"), str) or call["stage"] not in {
+        "synthesis",
+        "summary",
+        "repair",
+        "reviewer",
+    }:
+        return None
+    if call.get("finish_reason") not in (
+        None,
+        "stop",
+        "length",
+        "invalid",
+        "content_filter",
+    ):
+        return None
+    raw = call.get("raw")
+    records = call["failure"].get("diagnostics")
+    if not isinstance(raw, str) or not isinstance(records, list) or not records:
+        return None
+    record = records[0]
+    if not isinstance(record, dict):
+        return None
+    offset = record.get("offset")
+    if type(offset) is not int or not 0 <= offset <= len(raw):
+        return None
+    try:
+        raw_sha = hashlib.sha256(raw.encode()).hexdigest()
+    except UnicodeError:
+        return None
+    if call.get("raw_sha256") != raw_sha or record.get("raw_sha256") != raw_sha:
+        return None
+    try:
+        json.loads(raw)
+    except json.JSONDecodeError as error:
+        if error.pos != offset:
+            return None
+        line, column = error.lineno, error.colno
+    except (ValueError, RecursionError):
+        return None
+    else:
+        return None
+    return {
+        "call": name,
+        "stage": call.get("stage"),
+        "raw_response_sha256": raw_sha,
+        "offset": offset,
+        "line": line,
+        "column": column,
+        "finish_reason": call.get("finish_reason"),
+        "scientific_assessment": "not_run",
+    }
+
+
 def export(root, state, manifest):
     """Publish one sanitized data source with separate execution and quality outcomes."""
     executed = state["cases"]
@@ -910,34 +1008,17 @@ def export(root, state, manifest):
         for key in ("http_status", "provider_error_code", "rejected_parameter"):
             row[key] = (diagnostic or {}).get(key)
     for row in rows:
-        if row.get("failure_code") != "writer_json_invalid" or not row.get("run_id"):
-            continue
-        journal = Path(
-            "artifacts/targeted-repairs", row["run_id"] + ".json.writer-v2.json"
+        row.pop("protocol_diagnostic", None)
+        diagnostic = writer_protocol_diagnostic(
+            row.get("run_id"), row.get("failure_code")
         )
-        if not journal.exists():
-            continue
-        calls = json.loads(journal.read_text()).get("calls", {}).values()
-        call = next(
-            (
-                c
-                for c in calls
-                if c.get("failure", {}).get("code") == "writer_json_invalid"
-            ),
-            None,
+        if diagnostic:
+            row["protocol_diagnostic"] = diagnostic
+        row["protocol_call"] = (diagnostic or {}).get("call")
+        row["protocol_raw_response_sha256"] = (diagnostic or {}).get(
+            "raw_response_sha256"
         )
-        if call and isinstance(call.get("raw"), str):
-            raw = call["raw"]
-            offset = call["failure"]["diagnostics"][0]["offset"]
-            row["protocol_diagnostic"] = {
-                "stage": call["stage"],
-                "raw_response_sha256": hashlib.sha256(raw.encode()).hexdigest(),
-                "offset": offset,
-                "line": raw.count("\n", 0, offset) + 1,
-                "column": offset - raw.rfind("\n", 0, offset),
-                "finish_reason": call.get("finish_reason"),
-                "scientific_assessment": "not_run",
-            }
+        row["protocol_offset"] = (diagnostic or {}).get("offset")
 
     def display(value):
         """Render absent statistics as unavailable rather than scientific zero."""
@@ -982,7 +1063,7 @@ def export(root, state, manifest):
 
     public = {
         "version": VERSION,
-        "view_version": "frozen-writing-view-v9",
+        "view_version": "frozen-writing-view-v10",
         "suite_id": root.name,
         "identity": manifest["identity"],
         "source_commit": manifest["source_commit"],
@@ -1047,6 +1128,9 @@ def export(root, state, manifest):
         "report_sha256",
         "failure_family",
         "failure_code",
+        "protocol_call",
+        "protocol_raw_response_sha256",
+        "protocol_offset",
         "http_status",
         "provider_error_code",
         "rejected_parameter",
@@ -1076,6 +1160,13 @@ def export(root, state, manifest):
         + (manifest.get("writer_prompt_contract") or "unavailable")
         + "\n"
     )
+    if any(r.get("failure_code") == "writer_json_invalid" for r in rows):
+        md += "\n终态语法定位 / Terminal syntax location\n\n|Case|Call|Raw SHA|Offset|\n|---|---|---|---|\n"
+        md += "".join(
+            f"|{r['case_id']}|{display(r['protocol_call'])}|{display(r['protocol_raw_response_sha256'])}|{display(r['protocol_offset'])}|\n"
+            for r in rows
+            if r.get("failure_code") == "writer_json_invalid"
+        )
     md += f"\n新增已知用量{public['new_usage']['known_tokens']} tokens，未知保守占用{public['new_usage']['unknown_hold']}，{public['new_usage']['requests']}请求。历史用量独立保留，不重复计算提取费用。失败和未运行题不移出分母，不追加到通过。\n\n[JSON](benchmark.json) · [CSV](benchmark.csv) · [HTML](benchmark.html)\n"
     md += "\n共享修复次数 / Shared repair attempts (limit 2; missing history unavailable)\n\n|Case|Attempts|\n|---|---|\n"
     md += "".join(f"|{r['case_id']}|{display(r.get('repairs'))}|\n" for r in rows)
