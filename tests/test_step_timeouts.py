@@ -78,6 +78,7 @@ def response(content="{}"):
 @pytest.mark.asyncio
 async def test_default_timeouts_reach_actual_runner_graph(monkeypatch):
     cfg = load_config()
+    monkeypatch.setenv("LLM_API_KEY", "offline-test-key")
     cfg.observability.enabled = False
     cfg.mcp_servers = {}
     agent = LitAgent(cfg)

@@ -436,6 +436,7 @@ class TestClientEmitsLLMCall:
         client = OpenAICompatibleClient(
             base_url="x",
             model="m",
+            api_key="offline-test-key",
             trace_hook=lambda e, d: events.append((e, d)),
         )
         client._client = _FakeOpenAI()
@@ -483,6 +484,7 @@ class TestClientEmitsLLMCall:
         client = OpenAICompatibleClient(
             base_url="x",
             model="m",
+            api_key="offline-test-key",
             trace_hook=lambda event, data: events.append((event, data)),
         )
         client._client = fake_openai
@@ -507,7 +509,9 @@ class TestClientEmitsLLMCall:
         from litagent.llm.client import OpenAICompatibleClient
 
         create = AsyncMock(return_value=_FakeCompletion())
-        client = OpenAICompatibleClient(base_url="x", model="m")
+        client = OpenAICompatibleClient(
+            base_url="x", model="m", api_key="offline-test-key"
+        )
         client._client = SimpleNamespace(
             chat=SimpleNamespace(completions=SimpleNamespace(create=create))
         )
@@ -526,7 +530,9 @@ class TestClientEmitsLLMCall:
         """The client remains usable without a trace hook."""
         from litagent.llm.client import OpenAICompatibleClient
 
-        client = OpenAICompatibleClient(base_url="x", model="m")
+        client = OpenAICompatibleClient(
+            base_url="x", model="m", api_key="offline-test-key"
+        )
         client._client = _FakeOpenAI()
         resp = await client.chat([{"role": "user", "content": "hi"}])
         assert resp.content == "hello"

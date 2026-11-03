@@ -163,6 +163,7 @@ async def test_stage_views_share_budget_and_stop_without_retries(monkeypatch, fa
 @pytest.mark.asyncio
 async def test_real_wiring_routes_all_workers_and_owns_only_one_transport(monkeypatch):
     cfg = load_config()
+    monkeypatch.setenv("LLM_API_KEY", "offline-test-key")
     cfg.observability.enabled = False
     cfg.mcp_servers = {}
     agent = LitAgent(cfg)
@@ -192,6 +193,7 @@ async def test_real_wiring_routes_all_workers_and_owns_only_one_transport(monkey
 @pytest.mark.asyncio
 async def test_partial_wire_failure_closes_its_published_owner(monkeypatch):
     cfg = load_config()
+    monkeypatch.setenv("LLM_API_KEY", "offline-test-key")
     cfg.observability.enabled = False
     agent = LitAgent(cfg)
     owned = []
@@ -215,6 +217,7 @@ async def test_real_targeted_repair_uses_pro_and_all_three_reassessment_calls_us
     tmp_path, monkeypatch
 ):
     cfg = load_config()
+    monkeypatch.setenv("LLM_API_KEY", "offline-test-key")
     cfg.observability.enabled = False
     cfg.mcp_servers = {}
     agent = LitAgent(cfg)

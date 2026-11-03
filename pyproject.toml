@@ -46,6 +46,7 @@ dev = [
     "bibtexparser>=1.4,<2",
     "rispy>=0.9,<1",
     "pytest-asyncio>=0.23",
+    "ragas>=0.4,<0.5",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
     "langfuse>=3.0,<4",

@@ -201,6 +201,16 @@ def test_non_string_constants_are_rejected_by_the_actual_raw_boundary(schema, li
         dumped({"x": [{}] * 1024}),
         dumped({"x": ["v"] * 8200}),
     ],
+    ids=(
+        "none",
+        "empty",
+        "over-byte-limit",
+        "lone-surrogate",
+        "deep-open",
+        "deep-balanced",
+        "over-object-nodes",
+        "over-array-items",
+    ),
 )
 def test_raw_limits_run_before_generic_decoder_or_schema_work(schema, raw):
     """Pathological raw input raises a checked error rather than RecursionError."""
