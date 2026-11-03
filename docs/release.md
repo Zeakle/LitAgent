@@ -26,21 +26,33 @@ Phase 14.5 or the 15/15 scientific quality objective complete.
 8. Push the reviewed commits. Create the engineering tag only after mandatory checks pass.
    Remote Linux CI is pending until its actual result can be read.
 
-Local acceptance logs remain under ignored `artifacts/acceptance/interview-release-20261020/`.
+Current acceptance logs remain under ignored `artifacts/acceptance/closeout-20261104/`.
 A short public status summary is written after checks, without private paths or prompts.
 
 ## Live validation boundary
 
-One actual-input Pro protocol request, at most 120k total tokens / 20k output / zero
-retries; included in the old parent-family budget. It must pass unmodified JSON,
-schema, permissions, summary references, lossless projection and the original compiler.
-This is not a scientific evaluation or a new Survey.
+The current engineering closeout uses one frozen-source run each for few-shot,
+ViT and NeRF, in that order, reusing existing public evidence without retrieval or
+extraction. `engineering-closeout-v1` fixes the existing writer, source-only view,
+separated evaluation dimensions and at most one inventory recovery within two
+shared modifications. It adds no public API switches or model response protocol.
 
-Only on success: one fixed-code Survey each for ViT, few-shot and NeRF, maximum
-1.5M tokens / 192 requests in total. Unknown usage or technical failure stops further
-paid requests. Ordinary scientific failure remains in the denominator. No repeat-until-pass.
-Judge/Jev stay off. An unsuccessful live validation is an explicit product limitation,
-not permission to lower strict scientific support or alter historical results.
+Pro writes and repairs; Lite reviews and evaluates. Thinking is disabled;
+Judge/Jev are off and transport retries are zero. Each case is admitted before
+execution with a fixed plan, at most 4.5M tokens / 64 requests; the suite ceiling
+is 13.5M / 192. Historical charges and unknown holds remain separate. Technical,
+identity or unknown-usage failures stop further paid work; scientific and valid
+quality failures remain visible and do not remove cases from the denominator.
+There is no extra protocol probe or second suite to obtain a successful outcome.
+
+Strict scientific support remains 1.0 with full coverage and global/core checks.
+Engineering release does not require all three scientific outcomes to pass.
+When they do not, live Survey stays experimental and Phase 14.5 stays in progress.
+No score, original report or previous charge is rewritten for release.
+
+[Current completed trial and closeout status](closeout.md). Earlier bounded
+protocol grants and results below are historical; their smaller limits do not
+describe the current suite.
 
 ## Known limitations
 

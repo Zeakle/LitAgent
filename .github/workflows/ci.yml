@@ -31,6 +31,6 @@ jobs:
       - name: Isort
         run: python -m isort --check-only --profile black src tests
       - name: Whitespace
-        run: git diff --check HEAD^
+        run: git diff-tree --check --root -r -m HEAD
       - name: Offline tests
         run: python -m pytest -v -m "not integration and not live"

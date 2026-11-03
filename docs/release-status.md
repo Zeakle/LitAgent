@@ -1,4 +1,30 @@
-# Engineering release status · 2026-10-23
+# Engineering release status
+
+## Current closeout · 2026-11-04
+
+The current implementation and bounded recovery policy are summarized in
+[the closeout status](closeout.md). Latest completed real Survey remains 054:
+3/3 drafts and Reviewers, 0/3 valid complete evaluations, 0/3 strict deliveries.
+No scientific improvement is inferred from offline tests. Live Survey remains
+experimental and Phase 14.5 remains in progress.
+
+The current candidate has 31 passing closeout regressions and unchanged historical
+plans. The first full run had 9,205 passes and one stale CI-command assertion;
+root/shallow-clone whitespace behavior now has executable positive/negative tests.
+An intermediate rerun was interrupted at 1,145 passes to fix 12 baseline
+formatting files; it exited 2 and is not a successful default run. Whole-tree
+Black/isort now pass. Final default regression exited 0: **9,210 passed,
+25 deselected, 8 warnings**, with unchanged frozen source before/after execution.
+A fresh constrained API installation from local pip cache passes `pip check`;
+the final clean wheel reaches presentation health in 3.54s
+from an empty directory with no keys or private state. Six fixture exports and
+desktop/actual-390px bilingual source/keyboard checks passed within their stated
+synthetic scope.
+
+Ark and GitHub DNS resolution currently fail. The new fixed three-domain suite,
+remote Linux CI, push and engineering tag are pending; none is claimed complete.
+
+## Historical acceptance through 2026-10-23
 
 ## Verified locally
 

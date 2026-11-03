@@ -70,23 +70,17 @@ flowchart LR
 reranker 改善排名但显著增加延迟，因此没有切为默认。全文配置同时改变索引材料，
 不能把差异全部归因于排名算法。[完整结果与解释边界](./benchmarks/rag/RESULTS.md)。
 
-账户恢复后的最新冻结写作验收：**1/3 题启动**、**6 次请求／83,749 已知tokens**，用量完整。
-三个章节通过本地契约检查，但第三个非法章节响应出现时，共享协议恢复额度 **2/2** 已用尽。
-宿主保留协议错误并停止；摘要、Reviewer和Evaluation未运行，严格交付 **0/3**，另外两题未启动。
-早期中间稿仍未核验；新的Reviewer独立配置仅有离线证据，本轮真实运行没有到达该阶段。
-旧账户拒绝运行及其 **56,129 tokens 未知保守占用**保持；该占用不是实测消耗。
-历史失败与费用均未清零，未重新检索或提取。
-早期端到端诊断为 **27 请求／126,023 tokens**，也在 Evaluation 前停止；正式 **0/15**。
-这些是技术失败，不能当作科学支持率零分。
-历史单次 NeRF 在旧策略下交付成功，不代表当前严格策略成功，也不证明质量增益。
-[最新写作验收](./benchmarks/survey/results/frozen-writer-three-domain-20261026-016/README.md) ·
-[Reviewer独立配置离线修复](./docs/reviewer-role-review-20261026.md) ·
-[供应商字段映射审查](./docs/native-transport-review-20261025.md) ·
-[思考配置与预算审查](./docs/native-thinking-review-20261024.md) ·
-[章节生成离线修复](./docs/writer-sections-review-20261024.md) ·
-[完整材料预算修复](./docs/native-input-review-20261024.md) ·
-[摘要协议离线审查](./docs/native-intent-review-20261024.md) ·
-[早期端到端试点](./benchmarks/survey/results/survey-reliability-20261021-001/README.md) ·
+最新完成的受控 Survey 验证：**3/3 题生成正文、摘要并完成 Reviewer**，但
+**有效完整 Evaluation 0/3、严格交付 0/3**。固定 few-shot、ViT、NeRF 三域材料，
+实际 **85 请求／1,354,668 已知 tokens**，新增未知用量为 0。
+失败包含核验维度、断言清单问题和未获引用支持的科学推论。局部支持数量只用于诊断，
+不能当作有效整篇科学评分。
+
+工程收尾候选组合完整原文写作、报告／证据分维度核验，并在两次共享修复内限制清单
+最多复核一次；正文候选仍须完整复评。新的固定三域验证尚未完成，live Survey 保持实验标识。
+正式 **0/15**，没有独立人工校准的准确率；历史费用和未知占用分别保留。
+
+[当前 Survey 状态与发布边界](./docs/closeout.md) ·
 [Survey 方法与历史](./benchmarks/survey/README.md) ·
 [公开包来源绑定](./src/litagent/static/presentation/manifest.json)。
 

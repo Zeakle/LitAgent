@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import os
+import shlex
+import subprocess
 from pathlib import Path
 
+import pytest
 import yaml
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -42,8 +45,65 @@ def test_ci_runs_format_and_offline_test_gates() -> None:
     )
     assert "black --check src tests" in text
     assert "isort --check-only --profile black src tests" in text
-    assert "git diff --check HEAD^" in text
+    assert "git diff-tree --check --root -r -m HEAD" in text
+    assert "git diff --check HEAD^" not in text
     assert 'pytest -v -m "not integration and not live"' in text
+
+
+@pytest.mark.parametrize("shallow", [False, True])
+@pytest.mark.parametrize("trailing_space", [False, True])
+def test_whitespace_gate_checks_root_and_shallow_commits(
+    tmp_path: Path, shallow: bool, trailing_space: bool
+) -> None:
+    """Execute the workflow gate without requiring a resolvable HEAD parent."""
+    workflow = yaml.safe_load(
+        (PROJECT_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    )
+    command = shlex.split(
+        next(
+            step["run"]
+            for step in workflow["jobs"]["test"]["steps"]
+            if step.get("name") == "Whitespace"
+        )
+    )
+    repository = tmp_path / "source"
+    subprocess.run(["git", "init", "-q", str(repository)], check=True)
+    (repository / "content.txt").write_text(
+        "value \n" if trailing_space else "value\n", encoding="utf-8"
+    )
+    subprocess.run(["git", "-C", str(repository), "add", "content.txt"], check=True)
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repository),
+            "-c",
+            "user.name=CI fixture",
+            "-c",
+            "user.email=ci@example.invalid",
+            "commit",
+            "--no-gpg-sign",
+            "-qm",
+            "root",
+        ],
+        check=True,
+    )
+    if shallow:
+        target = tmp_path / "shallow"
+        subprocess.run(
+            ["git", "clone", "-q", "--depth", "1", repository.as_uri(), str(target)],
+            check=True,
+        )
+        repository = target
+        assert (repository / ".git" / "shallow").is_file()
+    result = subprocess.run(
+        [command[0], "-C", str(repository), *command[1:]],
+        capture_output=True,
+        text=True,
+    )
+    assert (result.returncode != 0) is trailing_space, result.stderr + result.stdout
+    if trailing_space:
+        assert "trailing whitespace" in result.stdout
 
 
 def test_live_marker_is_declared() -> None:

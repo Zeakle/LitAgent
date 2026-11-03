@@ -84,30 +84,22 @@ Reranking improves ranking metrics but adds substantial latency; it is not the
 default. Full-text profiles change indexed material and are separate from pure
 ranking comparisons. [Full results and limitations](./benchmarks/rag/RESULTS.md).
 
-Latest frozen-evidence writing validation after account recovery: **1/3 cases
-started**, **6 HTTP requests / 83,749 known tokens**, with complete usage.
-Three chapters passed local checks, but a third malformed chapter exhausted the **2/2**
-shared protocol-recovery allowance. The host retained the protocol error and
-stopped; summaries, Reviewer and Evaluation did not run. Strict delivery is
-**0/3**, with two cases not started. The earlier intermediate draft remains
-unverified; the new Reviewer configuration has offline evidence but was not
-reached in this live run.
-The earlier account-rejection run and its **56,129-token conservative unknown
-hold** remain preserved; that hold is not a measured token charge.
-No retrieval or extraction was repeated. The earlier end-to-end diagnostic used
-**27 requests / 126,023 tokens** and also stopped before Evaluation. Formal cases:
-**0/15 run**. These are technical failures, not measured scientific scores.
-An older single NeRF run passed an older, less strict policy; it is not success
-under the current policy or evidence of a quality improvement.
-[Latest writing validation](./benchmarks/survey/results/frozen-writer-three-domain-20261026-016/README.md) ·
-[Offline Reviewer configuration repair](./docs/reviewer-role-review-20261026.md) ·
-[Provider mapping review](./docs/native-transport-review-20261025.md) ·
-[Thinking configuration and budget review](./docs/native-thinking-review-20261024.md) ·
-[Offline chapter-generation repair](./docs/writer-sections-review-20261024.md) ·
-[Complete-input budget repair](./docs/native-input-review-20261024.md) ·
-[Summary protocol review](./docs/native-intent-review-20261024.md) ·
-[Earlier end-to-end trial](./benchmarks/survey/results/survey-reliability-20261021-001/README.md) ·
-[Survey methodology](./benchmarks/survey/README.md) ·
+Latest completed controlled Survey trial: **3/3 generated**, including summaries
+and Reviewer; **0/3 valid complete Evaluations and 0/3 strict deliveries**.
+The three frozen few-shot, ViT and NeRF cases used **85 requests / 1,354,668 known
+tokens**, with no new unknown usage. Failures include evaluation-dimension and
+inventory issues plus unsupported scientific inferences. Partial support counts
+are diagnostic observations, not valid whole-report scientific scores.
+
+The engineering closeout candidate combines original-source writing with separate
+report/evidence checks. It allows at most one inventory recheck within the same
+two shared repair attempts; every prose candidate still needs full re-evaluation.
+Its next controlled three-case validation is pending. Live Survey remains experimental.
+Formal Survey cases remain **0/15**; no independently human-calibrated accuracy is
+available. Historical charges and unknown holds are retained separately.
+
+[Current Survey status and release boundary](./docs/closeout.md) ·
+[Survey methodology and historical trials](./benchmarks/survey/README.md) ·
 [Packaged public records](./src/litagent/static/presentation/manifest.json).
 
 ## Optional live use
