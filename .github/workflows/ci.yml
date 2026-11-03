@@ -26,6 +26,16 @@ jobs:
           node-version: '24.14.0'
       - name: Install
         run: python -m pip install -c requirements/release-constraints.txt -e ".[dev]"
+      - name: Native evaluation dependency check
+        run: |
+          python -m pip check
+          python - <<'PY'
+          from ragas.metrics.collections.faithfulness.util import StatementGeneratorPrompt
+          from litagent.eval.ragas_contract import build_nli_prompt
+
+          assert StatementGeneratorPrompt().instruction
+          assert build_nli_prompt(["A"], ["A"])
+          PY
       - name: Black
         run: python -m black --check src tests
       - name: Isort

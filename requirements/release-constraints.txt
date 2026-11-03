@@ -1,4 +1,4 @@
-# Python 3.11 direct dependency versions validated for this release.
+# Python 3.11 direct and legacy Ragas compatibility versions for this release.
 # Install with pip -c; optional extras are not installed by this file.
 asyncpg==0.31.0
 bibtexparser==1.4.4
@@ -7,7 +7,10 @@ fastapi==0.141.1
 httpx==0.28.1
 isort==6.1.0
 jsonschema==4.26.0
+langchain==1.4.2
+langchain-community==0.3.31
 langchain-core==1.6.5
+langchain-openai==1.6.6
 langchain-text-splitters==1.1.2
 langfuse==3.15.0
 langgraph==1.2.12
