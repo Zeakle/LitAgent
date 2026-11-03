@@ -1,0 +1,4 @@
+case_id,run_id,status,generated,reviewer_completed,evaluation,evaluation_valid,publishable,supported,unsupported,unverified,inventory_recoveries,prose_repairs,requests,known_tokens,unknown_hold,usage_complete,elapsed_ms,report_sha256,compiled_report_sha256,draft_sha256,material_status,failure_family,failure_code
+few-shot-metric,frozen-writer-closeout-20261104-055-few-shot-metric,blocked,True,False,not_complete,False,False,,,,0,0,7,96102,0,True,279682,,9befef13e257fa9a8efa77358fd8bbbcb4db1e704c71dd63cc219179a5f593d6,9befef13e257fa9a8efa77358fd8bbbcb4db1e704c71dd63cc219179a5f593d6,unreviewed_draft,output_limit,responses_incomplete
+vit-data-efficient,,not_run,False,False,not_run,,False,,,,,,0,0,0,,,,,,no_report,,not_started_after_stop
+nerf-foundations,,not_run,False,False,not_run,,False,,,,,,0,0,0,,,,,,no_report,,not_started_after_stop

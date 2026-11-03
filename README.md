@@ -84,17 +84,20 @@ Reranking improves ranking metrics but adds substantial latency; it is not the
 default. Full-text profiles change indexed material and are separate from pure
 ranking comparisons. [Full results and limitations](./benchmarks/rag/RESULTS.md).
 
-Latest completed controlled Survey trial: **3/3 generated**, including summaries
-and Reviewer; **0/3 valid complete Evaluations and 0/3 strict deliveries**.
-The three frozen few-shot, ViT and NeRF cases used **85 requests / 1,354,668 known
-tokens**, with no new unknown usage. Failures include evaluation-dimension and
-inventory issues plus unsupported scientific inferences. Partial support counts
-are diagnostic observations, not valid whole-report scientific scores.
+Latest fixed closeout trial **055** planned three cases and ran one: **1/3 body
+and summaries generated, 0/3 Reviewers completed, 0/3 valid complete Evaluations,
+0/3 strict deliveries**. The few-shot Reviewer exhausted its 4,096 output-token
+limit with thinking disabled. The suite stopped as specified; ViT and NeRF remain
+unrun in the denominator. **7 requests / 96,102 known tokens / no new unknown usage**.
+This is an output-capacity failure, not evidence of a scientific score of zero.
 
-The engineering closeout candidate combines original-source writing with separate
-report/evidence checks. It allows at most one inventory recheck within the same
-two shared repair attempts; every prose candidate still needs full re-evaluation.
-Its next controlled three-case validation is pending. Live Survey remains experimental.
+The original, SHA-verified draft is available as **unreviewed and unevaluated**
+material in the presentation. It is not a deliverable report. The implementation
+allows at most one inventory recheck within two shared modifications; full
+re-evaluation is still mandatory. No extra paid suite was run to obtain a pass.
+[Current results and source bindings](./src/litagent/static/presentation/closeout.json)
+· [Engineering status and limitations](./docs/closeout.md).
+
 Formal Survey cases remain **0/15**; no independently human-calibrated accuracy is
 available. Historical charges and unknown holds are retained separately.
 
