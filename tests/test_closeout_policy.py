@@ -1,6 +1,8 @@
 """Keep the release policy bounded without changing historical evaluation rules."""
 
 import copy
+import json
+import sys
 
 import pytest
 from test_evaluation_dimensions_identity import dimension_envelope
@@ -15,6 +17,7 @@ from litagent.closeout import (
     recovery_allowed,
     result_summary,
 )
+from litagent.config import load_config
 from litagent.eval.inventory_recovery import (
     DEFINITION_RECOVERY_INSTRUCTION,
     MIXED_CONTRACT,
@@ -23,6 +26,8 @@ from litagent.eval.inventory_recovery import (
 )
 from litagent.frozen_writing import plan_frozen_budget
 from litagent.safety.planned_accounting import _plan
+from litagent.writing_v2 import RANGE_WRITING_PLAN
+from scripts import run_frozen_writing as campaign
 
 
 def scope():
@@ -64,6 +69,78 @@ def test_closeout_plan_uses_complete_existing_stack_and_distinct_identity(
             budget_policy="planned-budget-v7",
             **{**flags, "round_resource_contract": None},
         )
+
+
+def test_closeout_cli_reaches_actual_prepare_and_freezes_every_policy(
+    case, tmp_path, monkeypatch
+):
+    """Run CLI, manifest production, planning and validation with portable inputs."""
+    config = load_config()
+    monkeypatch.chdir(tmp_path)
+    archives = tmp_path / "artifacts/runs"
+    archives.mkdir(parents=True)
+    for _, run_id in campaign.CASES:
+        archive = {
+            "run_id": run_id,
+            "query": case.packet["query"],
+            "events": [],
+            "nodes": {
+                "selection": {
+                    "kind": "evidence.retrieve",
+                    "output": case.selection.to_dict(),
+                },
+                "extract": {
+                    "kind": "worker",
+                    "task_id": "extract",
+                    "agent_type": "extractor",
+                    "output": [{"paper_id": "evit"}],
+                },
+            },
+        }
+        (archives / (run_id + ".json")).write_text(json.dumps(archive))
+    baseline = (
+        tmp_path
+        / "artifacts/acceptance/survey-reliability-20261022-004/acceptance-summary.json"
+    )
+    baseline.parent.mkdir(parents=True)
+    baseline.write_text(
+        json.dumps({"cumulative": {"model_requests": 0, "model_known_tokens": 0}})
+    )
+    source = tmp_path / "portable_source.py"
+    source.write_text('"""Portable closeout preparation fixture."""\n')
+    monkeypatch.setattr(
+        campaign, "source_paths", lambda: [source.relative_to(tmp_path)]
+    )
+    monkeypatch.setattr(campaign.subprocess, "check_output", lambda *a, **kw: "a" * 40)
+    monkeypatch.setattr(campaign, "load_config", lambda: config)
+    root = tmp_path / "prepared"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_frozen_writing",
+            "--root",
+            str(root),
+            "--prepare",
+            "--closeout-profile",
+            PROFILE,
+        ],
+    )
+    campaign.main()
+    selected_config = campaign.profile_config(config, campaign.ROUND_PROFILE)
+    manifest = campaign.validate(root, selected_config)
+    for key, expected in profile_flags(PROFILE).items():
+        assert manifest[key] == expected
+    assert manifest["writing_plan"] == RANGE_WRITING_PLAN
+    assert (
+        manifest["writing_parameters"]["semantic_conflict_policy"]
+        == "host-unverified-continue-v1"
+    )
+    for plan in manifest["budget_plans"].values():
+        assert plan["status"] == "admitted"
+        assert profile_fields(plan["envelope"])["closeout_profile"] == PROFILE
+        assert plan["repair_limit"] == 2
+    assert not (root / "state.json").exists() and not (root / ".live.lock").exists()
 
 
 @pytest.mark.parametrize("status", ["completed", "failed", "cancelled", "started"])

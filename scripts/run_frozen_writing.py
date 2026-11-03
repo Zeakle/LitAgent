@@ -6388,6 +6388,11 @@ def main():
                 else {}
             ),
             **(
+                {"semantic_conflict_policy": args.semantic_conflict_policy}
+                if args.closeout_profile is not None
+                else {}
+            ),
+            **(
                 {"evaluation_response_contract": args.evaluation_response_contract}
                 if args.evaluation_response_contract is not None
                 else {}
