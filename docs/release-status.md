@@ -2,6 +2,14 @@
 
 ## Current closeout · 2026-11-04
 
+Follow-up `057b57b` fixes a frozen-policy argument omitted by the actual CLI.
+The full CLI/prepare/planning/validation regression first reproduced the failure,
+then the 21 policy tests passed. Final post-fix default regression exited 0:
+**9,211 passed, 25 deselected, 8 warnings**, including all 32 closeout cases.
+The 671-file frozen source was unchanged before and after execution. Suite 055
+is prepared, independently validated and bound to these gates with all historical
+accounting retained. No new paid request has been sent.
+
 The current implementation and bounded recovery policy are summarized in
 [the closeout status](closeout.md). Latest completed real Survey remains 054:
 3/3 drafts and Reviewers, 0/3 valid complete evaluations, 0/3 strict deliveries.
@@ -13,7 +21,7 @@ plans. The first full run had 9,205 passes and one stale CI-command assertion;
 root/shallow-clone whitespace behavior now has executable positive/negative tests.
 An intermediate rerun was interrupted at 1,145 passes to fix 12 baseline
 formatting files; it exited 2 and is not a successful default run. Whole-tree
-Black/isort now pass. Final default regression exited 0: **9,210 passed,
+Black/isort now pass. The preceding frozen source's default regression exited 0: **9,210 passed,
 25 deselected, 8 warnings**, with unchanged frozen source before/after execution.
 A fresh constrained API installation from local pip cache passes `pip check`;
 the final clean wheel reaches presentation health in 3.54s
