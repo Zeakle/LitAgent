@@ -252,7 +252,9 @@ class Scheduler:
                 last_error = None
                 last_error_type = "WorkerError"
                 last_reason_code = "worker_execution_failed"
+                last_error_details = {}
                 for attempt in range(task.max_retries + 1):
+                    last_error_details = {}
                     try:
 
                         async with deadline_scope(task.timeout_ms / 1000):
@@ -297,8 +299,19 @@ class Scheduler:
                         last_reason_code = "worker_timeout"
                     except asyncio.TimeoutError as e:
                         last_error = str(e) or "Worker operation timed out"
-                        last_error_type = "TimeoutError"
-                        last_reason_code = "worker_inner_timeout"
+                        request_timeout = (
+                            getattr(e, "reason_code", None) == "llm_request_timeout"
+                        )
+                        last_error_type = (
+                            type(e).__name__ if request_timeout else "TimeoutError"
+                        )
+                        last_reason_code = (
+                            "llm_request_timeout"
+                            if request_timeout
+                            else "worker_inner_timeout"
+                        )
+                        if request_timeout:
+                            last_error_details["diagnostics"] = e.diagnostics
                     except Exception as e:
                         last_error = str(e)
                         last_error_type = type(e).__name__
@@ -347,6 +360,7 @@ class Scheduler:
                         "error": last_error or "Unknown Error",
                         "error_type": last_error_type,
                         "reason_code": last_reason_code,
+                        **last_error_details,
                     },
                 )
             finally:

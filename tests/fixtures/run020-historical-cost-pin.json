@@ -1,0 +1,297 @@
+{
+  "fixture_contract": "reviewed-historical-cost-plan-fixture-v1",
+  "science_gold_standard": false,
+  "provenance": {
+    "cost_metadata_only": true,
+    "origin": "Original020 all-known costs, already recorded in040; not a scientific verdict or a complete original manifest.",
+    "root": "artifacts/acceptance/frozen-writer-three-domain-20261027-020",
+    "case_id": "few-shot-metric",
+    "run_id": "frozen-writer-three-domain-20261027-020-few-shot-metric",
+    "profile": "writer_disabled_responses_planned_budget_v4",
+    "anchor_manifest_sha256": "d1e0c551be2164d5213b70dd17e5b472e231c19a7f8655936c4f527d61bd4efd",
+    "anchor_receipt_sha256": "8cadcad90d35e027eda039e8cd4efadbd29f8fe44a56a7fb03731b1050098dd0",
+    "manifest_sha256": "41de55d76648254a21edb3085c868f6f5d77e625e59179a0492b6d64ae452ef9",
+    "state_sha256": "74a3021aa5a8255032a412e2f2ad1beb6d698f0be248bdf8cc89a5d0ba26b7fe",
+    "ledger_sha256": "438293aab08744e8cc69c755b5003f83d8e27dd2d7e76730fa1e2a49292d499f",
+    "archive_sha256": "95f0d72fd88148b67d7070ac6fe7bd055f7f10f056f03291a5eb2299ff07bdaa"
+  },
+  "prepared_plan": {
+    "contract": "planned-budget-v4",
+    "measurement": "complete-utf8-reservation-v1",
+    "input_identity": "c4d9b821dc293d02fce84038d23838cf46bf1f6062a424196c603060a22bf7c2",
+    "status": "admitted",
+    "reason": null,
+    "required_tokens": 875396,
+    "planned_tokens": 970000,
+    "maximum_tokens": 1000000,
+    "planned_requests": 11,
+    "maximum_requests": 64,
+    "context_tokens": 131072,
+    "context_reservation_limit": 117964,
+    "context_margin": 0.1,
+    "spent_tokens": 0,
+    "spent_requests": 0,
+    "scope_bounds": {
+      "report_max_units": 20,
+      "authored_text_max_characters": 2000,
+      "diagnostic_string_max_characters": 2000,
+      "model_assertions": 32,
+      "assertions_per_batch": 16,
+      "assessment_batches": 2,
+      "shared_repairs": 0,
+      "envelope_contract": "budgeted-writer-envelope-v1"
+    },
+    "stages": {
+      "body": {
+        "count": 4,
+        "request_cap": 76280,
+        "output_tokens": 20000,
+        "bound": "host_envelope_upper_bound",
+        "reserved_tokens": 305120
+      },
+      "summary": {
+        "count": 1,
+        "request_cap": 60000,
+        "output_tokens": 20000,
+        "bound": "host_envelope_upper_bound",
+        "reserved_tokens": 60000
+      },
+      "reviewer": {
+        "count": 1,
+        "request_cap": 90000,
+        "output_tokens": 4096,
+        "bound": "host_envelope_upper_bound",
+        "reserved_tokens": 90000
+      },
+      "inventory": {
+        "count": 1,
+        "request_cap": 90000,
+        "output_tokens": 16384,
+        "bound": "host_envelope_upper_bound",
+        "reserved_tokens": 90000
+      },
+      "assessment": {
+        "count": 2,
+        "request_cap": 90000,
+        "output_tokens": 16384,
+        "bound": "host_envelope_upper_bound",
+        "reserved_tokens": 180000
+      },
+      "global": {
+        "count": 1,
+        "request_cap": 90000,
+        "output_tokens": 16384,
+        "bound": "host_envelope_upper_bound",
+        "reserved_tokens": 90000
+      },
+      "body_initial": {
+        "count": 1,
+        "output_tokens": 20000,
+        "bound": "exact_wire",
+        "request_cap": 60276,
+        "reserved_tokens": 60276
+      }
+    },
+    "repair_limit": 0,
+    "repair_selection": "largest-admissible-complete-path-v1",
+    "repair_allocation": "locked",
+    "initial_evaluation_included": true,
+    "initial_evaluation_reserved": true,
+    "assessment_input_contract": "host-citation-support-aliases-v2",
+    "envelope": {
+      "contract": "budgeted-writer-envelope-v1",
+      "body_max_units": 16,
+      "summary_max_units_per_section": 2,
+      "model_assertions": 32,
+      "assessment_batches": 2,
+      "body_json_bytes": 16000,
+      "summary_json_bytes": 4000,
+      "claim_json_bytes": 16384,
+      "request_caps": {
+        "body": 76280,
+        "summary": 60000,
+        "reviewer": 90000,
+        "repair": 117964,
+        "inventory": 90000,
+        "assessment": 90000,
+        "global": 90000
+      },
+      "source_identity": "c4d9b821dc293d02fce84038d23838cf46bf1f6062a424196c603060a22bf7c2",
+      "builder_identity": "f77ed725f9462cd44dcf2d1c5f86538079ccf0c778a842d1e875a479b55ce6a8",
+      "frozen_component_reservation": 35196,
+      "identity": "5dd4667cce31d42b59be86485f62dda4fd23751d615a7a5abdb9fa5a16cb7767"
+    },
+    "identity": "11c8cf49287b3260988236427fb244e9f1ed8d65a9c0bf7e13543d47ce8995b1"
+  },
+  "snapshot": {
+    "schema_version": 2,
+    "strict_policy": "planned-budget-v4",
+    "plan": {
+      "contract": "planned-budget-v4",
+      "measurement": "complete-utf8-reservation-v1",
+      "input_identity": "f79d8513872830c2296bfe093065f774f9adf2f19bdef6ee8264ededa9809501",
+      "status": "admitted",
+      "reason": null,
+      "required_tokens": 875396,
+      "planned_tokens": 970000,
+      "maximum_tokens": 1000000,
+      "planned_requests": 11,
+      "maximum_requests": 64,
+      "context_tokens": 131072,
+      "context_reservation_limit": 117964,
+      "context_margin": 0.1,
+      "spent_tokens": 0,
+      "spent_requests": 0,
+      "scope_bounds": {
+        "report_max_units": 20,
+        "authored_text_max_characters": 2000,
+        "diagnostic_string_max_characters": 2000,
+        "model_assertions": 32,
+        "assertions_per_batch": 16,
+        "assessment_batches": 2,
+        "shared_repairs": 0,
+        "envelope_contract": "budgeted-writer-envelope-v1"
+      },
+      "stages": {
+        "body": {
+          "count": 4,
+          "request_cap": 76280,
+          "output_tokens": 20000,
+          "bound": "host_envelope_upper_bound",
+          "reserved_tokens": 305120
+        },
+        "summary": {
+          "count": 1,
+          "request_cap": 60000,
+          "output_tokens": 20000,
+          "bound": "host_envelope_upper_bound",
+          "reserved_tokens": 60000
+        },
+        "reviewer": {
+          "count": 1,
+          "request_cap": 90000,
+          "output_tokens": 4096,
+          "bound": "host_envelope_upper_bound",
+          "reserved_tokens": 90000
+        },
+        "inventory": {
+          "count": 1,
+          "request_cap": 90000,
+          "output_tokens": 16384,
+          "bound": "host_envelope_upper_bound",
+          "reserved_tokens": 90000
+        },
+        "assessment": {
+          "count": 2,
+          "request_cap": 90000,
+          "output_tokens": 16384,
+          "bound": "host_envelope_upper_bound",
+          "reserved_tokens": 180000
+        },
+        "global": {
+          "count": 1,
+          "request_cap": 90000,
+          "output_tokens": 16384,
+          "bound": "host_envelope_upper_bound",
+          "reserved_tokens": 90000
+        },
+        "body_initial": {
+          "count": 1,
+          "output_tokens": 20000,
+          "bound": "exact_wire",
+          "request_cap": 60276,
+          "reserved_tokens": 60276
+        }
+      },
+      "repair_limit": 0,
+      "repair_selection": "largest-admissible-complete-path-v1",
+      "repair_allocation": "locked",
+      "initial_evaluation_included": true,
+      "initial_evaluation_reserved": true,
+      "assessment_input_contract": "host-citation-support-aliases-v2",
+      "envelope": {
+        "contract": "budgeted-writer-envelope-v1",
+        "body_max_units": 16,
+        "summary_max_units_per_section": 2,
+        "model_assertions": 32,
+        "assessment_batches": 2,
+        "body_json_bytes": 16000,
+        "summary_json_bytes": 4000,
+        "claim_json_bytes": 16384,
+        "request_caps": {
+          "body": 76280,
+          "summary": 60000,
+          "reviewer": 90000,
+          "repair": 117964,
+          "inventory": 90000,
+          "assessment": 90000,
+          "global": 90000
+        },
+        "source_identity": "f79d8513872830c2296bfe093065f774f9adf2f19bdef6ee8264ededa9809501",
+        "builder_identity": "f77ed725f9462cd44dcf2d1c5f86538079ccf0c778a842d1e875a479b55ce6a8",
+        "frozen_component_reservation": 44689,
+        "identity": "f14a873b4820f352e5a1b842e1e03f556fd3b262b758452731a62dce9a0cbcba"
+      },
+      "identity": "d842afa8edb474ae824053a804b844c3f2e223a817031741d9636a8da2dfd3d2"
+    },
+    "max_tokens": 970000,
+    "used_tokens": 32720,
+    "call_count": 3,
+    "requests_sent": 3,
+    "usage_uncertain": false,
+    "stop_reason": "strict_worker_failed",
+    "entries": {
+      "84ee213a6513b1f3f54c05b574f2e5a419d58cf8464be173cc25596134e1dadf:body:introduction": {
+        "stage": "body_initial",
+        "status": "settled",
+        "reserved_tokens": 60276,
+        "actual_tokens": 10392,
+        "usage_sha256": "6fb967b4713581843841bb29cabfebdf091590b0959802c1aac8923e5bbd82ac",
+        "sent": true,
+        "wire_sha256": "c07f5ff918d92e84d003bca670ae3916108aab19dd690476f2215891dc1e907e"
+      },
+      "84ee213a6513b1f3f54c05b574f2e5a419d58cf8464be173cc25596134e1dadf:body:taxonomy": {
+        "stage": "body",
+        "status": "settled",
+        "reserved_tokens": 61051,
+        "actual_tokens": 10580,
+        "usage_sha256": "8a229c012c957f65dfe1255098926087bb327df2cdce4f0e62ca48ec79ca6d1a",
+        "sent": true,
+        "wire_sha256": "5f098e6ca9a7834a2538638b177e706dc03ac697b94a94405515ee52ae50ce14"
+      },
+      "84ee213a6513b1f3f54c05b574f2e5a419d58cf8464be173cc25596134e1dadf:body:methods": {
+        "stage": "body",
+        "status": "settled",
+        "reserved_tokens": 61958,
+        "actual_tokens": 11748,
+        "usage_sha256": "003b239c39dd437043804bc2299ba5fe1bbe5f859d9e78c7132405b5bac4465b",
+        "sent": true,
+        "wire_sha256": "6d4d425ced59aab35021d014896ad5e412da9418d869d031665f5fccdd7f3067"
+      }
+    },
+    "closed_stages": []
+  },
+  "usage": [
+    {
+      "prompt_tokens": 10189,
+      "completion_tokens": 203,
+      "total_tokens": 10392
+    },
+    {
+      "prompt_tokens": 10372,
+      "completion_tokens": 208,
+      "total_tokens": 10580
+    },
+    {
+      "prompt_tokens": 10593,
+      "completion_tokens": 1155,
+      "total_tokens": 11748
+    }
+  ],
+  "costs": {
+    "requests": 3,
+    "known_tokens": 32720,
+    "unknown_hold": 0,
+    "usage_complete": true
+  }
+}

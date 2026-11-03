@@ -134,6 +134,18 @@ class BatchLLM:
                 "decisions": decisions,
                 "conflicts": [],
             }
+            decision_schema = (
+                payload.get("schema", {}).get("$defs", {}).get("PassageDecision", {})
+            )
+            properties = decision_schema.get("properties")
+            if (
+                isinstance(properties, dict)
+                and "classification_valid" not in properties
+            ):
+                # The mock provider follows the actual requested wire shape;
+                # canonical host fields are not invented by external transport.
+                for decision in decisions:
+                    decision.pop("classification_valid")
         else:
             result = {
                 "units": [

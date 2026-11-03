@@ -1,0 +1,3126 @@
+{
+  "source": "036 public taxonomy response; no scientific assessment",
+  "raw": "{\"units\":[{\"text\":\"分类的第一准则是先区分“总体学习范式”和“范式内部的度量学习环节”。所给文献把少样本学习概括为迁移学习与元学习两大类：迁移学习先在ImageNet等上游数据集预训练、再在下游任务微调；元学习通过许多不同分类任务训练可泛化的学习能力。度量学习并不等同于这一上位划分，它可以在support-query的episodic任务中学习相似性比较，也可以作为少样本分类器的嵌入与距离设计来分析。\",\"fact_card_refs\":[\"c10\",\"c16\",\"c17\",\"c20\"],\"paragraph_start\":true},{\"text\":\"在度量学习内部，本文采用综述给出的三阶段标准组织方法：学习特征嵌入、学习类别表示、学习距离或相似性度量。该标准对应一次少样本预测的主要决策点——样本如何被编码、支持集如何聚合成类别的代表、查询样本如何与这些代表比较；因此，它比按发表年份或网络骨干分类更适合比较方法贡献。\",\"fact_card_refs\":[\"c7\",\"c15\",\"c18\"],\"paragraph_start\":false},{\"text\":\"第一类“特征嵌入”方法的判据，是改进网络所产生的潜在表示，而不是改变最终最近邻规则本身。深度K-tuplet网络把经典triplet network扩展为利用多个输入样本关系的K-tuplet训练；Proto-Triplet Loss与ICNN loss则分别围绕类内/类间距离和近邻分数约束嵌入空间。多层输出嵌入网络进一步从不同阶段抽取特征，以同时利用浅层、全局和抽象信息。\",\"fact_card_refs\":[\"c1\",\"c4\",\"c2\"],\"paragraph_start\":true},{\"text\":\"第二类“类别表示”方法的判据，是支持集信息以何种数学对象代表一个类别。最近原型方法把查询样本映射到嵌入空间，并依据与支持集原型的特征相似性寻找最近原型；SRL则把传统全局向量表示扩展为局部CNN特征空间中的子空间，并以prototypical subspace或discriminative subspace聚合K-shot信息。二者的关键差异不是距离是否存在，而是类别被表示为单个向量、原型集合还是能够保留空间结构与类内多样性的子空间。\",\"fact_card_refs\":[\"c18\",\"c9\",\"c11\"],\"paragraph_start\":true},{\"text\":\"第三类“距离/相似性度量”方法的判据，是比较函数是预先固定的，还是由数据或任务条件学习得到。早期度量方法通常侧重学习可迁移嵌入并预定义Euclidean等固定度量；Relation Network把这种静态比较替换为可学习的非线性关系模块，使网络学习图像间或图像与类别描述间的深度度量。目标条件类别表示方法也沿这一方向偏离传统静态度量：它让类别表示随目标图像变化，并训练网络执行类别间比较，而不是对所有查询使用同一固定比较规则。\",\"fact_card_refs\":[\"c14\",\"c5\",\"c3\"],\"paragraph_start\":true},{\"text\":\"这些类别是互补的设计轴而非互斥排名：一个方法可同时改进嵌入和度量，例如K-tuplet表示可与非线性距离函数结合；也可同时改变表示对象和距离，例如SRL用加权子空间距离计算图像相似性。相似性不确定性建模则属于在已有query-support/prototype比较之上的优化与置信度处理：它把观测相似度转为概率表示，并用图模型联合估计查询与各原型配对的不确定性，因此不应仅按是否使用最近邻原型而与普通原型网络混为一谈。\",\"fact_card_refs\":[\"c1\",\"c9\",\"c18\",\"c1\"],\"paragraph_start\":true},{\"text\":\"还需把任务目标与效率目标分开。跨域评估衡量的是用miniImageNet训练后在Caltech-101、CUB-200、Stanford Dogs、Cars等不同数据域或八个测试域上的泛化表现；Meta-Dataset上的大规模迁移学习评估则用于揭示episodic方法和迁移学习各自的不足。上述结果服务于泛化能力或范式边界比较，并不自动提供推理速度、参数量、FLOPs或部署效率结论；若源文献没有在相同骨干、shot/way设置和协议下报告这些成本，本文不把准确率主张改写成效率排名。\",\"fact_card_refs\":[\"c13\",\"c19\",\"c2\",\"c12\",\"c6\"],\"paragraph_start\":true}]}",
+  "raw_sha256": "cab2d1f22fd482ced6592f269655cbbd6e4298dc7a86565dcebcd70bc4170ed7",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "taxonomy": {
+        "type": "array",
+        "prefixItems": [
+          {
+            "type": "object",
+            "properties": {
+              "sentences": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  }
+                ],
+                "items": false,
+                "minItems": 1
+              }
+            },
+            "required": [
+              "sentences"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "sentences": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  }
+                ],
+                "items": false,
+                "minItems": 1
+              }
+            },
+            "required": [
+              "sentences"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "sentences": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  }
+                ],
+                "items": false,
+                "minItems": 1
+              }
+            },
+            "required": [
+              "sentences"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "sentences": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  }
+                ],
+                "items": false,
+                "minItems": 1
+              }
+            },
+            "required": [
+              "sentences"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "sentences": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  }
+                ],
+                "items": false,
+                "minItems": 1
+              }
+            },
+            "required": [
+              "sentences"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "sentences": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  }
+                ],
+                "items": false,
+                "minItems": 1
+              }
+            },
+            "required": [
+              "sentences"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "sentences": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  }
+                ],
+                "items": false,
+                "minItems": 1
+              }
+            },
+            "required": [
+              "sentences"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "sentences": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  }
+                ],
+                "items": false,
+                "minItems": 1
+              }
+            },
+            "required": [
+              "sentences"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "sentences": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  }
+                ],
+                "items": false,
+                "minItems": 1
+              }
+            },
+            "required": [
+              "sentences"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "sentences": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  }
+                ],
+                "items": false,
+                "minItems": 1
+              }
+            },
+            "required": [
+              "sentences"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "sentences": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  }
+                ],
+                "items": false,
+                "minItems": 1
+              }
+            },
+            "required": [
+              "sentences"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "sentences": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  }
+                ],
+                "items": false,
+                "minItems": 1
+              }
+            },
+            "required": [
+              "sentences"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "sentences": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  }
+                ],
+                "items": false,
+                "minItems": 1
+              }
+            },
+            "required": [
+              "sentences"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "sentences": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  }
+                ],
+                "items": false,
+                "minItems": 1
+              }
+            },
+            "required": [
+              "sentences"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "sentences": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  }
+                ],
+                "items": false,
+                "minItems": 1
+              }
+            },
+            "required": [
+              "sentences"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "sentences": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  }
+                ],
+                "items": false,
+                "minItems": 1
+              }
+            },
+            "required": [
+              "sentences"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "sentences": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  }
+                ],
+                "items": false,
+                "minItems": 1
+              }
+            },
+            "required": [
+              "sentences"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "sentences": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  }
+                ],
+                "items": false,
+                "minItems": 1
+              }
+            },
+            "required": [
+              "sentences"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "sentences": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  }
+                ],
+                "items": false,
+                "minItems": 1
+              }
+            },
+            "required": [
+              "sentences"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "sentences": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "fact_card_refs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "c1",
+                            "c2",
+                            "c3",
+                            "c4",
+                            "c5",
+                            "c6",
+                            "c7",
+                            "c8",
+                            "c9",
+                            "c10",
+                            "c11",
+                            "c12",
+                            "c13",
+                            "c14",
+                            "c15",
+                            "c16",
+                            "c17",
+                            "c18",
+                            "c19",
+                            "c20"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "fact_card_refs"
+                    ],
+                    "additionalProperties": false
+                  }
+                ],
+                "items": false,
+                "minItems": 1
+              }
+            },
+            "required": [
+              "sentences"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "items": false,
+        "minItems": 1
+      }
+    },
+    "required": [
+      "taxonomy"
+    ],
+    "additionalProperties": false
+  },
+  "schema_sha256": "c54ce8cf0c1790c84d8b693b4501883bf6eee508bd67fa2b66f0b143414c0065",
+  "wire_schema": {
+    "type": "object",
+    "properties": {
+      "units": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            "fact_card_refs": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "c1",
+                  "c2",
+                  "c3",
+                  "c4",
+                  "c5",
+                  "c6",
+                  "c7",
+                  "c8",
+                  "c9",
+                  "c10",
+                  "c11",
+                  "c12",
+                  "c13",
+                  "c14",
+                  "c15",
+                  "c16",
+                  "c17",
+                  "c18",
+                  "c19",
+                  "c20"
+                ]
+              },
+              "minItems": 0,
+              "maxItems": 20,
+              "uniqueItems": true
+            },
+            "paragraph_start": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "text",
+            "fact_card_refs",
+            "paragraph_start"
+          ],
+          "additionalProperties": false
+        },
+        "minItems": 1,
+        "maxItems": 59
+      }
+    },
+    "required": [
+      "units"
+    ],
+    "additionalProperties": false
+  },
+  "expected_error_path": [
+    "units",
+    5,
+    "fact_card_refs"
+  ],
+  "scientific_assessment": "not_verified"
+}

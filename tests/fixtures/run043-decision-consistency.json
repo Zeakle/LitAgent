@@ -1,0 +1,192 @@
+{
+  "contract": "run043-decision-consistency-v1",
+  "science_gold_standard": false,
+  "raw_provider_judgments_unvalidated": true,
+  "provenance": {
+    "checkpoint_identity": "5f8a9daf7f763037d9b37ef1a255f65c9758b88dda3523b71be326a224b9f272",
+    "report_sha256": "c44d2a2b5d46cdc44f33a6a1e4c23b5b41c6faea6302ce6e56aae83b678a843c",
+    "original_response_sha256": "c7af628e7150a9f488aa9c0798c634e66f2254de18f5081e3f9bae7c58ef4967",
+    "native_fragment_sha256": "24559babd9ae52893d56535810f83fcbf1004d0c8f7d05b29dfbb1d5e15d2db9",
+    "interpretation": "Original provider fields are contract counterexamples, not human scientific labels; no verdict is relabeled."
+  },
+  "fragment": {
+    "source_unit_id": "unit:10:6684",
+    "source_fragment_id": "f5",
+    "prose": "当每个类别有 K 张图像时，SRL 设计了两种模板子空间来聚合 K-shot 信息：prototypical subspace（PS）和 discriminative subspace（DS）。相对于采用全局向量原型的方法，该机制的主要贡献是在类别表示中保留图像内部空间结构和多样性；其适用前提是方法能够从局部 CNN 特征构造并比较子空间，而不是对任意骨干或任意距离函数都天然成立。",
+    "citation_aliases": [
+      "e10",
+      "e5"
+    ],
+    "native_source_fragment_id": "unit:10:6684:native:writer:methods:2:1"
+  },
+  "cited_materials": {
+    "e5": {
+      "paper_title": "Uncertainty-Aware Few-Shot Image Classification",
+      "original_support_ref": "s3"
+    },
+    "e10": {
+      "paper_title": "Subspace Representation Learning for Few-shot Image Classification",
+      "original_support_ref": "s7"
+    }
+  },
+  "original_supports": {
+    "s3": {
+      "paper_id": "arxiv:2010.04525",
+      "text": "Few-shot image classification learns to recognize new categories from limited labelled data. Metric learning based approaches have been widely investigated, where a query sample is classified by finding the nearest prototype from the support set based on their feature similarities. A neural network has different uncertainties on its calculated similarities of different pairs. Understanding and modeling the uncertainty on the similarity could promote the exploitation of limited samples in few-shot optimization. In this work, we propose Uncertainty-Aware Few-Shot framework for image classification by modeling uncertainty of the similarities of query-support pairs and performing uncertainty-aware optimization. Particularly, we exploit such uncertainty by converting observed similarities to probabilistic representations and incorporate them to the loss for more effective optimization. In order to jointly consider the similarities between a query and the prototypes in a support set, a graph-based model is utilized to estimate the uncertainty of the pairs. Extensive experiments show our proposed method brings significant improvements on top of a strong baseline and achieves the state-of-the-art performance."
+    },
+    "s7": {
+      "paper_id": "arxiv:2105.00379",
+      "text": "In this paper, we propose a subspace representation learning (SRL) framework to tackle few-shot image classification tasks. It exploits a subspace in local CNN feature space to represent an image, and measures the similarity between two images according to a weighted subspace distance (WSD). When K images are available for each class, we develop two types of template subspaces to aggregate K-shot information: the prototypical subspace (PS) and the discriminative subspace (DS). Based on the SRL framework, we extend metric learning based techniques from vector to subspace representation. While most previous works adopted global vector representation, using subspace representation can effectively preserve the spatial structure, and diversity within an image. We demonstrate the effectiveness of the SRL framework on three public benchmark datasets: MiniImageNet, TieredImageNet and Caltech-UCSD Birds-200-2011 (CUB), and the experimental results illustrate competitive/superior performance of our method compared to the previous state-of-the-art."
+    }
+  },
+  "support_passages": {
+    "p1": [
+      "e5",
+      "s3",
+      0,
+      1220
+    ],
+    "p3": [
+      "e10",
+      "s7",
+      0,
+      1053
+    ]
+  },
+  "cases": [
+    {
+      "claim": {
+        "claim_id": "claim_60",
+        "kind": "scientific",
+        "claim_text": "当每个类别有 K 张图像时，SRL 设计了两种模板子空间来聚合 K-shot 信息：prototypical subspace（PS）和 discriminative subspace（DS）。",
+        "source_unit_id": "unit:10:6684",
+        "source_fragment_id": "unit:10:6684:native:writer:methods:2:1",
+        "source_quote": "当每个类别有 K 张图像时，SRL 设计了两种模板子空间来聚合 K-shot 信息：prototypical subspace（PS）和 discriminative subspace（DS）。相对于采用全局向量原型的方法，该机制的主要贡献是在类别表示中保留图像内部空间结构和多样性；其适用前提是方法能够从局部 CNN 特征构造并比较子空间，而不是对任意骨干或任意距离函数都天然成立。 [E:arxiv:2105.00379:abstract:claim:38498384e907] [E:arxiv:2010.04525:abstract:claim:7178a9c4f03f]",
+        "source_start": 6876,
+        "source_end": 7166,
+        "section": "代表性方法分析",
+        "evidence_ids": [
+          "arxiv:2105.00379:abstract:claim:38498384e907",
+          "arxiv:2010.04525:abstract:claim:7178a9c4f03f"
+        ],
+        "local_error": null
+      },
+      "wire_claim": {
+        "claim_id": "claim_60",
+        "kind": "scientific",
+        "claim_text": "当每个类别有 K 张图像时，SRL 设计了两种模板子空间来聚合 K-shot 信息：prototypical subspace（PS）和 discriminative subspace（DS）。",
+        "source_fragment_id": "f5",
+        "evidence_aliases": null,
+        "required_support_aspects": [
+          "predicate",
+          "conditions"
+        ],
+        "allowed_support_ids": [
+          "p1",
+          "p3"
+        ]
+      },
+      "raw_decision": {
+        "claim_id": "claim_60",
+        "correct_kind": "scientific",
+        "atomic": true,
+        "classification_valid": true,
+        "source_faithful": true,
+        "status": "unsupported",
+        "reason_code": "attribution_mismatch",
+        "explanation": "断言与 f5 原文一致，但 f5 的证据列表包含 e5，而 e5 对应原文 s3 是关于不确定性感知少样本分类的工作，未提及 SRL 的两种模板子空间；e10 对应原文 s7 虽支持该断言，但 e5 与该断言无关，存在证据归属不匹配。",
+        "support_basis": [
+          {
+            "support_id": "p3"
+          }
+        ],
+        "aspect_checks": [
+          {
+            "aspect": "predicate",
+            "supported": true,
+            "support_ids": [
+              "p3"
+            ],
+            "explanation": "s7 明确说明当每个类别有 K 张图像时，开发了两种模板子空间来聚合 K-shot 信息：原型子空间（PS）和判别子空间（DS），与断言一致。"
+          },
+          {
+            "aspect": "conditions",
+            "supported": true,
+            "support_ids": [
+              "p3"
+            ],
+            "explanation": "s7 明确限定条件为每个类别有 K 张图像的 K-shot 场景，与断言条件一致。"
+          }
+        ]
+      },
+      "expected_error": "evaluation_decision_consistency_invalid"
+    },
+    {
+      "claim": {
+        "claim_id": "claim_61",
+        "kind": "scientific",
+        "claim_text": "相对于采用全局向量原型的方法，该机制的主要贡献是在类别表示中保留图像内部空间结构和多样性。",
+        "source_unit_id": "unit:10:6684",
+        "source_fragment_id": "unit:10:6684:native:writer:methods:2:1",
+        "source_quote": "当每个类别有 K 张图像时，SRL 设计了两种模板子空间来聚合 K-shot 信息：prototypical subspace（PS）和 discriminative subspace（DS）。相对于采用全局向量原型的方法，该机制的主要贡献是在类别表示中保留图像内部空间结构和多样性；其适用前提是方法能够从局部 CNN 特征构造并比较子空间，而不是对任意骨干或任意距离函数都天然成立。 [E:arxiv:2105.00379:abstract:claim:38498384e907] [E:arxiv:2010.04525:abstract:claim:7178a9c4f03f]",
+        "source_start": 6876,
+        "source_end": 7166,
+        "section": "代表性方法分析",
+        "evidence_ids": [
+          "arxiv:2105.00379:abstract:claim:38498384e907",
+          "arxiv:2010.04525:abstract:claim:7178a9c4f03f"
+        ],
+        "local_error": null
+      },
+      "wire_claim": {
+        "claim_id": "claim_61",
+        "kind": "scientific",
+        "claim_text": "相对于采用全局向量原型的方法，该机制的主要贡献是在类别表示中保留图像内部空间结构和多样性。",
+        "source_fragment_id": "f5",
+        "evidence_aliases": null,
+        "required_support_aspects": [
+          "predicate",
+          "conditions"
+        ],
+        "allowed_support_ids": [
+          "p1",
+          "p3"
+        ]
+      },
+      "raw_decision": {
+        "claim_id": "claim_61",
+        "correct_kind": "scientific",
+        "atomic": true,
+        "classification_valid": true,
+        "source_faithful": true,
+        "status": "unsupported",
+        "reason_code": "attribution_mismatch",
+        "explanation": "断言与 f5 原文一致，但 f5 的证据列表包含 e5，而 e5 对应原文 s3 是关于不确定性感知少样本分类的工作，未提及 SRL 相对全局向量原型的贡献；e10 对应原文 s7 虽支持该断言，但 e5 与该断言无关，存在证据归属不匹配。",
+        "support_basis": [
+          {
+            "support_id": "p3"
+          }
+        ],
+        "aspect_checks": [
+          {
+            "aspect": "predicate",
+            "supported": true,
+            "support_ids": [
+              "p3"
+            ],
+            "explanation": "s7 明确说明与以往采用全局向量表示的工作相比，子空间表示能够有效保留图像内部的空间结构和多样性，与断言一致。"
+          },
+          {
+            "aspect": "conditions",
+            "supported": true,
+            "support_ids": [
+              "p3"
+            ],
+            "explanation": "s7 明确限定对比对象为采用全局向量原型的方法，与断言条件一致。"
+          }
+        ]
+      },
+      "expected_error": "evaluation_decision_consistency_invalid"
+    }
+  ]
+}

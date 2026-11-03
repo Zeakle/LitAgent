@@ -44,6 +44,7 @@ from litagent.review_structure import (
     method_material_coverage,
     methodology_instruction,
     prepare_authored_body,
+    prepare_writer_methodology,
     structure_instruction,
     validate_authored_methodology,
 )
@@ -214,9 +215,13 @@ class SynthesisWorker(Worker):
         native_reemission_contract: str | None = None,
         native_syntax_policy: str | None = None,
         native_writing_plan: str | None = None,
+        frozen_writer_plan_provider: Callable | None = None,
+        capacity_config=None,
     ):
         """Initialize the synthesis worker."""
+        self._capacity_config = capacity_config
         self._methodology_provider = methodology_provider
+        self._frozen_writer_plan_provider = frozen_writer_plan_provider
         self._received_native = copy.deepcopy(received_native)
         self._llm = llm
         self._memory = memory
@@ -286,7 +291,10 @@ class SynthesisWorker(Worker):
         if (
             self._native_reasoning_effort is not None
             or self._native_provider_api != "chat"
-        ) and task.input_data.get("generation_strategy") != "body_summary_v2":
+        ) and task.input_data.get("generation_strategy") not in (
+            "body_summary_v2",
+            "body_summary_v3",
+        ):
             raise ValueError("native_reasoning_strategy_invalid")
         repair_state = None
         if (
@@ -405,16 +413,28 @@ class SynthesisWorker(Worker):
             if not selection.selected_items:
                 raise ValueError("extraction_no_supported_candidates")
 
-        review_methodology = dict(review_methodology or {})
-        review_methodology["evidence_counts"] = {
-            "candidate": selection.candidate_count,
-            "selected": len(selection.selected_items),
-        }
-        review_methodology["named_method_material_coverage"] = method_material_coverage(
-            task.input_data.get("requested_methods", []),
-            task.input_data.get("methodology_results", upstream),
-            selection.selected_items,
+        prepared_methodology = is_strict_policy(
+            task.input_data.get("quality_policy")
+        ) and task.input_data.get("budget_policy") in (
+            "planned-budget-v4",
+            "planned-budget-v5",
+            "planned-budget-v6",
+            "planned-budget-v7",
         )
+        if not prepared_methodology:
+            # Preserve historical policy output and validation semantics.
+            review_methodology = dict(review_methodology or {})
+            review_methodology["evidence_counts"] = {
+                "candidate": selection.candidate_count,
+                "selected": len(selection.selected_items),
+            }
+            review_methodology["named_method_material_coverage"] = (
+                method_material_coverage(
+                    task.input_data.get("requested_methods", []),
+                    task.input_data.get("methodology_results", upstream),
+                    selection.selected_items,
+                )
+            )
         if review_structure != "legacy":
             selection.section_evidence_ids["abstract"] = list(selection.selected_items)
             selection.section_evidence_ids["conclusion"] = list(
@@ -440,33 +460,48 @@ class SynthesisWorker(Worker):
             cards = build_fact_cards(selection.selected_items)
             if not cards:
                 raise ValueError("strict_fact_cards_unavailable")
-            acquisitions = {
-                p["paper_id"]: p["fulltext_acquisition"]
-                for p in extractions
-                if p.get("fulltext_acquisition")
-            }
-            review_methodology["fulltext_acquisition"] = acquisitions
-            if acquisitions:
-                has_fulltext = any(
-                    card.get("content_scope") == "selected_fulltext"
-                    for card in cards.values()
+            if prepared_methodology:
+                review_methodology = prepare_writer_methodology(
+                    review_methodology,
+                    selection=selection,
+                    cards=cards,
+                    extractions=extractions,
+                    requested_methods=task.input_data.get("requested_methods", []),
+                    upstream_results=task.input_data.get(
+                        "methodology_results", upstream
+                    ),
                 )
-                review_methodology["content_mode"] = (
-                    "abstract_and_selected_fulltext"
-                    if has_fulltext
-                    else "abstract_only"
-                )
-                review_methodology["full_text_review"] = (
-                    "selected blocks only; complete document review not performed"
-                    if has_fulltext
-                    else "not performed; no selected fulltext evidence available"
-                )
+            else:
+                acquisitions = {
+                    p["paper_id"]: p["fulltext_acquisition"]
+                    for p in extractions
+                    if p.get("fulltext_acquisition")
+                }
+                review_methodology["fulltext_acquisition"] = acquisitions
+                if acquisitions:
+                    has_fulltext = any(
+                        card.get("content_scope") == "selected_fulltext"
+                        for card in cards.values()
+                    )
+                    review_methodology["content_mode"] = (
+                        "abstract_and_selected_fulltext"
+                        if has_fulltext
+                        else "abstract_only"
+                    )
+                    review_methodology["full_text_review"] = (
+                        "selected blocks only; complete document review not performed"
+                        if has_fulltext
+                        else "not performed; no selected fulltext evidence available"
+                    )
             requirements = task.input_data.get(
                 "coverage_requirements"
             ) or coverage_requirements(
                 query, task.input_data.get("requested_methods", [])
             )
-            if task.input_data.get("generation_strategy") == "body_summary_v2":
+            if task.input_data.get("generation_strategy") in (
+                "body_summary_v2",
+                "body_summary_v3",
+            ):
                 from litagent.writing_v2 import synthesize
 
                 return await synthesize(

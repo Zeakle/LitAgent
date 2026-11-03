@@ -38,13 +38,13 @@ def digest(value: Any) -> str:
     ).hexdigest()
 
 
-def atomic_json(path: Path, value: dict) -> None:
+def atomic_json(path: Path, value: dict, *, ensure_ascii: bool = False) -> None:
     """Replace one sidecar only after a complete flushed write."""
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(f".{uuid.uuid4().hex}.tmp")
     try:
         with temporary.open("w", encoding="utf-8") as stream:
-            json.dump(value, stream, ensure_ascii=False, indent=2)
+            json.dump(value, stream, ensure_ascii=ensure_ascii, indent=2)
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, path)

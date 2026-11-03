@@ -96,6 +96,8 @@ class RedactingTraceHook:
         "input_sha256",
         "phase",
         "budget",
+        "budget_plan",
+        "budget_state",
         "batch_states",
         "processed_assertions",
         "quality_policy",
@@ -104,6 +106,9 @@ class RedactingTraceHook:
         "output_limit_parameter",
         "reasoning_effort",
         "provider_api",
+        "request_stage",
+        "request_timeout_seconds",
+        "timeout_scope",
         "provider_status",
         "provider_error",
         "reasoning_tokens",
@@ -427,6 +432,21 @@ class RunRecorder:
 
     def _apply_event(self, event: str, data: dict[str, Any], at: str) -> None:
         """Apply one event to the in-memory run artifact."""
+        if event == "budget.updated":
+            self._artifact["budget_state"] = _snapshot(data.get("budget_state", {}))
+            return
+        if event == "budget.plan":
+            plan = data.get("budget_plan", {})
+            if plan.get("contract") in (
+                "planned-budget-v2",
+                "planned-budget-v3",
+                "planned-budget-v4",
+                "planned-budget-v5",
+                "planned-budget-v6",
+                "planned-budget-v7",
+            ):
+                self._artifact["budget_plan"] = _snapshot(plan)
+            return
         if event == "targeted_repair.state":
             self._artifact["targeted_repair_state"] = _snapshot(data["state"])
             node = self._artifact["nodes"].get(f"worker:{data.get('task_id', '')}")
@@ -501,6 +521,7 @@ class RunRecorder:
             node["error"] = (
                 data.get("error") or data.get("error_type") or "unknown_error"
             )
+            node["metadata"].update(_event_metadata(event, data))
 
     def _close_unfinished_nodes(self) -> None:
         """Mark unfinished recorded nodes as interrupted."""
@@ -604,6 +625,23 @@ def _event_output(event: str, data: dict[str, Any]) -> Any:
 
 def _event_metadata(event: str, data: dict[str, Any]) -> dict[str, Any]:
     """Extract normalized metadata from a lifecycle event."""
+    if event in {"llm.failed", "worker.failed"}:
+        return {
+            key: data[key]
+            for key in (
+                "provider_api",
+                "request_stage",
+                "request_timeout_seconds",
+                "timeout_scope",
+                "reason_code",
+                "error_type",
+                "max_tokens",
+                "output_limit_parameter",
+                "usage_available",
+                "diagnostics",
+            )
+            if key in data
+        }
     if event == "llm.complete":
         return {"tool_calls": data.get("tool_calls", [])}
     if "output" in data:

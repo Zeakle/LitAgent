@@ -263,6 +263,7 @@ class InteractiveRunService:
             "schema_version": 1,
             "source": "interactive",
             "summary": summary,
+            "budget_state": (archive_view or {}).get("budget_state"),
             "graph": graph,
             "timeline": timeline,
             "report": report,

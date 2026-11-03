@@ -4131,6 +4131,15 @@ def strict_acceptance(details: dict) -> dict:
     science = [c for c in claims if c.get("kind") == "scientific"]
     stages = details.get("stages", {})
     batches = stages.get("batches", [])
+    if (
+        details.get("global_findings_contract")
+        in (
+            "located-global-findings-v1",
+            "anchored-global-findings-v2",
+        )
+        and details.get("inventory_check", {}).get("status") != "passed"
+    ):
+        failures.append("inventory_invalid")
     batch_ids = [cid for batch in batches for cid in batch.get("claim_ids", [])]
     if (
         not details.get("coverage", {}).get("complete")

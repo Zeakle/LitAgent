@@ -10,8 +10,15 @@ from urllib.parse import urlsplit
 
 import yaml
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field, ValidationError, model_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    ValidationError,
+    model_serializer,
+    model_validator,
+)
 
+from litagent.capacity import CapacityConfig
 from litagent.tools.base import ToolCategory
 
 load_dotenv()
@@ -455,6 +462,15 @@ class AppConfig(BaseModel):
     eval: EvalConfig = EvalConfig()
     planner: PlannerConfig = PlannerConfig()
     report_audit: ReportAuditConfig = ReportAuditConfig()
+    capacity: CapacityConfig | None = None
+
+    @model_serializer(mode="wrap")
+    def preserve_legacy_capacity_identity(self, handler):
+        """Keep absent opt-in capacity settings out of historical config hashes."""
+        value = handler(self)
+        if self.capacity is None:
+            value.pop("capacity", None)
+        return value
 
     @model_validator(mode="after")
     def _validate_cross_component_limits(self):

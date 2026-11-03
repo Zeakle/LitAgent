@@ -133,3 +133,73 @@ async def test_numbered_export_preserves_source_and_semantic_structure(report):
     assert "<w:numPr>" in xml or "ListBullet" in xml
     assert "References" in xml and "[1]" in xml
     assert "**item**" not in xml
+
+
+@pytest.mark.parametrize("heading", ["h1", "h2", "h3"])
+def test_pdf_keeps_measured_heading_with_following_text(heading):
+    from litagent.report_export import _pdf_story_with_heading_leads
+
+    filler = "Filler line.<br>" * 14
+    rendered = (
+        f'<p>{filler}</p><{heading} id="late-heading">Late heading</{heading}>'
+        "<p>The following paragraph must accompany its heading.</p><p>Final text.</p>"
+    )
+    css = "body{font-size:10pt;line-height:1.4}"
+    with _pdf_story_with_heading_leads(rendered, css, fitz.Rect(0, 0, 360, 360)) as doc:
+        pages = [page.get_text() for page in doc]
+    containing = [text for text in pages if "Late heading" in text]
+    assert len(containing) == 1
+    assert "The following paragraph" in containing[0]
+    assert "Final text." in "".join(pages)
+    assert "".join(pages).count("Filler line.") == 14
+
+
+def test_pdf_reflows_cascading_headings_without_losing_links():
+    from litagent.report_export import _pdf_story_with_heading_leads
+
+    rendered = (
+        "<p>" + "Filler line.<br>" * 14 + "</p>"
+        '<h2 id="section">Section</h2><h3 id="detail">Detail</h3>'
+        '<p>Following text and <a href="https://example.org/source">source</a>.</p>'
+    )
+    with _pdf_story_with_heading_leads(
+        rendered, "body{font-size:10pt;line-height:1.4}", fitz.Rect(0, 0, 360, 360)
+    ) as doc:
+        pages = [page.get_text() for page in doc]
+        links = [link for page in doc for link in page.get_links()]
+    last = next(text for text in pages if "Following text" in text)
+    assert "Section" in last and "Detail" in last
+    assert any(link.get("uri") == "https://example.org/source" for link in links)
+
+
+@pytest.mark.asyncio
+async def test_docx_preserves_heading_leads_and_compacts_list_spacing(report):
+    from docx import Document
+    from docx.shared import Pt
+
+    version = report.model_copy(
+        update={
+            "survey": (
+                "# Survey\n\n## Findings\n\nSupported text [E:ev-1].\n\n"
+                "## Appendix\n\n- First record\n- Second record\n"
+            )
+        }
+    )
+    result = await LocalReportExporter().export(
+        version, format="docx", publishable=False
+    )
+    document = Document(io.BytesIO(result.content))
+    for paragraph in document.paragraphs:
+        if paragraph.style.name.startswith("Heading"):
+            assert paragraph.paragraph_format.keep_with_next is True
+            assert paragraph.paragraph_format.keep_together is True
+        elif paragraph.style.name == "List Bullet":
+            assert paragraph.paragraph_format.space_after == Pt(2)
+            assert paragraph.paragraph_format.line_spacing == 1.0
+            assert paragraph.paragraph_format.widow_control is True
+    text = "\n".join(paragraph.text for paragraph in document.paragraphs)
+    assert "First record" in text and "Second record" in text
+    assert "Supported text [E:ev-1]." in text
+    assert "DRAFT - NOT APPROVED FOR PUBLICATION" in text
+    assert version.content_sha256 in text
+    assert result.report_sha256 == version.content_sha256

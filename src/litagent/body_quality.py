@@ -52,6 +52,22 @@ report concrete problems, not a rewrite. Concision targets are not automatic err
 or exemptions. A scientifically supported finding and complete core coverage remain
 necessary; these writing instructions never provide scientific evidence.
 """
+LEGACY_SUMMARY_SELECTION = """Normally focus on two or three findings in each,
+within the existing host summary limits; this is guidance, not a scientific verdict
+based on sentence count."""
+SCOPED_SUMMARY_SELECTION = """Use host summary_constraints; there is no requirement to fill the capacity.
+Units, findings and atomic assertions are distinct counts."""
+
+
+def writer_content_instruction(summary_constraints=None):
+    """Preserve historical prompt bytes unless explicit summary scope is supplied."""
+    if summary_constraints is None:
+        return WRITER_CONTENT_INSTRUCTION
+    return WRITER_CONTENT_INSTRUCTION.replace(
+        LEGACY_SUMMARY_SELECTION, SCOPED_SUMMARY_SELECTION
+    )
+
+
 NATIVE_OWNERSHIP_INSTRUCTION = """
 HOST NATIVE OWNERSHIP grounded-writer-v1: each supplied :native: fragment is one
 exact host-bound authored unit with its actual citation set. Those citations apply
@@ -68,6 +84,7 @@ ANALYSIS_CHAPTER_CONTRACT = "host-analysis-parent-chapter-v1"
 UNIT_CITATION_SCOPE_CONTRACT = "unit-citation-scope-v1"
 PAPER_BATCH_CONTRACT = "source-field-paper-batch-v1"
 EVALUATION_ENCODING_CONTRACT = "native-schema-only-v1"
+ADAPTIVE_ASSESSMENT_INPUT_CONTRACT = "host-citation-support-aliases-v2"
 EXTRACTION_FIELD_SPAN_CONTRACT = "host-extraction-field-spans-v2"
 EXTRACTION_SOURCE_LAYOUT_CONTRACT = "host-source-token-blocks-v1:size=8"
 EXTRACTION_CLAIM_CONTRACT = "host-grounded-claims-v1"

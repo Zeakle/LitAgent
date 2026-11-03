@@ -28,7 +28,7 @@ const fs = require('node:fs'); const vm = require('node:vm'); const path = requi
  });
  let state={locale:'zh-CN',runs:[],view:null,draftReviewState:{},activeSection:'report'};
  const mocks={createWorkbenchStore:()=>({get:()=>state,subscribe(){},update:patch=>{state={...state,...patch};}}),createExecutionWorkspace:()=>({render(){},bind(){}}),
-   evidenceMap:()=>new Map(),renderEvidenceList(){},renderExecutionInspector(){},renderHistory(){},renderQuality(){},locateReportDiagnostic:()=>false,renderReview(){},renderOutline(){},renderSearchRecords(){},renderReportDocument:()=>({headings:[]}),
+   evidenceMap:()=>new Map(),renderEvidenceList(){},renderExecutionInspector(){},renderHistory(){},renderQuality(){},locateReportDiagnostic:()=>false,renderReview(){},renderOutline(){},renderSearchRecords(){},renderReportDocument:()=>({headings:[]}),navigateReportHeading:()=>false,
    renderBenchmarkDetail(){},renderBenchmarkList(){},renderBenchmarkObservation(){},adaptArchiveView(){},adaptInteractiveView(){},chooseDefaultSection:()=> 'report',normalizeRunList:()=>[],bindFormatControls(){} };
  const real=new Set(['app.js','audit-controls.js','api-client.js','i18n.js','benchmark-controller.js']); const cache=new Map();
  async function load(filename) {
@@ -148,5 +148,30 @@ const fs = require('node:fs');
  const old=prefs.options();if(old.verification||old.auto_audit_mode!=='judge_jev')throw Error('old policy reinterpreted');
  $('#quality-policy').value='legacy';$('#auto-audit-mode').value='off';prefs.render();if(prefs.options().verification)throw Error('old request changed');
 })().catch(error=>{console.error(error);process.exit(1)});
+"""
+    _run_node(script, "src/litagent/static/flow-demo/audit-controls.js")
+
+
+def test_new_budget_default_tracks_optional_switches_without_changing_old_requests():
+    """Submit v4 only for the supported writer with both optional audits off."""
+    script = r"""
+const fs=require('node:fs');
+(async()=>{
+ class E{constructor(){this.value='';this.checked=false;this.options=[];}addEventListener(){}}
+ const elements=new Map(),$=id=>{if(!elements.has(id))elements.set(id,new E());return elements.get(id)};
+ global.document={querySelector:$};
+ $('#quality-policy').value='strict_auto_v2';$('#auto-audit-mode').options=['off','judge','judge_jev'].map(value=>({value}));
+ const caps={judge_available:true,jev_available:true,default_generation_strategy:'body_summary_v2',default_budget_policy:'planned-budget-v4',maximum_survey_tokens:1000000};
+ const {bindAutomaticAuditPreferences}=await import('data:text/javascript;base64,'+fs.readFileSync(process.argv[1]).toString('base64'));
+ const prefs=bindAutomaticAuditPreferences({capabilities:()=>caps,t:x=>x});
+ if(prefs.options().budget_policy!=='planned-budget-v4'||!$('#auto-audit-budget-note').textContent.includes('1,000,000'))throw Error('v4 default missing');
+ for(const judge of [false,true])for(const jev of [false,true]){
+  $('#verification-judge').checked=judge;$('#verification-jev').checked=jev;prefs.render();
+  const v=prefs.options();
+  if((v.budget_policy==='planned-budget-v4')!==(!judge&&!jev))throw Error('unsupported planned audit combination');
+  if(!$('#auto-audit-budget-note').textContent.includes(judge||jev?'500,000':'1,000,000'))throw Error('budget note disagrees with request');
+ }
+ $('#quality-policy').value='legacy';prefs.render();if(prefs.options().budget_policy)throw Error('legacy changed');
+})().catch(e=>{console.error(e);process.exit(1)});
 """
     _run_node(script, "src/litagent/static/flow-demo/audit-controls.js")

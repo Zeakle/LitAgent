@@ -388,11 +388,43 @@ class LitAgent:
         await self.cleanup()
 
     @staticmethod
-    def _apply_run_options_to_graph(graph: TaskGraph, options: RunOptions) -> None:
+    def _apply_run_options_to_graph(
+        graph: TaskGraph, options: RunOptions, *, writer_envelope=None
+    ) -> None:
         """Attach immutable generation choices to every scheduler task."""
+        from litagent.eval.semantic_conflict import selected_policy
+
+        semantic_fields = (
+            {
+                key: writer_envelope[key]
+                for key in ("semantic_conflict_policy", "semantic_conflict_identity")
+            }
+            if selected_policy(writer_envelope)
+            else {}
+        )
         started_at = time.time()
         for task in graph.tasks.values():
+            for key in ("semantic_conflict_policy", "semantic_conflict_identity"):
+                task.input_data.pop(key, None)
+            task.input_data.update(semantic_fields)
             task.input_data["report_language"] = options.report_language
+            if options.budget_policy != "legacy":
+                task.input_data["budget_policy"] = options.budget_policy
+            if options.classification_review:
+                task.input_data["classification_review"] = True
+            if options.repair_feedback:
+                task.input_data["repair_feedback"] = True
+            if options.reference_contract is not None:
+                task.input_data["reference_contract"] = options.reference_contract
+            if options.transport_revision is not None:
+                task.input_data["transport_revision"] = options.transport_revision
+            if options.support_validation_revision is not None:
+                task.input_data["support_validation_revision"] = (
+                    options.support_validation_revision
+                )
+            if options.mixed_inventory_recovery:
+                task.input_data["inventory_recovery"] = True
+                task.input_data["mixed_inventory_recovery"] = True
             if options.body_quality != "legacy":
                 task.input_data["body_quality"] = options.body_quality
             if options.generation_strategy != "single_v1":
@@ -461,7 +493,13 @@ class LitAgent:
             graph = await _await_with_cancellation(
                 self._planner.plan(query), cancellation
             )
-            self._apply_run_options_to_graph(graph, options)
+            from litagent.safety.planned_budget import locked_writer_envelope
+
+            self._apply_run_options_to_graph(
+                graph,
+                options,
+                writer_envelope=locked_writer_envelope(self._cost_budget),
+            )
             if hasattr(self._trace_hook, "capture_graph"):
                 self._trace_hook.capture_graph(graph)
             outcome = await self._scheduler.run_until(
@@ -802,7 +840,13 @@ class LitAgent:
             graph = await _await_with_cancellation(
                 self._planner.plan(query), cancellation
             )
-            self._apply_run_options_to_graph(graph, options)
+            from litagent.safety.planned_budget import locked_writer_envelope
+
+            self._apply_run_options_to_graph(
+                graph,
+                options,
+                writer_envelope=locked_writer_envelope(self._cost_budget),
+            )
             if hasattr(self._trace_hook, "capture_graph"):
                 self._trace_hook.capture_graph(graph)
             results = await self._scheduler.run(graph, cancellation=cancellation)
@@ -921,7 +965,7 @@ class LitAgent:
         if options.generation_strategy != "single_v1":
             metadata["generation_strategy"] = options.generation_strategy
         if (
-            options.generation_strategy == "body_summary_v2"
+            options.generation_strategy in ("body_summary_v2", "body_summary_v3")
             and not final_output_present
         ):
             journal_path = Path(str(self._targeted_repair_path()) + ".writer-v2.json")
@@ -1017,24 +1061,66 @@ class LitAgent:
         report_data.update(
             {"evaluation": initial_evaluation, "quality": initial_quality}
         )
+        from litagent.eval.inventory_recovery import RECOVERY_CONTRACTS
+        from litagent.safety.planned_budget import locked_writer_envelope
+        from litagent.writing_v2 import _host_unverified_repair_selected
+
+        inventory_recovery_enabled = (
+            locked_writer_envelope(self._cost_budget) or {}
+        ).get("inventory_recovery_contract") in RECOVERY_CONTRACTS
         if (
             initial_quality["status"] == "failed"
             or (
+                options.capacity_policy == "adaptive-capacity-v1"
+                and initial_evaluation.get("faithfulness", {})
+                .get("details", {})
+                .get("stages", {})
+                .get("capacity", {})
+                .get("status")
+                == "needs_refinement"
+                and initial_evaluation.get("faithfulness", {})
+                .get("details", {})
+                .get("source_report_sha256")
+                == hashlib.sha256(report_data["survey"].encode()).hexdigest()
+            )
+            or (
                 is_strict_policy(options.quality_policy)
                 and self._completed_bound_repair(
-                    initial_evaluation, report_data["survey"]
+                    initial_evaluation,
+                    report_data["survey"],
+                    allow_reordered_batches=_host_unverified_repair_selected(
+                        locked_writer_envelope(self._cost_budget)
+                    ),
                 )
             )
             or (
-                options.generation_strategy == "body_summary_v2"
+                options.generation_strategy in ("body_summary_v2", "body_summary_v3")
                 and metadata.get("reviewer_diagnostics", {}).get("issues")
+            )
+            or (
+                inventory_recovery_enabled
+                and initial_evaluation.get("faithfulness", {})
+                .get("details", {})
+                .get("inventory_check", {})
+                .get("status")
+                == "failed"
             )
         ):
             strict = is_strict_policy(options.quality_policy)
             working = {**report_data, "metadata": dict(metadata)}
             attempts = []
             seen = {report_data["survey"]}
-            repair_limit = 2 if strict else 1
+            from litagent.safety.planned_budget import (
+                repair_limit as planned_repair_limit,
+            )
+
+            repair_limit = planned_repair_limit(self._cost_budget) if strict else 1
+            if strict and repair_limit == 0:
+                metadata["evidence_rewrite"] = {
+                    "attempted": False,
+                    "committed": False,
+                    "reason_code": "planned_repairs_not_reserved",
+                }
             if options.quality_policy == "strict_auto_v2":
                 repair_limit -= len(metadata["targeted_repair_state"]["attempts"])
             for attempt in range(repair_limit):
@@ -1049,7 +1135,10 @@ class LitAgent:
                     ),
                     cancellation,
                 )
-                if options.generation_strategy == "body_summary_v2":
+                if options.generation_strategy in (
+                    "body_summary_v2",
+                    "body_summary_v3",
+                ):
                     metadata["targeted_repair_state"] = working["metadata"].get(
                         "targeted_repair_state", metadata["targeted_repair_state"]
                     )
@@ -1080,6 +1169,33 @@ class LitAgent:
                     )
                     attempts.append(outcome)
                 metadata["evidence_rewrite"] = outcome
+                if rewrite.reason_code.startswith("inventory_recovery_"):
+                    outcome["kind"] = "inventory_recovery"
+                    if rewrite.candidate_evaluation:
+                        # The prose is unchanged. Retain the newest assessment and
+                        # all prior invalid inventories without inventing a revision.
+                        report_data.update(
+                            evaluation=rewrite.candidate_evaluation,
+                            quality=rewrite.candidate_quality,
+                        )
+                        working.update(
+                            evaluation=rewrite.candidate_evaluation,
+                            quality=rewrite.candidate_quality,
+                        )
+                    if rewrite.reason_code in {
+                        "inventory_recovery_evaluated",
+                        "inventory_recovery_retryable",
+                    }:
+                        if rewrite.candidate_quality.get(
+                            "status"
+                        ) == "passed" and not metadata.get(
+                            "reviewer_diagnostics", {}
+                        ).get(
+                            "issues"
+                        ):
+                            break
+                        continue
+                    break
                 if rewrite.committed:
                     report_data.update(
                         {k: working[k] for k in ("survey", "evaluation", "quality")}
@@ -1089,10 +1205,27 @@ class LitAgent:
                     if rewrite.candidate_metadata:
                         metadata.update(rewrite.candidate_metadata)
                     break
-                if options.generation_strategy == "body_summary_v2":
+                if options.generation_strategy in (
+                    "body_summary_v2",
+                    "body_summary_v3",
+                ):
+                    from litagent.capacity_repair import retryable_map_failure
+
+                    if retryable_map_failure(
+                        working["metadata"].get("writer_failure"),
+                        working["metadata"].get("writer_document", {}).get("body"),
+                        locked_writer_envelope(self._cost_budget),
+                    ):
+                        outcome["local_diagnostics"] = working["metadata"][
+                            "writer_failure"
+                        ]["diagnostics"]
+                        continue
                     if rewrite.reason_code == "writer_repair_duplicate":
                         continue
                     if rewrite.reason_code == "writer_candidate_failed":
+                        if options.generation_strategy == "body_summary_v3":
+                            # Retry the immutable original, never a failed candidate.
+                            continue
                         if rewrite.candidate and rewrite.candidate_evaluation:
                             working.update(
                                 survey=rewrite.candidate,
@@ -1139,7 +1272,7 @@ class LitAgent:
                 metadata["evidence_rewrite_attempts"] = attempts
         if (metadata.get("writing_bindings") or {}).get("scope_notice_contract"):
             if (
-                options.generation_strategy == "body_summary_v2"
+                options.generation_strategy in ("body_summary_v2", "body_summary_v3")
                 and metadata.get("reviewer_diagnostics", {}).get("issues")
                 and not metadata.get("evidence_rewrite", {}).get("committed")
             ):
@@ -1218,7 +1351,10 @@ class LitAgent:
                     query=query, survey=report["survey"], results=results
                 )
             snapshot = freeze_automatic_inputs(
-                report, context[CTX_EVIDENCE], run_id=self._session_id
+                report,
+                context[CTX_EVIDENCE],
+                run_id=self._session_id,
+                budget=self._cost_budget,
             )
             snapshot["generation_provider"] = {
                 "model": self._config.llm.model_for("generation"),
@@ -1778,6 +1914,7 @@ class LitAgent:
                 started_at=task.input_data.get("search_started_at"),
             ),
             evidence_selector=self._evidence_selector,
+            capacity_config=cfg.capacity,
             context_config=cfg.context,
             trace_hook=self._trace_hook,
             thinking_mode=cfg.adversarial.thinking_mode,
@@ -2170,6 +2307,8 @@ class LitAgent:
         results: Mapping[str, Any],
         phase: Literal["initial", "post_rewrite", "post_human_revision"],
         parent_task_id: str = "",
+        inventory_recovery: dict | None = None,
+        recovery_on_send=None,
     ) -> dict[str, Any]:
         """Run evaluators concurrently and serialize results by metric."""
         if phase not in {"initial", "post_rewrite", "post_human_revision"}:
@@ -2214,11 +2353,16 @@ class LitAgent:
                 survey=survey,
                 results=results,
             )
+            if inventory_recovery is not None:
+                context["inventory_recovery"] = inventory_recovery
+                context["recovery_on_send"] = recovery_on_send
             if is_strict_policy(context.get("quality_policy")):
                 from litagent.body_quality import EVALUATION_ENCODING_CONTRACT
                 from litagent.quality import digest
 
                 identity = digest([self._session_id, survey, phase])
+                if inventory_recovery is not None:
+                    identity = digest([identity, inventory_recovery])
                 progress_root = self._evaluation_progress_root or Path(
                     "artifacts/evaluations"
                 )
@@ -2235,6 +2379,8 @@ class LitAgent:
                         json.dumps(
                             {
                                 "identity": identity,
+                                # Identical frozen inputs can occur in separate runs.
+                                "session_id": self._session_id,
                                 "started": True,
                                 "report_sha256": hashlib.sha256(
                                     survey.encode()
@@ -2272,6 +2418,7 @@ class LitAgent:
                         "evaluation.batch",
                         {
                             "task_id": task_id,
+                            "session_id": self._session_id,
                             "identity": identity,
                             "phase": phase,
                             "processed_assertions": progress.get(
@@ -2786,7 +2933,9 @@ class LitAgent:
         return selected
 
     @staticmethod
-    def _completed_bound_repair(evaluation: Mapping, survey: str) -> bool:
+    def _completed_bound_repair(
+        evaluation: Mapping, survey: str, *, allow_reordered_batches: bool = False
+    ) -> bool:
         """Authorize repair from complete, source-bound diagnostics without a pass."""
         from litagent.eval.scoped import build_source_fragments
         from litagent.report_render import build_report_source_units
@@ -2797,6 +2946,8 @@ class LitAgent:
         diagnostics = bound_repair_diagnostics(details)
         batches = stages.get("batches", [])
         coverage = details.get("coverage", {})
+        if details.get("inventory_check", {}).get("status") == "failed":
+            return False
         if not (
             details.get("evaluation_version") == "survey-evaluation-v3"
             and details.get("source_report_sha256")
@@ -2828,7 +2979,19 @@ class LitAgent:
             return False
         ids = [a.get("claim_id") for a in assertions]
         batch_ids = [i for b in batches for i in b.get("claim_ids", [])]
-        if None in ids or len(set(ids)) != len(ids) or batch_ids != ids:
+        if (
+            None in ids
+            or len(set(ids)) != len(ids)
+            or (
+                batch_ids != ids
+                and not (
+                    allow_reordered_batches
+                    and len(batch_ids) == len(ids)
+                    and len(set(batch_ids)) == len(batch_ids)
+                    and set(batch_ids) == set(ids)
+                )
+            )
+        ):
             return False
         native_fragments = {}
         if details.get("writer_bindings"):
@@ -2993,9 +3156,55 @@ class LitAgent:
         report_language: Literal["en", "zh-CN"] = "en",
     ) -> RewriteOutcome:
         """Attempt evidence-grounded rewrite with full validation and atomic commit."""
-        if (
-            report_data.get("metadata", {}).get("generation_strategy")
-            == "body_summary_v2"
+        from litagent.eval.inventory_recovery import (
+            RECOVERY_CONTRACTS,
+            inventory_recovery_feedback,
+            recover_report_inventory,
+        )
+        from litagent.safety.planned_budget import locked_writer_envelope
+
+        inventory_envelope = locked_writer_envelope(self._cost_budget) or {}
+        inventory_contract = inventory_envelope.get("inventory_recovery_contract")
+        if inventory_contract in RECOVERY_CONTRACTS:
+            feedback = inventory_recovery_feedback(
+                report_data["survey"],
+                initial_evaluation.get("faithfulness", {}).get("details", {}),
+                contract=inventory_contract,
+                **(
+                    {"stable": True}
+                    if inventory_envelope.get("support_validation_revision") is not None
+                    else {}
+                ),
+            )
+            if feedback is not None:
+                from litagent.closeout import recovery_allowed
+
+                state = report_data.get("metadata", {}).get("targeted_repair_state", {})
+                if not recovery_allowed(inventory_envelope, state):
+                    report_data["metadata"]["writer_failure"] = {
+                        "family": "quality",
+                        "code": "inventory_recovery_limit_reached",
+                        "source_report_sha256": feedback["source_report_sha256"],
+                    }
+                    return RewriteOutcome(
+                        False,
+                        False,
+                        None,
+                        None,
+                        None,
+                        None,
+                        "inventory_recovery_limit_reached",
+                    )
+                return await recover_report_inventory(
+                    self,
+                    report_data=report_data,
+                    results=results,
+                    query=query,
+                    feedback=feedback,
+                )
+        if report_data.get("metadata", {}).get("generation_strategy") in (
+            "body_summary_v2",
+            "body_summary_v3",
         ):
             from litagent.writing_v2 import repair_report
 
@@ -3711,7 +3920,10 @@ class LitAgent:
         """Generate one feedback revision and commit it only after every gate."""
         original = str(report_data.get("survey") or "")
         metadata = report_data.get("metadata") or {}
-        if metadata.get("generation_strategy") == "body_summary_v2":
+        if metadata.get("generation_strategy") in (
+            "body_summary_v2",
+            "body_summary_v3",
+        ):
             return report_data, {
                 "attempted": False,
                 "committed": False,

@@ -1,0 +1,847 @@
+{
+  "science_gold_standard": false,
+  "contains_original_scientific_text": false,
+  "provenance": {
+    "source_run_id": "frozen-writer-three-domain-20261102-048-few-shot-metric",
+    "original_response_sha256": "c6476d72617b0a8d2acf7bddedeea30c15398c3ca956ecae56042c34ee7c8b8c",
+    "projection_is_original_raw_response": false,
+    "preserved_fields": [
+      "body paragraph/unit structure",
+      "ordered target_id",
+      "ordered original source_unit_ids",
+      "ordered reference IDs",
+      "patch count and LF positions"
+    ],
+    "neutralized_fields": [
+      "all original/replacement prose",
+      "title",
+      "explanation",
+      "deletion reason"
+    ]
+  },
+  "body": {
+    "title": "Neutral prose layout fixture",
+    "introduction": [
+      {
+        "sentences": [
+          {
+            "text": "Neutral original introduction paragraph 0 unit 0.",
+            "fact_card_refs": [
+              "c15",
+              "c18"
+            ]
+          },
+          {
+            "text": "Neutral original introduction paragraph 0 unit 1.",
+            "fact_card_refs": [
+              "c7",
+              "c14",
+              "c5",
+              "c9",
+              "c2"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Neutral original introduction paragraph 1 unit 0.",
+            "fact_card_refs": [
+              "c10",
+              "c16",
+              "c20",
+              "c17"
+            ]
+          },
+          {
+            "text": "Neutral original introduction paragraph 1 unit 1.",
+            "fact_card_refs": [
+              "c4",
+              "c8",
+              "c13",
+              "c12"
+            ]
+          }
+        ]
+      }
+    ],
+    "taxonomy": [
+      {
+        "sentences": [
+          {
+            "text": "Neutral original taxonomy paragraph 0 unit 0.",
+            "fact_card_refs": [
+              "c10",
+              "c16",
+              "c17"
+            ]
+          },
+          {
+            "text": "Neutral original taxonomy paragraph 0 unit 1.",
+            "fact_card_refs": [
+              "c7",
+              "c15"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Neutral original taxonomy paragraph 1 unit 0.",
+            "fact_card_refs": [
+              "c1",
+              "c2"
+            ]
+          },
+          {
+            "text": "Neutral original taxonomy paragraph 1 unit 1.",
+            "fact_card_refs": [
+              "c18",
+              "c9"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Neutral original taxonomy paragraph 2 unit 0.",
+            "fact_card_refs": [
+              "c14",
+              "c5",
+              "c3"
+            ]
+          },
+          {
+            "text": "Neutral original taxonomy paragraph 2 unit 1.",
+            "fact_card_refs": [
+              "c4",
+              "c19",
+              "c12"
+            ]
+          }
+        ]
+      }
+    ],
+    "methods": [
+      {
+        "sentences": [
+          {
+            "text": "Neutral original methods paragraph 0 unit 0.",
+            "fact_card_refs": [
+              "c1",
+              "c8"
+            ]
+          },
+          {
+            "text": "Neutral original methods paragraph 0 unit 1.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Neutral original methods paragraph 1 unit 0.",
+            "fact_card_refs": [
+              "c4"
+            ]
+          },
+          {
+            "text": "Neutral original methods paragraph 1 unit 1.",
+            "fact_card_refs": [
+              "c4",
+              "c19"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Neutral original methods paragraph 2 unit 0.",
+            "fact_card_refs": [
+              "c2"
+            ]
+          },
+          {
+            "text": "Neutral original methods paragraph 2 unit 1.",
+            "fact_card_refs": [
+              "c2"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Neutral original methods paragraph 3 unit 0.",
+            "fact_card_refs": [
+              "c9"
+            ]
+          },
+          {
+            "text": "Neutral original methods paragraph 3 unit 1.",
+            "fact_card_refs": [
+              "c9",
+              "c11"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Neutral original methods paragraph 4 unit 0.",
+            "fact_card_refs": [
+              "c18"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Neutral original methods paragraph 5 unit 0.",
+            "fact_card_refs": [
+              "c14",
+              "c5"
+            ]
+          },
+          {
+            "text": "Neutral original methods paragraph 5 unit 1.",
+            "fact_card_refs": [
+              "c5"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Neutral original methods paragraph 6 unit 0.",
+            "fact_card_refs": [
+              "c3"
+            ]
+          },
+          {
+            "text": "Neutral original methods paragraph 6 unit 1.",
+            "fact_card_refs": [
+              "c3"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Neutral original methods paragraph 7 unit 0.",
+            "fact_card_refs": [
+              "c12"
+            ]
+          },
+          {
+            "text": "Neutral original methods paragraph 7 unit 1.",
+            "fact_card_refs": [
+              "c12"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Neutral original methods paragraph 8 unit 0.",
+            "fact_card_refs": [
+              "c16",
+              "c20",
+              "c6"
+            ]
+          },
+          {
+            "text": "Neutral original methods paragraph 8 unit 1.",
+            "fact_card_refs": [
+              "c10",
+              "c12",
+              "c15"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Neutral original methods paragraph 9 unit 0.",
+            "fact_card_refs": [
+              "c1",
+              "c4",
+              "c2",
+              "c9",
+              "c5",
+              "c3",
+              "c12",
+              "c13"
+            ]
+          }
+        ]
+      }
+    ],
+    "experiments": [
+      {
+        "sentences": [
+          {
+            "text": "Neutral original experiments paragraph 0 unit 0.",
+            "fact_card_refs": [
+              "c8",
+              "c11",
+              "c2",
+              "c12"
+            ]
+          },
+          {
+            "text": "Neutral original experiments paragraph 0 unit 1.",
+            "fact_card_refs": [
+              "c8"
+            ]
+          },
+          {
+            "text": "Neutral original experiments paragraph 0 unit 2.",
+            "fact_card_refs": [
+              "c4"
+            ]
+          },
+          {
+            "text": "Neutral original experiments paragraph 0 unit 3.",
+            "fact_card_refs": [
+              "c2"
+            ]
+          },
+          {
+            "text": "Neutral original experiments paragraph 0 unit 4.",
+            "fact_card_refs": [
+              "c11",
+              "c9"
+            ]
+          },
+          {
+            "text": "Neutral original experiments paragraph 0 unit 5.",
+            "fact_card_refs": [
+              "c13",
+              "c19"
+            ]
+          },
+          {
+            "text": "Neutral original experiments paragraph 0 unit 6.",
+            "fact_card_refs": [
+              "c2",
+              "c13",
+              "c19"
+            ]
+          },
+          {
+            "text": "Neutral original experiments paragraph 0 unit 7.",
+            "fact_card_refs": [
+              "c3",
+              "c11"
+            ]
+          },
+          {
+            "text": "Neutral original experiments paragraph 0 unit 8.",
+            "fact_card_refs": [
+              "c12",
+              "c10",
+              "c16"
+            ]
+          },
+          {
+            "text": "Neutral original experiments paragraph 0 unit 9.",
+            "fact_card_refs": [
+              "c8",
+              "c4",
+              "c2",
+              "c11",
+              "c3"
+            ]
+          }
+        ]
+      }
+    ],
+    "open_problems": [
+      {
+        "sentences": [
+          {
+            "text": "Neutral original open_problems paragraph 0 unit 0.",
+            "fact_card_refs": [
+              "c12",
+              "c10",
+              "c16"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Neutral original open_problems paragraph 1 unit 0.",
+            "fact_card_refs": [
+              "c14",
+              "c18",
+              "c5",
+              "c3"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Neutral original open_problems paragraph 2 unit 0.",
+            "fact_card_refs": [
+              "c4",
+              "c19"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Neutral original open_problems paragraph 3 unit 0.",
+            "fact_card_refs": [
+              "c9",
+              "c11"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Neutral original open_problems paragraph 4 unit 0.",
+            "fact_card_refs": [
+              "c2"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Neutral original open_problems paragraph 5 unit 0.",
+            "fact_card_refs": [
+              "c12"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Neutral original open_problems paragraph 6 unit 0.",
+            "fact_card_refs": [
+              "c13",
+              "c19",
+              "c2"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Neutral original open_problems paragraph 7 unit 0.",
+            "fact_card_refs": [
+              "c1",
+              "c4",
+              "c2",
+              "c9",
+              "c5",
+              "c3",
+              "c12",
+              "c16"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "raw_response": {
+    "outcome": "patched",
+    "explanation": "Neutral structural regression; not a scientific judgment.",
+    "patches": [
+      {
+        "target_id": "r1",
+        "text": "Neutral replacement 0, segment 0.\nNeutral replacement 0, segment 1.",
+        "fact_card_refs": [
+          "c15",
+          "c18",
+          "c7",
+          "c14",
+          "c5",
+          "c9",
+          "c2"
+        ],
+        "source_unit_ids": [
+          "writer:introduction:0:0",
+          "writer:introduction:0:1"
+        ]
+      },
+      {
+        "target_id": "r2",
+        "text": "Neutral replacement 1, segment 0.\nNeutral replacement 1, segment 1.",
+        "fact_card_refs": [
+          "c10",
+          "c16",
+          "c20",
+          "c17",
+          "c4",
+          "c8",
+          "c13",
+          "c12"
+        ],
+        "source_unit_ids": [
+          "writer:introduction:1:0",
+          "writer:introduction:1:1"
+        ]
+      },
+      {
+        "target_id": "r3",
+        "text": "Neutral replacement 2, segment 0.\nNeutral replacement 2, segment 1.",
+        "fact_card_refs": [
+          "c10",
+          "c16",
+          "c17",
+          "c7",
+          "c15"
+        ],
+        "source_unit_ids": [
+          "writer:taxonomy:0:0",
+          "writer:taxonomy:0:1"
+        ]
+      },
+      {
+        "target_id": "r4",
+        "text": "Neutral replacement 3, segment 0.\nNeutral replacement 3, segment 1.",
+        "fact_card_refs": [
+          "c1",
+          "c2",
+          "c18",
+          "c9"
+        ],
+        "source_unit_ids": [
+          "writer:taxonomy:1:0",
+          "writer:taxonomy:1:1"
+        ]
+      },
+      {
+        "target_id": "r5",
+        "text": "Neutral replacement 4, segment 0.\nNeutral replacement 4, segment 1.",
+        "fact_card_refs": [
+          "c14",
+          "c5",
+          "c3",
+          "c4",
+          "c19",
+          "c12"
+        ],
+        "source_unit_ids": [
+          "writer:taxonomy:2:0",
+          "writer:taxonomy:2:1"
+        ]
+      },
+      {
+        "target_id": "r6",
+        "text": "Neutral replacement 5, segment 0.\nNeutral replacement 5, segment 1.",
+        "fact_card_refs": [
+          "c1",
+          "c8"
+        ],
+        "source_unit_ids": [
+          "writer:methods:0:0",
+          "writer:methods:0:1"
+        ]
+      },
+      {
+        "target_id": "r7",
+        "text": "Neutral replacement 6, segment 0.\nNeutral replacement 6, segment 1.",
+        "fact_card_refs": [
+          "c4",
+          "c19"
+        ],
+        "source_unit_ids": [
+          "writer:methods:1:0",
+          "writer:methods:1:1"
+        ]
+      },
+      {
+        "target_id": "r8",
+        "text": "Neutral replacement 7, segment 0.\nNeutral replacement 7, segment 1.",
+        "fact_card_refs": [
+          "c2"
+        ],
+        "source_unit_ids": [
+          "writer:methods:2:0",
+          "writer:methods:2:1"
+        ]
+      },
+      {
+        "target_id": "r9",
+        "text": "Neutral replacement 8, segment 0.\nNeutral replacement 8, segment 1.",
+        "fact_card_refs": [
+          "c9",
+          "c11"
+        ],
+        "source_unit_ids": [
+          "writer:methods:3:0",
+          "writer:methods:3:1"
+        ]
+      },
+      {
+        "target_id": "r10",
+        "text": "Neutral replacement 9, segment 0.",
+        "fact_card_refs": [
+          "c18"
+        ],
+        "source_unit_ids": [
+          "writer:methods:4:0"
+        ]
+      },
+      {
+        "target_id": "r11",
+        "text": "Neutral replacement 10, segment 0.\nNeutral replacement 10, segment 1.",
+        "fact_card_refs": [
+          "c14",
+          "c5"
+        ],
+        "source_unit_ids": [
+          "writer:methods:5:0",
+          "writer:methods:5:1"
+        ]
+      },
+      {
+        "target_id": "r12",
+        "text": "Neutral replacement 11, segment 0.\nNeutral replacement 11, segment 1.",
+        "fact_card_refs": [
+          "c3"
+        ],
+        "source_unit_ids": [
+          "writer:methods:6:0",
+          "writer:methods:6:1"
+        ]
+      },
+      {
+        "target_id": "r13",
+        "text": "Neutral replacement 12, segment 0.\nNeutral replacement 12, segment 1.",
+        "fact_card_refs": [
+          "c12"
+        ],
+        "source_unit_ids": [
+          "writer:methods:7:0",
+          "writer:methods:7:1"
+        ]
+      },
+      {
+        "target_id": "r14",
+        "text": "Neutral replacement 13, segment 0.\nNeutral replacement 13, segment 1.",
+        "fact_card_refs": [
+          "c16",
+          "c20",
+          "c6",
+          "c10",
+          "c12",
+          "c15"
+        ],
+        "source_unit_ids": [
+          "writer:methods:8:0",
+          "writer:methods:8:1"
+        ]
+      },
+      {
+        "target_id": "r15",
+        "text": "Neutral replacement 14, segment 0.",
+        "fact_card_refs": [
+          "c1",
+          "c4",
+          "c2",
+          "c9",
+          "c5",
+          "c3",
+          "c12",
+          "c13"
+        ],
+        "source_unit_ids": [
+          "writer:methods:9:0"
+        ]
+      },
+      {
+        "target_id": "r16",
+        "text": "Neutral replacement 15, segment 0.\nNeutral replacement 15, segment 1.\nNeutral replacement 15, segment 2.\nNeutral replacement 15, segment 3.\nNeutral replacement 15, segment 4.\nNeutral replacement 15, segment 5.\nNeutral replacement 15, segment 6.",
+        "fact_card_refs": [
+          "c8",
+          "c11",
+          "c2",
+          "c12",
+          "c4",
+          "c9",
+          "c13",
+          "c19",
+          "c3",
+          "c10",
+          "c16"
+        ],
+        "source_unit_ids": [
+          "writer:experiments:0:0",
+          "writer:experiments:0:1",
+          "writer:experiments:0:2",
+          "writer:experiments:0:3",
+          "writer:experiments:0:4",
+          "writer:experiments:0:5",
+          "writer:experiments:0:6",
+          "writer:experiments:0:7",
+          "writer:experiments:0:8",
+          "writer:experiments:0:9"
+        ]
+      },
+      {
+        "target_id": "r17",
+        "text": "Neutral replacement 16, segment 0.",
+        "fact_card_refs": [
+          "c12",
+          "c10",
+          "c16"
+        ],
+        "source_unit_ids": [
+          "writer:open_problems:0:0"
+        ]
+      },
+      {
+        "target_id": "r18",
+        "text": "Neutral replacement 17, segment 0.",
+        "fact_card_refs": [
+          "c14",
+          "c18",
+          "c5",
+          "c3"
+        ],
+        "source_unit_ids": [
+          "writer:open_problems:1:0"
+        ]
+      },
+      {
+        "target_id": "r19",
+        "text": "Neutral replacement 18, segment 0.",
+        "fact_card_refs": [
+          "c4",
+          "c19"
+        ],
+        "source_unit_ids": [
+          "writer:open_problems:2:0"
+        ]
+      },
+      {
+        "target_id": "r20",
+        "text": "Neutral replacement 19, segment 0.",
+        "fact_card_refs": [
+          "c9",
+          "c11"
+        ],
+        "source_unit_ids": [
+          "writer:open_problems:3:0"
+        ]
+      },
+      {
+        "target_id": "r21",
+        "text": "Neutral replacement 20, segment 0.",
+        "fact_card_refs": [
+          "c2"
+        ],
+        "source_unit_ids": [
+          "writer:open_problems:4:0"
+        ]
+      },
+      {
+        "target_id": "r22",
+        "text": "Neutral replacement 21, segment 0.",
+        "fact_card_refs": [
+          "c12"
+        ],
+        "source_unit_ids": [
+          "writer:open_problems:5:0"
+        ]
+      },
+      {
+        "target_id": "r23",
+        "text": "Neutral replacement 22, segment 0.",
+        "fact_card_refs": [
+          "c13",
+          "c19",
+          "c2"
+        ],
+        "source_unit_ids": [
+          "writer:open_problems:6:0"
+        ]
+      },
+      {
+        "target_id": "r24",
+        "text": "Neutral replacement 23, segment 0.",
+        "fact_card_refs": [
+          "c1",
+          "c4",
+          "c2",
+          "c9",
+          "c5",
+          "c3",
+          "c12",
+          "c16"
+        ],
+        "source_unit_ids": [
+          "writer:open_problems:7:0"
+        ]
+      }
+    ],
+    "deleted_sources": []
+  },
+  "patch_count": 24,
+  "line_feed_patch_indexes": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    10,
+    11,
+    12,
+    13,
+    15
+  ],
+  "reference_ids": [
+    "c1",
+    "c2",
+    "c3",
+    "c4",
+    "c5",
+    "c6",
+    "c7",
+    "c8",
+    "c9",
+    "c10",
+    "c11",
+    "c12",
+    "c13",
+    "c14",
+    "c15",
+    "c16",
+    "c17",
+    "c18",
+    "c19",
+    "c20"
+  ]
+}

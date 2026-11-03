@@ -9,19 +9,25 @@ import pytest
 
 
 def test_new_workbench_contract_modules_share_the_bootstrap_cache_version():
-    """A previously opened workbench must load new quality-suite consumers."""
+    """Invalidate changed UI consumers while retaining the frozen contract bundle."""
     root = Path("src/litagent/static/flow-demo")
-    version = re.search(r'app\.js\?v=([^"\s]+)', (root / "index.html").read_text())[1]
+    markup = (root / "index.html").read_text()
+    version = re.search(r'app\.js\?v=([^"\s]+)', markup)[1]
     script = (root / "app.js").read_text()
+    assert f'quality-view.js?v={version}"' in script
+    assert f'adapters.js?v={version}"' in script
+    assert f'styles.css?v={version}"' in markup
+    assert 'report-view.js?v=15.10.260"' in script
+    # These consumers have no navigation changes; retain their latest shared
+    # contract revision rather than invalidating unrelated browser modules.
+    contract_version = "15.10.6.163-summary-contract"
     for module in (
         "audit-controls.js",
         "benchmark-controller.js",
-        "adapters.js",
         "benchmark-view.js",
-        "quality-view.js",
         "i18n.js",
     ):
-        assert f'{module}?v={version}"' in script
+        assert f'{module}?v={contract_version}"' in script
 
 
 @pytest.mark.parametrize("locale", ["zh-CN", "en"])

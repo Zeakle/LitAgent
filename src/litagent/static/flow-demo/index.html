@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
   <title>LitAgent Research Workbench</title>
-  <link rel="stylesheet" href="/static/flow-demo/styles.css?v=15.10.6.91-mobile-history">
+  <link rel="stylesheet" href="/static/flow-demo/styles.css?v=15.10.6.325-closeout">
 </head>
 <body>
   <div class="app-shell">
@@ -21,7 +21,7 @@
 
     <main class="workspace">
       <header class="command-bar">
-        <button id="sidebar-toggle" class="icon-command mobile-only" type="button" aria-label="Open run history">☰</button>
+        <button id="sidebar-toggle" class="icon-command mobile-only" type="button" aria-label="Open run history" aria-controls="run-sidebar" aria-expanded="false">☰</button>
         <button id="history-collapse" class="icon-command desktop-only" type="button" title="Toggle run history" aria-label="Toggle run history">☷</button>
         <div class="run-heading"><p id="run-source-label" class="run-kicker">LITAGENT</p><h1 id="run-query" data-i18n="noRun">选择一条运行查看结果</h1></div>
         <div class="command-actions">
@@ -125,6 +125,6 @@
     <label><input id="audit-new-attempt" type="checkbox"><span id="audit-new-label"></span></label>
     <div class="audit-actions"><button id="audit-close" type="button">关闭</button><button id="audit-submit" type="button">开始核验</button></div>
   </dialog>
-  <script type="module" src="/static/flow-demo/app.js?v=15.10.6.161-source-view"></script>
+  <script type="module" src="/static/flow-demo/app.js?v=15.10.6.325-closeout"></script>
 </body>
 </html>

@@ -287,7 +287,7 @@ h3 { font-size: 13px; }
 #auto-audit-budget-note { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .empty-state { margin: 0; padding: 24px; color: var(--muted); font-size: 12px; }
 .report-empty { font-family: Inter, "Segoe UI", sans-serif; }
-.sidebar-scrim { position: fixed; z-index: 28; inset: 0; background: rgb(22 36 34 / 48%); }
+.sidebar-scrim { display: none; position: fixed; z-index: 28; inset: 0; background: rgb(22 36 34 / 48%); }
 
 @media (max-width: 1050px) {
   :root { --sidebar: 238px; }
@@ -299,6 +299,7 @@ h3 { font-size: 13px; }
 }
 
 @media (max-width: 760px) {
+  .sidebar-scrim:not([hidden]) { display: block; }
   .mobile-only { display: inline-grid; place-items: center; }
   .desktop-only { display: none; }
   .app-shell { display: block; }
@@ -397,6 +398,10 @@ h3 { font-size: 13px; }
 .quality-diagnostic { margin: .65rem 0; padding: .6rem; border: 1px solid #dbe3ee; border-radius: .4rem; }
 .quality-section button, .quality-section select { max-width: 100%; white-space: normal; overflow-wrap: anywhere; margin: .35rem; }
 .quality-diagnostic summary { cursor: pointer; }
+.quality-conflict-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .8rem; margin: .6rem 0; overflow-wrap: anywhere; }
+.quality-conflict-grid p { margin: .35rem 0; }
+.quality-conflict-grid small { white-space: normal; overflow-wrap: anywhere; }
+@media (max-width: 520px) { .quality-conflict-grid { grid-template-columns: minmax(0, 1fr); } }
 .quality-section blockquote, #inspector-content blockquote { white-space: pre-wrap; overflow-wrap: anywhere; margin: .6rem 0; padding: .7rem; border-left: 3px solid #406fa4; }
 @media (max-width: 520px) { .quality-count-grid { gap: .35rem; } .quality-count { padding: .45rem; } .quality-content > .quality-section { padding: .75rem; } .quality-count strong { font-size: 1.5rem; } }
 

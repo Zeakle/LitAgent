@@ -1,0 +1,320 @@
+{
+  "schema_version": "evaluation-054-dimensions-fixture-v1",
+  "gold": false,
+  "purpose": "Mechanical boundary regression only; original flags and verdicts are not scientific gold.",
+  "review_sha256": "d03e18e3c02850fd76052191efa93842111b8265a3484cfe9251ec86afe19fe6",
+  "cases": [
+    {
+      "case": "vit_report_fidelity_vs_paper_support",
+      "claim_id": "claim_55",
+      "round": 2,
+      "claim_text": "DeiT使用Rand-Augment、random erasing以及不使用dropout。",
+      "raw_decision": {
+        "claim_id": "claim_55",
+        "correct_kind": "scientific",
+        "atomic": true,
+        "source_faithful": false,
+        "status": "unsupported",
+        "reason_code": "insufficient_support",
+        "explanation": "f3片段原文提到使用Rand-Augment、random erasing以及不使用dropout，但所引用的s3原文中未提及这些具体增广和正则化设置，缺乏对应证据。",
+        "support_basis": [
+          {
+            "support_id": "p5"
+          }
+        ],
+        "aspect_checks": [
+          {
+            "aspect": "predicate",
+            "supported": false,
+            "support_ids": [
+              "p5"
+            ],
+            "explanation": "p5对应的s3原文未提及Rand-Augment、random erasing或不使用dropout的设置，谓词缺乏证据。"
+          },
+          {
+            "aspect": "conditions",
+            "supported": true,
+            "support_ids": [
+              "p5"
+            ],
+            "explanation": "条件为DeiT的训练配方，与原文提及的训练设置主题匹配。"
+          }
+        ]
+      },
+      "post_host_status": "unverifiable",
+      "post_host_local_error": "evaluation_classification_or_source_invalid",
+      "gold": false,
+      "archive_sha256": "86b8594e3bec862033d4586ed1c9a30ca9cdca1aa97dca0f1bf45c48dd0af95d",
+      "report": {
+        "source_unit_id": "unit:7:4957",
+        "source_fragment_id": "unit:7:4957:native:writer:methods:0:3",
+        "source_start": 5998,
+        "source_end": 6237,
+        "source_quote": "DeiT的训练配方把重复增广等列为成功训练的关键成分；所给材料还明确提到Rand-Augment、random erasing以及不使用dropout，并报告在单个8-GPU节点上预训练53小时、可选微调20小时。这里的机制贡献是通过强正则化和增广提高有限数据源上的可训练性；53小时和20小时是计算时间条件，不能解释为训练样本数量。 [E:arxiv:2012.12877:section:abstract:3:d84963f93ce1:claim:6c579939c19c]",
+        "source_quote_sha256": "700ceb33858b9302e5312587258a36f190bcb010bf6ecfcd8e780e6cbb01b1b6"
+      },
+      "own_sources": [
+        {
+          "evidence_id": "arxiv:2012.12877:section:abstract:3:d84963f93ce1:claim:6c579939c19c",
+          "paper_id": "arxiv:2012.12877",
+          "source_pointer": "/report/metadata/writer_document/packet/sources/s6746a13153f1d89e51b9/source_quote",
+          "full_source_sha256": "7e3ac2c8a28a2200a0ae7cd2546e5b3b5710c276bc2e65996df2cb45ce8825ea",
+          "full_source_characters": 1076,
+          "source_quote": "mers “do not generalize well when trained on insufficient amounts of data”, and the training of these models involved extensive computing resources. In this paper, we train a vision transformer on a single 8-GPU node in two to three days (53 hours of pre-training, and optionally 20 hours of fine-tuning) that is competitive with convnets having a similar number of parameters and efficiency. It uses Imagenet as the sole training set. We build upon the vi-sual transformer architecture from Dosovitskiy et al. [15] and improvements included in the timm library [55]. With our Data-efficient image Transformers (DeiT), we report large improvements over previous results, see Figure 1. Our ablation study details the hyper-parameters and key ingredients for a success-ful training, such as repeated augmentation. We address another question: how to distill these models? We introduce a token-based strategy, specific to transformers and denoted by DeiT⚗, and show that it advantageously replaces the usual distillation. 2 In summary, our work makes the following contributions:"
+        }
+      ]
+    },
+    {
+      "case": "vit_atomic_flag_is_not_a_structural_split",
+      "claim_id": "claim_32",
+      "rounds": [
+        1,
+        2
+      ],
+      "claim_texts": [
+        "coreset决定“用哪些样本训练”，Hint-Aug决定“如何扩展少量样本所提供的特征”。",
+        "Coreset决定“用哪些样本训练”，Hint-Aug决定“如何扩展少量样本所提供的特征”。"
+      ],
+      "raw_decisions": [
+        {
+          "claim_id": "claim_32",
+          "correct_kind": "scientific",
+          "atomic": false,
+          "source_faithful": true,
+          "status": "supported",
+          "reason_code": "supported",
+          "explanation": "The claim faithfully extracts the fragment's contrast between coreset selection and Hint-Aug. It combines two independently variable method-level relations, so it is not atomic. The cited originals support coreset selection as choosing training subsets and Hint-Aug as augmenting few-shot tuning features.",
+          "support_basis": [
+            {
+              "support_id": "p5"
+            },
+            {
+              "support_id": "p6"
+            },
+            {
+              "support_id": "p8"
+            }
+          ],
+          "aspect_checks": [
+            {
+              "aspect": "predicate",
+              "supported": true,
+              "support_ids": [
+                "p5",
+                "p6",
+                "p8"
+              ],
+              "explanation": "p5/p8 describe coreset selection as choosing training subsets, and p6 describes Hint-Aug as augmenting few-shot tuning features."
+            },
+            {
+              "aspect": "conditions",
+              "supported": true,
+              "support_ids": [
+                "p5",
+                "p6",
+                "p8"
+              ],
+              "explanation": "The sources establish coreset selection across datasets/models and Hint-Aug under few-shot parameter-efficient tuning."
+            }
+          ]
+        },
+        {
+          "claim_id": "claim_32",
+          "correct_kind": "scientific",
+          "atomic": true,
+          "source_faithful": true,
+          "status": "supported",
+          "reason_code": "supported",
+          "explanation": "The claim accurately reflects the source fragment's distinction between coreset selection (determining which samples to train on) and Hint-Aug (expanding features from few-shot tuning samples). The cited original supports both mechanisms: s6 describes coreset selection as training subset selection, and s7 describes Hint-Aug as augmenting few-shot tuning samples with pretrained features to enhance feature diversity.",
+          "support_basis": [
+            {
+              "support_id": "p5"
+            },
+            {
+              "support_id": "p6"
+            },
+            {
+              "support_id": "p8"
+            }
+          ],
+          "aspect_checks": [
+            {
+              "aspect": "predicate",
+              "supported": true,
+              "support_ids": [
+                "p5",
+                "p6",
+                "p8"
+              ],
+              "explanation": "The predicate correctly identifies coreset as sample selection and Hint-Aug as feature expansion for few-shot tuning, matching the original sources."
+            },
+            {
+              "aspect": "conditions",
+              "supported": true,
+              "support_ids": [
+                "p5",
+                "p6",
+                "p8"
+              ],
+              "explanation": "The conditions (coreset across datasets/models, Hint-Aug in few-shot parameter-efficient tuning) are established by the original sources."
+            }
+          ]
+        }
+      ],
+      "same_fragment_assertion_counts": [
+        3,
+        3
+      ],
+      "whole_inventory_counts": [
+        185,
+        185
+      ],
+      "same_fragment_claim_texts": [
+        [
+          "coreset选择比较不同子集规模、数据集和模型下的训练子集。",
+          "Hint-Aug在少样本调优中检测基础ViT过度自信的图像块，并把预训练模型中易混淆的特征注入这些位置以增加调优特征多样性。",
+          "coreset决定“用哪些样本训练”，Hint-Aug决定“如何扩展少量样本所提供的特征”。"
+        ],
+        [
+          "Coreset选择比较不同子集规模、数据集和模型下的训练子集。",
+          "Hint-Aug在少样本调优中检测基础ViT过度自信的图像块，并把预训练模型中易混淆的特征注入这些位置以增加调优特征多样性。",
+          "Coreset决定“用哪些样本训练”，Hint-Aug决定“如何扩展少量样本所提供的特征”。"
+        ]
+      ],
+      "gold": false,
+      "archive_sha256": "86b8594e3bec862033d4586ed1c9a30ca9cdca1aa97dca0f1bf45c48dd0af95d",
+      "report": {
+        "source_unit_id": "unit:6:2904",
+        "source_fragment_id": "unit:6:2904:native:writer:taxonomy:0:2",
+        "source_start": 3499,
+        "source_end": 3789,
+        "source_quote": "第三层是直接改变样本使用方式：coreset选择比较不同子集规模、数据集和模型下的训练子集；Hint-Aug在少样本调优中检测基础ViT过度自信的图像块，并把预训练模型中易混淆的特征注入这些位置以增加调优特征多样性。前者决定“用哪些样本训练”，后者决定“如何扩展少量样本所提供的特征”。 [E:arxiv:2303.02095:abstract:claim:ad8a2b304fa2] [E:arxiv:2303.02095:abstract:claim:713bc324c0e0] [E:arxiv:2304.12520:abstract:claim:eca2d6aa6c29]",
+        "source_quote_sha256": "8ee0a9252df83cf59ae3bb2100c85fd0dbdebe80e9c8a95cae5f214d2557e92c"
+      },
+      "own_sources": [
+        {
+          "evidence_id": "arxiv:2303.02095:abstract:claim:ad8a2b304fa2",
+          "paper_id": "arxiv:2303.02095",
+          "source_pointer": "/report/metadata/writer_document/packet/sources/s58556edd816b231344d1/source_quote",
+          "full_source_sha256": "52bcc164533df04fdaba82408359570608bb73ffda35f52e980f3cf4504fa298",
+          "full_source_characters": 1779,
+          "source_quote": "Coreset selection is among the most effective ways to reduce the training time of CNNs, however, only limited is known on how the resultant models will behave under variations of the coreset size, and choice of datasets and models. Moreover, given the recent paradigm shift towards transformer-based models, it is still an open question how coreset selection would impact their performance. There are several similar intriguing questions that need to be answered for a wide acceptance of coreset selection methods, and this paper attempts to answer some of these. We present a systematic benchmarking setup and perform a rigorous comparison of different coreset selection methods on CNNs and transformers. Our investigation reveals that under certain circumstances, random selection of subsets is more robust and stable when compared with the SOTA selection methods. We demonstrate that the conventional concept of uniform subset sampling across the various classes of the data is not the appropriate choice. Rather samples should be adaptively chosen based on the complexity of the data distribution for each class. Transformers are generally pretrained on large datasets, and we show that for certain target datasets, it helps to keep their performance stable at even very small coreset sizes. We further show that when no pretraining is done or when the pretrained transformer models are used with non-natural images (e.g. medical data), CNNs tend to generalize better than transformers at even very small coreset sizes. Lastly, we demonstrate that in the absence of the right pretraining, CNNs are better at learning the semantic coherence between spatially distant objects within an image, and these tend to outperform transformers at almost all choices of the coreset size."
+        },
+        {
+          "evidence_id": "arxiv:2303.02095:abstract:claim:713bc324c0e0",
+          "paper_id": "arxiv:2303.02095",
+          "source_pointer": "/report/metadata/writer_document/packet/sources/s58556edd816b231344d1/source_quote",
+          "full_source_sha256": "52bcc164533df04fdaba82408359570608bb73ffda35f52e980f3cf4504fa298",
+          "full_source_characters": 1779,
+          "source_quote": "Coreset selection is among the most effective ways to reduce the training time of CNNs, however, only limited is known on how the resultant models will behave under variations of the coreset size, and choice of datasets and models. Moreover, given the recent paradigm shift towards transformer-based models, it is still an open question how coreset selection would impact their performance. There are several similar intriguing questions that need to be answered for a wide acceptance of coreset selection methods, and this paper attempts to answer some of these. We present a systematic benchmarking setup and perform a rigorous comparison of different coreset selection methods on CNNs and transformers. Our investigation reveals that under certain circumstances, random selection of subsets is more robust and stable when compared with the SOTA selection methods. We demonstrate that the conventional concept of uniform subset sampling across the various classes of the data is not the appropriate choice. Rather samples should be adaptively chosen based on the complexity of the data distribution for each class. Transformers are generally pretrained on large datasets, and we show that for certain target datasets, it helps to keep their performance stable at even very small coreset sizes. We further show that when no pretraining is done or when the pretrained transformer models are used with non-natural images (e.g. medical data), CNNs tend to generalize better than transformers at even very small coreset sizes. Lastly, we demonstrate that in the absence of the right pretraining, CNNs are better at learning the semantic coherence between spatially distant objects within an image, and these tend to outperform transformers at almost all choices of the coreset size."
+        },
+        {
+          "evidence_id": "arxiv:2304.12520:abstract:claim:eca2d6aa6c29",
+          "paper_id": "arxiv:2304.12520",
+          "source_pointer": "/report/metadata/writer_document/packet/sources/s278c5be16df4c7570d37/source_quote",
+          "full_source_sha256": "ae66a92e0301672e88cc5b7f16fe6fc22bfecf7600a25de49eda7bfe9cd3557d",
+          "full_source_characters": 1887,
+          "source_quote": "Despite the growing demand for tuning foundation vision transformers (FViTs) on downstream tasks, fully unleashing FViTs' potential under data-limited scenarios (e.g., few-shot tuning) remains a challenge due to FViTs' data-hungry nature. Common data augmentation techniques fall short in this context due to the limited features contained in the few-shot tuning data. To tackle this challenge, we first identify an opportunity for FViTs in few-shot tuning: pretrained FViTs themselves have already learned highly representative features from large-scale pretraining data, which are fully preserved during widely used parameter-efficient tuning. We thus hypothesize that leveraging those learned features to augment the tuning data can boost the effectiveness of few-shot FViT tuning. To this end, we propose a framework called Hint-based Data Augmentation (Hint-Aug), which aims to boost FViT in few-shot tuning by augmenting the over-fitted parts of tuning samples with the learned features of pretrained FViTs. Specifically, Hint-Aug integrates two key enablers: (1) an Attentive Over-fitting Detector (AOD) to detect over-confident patches of foundation ViTs for potentially alleviating their over-fitting on the few-shot tuning data and (2) a Confusion-based Feature Infusion (CFI) module to infuse easy-to-confuse features from the pretrained FViTs with the over-confident patches detected by the above AOD in order to enhance the feature diversity during tuning. Extensive experiments and ablation studies on five datasets and three parameter-efficient tuning techniques consistently validate Hint-Aug's effectiveness: 0.04% ~ 32.91% higher accuracy over the state-of-the-art (SOTA) data augmentation method under various low-shot settings. For example, on the Pet dataset, Hint-Aug achieves a 2.22% higher accuracy with 50% less training data over SOTA data augmentation methods."
+        }
+      ]
+    },
+    {
+      "case": "nerf_parameterization_vs_parameter_count",
+      "claim_id": "claim_10",
+      "round": 1,
+      "claim_text": "分类基础 NeRF 时，第一项标准是场景是否被参数化为连续的 5D 神经场：输入空间位置与观察方向，并在任意连续查询点输出颜色和体密度。",
+      "raw_decision": {
+        "claim_id": "claim_10",
+        "correct_kind": "scientific",
+        "atomic": true,
+        "source_faithful": true,
+        "status": "supported",
+        "reason_code": "supported",
+        "explanation": "The claim faithfully restates the fragment's first classification standard for basic NeRF: whether the scene is parameterized as a continuous 5D neural field taking spatial position and viewing direction as input and outputting color and volume density at arbitrary continuous query points. All required aspects are covered by the cited original passages.",
+        "support_basis": [
+          {
+            "support_id": "p1"
+          },
+          {
+            "support_id": "p2"
+          },
+          {
+            "support_id": "p3"
+          }
+        ],
+        "aspect_checks": [
+          {
+            "aspect": "predicate",
+            "supported": true,
+            "support_ids": [
+              "p1",
+              "p2",
+              "p3"
+            ],
+            "explanation": "The predicate that the first classification standard is continuous 5D neural field parameterization with specified inputs and outputs is directly stated in all cited original passages."
+          },
+          {
+            "aspect": "conditions",
+            "supported": true,
+            "support_ids": [
+              "p1",
+              "p2",
+              "p3"
+            ],
+            "explanation": "The conditions of spatial position plus viewing direction as input, and arbitrary continuous query points, are explicitly specified in the cited original texts."
+          },
+          {
+            "aspect": "quantities",
+            "supported": true,
+            "support_ids": [
+              "p1",
+              "p2",
+              "p3"
+            ],
+            "explanation": "The 5D dimensionality and color + density outputs are clearly quantified in the cited passages."
+          }
+        ]
+      },
+      "post_host_status": "unverifiable",
+      "post_host_local_error": "support_relation_unverified",
+      "post_host_aspect": "parameter_count",
+      "rule_literal": "\\bparameters?\\b|参数",
+      "gold": false,
+      "archive_sha256": "3bae0be8683c5a8e9a8b57e1d4bd75826c154c225e54c861b230ebb261bd804f",
+      "report": {
+        "source_unit_id": "unit:5:1613",
+        "source_fragment_id": "unit:5:1613:native:writer:taxonomy:0:0",
+        "source_start": 1613,
+        "source_end": 1916,
+        "source_quote": "分类基础 NeRF 时，第一项标准是场景是否被参数化为连续的 5D 神经场：输入空间位置与观察方向，并在任意连续查询点输出颜色和体密度；这一标准把原始 NeRF 与离散多边形、纹理网格或其他显式图元表示区分开。 [E:arxiv:2003.08934:section:unknown:3:c2bcf93580ae:claim:1680631940a2] [E:arxiv:2306.03000:page:1:block:2:claim:2861d217b4bd] [E:arxiv:2003.08934:section:unknown:14:8cca4952e055:claim:057b1a5836e2]",
+        "source_quote_sha256": "1acddf4fd82034085430a19d3acdec74251772e59e83ff7c5f3fab5a952df258"
+      },
+      "own_sources": [
+        {
+          "evidence_id": "arxiv:2003.08934:section:unknown:3:c2bcf93580ae:claim:1680631940a2",
+          "paper_id": "arxiv:2003.08934",
+          "source_pointer": "/report/metadata/writer_document/packet/sources/scf172f9df506d9800c62/source_quote",
+          "full_source_sha256": "c0a83e2339249acc95e0fe2c6f7f3b1b3c5a7e9baf56030ea28459dad248431d",
+          "full_source_characters": 689,
+          "source_quote": "this work. arXiv:2003.08934v2 [cs.CV] 3 Aug 2020 2 B. Mildenhall, P. P. Srinivasan, M. Tancik et al. Input Images Optimize NeRF Render new views Fig. 1: We present a method that optimizes a continuous 5D neural radiance field representation (volume density and view-dependent color at any continuous location) of a scene from a set of input images. We use techniques from volume rendering to accumulate samples of this scene representation along rays to render the scene from any viewpoint. Here, we visualize the set of 100 input views of the synthetic Drums scene randomly captured on a surrounding hemisphere, and we show two novel views rendered from our optimized NeRF representation."
+        },
+        {
+          "evidence_id": "arxiv:2306.03000:page:1:block:2:claim:2861d217b4bd",
+          "paper_id": "arxiv:2306.03000",
+          "source_pointer": "/report/metadata/writer_document/packet/sources/s4a9acad9616d151767f0/source_quote",
+          "full_source_sha256": "42ebcc89c093c89fa42e296de938d81b61e6bfd997ae6e52a6be61f3ccb77aff",
+          "full_source_characters": 1318,
+          "source_quote": "Neural rendering combines ideas from classical computer graphics and machine learning to synthesize images from real-world observations. NeRF, short for Neural Radiance Fields, is a recent innovation that uses AI algorithms to create 3D objects from 2D images. By leveraging an interpolation approach, NeRF can produce new 3D reconstructed views of complicated scenes. Rather than directly restoring the whole 3D scene geometry, NeRF generates a volumetric representation called a “radiance field,” which is capable of creating color and density for every point within the relevant 3D space. The broad appeal and popularity of NeRF makes it imperative to comprehensively examine the existing research on the topic. While previous surveys on 3D rendering have primarily focused on traditional computer vision-based or deep learning-based approaches, only a handful of them discuss the potential of NeRF. However, such surveys have predominantly focused on NeRF’s early contributions and have not explored its recent advances. NeRF is a relatively new technique that is continuously being investigated for its capabilities and limitations. This survey reviews recent advances in NeRF, categorizes, and compares and contrasts them according to their architectural designs, especially in the field of novel view synthesis."
+        },
+        {
+          "evidence_id": "arxiv:2003.08934:section:unknown:14:8cca4952e055:claim:057b1a5836e2",
+          "paper_id": "arxiv:2003.08934",
+          "source_pointer": "/report/metadata/writer_document/packet/sources/sba19fb7c01f50efdfac0/source_quote",
+          "full_source_sha256": "14105010d6ee7709935066cf324ca06b60445af0add86384aecf1fc43ee48b65",
+          "full_source_characters": 1172,
+          "source_quote": "es, but also requires just a fraction of the storage cost of those sampled volumetric representations. 3 Neural Radiance Field Scene Representation We represent a continuous scene as a 5D vector-valued function whose input is a 3D location x = (x, y, z) and 2D viewing direction (θ, φ), and whose output is an emitted color c = (r, g, b) and volume density σ. In practice, we express NeRF: Representing Scenes as Neural Radiance Fields for View Synthesis 5 (x,y,z,θ,φ) FΘ (RGBσ) 5D Input Position + Direction Output Color + Density Volume Rendering Ray 1 σ σ Rendering Loss g.t. 2 Ray 2 Ray 1 Ray Distance (b) (a) (c) (d) Fig. 2: An overview of our neural radiance field scene representation and differ-entiable rendering procedure. We synthesize images by sampling 5D coordinates (location and viewing direction) along camera rays (a), feeding those locations into an MLP to produce a color and volume density (b), and using volume ren-dering techniques to composite these values into an image (c). This rendering function is differentiable, so we can optimize our scene representation by mini-mizing the residual between synthesized and ground truth observed images (d)."
+        }
+      ]
+    }
+  ]
+}

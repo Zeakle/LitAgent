@@ -163,3 +163,20 @@ export function renderOutline(container, headings, onNavigate) {
     container.append(button);
   }
 }
+
+export function navigateReportHeading(container, heading, scrollContainer) {
+  if (!container?.isConnected || !scrollContainer?.isConnected || scrollContainer.hidden || !scrollContainer.contains(container) || typeof heading?.anchor !== "string") return false;
+  // Repeated titles have distinct host anchors; never borrow a hidden projection.
+  const targets = [...container.querySelectorAll("[id]")].filter(node => node.id === heading.anchor && /^H[23]$/.test(node.tagName));
+  if (targets.length !== 1 || !targets[0].isConnected) return false;
+  const target = targets[0];
+  for (let parent = target.parentElement; parent && parent !== container; parent = parent.parentElement) {
+    if (parent.tagName === "DETAILS") parent.open = true;
+  }
+  target.tabIndex = -1;
+  target.focus({ preventScroll: true });
+  const top = scrollContainer.scrollTop + target.getBoundingClientRect().top - scrollContainer.getBoundingClientRect().top - scrollContainer.clientTop;
+  // An explicit scroller and instant move avoid intermediate smooth-scroll states.
+  scrollContainer.scrollTo({ top: Math.max(0, top), behavior: "instant" });
+  return true;
+}

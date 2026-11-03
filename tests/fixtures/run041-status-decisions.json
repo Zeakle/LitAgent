@@ -1,0 +1,244 @@
+{
+  "contract": "run041-decision-status-counterexamples-v1",
+  "science_gold_standard": false,
+  "raw_provider_judgments_unvalidated": true,
+  "provenance": "Eight unmodified provider decisions from run 041, retained only as status/reason contract counterexamples. No human scientific labels are supplied. Evidence aliases in explanations are literal provider text, not a source-permission map.",
+  "decisions": [
+    {
+      "claim_id": "claim_7",
+      "correct_kind": "scientific",
+      "atomic": true,
+      "classification_valid": true,
+      "source_faithful": true,
+      "status": "unverifiable",
+      "reason_code": "insufficient_support",
+      "explanation": "The cited materials do not provide a systematic comparison of backbones, training epochs, episode configurations or numerical reporting conventions across the reviewed papers; this cross-paper inconsistency claim is not established by the supplied evidence.",
+      "support_basis": [],
+      "aspect_checks": [
+        {
+          "aspect": "predicate",
+          "supported": false,
+          "support_ids": [],
+          "explanation": "No cited original systematically documents inconsistent backbones, training epochs, episode configurations or numerical conventions across the reviewed papers."
+        },
+        {
+          "aspect": "conditions",
+          "supported": false,
+          "support_ids": [],
+          "explanation": "The supplied evidence does not establish the cross-paper experimental-setup inconsistency asserted here."
+        }
+      ]
+    },
+    {
+      "claim_id": "claim_33",
+      "correct_kind": "scientific",
+      "atomic": true,
+      "classification_valid": true,
+      "source_faithful": true,
+      "status": "unverifiable",
+      "reason_code": "insufficient_support",
+      "explanation": "The assertion is a scientific description of the category-representation learning category. The cited materials e6 and e7 describe specific methods, but neither original support directly states that this review's second category focuses on how few support samples form class-level representations for query comparison.",
+      "support_basis": [],
+      "aspect_checks": [
+        {
+          "aspect": "predicate",
+          "supported": false,
+          "support_ids": [],
+          "explanation": "The cited supports describe prototype-based classification and SRL subspace representation, but do not directly establish the category-level focus stated in the assertion."
+        },
+        {
+          "aspect": "conditions",
+          "supported": false,
+          "support_ids": [],
+          "explanation": "The cited supports do not provide the review's category-definition condition for the second class."
+        }
+      ]
+    },
+    {
+      "claim_id": "claim_36",
+      "correct_kind": "scientific",
+      "atomic": true,
+      "classification_valid": true,
+      "source_faithful": true,
+      "status": "unverifiable",
+      "reason_code": "insufficient_support",
+      "explanation": "The assertion is a scientific description of the distance-measurement category's focus. The cited materials describe Relation Network and metric-agnostic conditional embeddings, but none directly states that the third review category focuses on whether the comparison function itself is fixed.",
+      "support_basis": [],
+      "aspect_checks": [
+        {
+          "aspect": "predicate",
+          "supported": false,
+          "support_ids": [],
+          "explanation": "The cited supports discuss learnable versus fixed metrics and class comparisons, but do not directly establish the category-level focus stated in the assertion."
+        },
+        {
+          "aspect": "conditions",
+          "supported": false,
+          "support_ids": [],
+          "explanation": "The cited supports do not provide the review's category-definition condition for the third class."
+        },
+        {
+          "aspect": "causal_relation",
+          "supported": false,
+          "support_ids": [],
+          "explanation": "No cited support directly establishes that the category is defined by whether the comparison function itself is fixed."
+        }
+      ]
+    },
+    {
+      "claim_id": "claim_39",
+      "correct_kind": "scientific",
+      "atomic": true,
+      "classification_valid": true,
+      "source_faithful": true,
+      "status": "unverifiable",
+      "reason_code": "insufficient_support",
+      "explanation": "The assertion is a scientific claim that the three categories are not mutually exclusive and that a method can improve both embedding and metric. The cited materials do not directly establish this taxonomy-level non-mutual-exclusivity claim.",
+      "support_basis": [],
+      "aspect_checks": [
+        {
+          "aspect": "predicate",
+          "supported": false,
+          "support_ids": [],
+          "explanation": "The cited supports do not directly state that the three categories are not mutually exclusive."
+        },
+        {
+          "aspect": "conditions",
+          "supported": false,
+          "support_ids": [],
+          "explanation": "The cited supports do not provide the review's category-boundary condition for this claim."
+        },
+        {
+          "aspect": "causal_relation",
+          "supported": false,
+          "support_ids": [],
+          "explanation": "No cited support directly establishes that one method can simultaneously improve embedding and metric as a taxonomy-level claim."
+        }
+      ]
+    },
+    {
+      "claim_id": "claim_41",
+      "correct_kind": "scientific",
+      "atomic": true,
+      "classification_valid": true,
+      "source_faithful": true,
+      "status": "unverifiable",
+      "reason_code": "insufficient_support",
+      "explanation": "The assertion is a scientific methodological guideline for classification. The cited materials do not directly state that classification should be based on a paper's main contribution and training objective rather than grouping all methods using a distance function into one category.",
+      "support_basis": [],
+      "aspect_checks": [
+        {
+          "aspect": "predicate",
+          "supported": false,
+          "support_ids": [],
+          "explanation": "The cited supports do not directly state the classification guideline in the assertion."
+        },
+        {
+          "aspect": "conditions",
+          "supported": false,
+          "support_ids": [],
+          "explanation": "The cited supports do not provide the review's classification-rule condition for this claim."
+        },
+        {
+          "aspect": "causal_relation",
+          "supported": false,
+          "support_ids": [],
+          "explanation": "No cited support directly establishes that using a distance function alone should not determine category membership."
+        }
+      ]
+    },
+    {
+      "claim_id": "claim_44",
+      "correct_kind": "scientific",
+      "atomic": true,
+      "classification_valid": true,
+      "source_faithful": true,
+      "status": "unverifiable",
+      "reason_code": "insufficient_support",
+      "explanation": "The assertion states that transfer learning and meta-learning may be combined with episodic training or metric modules. The cited supports describe transfer learning, meta-learning, and metric learning separately, but do not directly establish that transfer learning and meta-learning may be combined with episodic training or metric modules.",
+      "support_basis": [],
+      "aspect_checks": [
+        {
+          "aspect": "predicate",
+          "supported": false,
+          "support_ids": [],
+          "explanation": "The cited supports do not directly state that transfer learning and meta-learning may be combined with episodic training or metric modules."
+        },
+        {
+          "aspect": "conditions",
+          "supported": false,
+          "support_ids": [],
+          "explanation": "The cited supports do not provide the combination condition stated in the assertion."
+        },
+        {
+          "aspect": "causal_relation",
+          "supported": false,
+          "support_ids": [],
+          "explanation": "No cited support directly establishes the possible combination relation."
+        }
+      ]
+    },
+    {
+      "claim_id": "claim_45",
+      "correct_kind": "scientific",
+      "atomic": true,
+      "classification_valid": true,
+      "source_faithful": true,
+      "status": "unverifiable",
+      "reason_code": "insufficient_support",
+      "explanation": "The assertion is a scientific inclusion boundary for the review. The cited materials describe transfer learning, meta-learning, and metric learning, but do not directly state that only methods whose comparison core lies in embedding, class representation, or distance/similarity learning are directly compared as this review's metric-learning objects.",
+      "support_basis": [],
+      "aspect_checks": [
+        {
+          "aspect": "predicate",
+          "supported": false,
+          "support_ids": [],
+          "explanation": "The cited supports do not directly state the review's inclusion boundary in the assertion."
+        },
+        {
+          "aspect": "conditions",
+          "supported": false,
+          "support_ids": [],
+          "explanation": "The cited supports do not provide the condition that the comparison core must lie in embedding, class representation, or distance/similarity learning."
+        },
+        {
+          "aspect": "causal_relation",
+          "supported": false,
+          "support_ids": [],
+          "explanation": "No cited support directly establishes the inclusion criterion for direct comparison."
+        }
+      ]
+    },
+    {
+      "claim_id": "claim_47",
+      "correct_kind": "scientific",
+      "atomic": true,
+      "classification_valid": true,
+      "source_faithful": true,
+      "status": "unverifiable",
+      "reason_code": "insufficient_support",
+      "explanation": "The assertion states that these mechanism explanations address how learning occurs and do not by themselves constitute cross-paper performance ranking. The cited materials do not directly establish this scope boundary for the review's mechanism explanations.",
+      "support_basis": [],
+      "aspect_checks": [
+        {
+          "aspect": "predicate",
+          "supported": false,
+          "support_ids": [],
+          "explanation": "The cited supports do not directly state that mechanism explanations do not constitute cross-paper performance ranking."
+        },
+        {
+          "aspect": "conditions",
+          "supported": false,
+          "support_ids": [],
+          "explanation": "The cited supports do not provide the condition that these explanations are about how learning occurs rather than performance ordering."
+        },
+        {
+          "aspect": "causal_relation",
+          "supported": false,
+          "support_ids": [],
+          "explanation": "No cited support directly establishes that explaining how learning occurs does not by itself produce a performance ranking."
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,656 @@
+{
+  "description": "Two portable cases extracted without changing any original text or decision.",
+  "scientific_gold_verified": false,
+  "cases": [
+    {
+      "case_id": "extra_positive",
+      "scientific_gold_verified": false,
+      "purpose": "Real response-contract negative control, not a supported scientific gold judgment.",
+      "claim": {
+        "claim_id": "claim_16",
+        "kind": "scientific",
+        "claim_text": "深度K-tuplet网络用情节训练建模多样本关系。",
+        "evidence_ids": [
+          "arxiv:1907.03123:abstract:claim:5a36249bbf1e",
+          "arxiv:2305.09062:abstract:claim:549b9167d596",
+          "arxiv:2409.07989:abstract:claim:5ed923dac68f"
+        ]
+      },
+      "aliases": {
+        "arxiv:1907.03123:abstract:claim:5a36249bbf1e": "e4",
+        "arxiv:2305.09062:abstract:claim:549b9167d596": "e5",
+        "arxiv:2409.07989:abstract:claim:5ed923dac68f": "e6"
+      },
+      "ledger": {
+        "arxiv:1907.03123:abstract:claim:5a36249bbf1e": {
+          "paper_id": "arxiv:1907.03123",
+          "paper_title": "Revisiting Metric Learning for Few-Shot Image Classification",
+          "text": "The trained deep K-tuplet network can extract discriminative features for unseen novel categories and be seamlessly incorporated with a non-linear distance metric function to facilitate few-shot classification.",
+          "supporting_text": "The goal of few-shot learning is to recognize new visual concepts with just a few amount of labeled samples in each class. Recent effective metric-based few-shot approaches employ neural networks to learn a feature similarity comparison between query and support examples. However, the importance of feature embedding, i.e., exploring the relationship among training samples, is neglected. In this work, we present a simple yet powerful baseline for few-shot classification by emphasizing the importance of feature embedding. Specifically, we revisit the classical triplet network from deep metric learning, and extend it into a deep K-tuplet network for few-shot learning, utilizing the relationship among the input samples to learn a general representation learning via episode-training. Once trained, our network is able to extract discriminative features for unseen novel categories and can be seamlessly incorporated with a non-linear distance metric function to facilitate the few-shot classification. Our result on the miniImageNet benchmark outperforms other metric-based few-shot classification methods. More importantly, when evaluated on completely different datasets (Caltech-101, CUB-200, Stanford Dogs and Cars) using the model trained with miniImageNet, our method significantly outperforms prior methods, demonstrating its superior capability to generalize to unseen classes."
+        },
+        "arxiv:2305.09062:abstract:claim:549b9167d596": {
+          "paper_id": "arxiv:2305.09062",
+          "paper_title": "SuSana Distancia is all you need: Enforcing class separability in metric\n  learning via two novel distance-based loss functions for few-shot image\n  classification",
+          "text": "Using the two proposed loss functions, the few-shot learning method achieves a 2% accuracy improvement on the miniImageNet benchmark compared to other metric-based few-shot learning methods, demonstrating better generalization to previously unseen classes.",
+          "supporting_text": "Few-shot learning is a challenging area of research that aims to learn new concepts with only a few labeled samples of data. Recent works based on metric-learning approaches leverage the meta-learning approach, which is encompassed by episodic tasks that make use a support (training) and query set (test) with the objective of learning a similarity comparison metric between those sets. Due to the lack of data, the learning process of the embedding network becomes an important part of the few-shot task. Previous works have addressed this problem using metric learning approaches, but the properties of the underlying latent space and the separability of the difference classes on it was not entirely enforced. In this work, we propose two different loss functions which consider the importance of the embedding vectors by looking at the intra-class and inter-class distance between the few data. The first loss function is the Proto-Triplet Loss, which is based on the original triplet loss with the modifications needed to better work on few-shot scenarios. The second loss function, which we dub ICNN loss is based on an inter and intra class nearest neighbors score, which help us to assess the quality of embeddings obtained from the trained network. Our results, obtained from a extensive experimental setup show a significant improvement in accuracy in the miniImagenNet benchmark compared to other metric-based few-shot learning methods by a margin of 2%, demonstrating the capability of these loss functions to allow the network to generalize better to previously unseen classes. In our experiments, we demonstrate competitive generalization capabilities to other domains, such as the Caltech CUB, Dogs and Cars datasets compared with the state of the art."
+        },
+        "arxiv:2409.07989:abstract:claim:5ed923dac68f": {
+          "paper_id": "arxiv:2409.07989",
+          "paper_title": "Enhancing Few-Shot Image Classification through Learnable Multi-Scale Embedding and Attention Mechanisms",
+          "text": "Evaluations demonstrate the efficacy of the proposed method in comparison to state-of-the-art approaches.",
+          "supporting_text": "In the context of few-shot classification, the goal is to train a classifier using a limited number of samples while maintaining satisfactory performance. However, traditional metric-based methods exhibit certain limitations in achieving this objective. These methods typically rely on a single distance value between the query feature and support feature, thereby overlooking the contribution of shallow features. To overcome this challenge, we propose a novel approach in this paper. Our approach involves utilizing a multi-output embedding network that maps samples into distinct feature spaces. The proposed method extracts feature vectors at different stages, enabling the model to capture both global and abstract features. By utilizing these diverse feature spaces, our model enhances its performance. Moreover, employing a self-attention mechanism improves the refinement of features at each stage, leading to even more robust representations and improved overall performance. Furthermore, assigning learnable weights to each stage significantly improved performance and results. We conducted comprehensive evaluations on the MiniImageNet and FC100 datasets, specifically in the 5-way 1-shot and 5-way 5-shot scenarios. Additionally, we performed cross-domain tasks across eight benchmark datasets, achieving high accuracy in the testing domains. These evaluations demonstrate the efficacy of our proposed method in comparison to state-of-the-art approaches. https://github.com/FatemehAskari/MSENet"
+        }
+      },
+      "allowed_support_ids": [
+        "p2",
+        "p3",
+        "p4"
+      ],
+      "passages": {
+        "p2": {
+          "evidence_id": "arxiv:1907.03123:abstract:claim:5a36249bbf1e",
+          "evidence_alias": "e4",
+          "source": "original_support",
+          "source_start": 0,
+          "source_end": 1391,
+          "quote": "The goal of few-shot learning is to recognize new visual concepts with just a few amount of labeled samples in each class. Recent effective metric-based few-shot approaches employ neural networks to learn a feature similarity comparison between query and support examples. However, the importance of feature embedding, i.e., exploring the relationship among training samples, is neglected. In this work, we present a simple yet powerful baseline for few-shot classification by emphasizing the importance of feature embedding. Specifically, we revisit the classical triplet network from deep metric learning, and extend it into a deep K-tuplet network for few-shot learning, utilizing the relationship among the input samples to learn a general representation learning via episode-training. Once trained, our network is able to extract discriminative features for unseen novel categories and can be seamlessly incorporated with a non-linear distance metric function to facilitate the few-shot classification. Our result on the miniImageNet benchmark outperforms other metric-based few-shot classification methods. More importantly, when evaluated on completely different datasets (Caltech-101, CUB-200, Stanford Dogs and Cars) using the model trained with miniImageNet, our method significantly outperforms prior methods, demonstrating its superior capability to generalize to unseen classes."
+        },
+        "p3": {
+          "evidence_id": "arxiv:2305.09062:abstract:claim:549b9167d596",
+          "evidence_alias": "e5",
+          "source": "original_support",
+          "source_start": 0,
+          "source_end": 1768,
+          "quote": "Few-shot learning is a challenging area of research that aims to learn new concepts with only a few labeled samples of data. Recent works based on metric-learning approaches leverage the meta-learning approach, which is encompassed by episodic tasks that make use a support (training) and query set (test) with the objective of learning a similarity comparison metric between those sets. Due to the lack of data, the learning process of the embedding network becomes an important part of the few-shot task. Previous works have addressed this problem using metric learning approaches, but the properties of the underlying latent space and the separability of the difference classes on it was not entirely enforced. In this work, we propose two different loss functions which consider the importance of the embedding vectors by looking at the intra-class and inter-class distance between the few data. The first loss function is the Proto-Triplet Loss, which is based on the original triplet loss with the modifications needed to better work on few-shot scenarios. The second loss function, which we dub ICNN loss is based on an inter and intra class nearest neighbors score, which help us to assess the quality of embeddings obtained from the trained network. Our results, obtained from a extensive experimental setup show a significant improvement in accuracy in the miniImagenNet benchmark compared to other metric-based few-shot learning methods by a margin of 2%, demonstrating the capability of these loss functions to allow the network to generalize better to previously unseen classes. In our experiments, we demonstrate competitive generalization capabilities to other domains, such as the Caltech CUB, Dogs and Cars datasets compared with the state of the art."
+        },
+        "p4": {
+          "evidence_id": "arxiv:2409.07989:abstract:claim:5ed923dac68f",
+          "evidence_alias": "e6",
+          "source": "original_support",
+          "source_start": 0,
+          "source_end": 1506,
+          "quote": "In the context of few-shot classification, the goal is to train a classifier using a limited number of samples while maintaining satisfactory performance. However, traditional metric-based methods exhibit certain limitations in achieving this objective. These methods typically rely on a single distance value between the query feature and support feature, thereby overlooking the contribution of shallow features. To overcome this challenge, we propose a novel approach in this paper. Our approach involves utilizing a multi-output embedding network that maps samples into distinct feature spaces. The proposed method extracts feature vectors at different stages, enabling the model to capture both global and abstract features. By utilizing these diverse feature spaces, our model enhances its performance. Moreover, employing a self-attention mechanism improves the refinement of features at each stage, leading to even more robust representations and improved overall performance. Furthermore, assigning learnable weights to each stage significantly improved performance and results. We conducted comprehensive evaluations on the MiniImageNet and FC100 datasets, specifically in the 5-way 1-shot and 5-way 5-shot scenarios. Additionally, we performed cross-domain tasks across eight benchmark datasets, achieving high accuracy in the testing domains. These evaluations demonstrate the efficacy of our proposed method in comparison to state-of-the-art approaches. https://github.com/FatemehAskari/MSENet"
+        }
+      },
+      "wire_support_passages": {
+        "p2": [
+          "e4",
+          "s4",
+          0,
+          1391
+        ],
+        "p3": [
+          "e5",
+          "s5",
+          0,
+          1768
+        ],
+        "p4": [
+          "e6",
+          "s6",
+          0,
+          1506
+        ]
+      },
+      "original_supports": {
+        "s4": {
+          "paper_id": "arxiv:1907.03123",
+          "text": "The goal of few-shot learning is to recognize new visual concepts with just a few amount of labeled samples in each class. Recent effective metric-based few-shot approaches employ neural networks to learn a feature similarity comparison between query and support examples. However, the importance of feature embedding, i.e., exploring the relationship among training samples, is neglected. In this work, we present a simple yet powerful baseline for few-shot classification by emphasizing the importance of feature embedding. Specifically, we revisit the classical triplet network from deep metric learning, and extend it into a deep K-tuplet network for few-shot learning, utilizing the relationship among the input samples to learn a general representation learning via episode-training. Once trained, our network is able to extract discriminative features for unseen novel categories and can be seamlessly incorporated with a non-linear distance metric function to facilitate the few-shot classification. Our result on the miniImageNet benchmark outperforms other metric-based few-shot classification methods. More importantly, when evaluated on completely different datasets (Caltech-101, CUB-200, Stanford Dogs and Cars) using the model trained with miniImageNet, our method significantly outperforms prior methods, demonstrating its superior capability to generalize to unseen classes."
+        },
+        "s5": {
+          "paper_id": "arxiv:2305.09062",
+          "text": "Few-shot learning is a challenging area of research that aims to learn new concepts with only a few labeled samples of data. Recent works based on metric-learning approaches leverage the meta-learning approach, which is encompassed by episodic tasks that make use a support (training) and query set (test) with the objective of learning a similarity comparison metric between those sets. Due to the lack of data, the learning process of the embedding network becomes an important part of the few-shot task. Previous works have addressed this problem using metric learning approaches, but the properties of the underlying latent space and the separability of the difference classes on it was not entirely enforced. In this work, we propose two different loss functions which consider the importance of the embedding vectors by looking at the intra-class and inter-class distance between the few data. The first loss function is the Proto-Triplet Loss, which is based on the original triplet loss with the modifications needed to better work on few-shot scenarios. The second loss function, which we dub ICNN loss is based on an inter and intra class nearest neighbors score, which help us to assess the quality of embeddings obtained from the trained network. Our results, obtained from a extensive experimental setup show a significant improvement in accuracy in the miniImagenNet benchmark compared to other metric-based few-shot learning methods by a margin of 2%, demonstrating the capability of these loss functions to allow the network to generalize better to previously unseen classes. In our experiments, we demonstrate competitive generalization capabilities to other domains, such as the Caltech CUB, Dogs and Cars datasets compared with the state of the art."
+        },
+        "s6": {
+          "paper_id": "arxiv:2409.07989",
+          "text": "In the context of few-shot classification, the goal is to train a classifier using a limited number of samples while maintaining satisfactory performance. However, traditional metric-based methods exhibit certain limitations in achieving this objective. These methods typically rely on a single distance value between the query feature and support feature, thereby overlooking the contribution of shallow features. To overcome this challenge, we propose a novel approach in this paper. Our approach involves utilizing a multi-output embedding network that maps samples into distinct feature spaces. The proposed method extracts feature vectors at different stages, enabling the model to capture both global and abstract features. By utilizing these diverse feature spaces, our model enhances its performance. Moreover, employing a self-attention mechanism improves the refinement of features at each stage, leading to even more robust representations and improved overall performance. Furthermore, assigning learnable weights to each stage significantly improved performance and results. We conducted comprehensive evaluations on the MiniImageNet and FC100 datasets, specifically in the 5-way 1-shot and 5-way 5-shot scenarios. Additionally, we performed cross-domain tasks across eight benchmark datasets, achieving high accuracy in the testing domains. These evaluations demonstrate the efficacy of our proposed method in comparison to state-of-the-art approaches. https://github.com/FatemehAskari/MSENet"
+        }
+      },
+      "raw_provider_decision": {
+        "claim_id": "claim_16",
+        "correct_kind": "scientific",
+        "atomic": true,
+        "classification_valid": true,
+        "source_faithful": true,
+        "status": "supported",
+        "reason_code": "supported",
+        "explanation": "断言忠实提取自所属f1片段，引用的e4对应原始文献s4明确说明深度K-tuplet网络通过episode-training利用输入样本间关系学习通用表征，完全覆盖谓词与条件方面。",
+        "support_basis": [
+          {
+            "support_id": "p2"
+          }
+        ],
+        "aspect_checks": [
+          {
+            "aspect": "predicate",
+            "supported": true,
+            "support_ids": [
+              "p2"
+            ],
+            "explanation": "p2对应s4原文明确提到将三元组网络扩展为深度K-tuplet网络，通过episode-training利用输入样本间关系学习通用表征，与断言内容一致。"
+          },
+          {
+            "aspect": "conditions",
+            "supported": true,
+            "support_ids": [
+              "p2"
+            ],
+            "explanation": "p2对应s4的研究场景为少样本图像分类，与断言的任务条件匹配。"
+          },
+          {
+            "aspect": "quantities",
+            "supported": true,
+            "support_ids": [
+              "p2"
+            ],
+            "explanation": "本断言不涉及需要绑定的数值、指标或量化结果，无相关缺失。"
+          }
+        ]
+      },
+      "required_support_aspects": [
+        "predicate",
+        "conditions"
+      ],
+      "actual_aspects": [
+        "predicate",
+        "conditions",
+        "quantities"
+      ],
+      "extra_aspects": [
+        {
+          "aspect": "quantities",
+          "supported": true,
+          "support_ids": [
+            "p2"
+          ],
+          "explanation": "本断言不涉及需要绑定的数值、指标或量化结果，无相关缺失。"
+        }
+      ],
+      "expected_existing_host_result": {
+        "status": "unverified",
+        "issue": "support_aspect_coverage_invalid"
+      },
+      "later_host_checks_verified": false
+    },
+    {
+      "case_id": "extra_negative",
+      "scientific_gold_verified": false,
+      "purpose": "Real response-contract negative control, not a supported scientific gold judgment.",
+      "claim": {
+        "claim_id": "claim_100",
+        "kind": "scientific",
+        "claim_text": "关系网络或目标条件化比较提供更强灵活性。",
+        "evidence_ids": [
+          "arxiv:1907.03123:abstract:claim:5a36249bbf1e",
+          "arxiv:2409.07989:abstract:claim:5ed923dac68f",
+          "arxiv:2305.09062:abstract:claim:549b9167d596",
+          "arxiv:2105.00379:abstract:claim:38498384e907",
+          "arxiv:1802.04376:abstract:claim:50a611de7d64",
+          "arxiv:1711.06025:section:abstract:12:43376954155c:claim:71df1568e996",
+          "arxiv:1711.06025:section:abstract:4:b851ec357ca4:claim:3868df819471",
+          "arxiv:2105.00379:abstract:claim:e2d40a72c0d6",
+          "arxiv:2305.09062:abstract:claim:aaed703eb739",
+          "arxiv:1907.03123:abstract:claim:b4d49aba47c5",
+          "arxiv:2104.02638:section:abstract:9:1354132472a1:claim:1453b845fef7",
+          "arxiv:2104.02638:section:abstract:9:1354132472a1:claim:3fb7cfd2fbdb",
+          "arxiv:2104.02638:section:abstract:2:c92e388de5e0:claim:1a6b9a5336b7",
+          "arxiv:2105.08149:abstract:claim:ae8bdfee0e05",
+          "arxiv:1907.03123:abstract:claim:998fb93b2a24"
+        ]
+      },
+      "aliases": {
+        "arxiv:1907.03123:abstract:claim:5a36249bbf1e": "e4",
+        "arxiv:2409.07989:abstract:claim:5ed923dac68f": "e6",
+        "arxiv:2305.09062:abstract:claim:549b9167d596": "e5",
+        "arxiv:2105.00379:abstract:claim:38498384e907": "e7",
+        "arxiv:1802.04376:abstract:claim:50a611de7d64": "e10",
+        "arxiv:1711.06025:section:abstract:12:43376954155c:claim:71df1568e996": "e9",
+        "arxiv:1711.06025:section:abstract:4:b851ec357ca4:claim:3868df819471": "e8",
+        "arxiv:2105.00379:abstract:claim:e2d40a72c0d6": "e13",
+        "arxiv:2305.09062:abstract:claim:aaed703eb739": "e11",
+        "arxiv:1907.03123:abstract:claim:b4d49aba47c5": "e14",
+        "arxiv:2104.02638:section:abstract:9:1354132472a1:claim:1453b845fef7": "e20",
+        "arxiv:2104.02638:section:abstract:9:1354132472a1:claim:3fb7cfd2fbdb": "e19",
+        "arxiv:2104.02638:section:abstract:2:c92e388de5e0:claim:1a6b9a5336b7": "e16",
+        "arxiv:2105.08149:abstract:claim:ae8bdfee0e05": "e3",
+        "arxiv:1907.03123:abstract:claim:998fb93b2a24": "e12"
+      },
+      "ledger": {
+        "arxiv:2105.08149:abstract:claim:ae8bdfee0e05": {
+          "paper_id": "arxiv:2105.08149",
+          "paper_title": "Deep Metric Learning for Few-Shot Image Classification: A Review of Recent Developments",
+          "text": "The review categorizes deep metric learning methods for few-shot image classification from 2018 to 2022 into three groups according to three stages of metric learning: learning feature embeddings, learning class representations, and learning distance measures.",
+          "supporting_text": "Few-shot image classification is a challenging problem that aims to achieve the human level of recognition based only on a small number of training images. One main solution to few-shot image classification is deep metric learning. These methods, by classifying unseen samples according to their distances to few seen samples in an embedding space learned by powerful deep neural networks, can avoid overfitting to few training images in few-shot image classification and have achieved the state-of-the-art performance. In this paper, we provide an up-to-date review of deep metric learning methods for few-shot image classification from 2018 to 2022 and categorize them into three groups according to three stages of metric learning, namely learning feature embeddings, learning class representations, and learning distance measures. With this taxonomy, we identify the novelties of different methods and problems they face. We conclude this review with a discussion on current challenges and future trends in few-shot image classification."
+        },
+        "arxiv:1907.03123:abstract:claim:5a36249bbf1e": {
+          "paper_id": "arxiv:1907.03123",
+          "paper_title": "Revisiting Metric Learning for Few-Shot Image Classification",
+          "text": "The trained deep K-tuplet network can extract discriminative features for unseen novel categories and be seamlessly incorporated with a non-linear distance metric function to facilitate few-shot classification.",
+          "supporting_text": "The goal of few-shot learning is to recognize new visual concepts with just a few amount of labeled samples in each class. Recent effective metric-based few-shot approaches employ neural networks to learn a feature similarity comparison between query and support examples. However, the importance of feature embedding, i.e., exploring the relationship among training samples, is neglected. In this work, we present a simple yet powerful baseline for few-shot classification by emphasizing the importance of feature embedding. Specifically, we revisit the classical triplet network from deep metric learning, and extend it into a deep K-tuplet network for few-shot learning, utilizing the relationship among the input samples to learn a general representation learning via episode-training. Once trained, our network is able to extract discriminative features for unseen novel categories and can be seamlessly incorporated with a non-linear distance metric function to facilitate the few-shot classification. Our result on the miniImageNet benchmark outperforms other metric-based few-shot classification methods. More importantly, when evaluated on completely different datasets (Caltech-101, CUB-200, Stanford Dogs and Cars) using the model trained with miniImageNet, our method significantly outperforms prior methods, demonstrating its superior capability to generalize to unseen classes."
+        },
+        "arxiv:2305.09062:abstract:claim:549b9167d596": {
+          "paper_id": "arxiv:2305.09062",
+          "paper_title": "SuSana Distancia is all you need: Enforcing class separability in metric\n  learning via two novel distance-based loss functions for few-shot image\n  classification",
+          "text": "Using the two proposed loss functions, the few-shot learning method achieves a 2% accuracy improvement on the miniImageNet benchmark compared to other metric-based few-shot learning methods, demonstrating better generalization to previously unseen classes.",
+          "supporting_text": "Few-shot learning is a challenging area of research that aims to learn new concepts with only a few labeled samples of data. Recent works based on metric-learning approaches leverage the meta-learning approach, which is encompassed by episodic tasks that make use a support (training) and query set (test) with the objective of learning a similarity comparison metric between those sets. Due to the lack of data, the learning process of the embedding network becomes an important part of the few-shot task. Previous works have addressed this problem using metric learning approaches, but the properties of the underlying latent space and the separability of the difference classes on it was not entirely enforced. In this work, we propose two different loss functions which consider the importance of the embedding vectors by looking at the intra-class and inter-class distance between the few data. The first loss function is the Proto-Triplet Loss, which is based on the original triplet loss with the modifications needed to better work on few-shot scenarios. The second loss function, which we dub ICNN loss is based on an inter and intra class nearest neighbors score, which help us to assess the quality of embeddings obtained from the trained network. Our results, obtained from a extensive experimental setup show a significant improvement in accuracy in the miniImagenNet benchmark compared to other metric-based few-shot learning methods by a margin of 2%, demonstrating the capability of these loss functions to allow the network to generalize better to previously unseen classes. In our experiments, we demonstrate competitive generalization capabilities to other domains, such as the Caltech CUB, Dogs and Cars datasets compared with the state of the art."
+        },
+        "arxiv:2409.07989:abstract:claim:5ed923dac68f": {
+          "paper_id": "arxiv:2409.07989",
+          "paper_title": "Enhancing Few-Shot Image Classification through Learnable Multi-Scale Embedding and Attention Mechanisms",
+          "text": "Evaluations demonstrate the efficacy of the proposed method in comparison to state-of-the-art approaches.",
+          "supporting_text": "In the context of few-shot classification, the goal is to train a classifier using a limited number of samples while maintaining satisfactory performance. However, traditional metric-based methods exhibit certain limitations in achieving this objective. These methods typically rely on a single distance value between the query feature and support feature, thereby overlooking the contribution of shallow features. To overcome this challenge, we propose a novel approach in this paper. Our approach involves utilizing a multi-output embedding network that maps samples into distinct feature spaces. The proposed method extracts feature vectors at different stages, enabling the model to capture both global and abstract features. By utilizing these diverse feature spaces, our model enhances its performance. Moreover, employing a self-attention mechanism improves the refinement of features at each stage, leading to even more robust representations and improved overall performance. Furthermore, assigning learnable weights to each stage significantly improved performance and results. We conducted comprehensive evaluations on the MiniImageNet and FC100 datasets, specifically in the 5-way 1-shot and 5-way 5-shot scenarios. Additionally, we performed cross-domain tasks across eight benchmark datasets, achieving high accuracy in the testing domains. These evaluations demonstrate the efficacy of our proposed method in comparison to state-of-the-art approaches. https://github.com/FatemehAskari/MSENet"
+        },
+        "arxiv:2105.00379:abstract:claim:38498384e907": {
+          "paper_id": "arxiv:2105.00379",
+          "paper_title": "Subspace Representation Learning for Few-shot Image Classification",
+          "text": "The SRL framework extends metric learning based techniques from vector to subspace representation.",
+          "supporting_text": "In this paper, we propose a subspace representation learning (SRL) framework to tackle few-shot image classification tasks. It exploits a subspace in local CNN feature space to represent an image, and measures the similarity between two images according to a weighted subspace distance (WSD). When K images are available for each class, we develop two types of template subspaces to aggregate K-shot information: the prototypical subspace (PS) and the discriminative subspace (DS). Based on the SRL framework, we extend metric learning based techniques from vector to subspace representation. While most previous works adopted global vector representation, using subspace representation can effectively preserve the spatial structure, and diversity within an image. We demonstrate the effectiveness of the SRL framework on three public benchmark datasets: MiniImageNet, TieredImageNet and Caltech-UCSD Birds-200-2011 (CUB), and the experimental results illustrate competitive/superior performance of our method compared to the previous state-of-the-art."
+        },
+        "arxiv:1711.06025:section:abstract:4:b851ec357ca4:claim:3868df819471": {
+          "paper_id": "arxiv:1711.06025",
+          "paper_title": "Learning to Compare: Relation Network for Few-Shot Learning",
+          "text": "Prior metric-based few-shot approaches focus on learning a transferrable embedding and pre-define a fixed metric such as Euclidean distance.",
+          "supporting_text": "le in the form of a class de-scription (c.f., single exemplar image in one-shot), making data insufficiency for gradient-based learning a challenge. While promising, most existing few-shot learning ap-proaches either require complex inference mechanisms [23, 9], complex recurrent neural network (RNN) architectures [39, 32], or fine-tuning the target problem [10, 29]. Our approach is most related to others that aim to train an effec-tive metric for one-shot learning [39, 36, 20]. Where they focus on the learning of the transferrable embedding and pre-define a fixed metric (e.g., as Euclidean [36]), we fur-ther aim to learn a transferrable deep metric for comparing the relation between images (few-shot learning), or between images and class descriptions (zero-shot learning). By ex-pressing the inductive bias of a deeper solution (multiple non-linear learned stages at both embedding and relation modules), we make it easier to learn a generalisable solu-tion to the problem."
+        },
+        "arxiv:1711.06025:section:abstract:12:43376954155c:claim:71df1568e996": {
+          "paper_id": "arxiv:1711.06025",
+          "paper_title": "Learning to Compare: Relation Network for Few-Shot Learning",
+          "text": "Compared to prior metric-based few-shot approaches, the relation network provides a learnable rather than fixed metric, or non-linear rather than linear classifier.",
+          "supporting_text": "ent problem.). Compared to [20, 36], this can be seen as providing a learnable rather than fixed metric, or non-linear rather than linear classifier. Compared to [20] we benefit from an episodic training strat-egy with an end-to-end manner from scratch, and compared to [32] we avoid the complexity of set-to-set RNN embed-ding of the sample-set, and simply rely on pooling [33]. Zero-Shot Learning Our approach is designed for few- shot learning, but elegantly spans the space into zero-shot learning (ZSL) by modifying the sample branch to input a single category description rather than single training im-age. When applied to ZSL our architecture is related to methods that learn to align images and category embed-dings and perform recognition by predicting if an image and category embedding pair match [11, 3, 43, 46]. Sim-ilarly to the case with the prior metric-based few-shot ap-proaches, most of these apply a fixed manually defined sim-ilarity metric or linear classifier after combining the image and category embedding."
+        },
+        "arxiv:1802.04376:abstract:claim:50a611de7d64": {
+          "paper_id": "arxiv:1802.04376",
+          "paper_title": "Few-Shot Learning with Metric-Agnostic Conditional Embeddings",
+          "text": "The proposed architecture deviates from traditional metric-learning approaches by training a network to perform comparisons between classes rather than relying on a static metric comparison.",
+          "supporting_text": "Learning high quality class representations from few examples is a key problem in metric-learning approaches to few-shot learning. To accomplish this, we introduce a novel architecture where class representations are conditioned for each few-shot trial based on a target image. We also deviate from traditional metric-learning approaches by training a network to perform comparisons between classes rather than relying on a static metric comparison. This allows the network to decide what aspects of each class are important for the comparison at hand. We find that this flexible architecture works well in practice, achieving state-of-the-art performance on the Caltech-UCSD birds fine-grained classification task."
+        },
+        "arxiv:2305.09062:abstract:claim:aaed703eb739": {
+          "paper_id": "arxiv:2305.09062",
+          "paper_title": "SuSana Distancia is all you need: Enforcing class separability in metric\n  learning via two novel distance-based loss functions for few-shot image\n  classification",
+          "text": "The few-shot method using the two proposed loss functions demonstrates competitive generalization capabilities to other domains, including Caltech CUB, Dogs and Cars datasets, compared with the state of the art.",
+          "supporting_text": "Few-shot learning is a challenging area of research that aims to learn new concepts with only a few labeled samples of data. Recent works based on metric-learning approaches leverage the meta-learning approach, which is encompassed by episodic tasks that make use a support (training) and query set (test) with the objective of learning a similarity comparison metric between those sets. Due to the lack of data, the learning process of the embedding network becomes an important part of the few-shot task. Previous works have addressed this problem using metric learning approaches, but the properties of the underlying latent space and the separability of the difference classes on it was not entirely enforced. In this work, we propose two different loss functions which consider the importance of the embedding vectors by looking at the intra-class and inter-class distance between the few data. The first loss function is the Proto-Triplet Loss, which is based on the original triplet loss with the modifications needed to better work on few-shot scenarios. The second loss function, which we dub ICNN loss is based on an inter and intra class nearest neighbors score, which help us to assess the quality of embeddings obtained from the trained network. Our results, obtained from a extensive experimental setup show a significant improvement in accuracy in the miniImagenNet benchmark compared to other metric-based few-shot learning methods by a margin of 2%, demonstrating the capability of these loss functions to allow the network to generalize better to previously unseen classes. In our experiments, we demonstrate competitive generalization capabilities to other domains, such as the Caltech CUB, Dogs and Cars datasets compared with the state of the art."
+        },
+        "arxiv:1907.03123:abstract:claim:998fb93b2a24": {
+          "paper_id": "arxiv:1907.03123",
+          "paper_title": "Revisiting Metric Learning for Few-Shot Image Classification",
+          "text": "The proposed deep K-tuplet network for few-shot classification, built by extending the classical triplet network from deep metric learning, outperforms other metric-based few-shot classification methods on the miniImageNet benchmark.",
+          "supporting_text": "The goal of few-shot learning is to recognize new visual concepts with just a few amount of labeled samples in each class. Recent effective metric-based few-shot approaches employ neural networks to learn a feature similarity comparison between query and support examples. However, the importance of feature embedding, i.e., exploring the relationship among training samples, is neglected. In this work, we present a simple yet powerful baseline for few-shot classification by emphasizing the importance of feature embedding. Specifically, we revisit the classical triplet network from deep metric learning, and extend it into a deep K-tuplet network for few-shot learning, utilizing the relationship among the input samples to learn a general representation learning via episode-training. Once trained, our network is able to extract discriminative features for unseen novel categories and can be seamlessly incorporated with a non-linear distance metric function to facilitate the few-shot classification. Our result on the miniImageNet benchmark outperforms other metric-based few-shot classification methods. More importantly, when evaluated on completely different datasets (Caltech-101, CUB-200, Stanford Dogs and Cars) using the model trained with miniImageNet, our method significantly outperforms prior methods, demonstrating its superior capability to generalize to unseen classes."
+        },
+        "arxiv:2105.00379:abstract:claim:e2d40a72c0d6": {
+          "paper_id": "arxiv:2105.00379",
+          "paper_title": "Subspace Representation Learning for Few-shot Image Classification",
+          "text": "Experimental results of the SRL framework illustrate competitive or superior performance compared to the previous state-of-the-art.",
+          "supporting_text": "In this paper, we propose a subspace representation learning (SRL) framework to tackle few-shot image classification tasks. It exploits a subspace in local CNN feature space to represent an image, and measures the similarity between two images according to a weighted subspace distance (WSD). When K images are available for each class, we develop two types of template subspaces to aggregate K-shot information: the prototypical subspace (PS) and the discriminative subspace (DS). Based on the SRL framework, we extend metric learning based techniques from vector to subspace representation. While most previous works adopted global vector representation, using subspace representation can effectively preserve the spatial structure, and diversity within an image. We demonstrate the effectiveness of the SRL framework on three public benchmark datasets: MiniImageNet, TieredImageNet and Caltech-UCSD Birds-200-2011 (CUB), and the experimental results illustrate competitive/superior performance of our method compared to the previous state-of-the-art."
+        },
+        "arxiv:1907.03123:abstract:claim:b4d49aba47c5": {
+          "paper_id": "arxiv:1907.03123",
+          "paper_title": "Revisiting Metric Learning for Few-Shot Image Classification",
+          "text": "When evaluated on Caltech-101, CUB-200, Stanford Dogs and Stanford Cars using the model trained with miniImageNet, the proposed deep K-tuplet network significantly outperforms prior few-shot classification methods, demonstrating superior generalization to unseen classes.",
+          "supporting_text": "The goal of few-shot learning is to recognize new visual concepts with just a few amount of labeled samples in each class. Recent effective metric-based few-shot approaches employ neural networks to learn a feature similarity comparison between query and support examples. However, the importance of feature embedding, i.e., exploring the relationship among training samples, is neglected. In this work, we present a simple yet powerful baseline for few-shot classification by emphasizing the importance of feature embedding. Specifically, we revisit the classical triplet network from deep metric learning, and extend it into a deep K-tuplet network for few-shot learning, utilizing the relationship among the input samples to learn a general representation learning via episode-training. Once trained, our network is able to extract discriminative features for unseen novel categories and can be seamlessly incorporated with a non-linear distance metric function to facilitate the few-shot classification. Our result on the miniImageNet benchmark outperforms other metric-based few-shot classification methods. More importantly, when evaluated on completely different datasets (Caltech-101, CUB-200, Stanford Dogs and Cars) using the model trained with miniImageNet, our method significantly outperforms prior methods, demonstrating its superior capability to generalize to unseen classes."
+        },
+        "arxiv:2104.02638:section:abstract:2:c92e388de5e0:claim:1a6b9a5336b7": {
+          "paper_id": "arxiv:2104.02638",
+          "paper_title": "Comparing Transfer and Meta Learning Approaches on a Unified Few-Shot Classification Benchmark",
+          "text": "Transfer learning approaches involve pre-training a model on an upstream dataset such as ImageNet, followed by fine-tuning on different downstream tasks.",
+          "supporting_text": "a collection and labeling is often time-consuming or expensive, and as a result, not all learning problems afford large quantities of training data. Few-shot learning approaches can be grouped into two main categories: transfer learning and meta-learning1. For trans-fer learning, a model is firstly pre-trained on an “upstream” dataset (e.g. ImageNet (Deng et al., 2009)), and later fine-tuned on different downstream tasks. Transfer learning approaches (Pan & Yang, 2009) are best exemplified when less downstream data is available. Typical downstream tasks have thousands or more training examples, but transfer may in principle be applied to few-shot classification."
+        },
+        "arxiv:2104.02638:section:abstract:9:1354132472a1:claim:3fb7cfd2fbdb": {
+          "paper_id": "arxiv:2104.02638",
+          "paper_title": "Comparing Transfer and Meta Learning Approaches on a Unified Few-Shot Classification Benchmark",
+          "text": "Applying the Meta-Dataset few-shot classification evaluation protocol to large scale transfer learners highlights limitations of episodic approaches and reveals where transfer learning falls short.",
+          "supporting_text": "ns-fer with few datapoints. In computer vision, learning with few datapoints is, perhaps, more commonly addressed with semi-supervised learning (e.g. (Sohn et al., 2020)), how-ever (Kolesnikov et al., 2020) show that large vision models transfer well to popular classification benchmarks (Ima-geNet, CIFAR, etc.) and VTAB-1k. Several recent papers report that well-tuned transfer learn-ing baselines are competitive with more complex few-shot classification approaches (Chen et al., 2019; Dhillon et al., 2020; Chen et al., 2020b; Tian et al., 2020). Our work adds to these observations by applying an established few-shot classification evaluation protocol (Meta-Dataset) to large scale (both in terms of data and capacity) transfer learners. Doing so highlights some limitations of episodic approaches in a new way, and also reveals where transfer learning falls short. 2.2. Episodic approaches to few-shot classification"
+        },
+        "arxiv:2104.02638:section:abstract:9:1354132472a1:claim:1453b845fef7": {
+          "paper_id": "arxiv:2104.02638",
+          "paper_title": "Comparing Transfer and Meta Learning Approaches on a Unified Few-Shot Classification Benchmark",
+          "text": "Large vision models transfer well to popular classification benchmarks including ImageNet, CIFAR, and VTAB-1k.",
+          "supporting_text": "ns-fer with few datapoints. In computer vision, learning with few datapoints is, perhaps, more commonly addressed with semi-supervised learning (e.g. (Sohn et al., 2020)), how-ever (Kolesnikov et al., 2020) show that large vision models transfer well to popular classification benchmarks (Ima-geNet, CIFAR, etc.) and VTAB-1k. Several recent papers report that well-tuned transfer learn-ing baselines are competitive with more complex few-shot classification approaches (Chen et al., 2019; Dhillon et al., 2020; Chen et al., 2020b; Tian et al., 2020). Our work adds to these observations by applying an established few-shot classification evaluation protocol (Meta-Dataset) to large scale (both in terms of data and capacity) transfer learners. Doing so highlights some limitations of episodic approaches in a new way, and also reveals where transfer learning falls short. 2.2. Episodic approaches to few-shot classification"
+        }
+      },
+      "allowed_support_ids": [
+        "p1",
+        "p2",
+        "p3",
+        "p4",
+        "p5",
+        "p6",
+        "p7",
+        "p8",
+        "p9",
+        "p10",
+        "p11",
+        "p12",
+        "p13",
+        "p14",
+        "p15"
+      ],
+      "passages": {
+        "p1": {
+          "evidence_id": "arxiv:2105.08149:abstract:claim:ae8bdfee0e05",
+          "evidence_alias": "e3",
+          "source": "original_support",
+          "source_start": 0,
+          "source_end": 1041,
+          "quote": "Few-shot image classification is a challenging problem that aims to achieve the human level of recognition based only on a small number of training images. One main solution to few-shot image classification is deep metric learning. These methods, by classifying unseen samples according to their distances to few seen samples in an embedding space learned by powerful deep neural networks, can avoid overfitting to few training images in few-shot image classification and have achieved the state-of-the-art performance. In this paper, we provide an up-to-date review of deep metric learning methods for few-shot image classification from 2018 to 2022 and categorize them into three groups according to three stages of metric learning, namely learning feature embeddings, learning class representations, and learning distance measures. With this taxonomy, we identify the novelties of different methods and problems they face. We conclude this review with a discussion on current challenges and future trends in few-shot image classification."
+        },
+        "p2": {
+          "evidence_id": "arxiv:1907.03123:abstract:claim:5a36249bbf1e",
+          "evidence_alias": "e4",
+          "source": "original_support",
+          "source_start": 0,
+          "source_end": 1391,
+          "quote": "The goal of few-shot learning is to recognize new visual concepts with just a few amount of labeled samples in each class. Recent effective metric-based few-shot approaches employ neural networks to learn a feature similarity comparison between query and support examples. However, the importance of feature embedding, i.e., exploring the relationship among training samples, is neglected. In this work, we present a simple yet powerful baseline for few-shot classification by emphasizing the importance of feature embedding. Specifically, we revisit the classical triplet network from deep metric learning, and extend it into a deep K-tuplet network for few-shot learning, utilizing the relationship among the input samples to learn a general representation learning via episode-training. Once trained, our network is able to extract discriminative features for unseen novel categories and can be seamlessly incorporated with a non-linear distance metric function to facilitate the few-shot classification. Our result on the miniImageNet benchmark outperforms other metric-based few-shot classification methods. More importantly, when evaluated on completely different datasets (Caltech-101, CUB-200, Stanford Dogs and Cars) using the model trained with miniImageNet, our method significantly outperforms prior methods, demonstrating its superior capability to generalize to unseen classes."
+        },
+        "p3": {
+          "evidence_id": "arxiv:2305.09062:abstract:claim:549b9167d596",
+          "evidence_alias": "e5",
+          "source": "original_support",
+          "source_start": 0,
+          "source_end": 1768,
+          "quote": "Few-shot learning is a challenging area of research that aims to learn new concepts with only a few labeled samples of data. Recent works based on metric-learning approaches leverage the meta-learning approach, which is encompassed by episodic tasks that make use a support (training) and query set (test) with the objective of learning a similarity comparison metric between those sets. Due to the lack of data, the learning process of the embedding network becomes an important part of the few-shot task. Previous works have addressed this problem using metric learning approaches, but the properties of the underlying latent space and the separability of the difference classes on it was not entirely enforced. In this work, we propose two different loss functions which consider the importance of the embedding vectors by looking at the intra-class and inter-class distance between the few data. The first loss function is the Proto-Triplet Loss, which is based on the original triplet loss with the modifications needed to better work on few-shot scenarios. The second loss function, which we dub ICNN loss is based on an inter and intra class nearest neighbors score, which help us to assess the quality of embeddings obtained from the trained network. Our results, obtained from a extensive experimental setup show a significant improvement in accuracy in the miniImagenNet benchmark compared to other metric-based few-shot learning methods by a margin of 2%, demonstrating the capability of these loss functions to allow the network to generalize better to previously unseen classes. In our experiments, we demonstrate competitive generalization capabilities to other domains, such as the Caltech CUB, Dogs and Cars datasets compared with the state of the art."
+        },
+        "p4": {
+          "evidence_id": "arxiv:2409.07989:abstract:claim:5ed923dac68f",
+          "evidence_alias": "e6",
+          "source": "original_support",
+          "source_start": 0,
+          "source_end": 1506,
+          "quote": "In the context of few-shot classification, the goal is to train a classifier using a limited number of samples while maintaining satisfactory performance. However, traditional metric-based methods exhibit certain limitations in achieving this objective. These methods typically rely on a single distance value between the query feature and support feature, thereby overlooking the contribution of shallow features. To overcome this challenge, we propose a novel approach in this paper. Our approach involves utilizing a multi-output embedding network that maps samples into distinct feature spaces. The proposed method extracts feature vectors at different stages, enabling the model to capture both global and abstract features. By utilizing these diverse feature spaces, our model enhances its performance. Moreover, employing a self-attention mechanism improves the refinement of features at each stage, leading to even more robust representations and improved overall performance. Furthermore, assigning learnable weights to each stage significantly improved performance and results. We conducted comprehensive evaluations on the MiniImageNet and FC100 datasets, specifically in the 5-way 1-shot and 5-way 5-shot scenarios. Additionally, we performed cross-domain tasks across eight benchmark datasets, achieving high accuracy in the testing domains. These evaluations demonstrate the efficacy of our proposed method in comparison to state-of-the-art approaches. https://github.com/FatemehAskari/MSENet"
+        },
+        "p5": {
+          "evidence_id": "arxiv:2105.00379:abstract:claim:38498384e907",
+          "evidence_alias": "e7",
+          "source": "original_support",
+          "source_start": 0,
+          "source_end": 1053,
+          "quote": "In this paper, we propose a subspace representation learning (SRL) framework to tackle few-shot image classification tasks. It exploits a subspace in local CNN feature space to represent an image, and measures the similarity between two images according to a weighted subspace distance (WSD). When K images are available for each class, we develop two types of template subspaces to aggregate K-shot information: the prototypical subspace (PS) and the discriminative subspace (DS). Based on the SRL framework, we extend metric learning based techniques from vector to subspace representation. While most previous works adopted global vector representation, using subspace representation can effectively preserve the spatial structure, and diversity within an image. We demonstrate the effectiveness of the SRL framework on three public benchmark datasets: MiniImageNet, TieredImageNet and Caltech-UCSD Birds-200-2011 (CUB), and the experimental results illustrate competitive/superior performance of our method compared to the previous state-of-the-art."
+        },
+        "p6": {
+          "evidence_id": "arxiv:1711.06025:section:abstract:4:b851ec357ca4:claim:3868df819471",
+          "evidence_alias": "e8",
+          "source": "original_support",
+          "source_start": 0,
+          "source_end": 984,
+          "quote": "le in the form of a class de-scription (c.f., single exemplar image in one-shot), making data insufficiency for gradient-based learning a challenge. While promising, most existing few-shot learning ap-proaches either require complex inference mechanisms [23, 9], complex recurrent neural network (RNN) architectures [39, 32], or fine-tuning the target problem [10, 29]. Our approach is most related to others that aim to train an effec-tive metric for one-shot learning [39, 36, 20]. Where they focus on the learning of the transferrable embedding and pre-define a fixed metric (e.g., as Euclidean [36]), we fur-ther aim to learn a transferrable deep metric for comparing the relation between images (few-shot learning), or between images and class descriptions (zero-shot learning). By ex-pressing the inductive bias of a deeper solution (multiple non-linear learned stages at both embedding and relation modules), we make it easier to learn a generalisable solu-tion to the problem."
+        },
+        "p7": {
+          "evidence_id": "arxiv:1711.06025:section:abstract:12:43376954155c:claim:71df1568e996",
+          "evidence_alias": "e9",
+          "source": "original_support",
+          "source_start": 0,
+          "source_end": 1033,
+          "quote": "ent problem.). Compared to [20, 36], this can be seen as providing a learnable rather than fixed metric, or non-linear rather than linear classifier. Compared to [20] we benefit from an episodic training strat-egy with an end-to-end manner from scratch, and compared to [32] we avoid the complexity of set-to-set RNN embed-ding of the sample-set, and simply rely on pooling [33]. Zero-Shot Learning Our approach is designed for few- shot learning, but elegantly spans the space into zero-shot learning (ZSL) by modifying the sample branch to input a single category description rather than single training im-age. When applied to ZSL our architecture is related to methods that learn to align images and category embed-dings and perform recognition by predicting if an image and category embedding pair match [11, 3, 43, 46]. Sim-ilarly to the case with the prior metric-based few-shot ap-proaches, most of these apply a fixed manually defined sim-ilarity metric or linear classifier after combining the image and category embedding."
+        },
+        "p8": {
+          "evidence_id": "arxiv:1802.04376:abstract:claim:50a611de7d64",
+          "evidence_alias": "e10",
+          "source": "original_support",
+          "source_start": 0,
+          "source_end": 715,
+          "quote": "Learning high quality class representations from few examples is a key problem in metric-learning approaches to few-shot learning. To accomplish this, we introduce a novel architecture where class representations are conditioned for each few-shot trial based on a target image. We also deviate from traditional metric-learning approaches by training a network to perform comparisons between classes rather than relying on a static metric comparison. This allows the network to decide what aspects of each class are important for the comparison at hand. We find that this flexible architecture works well in practice, achieving state-of-the-art performance on the Caltech-UCSD birds fine-grained classification task."
+        },
+        "p9": {
+          "evidence_id": "arxiv:2305.09062:abstract:claim:aaed703eb739",
+          "evidence_alias": "e11",
+          "source": "original_support",
+          "source_start": 0,
+          "source_end": 1768,
+          "quote": "Few-shot learning is a challenging area of research that aims to learn new concepts with only a few labeled samples of data. Recent works based on metric-learning approaches leverage the meta-learning approach, which is encompassed by episodic tasks that make use a support (training) and query set (test) with the objective of learning a similarity comparison metric between those sets. Due to the lack of data, the learning process of the embedding network becomes an important part of the few-shot task. Previous works have addressed this problem using metric learning approaches, but the properties of the underlying latent space and the separability of the difference classes on it was not entirely enforced. In this work, we propose two different loss functions which consider the importance of the embedding vectors by looking at the intra-class and inter-class distance between the few data. The first loss function is the Proto-Triplet Loss, which is based on the original triplet loss with the modifications needed to better work on few-shot scenarios. The second loss function, which we dub ICNN loss is based on an inter and intra class nearest neighbors score, which help us to assess the quality of embeddings obtained from the trained network. Our results, obtained from a extensive experimental setup show a significant improvement in accuracy in the miniImagenNet benchmark compared to other metric-based few-shot learning methods by a margin of 2%, demonstrating the capability of these loss functions to allow the network to generalize better to previously unseen classes. In our experiments, we demonstrate competitive generalization capabilities to other domains, such as the Caltech CUB, Dogs and Cars datasets compared with the state of the art."
+        },
+        "p10": {
+          "evidence_id": "arxiv:1907.03123:abstract:claim:998fb93b2a24",
+          "evidence_alias": "e12",
+          "source": "original_support",
+          "source_start": 0,
+          "source_end": 1391,
+          "quote": "The goal of few-shot learning is to recognize new visual concepts with just a few amount of labeled samples in each class. Recent effective metric-based few-shot approaches employ neural networks to learn a feature similarity comparison between query and support examples. However, the importance of feature embedding, i.e., exploring the relationship among training samples, is neglected. In this work, we present a simple yet powerful baseline for few-shot classification by emphasizing the importance of feature embedding. Specifically, we revisit the classical triplet network from deep metric learning, and extend it into a deep K-tuplet network for few-shot learning, utilizing the relationship among the input samples to learn a general representation learning via episode-training. Once trained, our network is able to extract discriminative features for unseen novel categories and can be seamlessly incorporated with a non-linear distance metric function to facilitate the few-shot classification. Our result on the miniImageNet benchmark outperforms other metric-based few-shot classification methods. More importantly, when evaluated on completely different datasets (Caltech-101, CUB-200, Stanford Dogs and Cars) using the model trained with miniImageNet, our method significantly outperforms prior methods, demonstrating its superior capability to generalize to unseen classes."
+        },
+        "p11": {
+          "evidence_id": "arxiv:2105.00379:abstract:claim:e2d40a72c0d6",
+          "evidence_alias": "e13",
+          "source": "original_support",
+          "source_start": 0,
+          "source_end": 1053,
+          "quote": "In this paper, we propose a subspace representation learning (SRL) framework to tackle few-shot image classification tasks. It exploits a subspace in local CNN feature space to represent an image, and measures the similarity between two images according to a weighted subspace distance (WSD). When K images are available for each class, we develop two types of template subspaces to aggregate K-shot information: the prototypical subspace (PS) and the discriminative subspace (DS). Based on the SRL framework, we extend metric learning based techniques from vector to subspace representation. While most previous works adopted global vector representation, using subspace representation can effectively preserve the spatial structure, and diversity within an image. We demonstrate the effectiveness of the SRL framework on three public benchmark datasets: MiniImageNet, TieredImageNet and Caltech-UCSD Birds-200-2011 (CUB), and the experimental results illustrate competitive/superior performance of our method compared to the previous state-of-the-art."
+        },
+        "p12": {
+          "evidence_id": "arxiv:1907.03123:abstract:claim:b4d49aba47c5",
+          "evidence_alias": "e14",
+          "source": "original_support",
+          "source_start": 0,
+          "source_end": 1391,
+          "quote": "The goal of few-shot learning is to recognize new visual concepts with just a few amount of labeled samples in each class. Recent effective metric-based few-shot approaches employ neural networks to learn a feature similarity comparison between query and support examples. However, the importance of feature embedding, i.e., exploring the relationship among training samples, is neglected. In this work, we present a simple yet powerful baseline for few-shot classification by emphasizing the importance of feature embedding. Specifically, we revisit the classical triplet network from deep metric learning, and extend it into a deep K-tuplet network for few-shot learning, utilizing the relationship among the input samples to learn a general representation learning via episode-training. Once trained, our network is able to extract discriminative features for unseen novel categories and can be seamlessly incorporated with a non-linear distance metric function to facilitate the few-shot classification. Our result on the miniImageNet benchmark outperforms other metric-based few-shot classification methods. More importantly, when evaluated on completely different datasets (Caltech-101, CUB-200, Stanford Dogs and Cars) using the model trained with miniImageNet, our method significantly outperforms prior methods, demonstrating its superior capability to generalize to unseen classes."
+        },
+        "p13": {
+          "evidence_id": "arxiv:2104.02638:section:abstract:2:c92e388de5e0:claim:1a6b9a5336b7",
+          "evidence_alias": "e16",
+          "source": "original_support",
+          "source_start": 0,
+          "source_end": 670,
+          "quote": "a collection and labeling is often time-consuming or expensive, and as a result, not all learning problems afford large quantities of training data. Few-shot learning approaches can be grouped into two main categories: transfer learning and meta-learning1. For trans-fer learning, a model is firstly pre-trained on an “upstream” dataset (e.g. ImageNet (Deng et al., 2009)), and later fine-tuned on different downstream tasks. Transfer learning approaches (Pan & Yang, 2009) are best exemplified when less downstream data is available. Typical downstream tasks have thousands or more training examples, but transfer may in principle be applied to few-shot classification."
+        },
+        "p14": {
+          "evidence_id": "arxiv:2104.02638:section:abstract:9:1354132472a1:claim:3fb7cfd2fbdb",
+          "evidence_alias": "e19",
+          "source": "original_support",
+          "source_start": 0,
+          "source_end": 923,
+          "quote": "ns-fer with few datapoints. In computer vision, learning with few datapoints is, perhaps, more commonly addressed with semi-supervised learning (e.g. (Sohn et al., 2020)), how-ever (Kolesnikov et al., 2020) show that large vision models transfer well to popular classification benchmarks (Ima-geNet, CIFAR, etc.) and VTAB-1k. Several recent papers report that well-tuned transfer learn-ing baselines are competitive with more complex few-shot classification approaches (Chen et al., 2019; Dhillon et al., 2020; Chen et al., 2020b; Tian et al., 2020). Our work adds to these observations by applying an established few-shot classification evaluation protocol (Meta-Dataset) to large scale (both in terms of data and capacity) transfer learners. Doing so highlights some limitations of episodic approaches in a new way, and also reveals where transfer learning falls short. 2.2. Episodic approaches to few-shot classification"
+        },
+        "p15": {
+          "evidence_id": "arxiv:2104.02638:section:abstract:9:1354132472a1:claim:1453b845fef7",
+          "evidence_alias": "e20",
+          "source": "original_support",
+          "source_start": 0,
+          "source_end": 923,
+          "quote": "ns-fer with few datapoints. In computer vision, learning with few datapoints is, perhaps, more commonly addressed with semi-supervised learning (e.g. (Sohn et al., 2020)), how-ever (Kolesnikov et al., 2020) show that large vision models transfer well to popular classification benchmarks (Ima-geNet, CIFAR, etc.) and VTAB-1k. Several recent papers report that well-tuned transfer learn-ing baselines are competitive with more complex few-shot classification approaches (Chen et al., 2019; Dhillon et al., 2020; Chen et al., 2020b; Tian et al., 2020). Our work adds to these observations by applying an established few-shot classification evaluation protocol (Meta-Dataset) to large scale (both in terms of data and capacity) transfer learners. Doing so highlights some limitations of episodic approaches in a new way, and also reveals where transfer learning falls short. 2.2. Episodic approaches to few-shot classification"
+        }
+      },
+      "wire_support_passages": {
+        "p1": [
+          "e3",
+          "s3",
+          0,
+          1041
+        ],
+        "p2": [
+          "e4",
+          "s4",
+          0,
+          1391
+        ],
+        "p3": [
+          "e5",
+          "s5",
+          0,
+          1768
+        ],
+        "p4": [
+          "e6",
+          "s6",
+          0,
+          1506
+        ],
+        "p5": [
+          "e7",
+          "s7",
+          0,
+          1053
+        ],
+        "p6": [
+          "e8",
+          "s8",
+          0,
+          984
+        ],
+        "p7": [
+          "e9",
+          "s9",
+          0,
+          1033
+        ],
+        "p8": [
+          "e10",
+          "s10",
+          0,
+          715
+        ],
+        "p9": [
+          "e11",
+          "s5",
+          0,
+          1768
+        ],
+        "p10": [
+          "e12",
+          "s4",
+          0,
+          1391
+        ],
+        "p11": [
+          "e13",
+          "s7",
+          0,
+          1053
+        ],
+        "p12": [
+          "e14",
+          "s4",
+          0,
+          1391
+        ],
+        "p13": [
+          "e16",
+          "s11",
+          0,
+          670
+        ],
+        "p14": [
+          "e19",
+          "s12",
+          0,
+          923
+        ],
+        "p15": [
+          "e20",
+          "s12",
+          0,
+          923
+        ]
+      },
+      "original_supports": {
+        "s3": {
+          "paper_id": "arxiv:2105.08149",
+          "text": "Few-shot image classification is a challenging problem that aims to achieve the human level of recognition based only on a small number of training images. One main solution to few-shot image classification is deep metric learning. These methods, by classifying unseen samples according to their distances to few seen samples in an embedding space learned by powerful deep neural networks, can avoid overfitting to few training images in few-shot image classification and have achieved the state-of-the-art performance. In this paper, we provide an up-to-date review of deep metric learning methods for few-shot image classification from 2018 to 2022 and categorize them into three groups according to three stages of metric learning, namely learning feature embeddings, learning class representations, and learning distance measures. With this taxonomy, we identify the novelties of different methods and problems they face. We conclude this review with a discussion on current challenges and future trends in few-shot image classification."
+        },
+        "s4": {
+          "paper_id": "arxiv:1907.03123",
+          "text": "The goal of few-shot learning is to recognize new visual concepts with just a few amount of labeled samples in each class. Recent effective metric-based few-shot approaches employ neural networks to learn a feature similarity comparison between query and support examples. However, the importance of feature embedding, i.e., exploring the relationship among training samples, is neglected. In this work, we present a simple yet powerful baseline for few-shot classification by emphasizing the importance of feature embedding. Specifically, we revisit the classical triplet network from deep metric learning, and extend it into a deep K-tuplet network for few-shot learning, utilizing the relationship among the input samples to learn a general representation learning via episode-training. Once trained, our network is able to extract discriminative features for unseen novel categories and can be seamlessly incorporated with a non-linear distance metric function to facilitate the few-shot classification. Our result on the miniImageNet benchmark outperforms other metric-based few-shot classification methods. More importantly, when evaluated on completely different datasets (Caltech-101, CUB-200, Stanford Dogs and Cars) using the model trained with miniImageNet, our method significantly outperforms prior methods, demonstrating its superior capability to generalize to unseen classes."
+        },
+        "s5": {
+          "paper_id": "arxiv:2305.09062",
+          "text": "Few-shot learning is a challenging area of research that aims to learn new concepts with only a few labeled samples of data. Recent works based on metric-learning approaches leverage the meta-learning approach, which is encompassed by episodic tasks that make use a support (training) and query set (test) with the objective of learning a similarity comparison metric between those sets. Due to the lack of data, the learning process of the embedding network becomes an important part of the few-shot task. Previous works have addressed this problem using metric learning approaches, but the properties of the underlying latent space and the separability of the difference classes on it was not entirely enforced. In this work, we propose two different loss functions which consider the importance of the embedding vectors by looking at the intra-class and inter-class distance between the few data. The first loss function is the Proto-Triplet Loss, which is based on the original triplet loss with the modifications needed to better work on few-shot scenarios. The second loss function, which we dub ICNN loss is based on an inter and intra class nearest neighbors score, which help us to assess the quality of embeddings obtained from the trained network. Our results, obtained from a extensive experimental setup show a significant improvement in accuracy in the miniImagenNet benchmark compared to other metric-based few-shot learning methods by a margin of 2%, demonstrating the capability of these loss functions to allow the network to generalize better to previously unseen classes. In our experiments, we demonstrate competitive generalization capabilities to other domains, such as the Caltech CUB, Dogs and Cars datasets compared with the state of the art."
+        },
+        "s6": {
+          "paper_id": "arxiv:2409.07989",
+          "text": "In the context of few-shot classification, the goal is to train a classifier using a limited number of samples while maintaining satisfactory performance. However, traditional metric-based methods exhibit certain limitations in achieving this objective. These methods typically rely on a single distance value between the query feature and support feature, thereby overlooking the contribution of shallow features. To overcome this challenge, we propose a novel approach in this paper. Our approach involves utilizing a multi-output embedding network that maps samples into distinct feature spaces. The proposed method extracts feature vectors at different stages, enabling the model to capture both global and abstract features. By utilizing these diverse feature spaces, our model enhances its performance. Moreover, employing a self-attention mechanism improves the refinement of features at each stage, leading to even more robust representations and improved overall performance. Furthermore, assigning learnable weights to each stage significantly improved performance and results. We conducted comprehensive evaluations on the MiniImageNet and FC100 datasets, specifically in the 5-way 1-shot and 5-way 5-shot scenarios. Additionally, we performed cross-domain tasks across eight benchmark datasets, achieving high accuracy in the testing domains. These evaluations demonstrate the efficacy of our proposed method in comparison to state-of-the-art approaches. https://github.com/FatemehAskari/MSENet"
+        },
+        "s7": {
+          "paper_id": "arxiv:2105.00379",
+          "text": "In this paper, we propose a subspace representation learning (SRL) framework to tackle few-shot image classification tasks. It exploits a subspace in local CNN feature space to represent an image, and measures the similarity between two images according to a weighted subspace distance (WSD). When K images are available for each class, we develop two types of template subspaces to aggregate K-shot information: the prototypical subspace (PS) and the discriminative subspace (DS). Based on the SRL framework, we extend metric learning based techniques from vector to subspace representation. While most previous works adopted global vector representation, using subspace representation can effectively preserve the spatial structure, and diversity within an image. We demonstrate the effectiveness of the SRL framework on three public benchmark datasets: MiniImageNet, TieredImageNet and Caltech-UCSD Birds-200-2011 (CUB), and the experimental results illustrate competitive/superior performance of our method compared to the previous state-of-the-art."
+        },
+        "s8": {
+          "paper_id": "arxiv:1711.06025",
+          "text": "le in the form of a class de-scription (c.f., single exemplar image in one-shot), making data insufficiency for gradient-based learning a challenge. While promising, most existing few-shot learning ap-proaches either require complex inference mechanisms [23, 9], complex recurrent neural network (RNN) architectures [39, 32], or fine-tuning the target problem [10, 29]. Our approach is most related to others that aim to train an effec-tive metric for one-shot learning [39, 36, 20]. Where they focus on the learning of the transferrable embedding and pre-define a fixed metric (e.g., as Euclidean [36]), we fur-ther aim to learn a transferrable deep metric for comparing the relation between images (few-shot learning), or between images and class descriptions (zero-shot learning). By ex-pressing the inductive bias of a deeper solution (multiple non-linear learned stages at both embedding and relation modules), we make it easier to learn a generalisable solu-tion to the problem."
+        },
+        "s9": {
+          "paper_id": "arxiv:1711.06025",
+          "text": "ent problem.). Compared to [20, 36], this can be seen as providing a learnable rather than fixed metric, or non-linear rather than linear classifier. Compared to [20] we benefit from an episodic training strat-egy with an end-to-end manner from scratch, and compared to [32] we avoid the complexity of set-to-set RNN embed-ding of the sample-set, and simply rely on pooling [33]. Zero-Shot Learning Our approach is designed for few- shot learning, but elegantly spans the space into zero-shot learning (ZSL) by modifying the sample branch to input a single category description rather than single training im-age. When applied to ZSL our architecture is related to methods that learn to align images and category embed-dings and perform recognition by predicting if an image and category embedding pair match [11, 3, 43, 46]. Sim-ilarly to the case with the prior metric-based few-shot ap-proaches, most of these apply a fixed manually defined sim-ilarity metric or linear classifier after combining the image and category embedding."
+        },
+        "s10": {
+          "paper_id": "arxiv:1802.04376",
+          "text": "Learning high quality class representations from few examples is a key problem in metric-learning approaches to few-shot learning. To accomplish this, we introduce a novel architecture where class representations are conditioned for each few-shot trial based on a target image. We also deviate from traditional metric-learning approaches by training a network to perform comparisons between classes rather than relying on a static metric comparison. This allows the network to decide what aspects of each class are important for the comparison at hand. We find that this flexible architecture works well in practice, achieving state-of-the-art performance on the Caltech-UCSD birds fine-grained classification task."
+        },
+        "s11": {
+          "paper_id": "arxiv:2104.02638",
+          "text": "a collection and labeling is often time-consuming or expensive, and as a result, not all learning problems afford large quantities of training data. Few-shot learning approaches can be grouped into two main categories: transfer learning and meta-learning1. For trans-fer learning, a model is firstly pre-trained on an “upstream” dataset (e.g. ImageNet (Deng et al., 2009)), and later fine-tuned on different downstream tasks. Transfer learning approaches (Pan & Yang, 2009) are best exemplified when less downstream data is available. Typical downstream tasks have thousands or more training examples, but transfer may in principle be applied to few-shot classification."
+        },
+        "s12": {
+          "paper_id": "arxiv:2104.02638",
+          "text": "ns-fer with few datapoints. In computer vision, learning with few datapoints is, perhaps, more commonly addressed with semi-supervised learning (e.g. (Sohn et al., 2020)), how-ever (Kolesnikov et al., 2020) show that large vision models transfer well to popular classification benchmarks (Ima-geNet, CIFAR, etc.) and VTAB-1k. Several recent papers report that well-tuned transfer learn-ing baselines are competitive with more complex few-shot classification approaches (Chen et al., 2019; Dhillon et al., 2020; Chen et al., 2020b; Tian et al., 2020). Our work adds to these observations by applying an established few-shot classification evaluation protocol (Meta-Dataset) to large scale (both in terms of data and capacity) transfer learners. Doing so highlights some limitations of episodic approaches in a new way, and also reveals where transfer learning falls short. 2.2. Episodic approaches to few-shot classification"
+        }
+      },
+      "raw_provider_decision": {
+        "claim_id": "claim_100",
+        "correct_kind": "scientific",
+        "atomic": true,
+        "classification_valid": true,
+        "source_faithful": true,
+        "status": "supported",
+        "reason_code": "supported",
+        "explanation": "断言内容与所属f2片段完全一致，忠实提取；所选引用的关系网络论文和目标条件化嵌入论文均明确提出其方法相比固定度量具有更强的比较灵活性，支持该断言。",
+        "support_basis": [
+          {
+            "support_id": "p6"
+          },
+          {
+            "support_id": "p7"
+          },
+          {
+            "support_id": "p8"
+          }
+        ],
+        "aspect_checks": [
+          {
+            "aspect": "predicate",
+            "supported": true,
+            "support_ids": [
+              "p6",
+              "p7",
+              "p8"
+            ],
+            "explanation": "关系网络论文提出可学习深度度量替代固定度量，目标条件化嵌入论文提出灵活的类比较架构，均支持关系网络或目标条件化比较提供更强灵活性的主张。"
+          },
+          {
+            "aspect": "conditions",
+            "supported": true,
+            "support_ids": [
+              "p6",
+              "p7",
+              "p8"
+            ],
+            "explanation": "所选文献均针对少样本图像分类场景，与断言的适用场景一致。"
+          },
+          {
+            "aspect": "quantities",
+            "supported": false,
+            "support_ids": [],
+            "explanation": "断言未涉及具体数值量，无对应支持内容。"
+          }
+        ]
+      },
+      "required_support_aspects": [
+        "predicate",
+        "conditions"
+      ],
+      "actual_aspects": [
+        "predicate",
+        "conditions",
+        "quantities"
+      ],
+      "extra_aspects": [
+        {
+          "aspect": "quantities",
+          "supported": false,
+          "support_ids": [],
+          "explanation": "断言未涉及具体数值量，无对应支持内容。"
+        }
+      ],
+      "expected_existing_host_result": {
+        "status": "unverified",
+        "issue": "support_aspect_coverage_invalid"
+      },
+      "later_host_checks_verified": false
+    }
+  ]
+}

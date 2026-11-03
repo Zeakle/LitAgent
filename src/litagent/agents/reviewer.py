@@ -220,9 +220,15 @@ class ReviewerWorker(Worker):
         if (
             self._native_reasoning_effort is not None
             or self._native_provider_api != "chat"
-        ) and task.input_data.get("generation_strategy") != "body_summary_v2":
+        ) and task.input_data.get("generation_strategy") not in (
+            "body_summary_v2",
+            "body_summary_v3",
+        ):
             raise ValueError("native_reasoning_strategy_invalid")
-        if task.input_data.get("generation_strategy") == "body_summary_v2":
+        if task.input_data.get("generation_strategy") in (
+            "body_summary_v2",
+            "body_summary_v3",
+        ):
             from litagent.writing_v2 import review
 
             return await review(self, task)

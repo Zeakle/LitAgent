@@ -154,6 +154,71 @@ async def test_unknown_rejection_is_carried_without_a_refund_or_fabricated_snaps
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("persisted", [False, True])
+async def test_legacy_budget_source_revalidates_without_using_current_code(
+    rejected_parent, persisted
+):
+    """Carry old uncertain charges across the planned-budget module upgrade."""
+    p = rejected_parent
+    expected, _ = campaign.accounting_history(
+        p.history, [p.root], unknown_policy=campaign.CONSERVATIVE_ACCOUNTING
+    )
+    fixture = json.loads(
+        (
+            Path(__file__).parent / "fixtures/legacy-budget-pre-planned-v2.json"
+        ).read_text()
+    )
+    original = budget_module.CostBudget
+    saved = p.root / "source/src/litagent/safety/budget.py"
+    saved.write_bytes(fixture["source"].encode())
+    assert hashlib.sha256(saved.read_bytes()).hexdigest() == fixture["source_sha256"]
+    p.manifest["source_hashes"]["src/litagent/safety/budget.py"] = fixture[
+        "source_sha256"
+    ]
+    p.manifest["identity"] = digest(
+        {k: v for k, v in p.manifest.items() if k != "identity"}
+    )
+    p.state["identity"] = p.manifest["identity"]
+    if persisted:
+        p.row["budget_snapshot"] = p.snapshot
+    atomic_json(p.root / "manifest.json", p.manifest)
+    atomic_json(p.root / "state.json", p.state)
+    paths = [
+        p.root / "manifest.json",
+        p.root / "state.json",
+        p.archive,
+        p.journal,
+        saved,
+    ]
+    before = {f: f.read_bytes() for f in paths}
+    result, receipts = campaign.accounting_history(
+        p.history, [p.root], unknown_policy=campaign.CONSERVATIVE_ACCOUNTING
+    )
+    assert result == expected
+    proof = receipts[0]["conservative_rejections"][0]
+    assert proof["budget_source_sha256"] == fixture["source_sha256"]
+    assert proof["unknown_hold"] == p.row["unknown_hold"]
+    assert campaign.accounting_history(
+        p.history, [p.root], unknown_policy=campaign.CONSERVATIVE_ACCOUNTING
+    ) == (result, receipts)
+    assert all(f.read_bytes() == content for f, content in before.items())
+    assert budget_module.CostBudget is original
+
+
+@pytest.mark.parametrize("rehashed", [False, True])
+def test_unknown_historical_source_is_never_executed(tmp_path, rehashed):
+    saved = tmp_path / "source/src/litagent/safety/budget.py"
+    saved.parent.mkdir(parents=True)
+    marker = tmp_path / "unexpected-execution"
+    saved.write_text(f"from pathlib import Path\nPath({str(marker)!r}).touch()\n")
+    sha = hashlib.sha256(saved.read_bytes()).hexdigest() if rehashed else "wrong"
+    manifest = {"source_hashes": {"src/litagent/safety/budget.py": sha}}
+    with pytest.raises(ValueError, match="frozen_accounting_"):
+        campaign.historical_accounting_budget(tmp_path, manifest)
+    assert not marker.exists()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "fault",
     [

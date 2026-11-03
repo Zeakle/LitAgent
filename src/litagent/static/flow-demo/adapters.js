@@ -1,4 +1,42 @@
 const TERMINAL = new Set(["completed", "cancelled", "rejected", "failed", "interrupted"]);
+const BUDGET_STOP_REASONS = new Set(["strict_usage_unknown", "strict_worker_failed", "planned_usage_bound_violation", "planned_ledger_persistence_failed"]);
+const BUDGET_FIELDS = ["plan_identity", "known_tokens", "requests", "usage_uncertain", "stop_reason", "unknown_hold"];
+const BUDGET_KEYS = new Set(["contract", "scope", "run_id", "availability", "reason", ...BUDGET_FIELDS]);
+
+function budgetState(raw, runId, plan) {
+  const unavailable = availability => ({
+    contract: "run-budget-state-v1", scope: "run",
+    run_id: typeof runId === "string" ? runId : "",
+    availability, reason: availability === "missing" ? "not_recorded" : "invalid_record",
+    ...Object.fromEntries(BUDGET_FIELDS.map(key => [key, null])),
+  });
+  if (raw == null) return unavailable("missing");
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)
+      || Object.keys(raw).some(key => !BUDGET_KEYS.has(key))
+      || [...BUDGET_KEYS].some(key => !Object.hasOwn(raw, key))) return unavailable("invalid");
+  if (raw.contract !== "run-budget-state-v1" || raw.scope !== "run"
+      || typeof runId !== "string" || !runId || raw.run_id !== runId) return unavailable("invalid");
+  if (["missing", "invalid"].includes(raw.availability)) {
+    if (raw.reason !== (raw.availability === "missing" ? "not_recorded" : "invalid_record")
+        || !BUDGET_FIELDS.every(key => raw[key] === null)) return unavailable("invalid");
+    return unavailable(raw.availability);
+  }
+  const integer = value => Number.isSafeInteger(value) && value >= 0;
+  if (raw.availability !== "available" || raw.reason !== null
+      || typeof raw.plan_identity !== "string" || !/^[a-f0-9]{64}$/.test(raw.plan_identity)
+      || ![raw.known_tokens, raw.requests, raw.unknown_hold].every(integer)
+      || typeof raw.usage_uncertain !== "boolean"
+      || !(raw.stop_reason === null || BUDGET_STOP_REASONS.has(raw.stop_reason))
+      || (raw.unknown_hold > 0 && !raw.usage_uncertain)) return unavailable("invalid");
+  if (["planned-budget-v2", "planned-budget-v3", "planned-budget-v4", "planned-budget-v5", "planned-budget-v6", "planned-budget-v7"].includes(plan?.contract)
+      && Object.hasOwn(plan, "identity") && plan.identity !== raw.plan_identity) return unavailable("invalid");
+  // Copy only the public display contract; never retain archive extras or ledger entries.
+  return {
+    contract: raw.contract, scope: raw.scope, run_id: runId,
+    availability: "available", reason: null,
+    ...Object.fromEntries(BUDGET_FIELDS.map(key => [key, raw[key]])),
+  };
+}
 
 function text(value, fallback = "") {
   return typeof value === "string" ? value : fallback;
@@ -79,6 +117,8 @@ export function adaptArchiveView(raw, identity) {
     evidence: Array.isArray(raw?.evidence) ? raw.evidence : [],
     runtimeEvaluation: raw?.evaluation || {},
     pipelineVerification: raw?.pipeline_verification || null,
+    budgetPlan: raw?.budget_plan || null,
+    budgetState: budgetState(raw?.budget_state, identity.runId, raw?.budget_plan),
     targetedRepairState: raw?.targeted_repair_state || null,
     benchmarkJudge: raw?.benchmark_judge || null,
     quality: raw?.quality || null,
@@ -109,6 +149,8 @@ export function adaptInteractiveView(raw, identity) {
     evidence: Array.isArray(raw?.evidence) ? raw.evidence : [],
     runtimeEvaluation: raw?.evaluation || {},
     pipelineVerification: raw?.pipeline_verification || null,
+    budgetPlan: raw?.budget_plan || null,
+    budgetState: budgetState(raw?.budget_state, identity.runId, raw?.budget_plan),
     targetedRepairState: raw?.targeted_repair_state || null,
     benchmarkJudge: raw?.benchmark_judge || null,
     quality: raw?.quality || null,

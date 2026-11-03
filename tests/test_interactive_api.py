@@ -100,6 +100,18 @@ def headers():
     return {"X-LitAgent-Operation-Token": app.state.operation_token}
 
 
+def test_budget_default_is_advertised_without_changing_api_omission():
+    from litagent.workbench import RunOptions
+
+    response = client.get("/workbench/context")
+    assert response.status_code == 200
+    automatic = response.json()["automatic_acceptance"]
+    assert automatic["default_budget_policy"] == "planned-budget-v4"
+    assert automatic["maximum_survey_tokens"] == 1000000
+    assert automatic["survey_tokens"] == 500000
+    assert "budget_policy" not in RunOptions().model_dump()
+
+
 def test_interactive_create_requires_local_operation_token(monkeypatch):
     monkeypatch.setattr(app.state, "interactive_service", FakeService())
     payload = {

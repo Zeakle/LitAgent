@@ -37,13 +37,36 @@ class CostBudget:
         self._usage_uncertain = False
         self._halt_on_unknown_usage = False
         self._stop_reason: str | None = None
+        self._planned_backend = None
 
     def configure_strict(self, *, halt_on_unknown_usage: bool = False) -> None:
         """Reserve downstream capacity within the existing total allowance."""
+        if self._planned_backend is not None:
+            return self._planned_backend.configure_strict(
+                halt_on_unknown_usage=halt_on_unknown_usage
+            )
         if self._max_tokens > 500000:
             raise ValueError("strict_total_budget_limit")
         self.strict = True
         self._halt_on_unknown_usage |= halt_on_unknown_usage
+
+    def activate_plan(self, plan: dict, *, path=None) -> None:
+        """Install v2 accounting while preserving all existing client references."""
+        from litagent.safety.planned_budget import PlannedBudget
+
+        if self._planned_backend is not None:
+            if self._planned_backend.plan != plan:
+                raise ValueError("planned_budget_identity_conflict")
+            return
+        if self._reserved_tokens or self._usage_uncertain:
+            raise ValueError("planned_budget_activation_unsafe")
+        if (
+            plan.get("spent_tokens") != self._used_tokens
+            or plan.get("spent_requests") != self._requests_sent
+        ):
+            raise ValueError("planned_budget_spend_conflict")
+        self._planned_backend = PlannedBudget(plan, path=path)
+        self.strict = True
 
     def _phase(self) -> int:
         """Classify actual call contexts and prohibit backward budget borrowing."""
@@ -65,6 +88,8 @@ class CostBudget:
 
     def begin_request(self) -> None:
         """Count transport attempts before sending, including uncertain failures."""
+        if self._planned_backend is not None:
+            return self._planned_backend.begin_request()
         if self.strict:
             if self.stop_reason:
                 raise ValueError(self.stop_reason)
@@ -74,6 +99,8 @@ class CostBudget:
 
     def charge_unknown_usage(self, reservation: int) -> None:
         """Keep a conservative charge when a response omits provider accounting."""
+        if self._planned_backend is not None:
+            return self._planned_backend.charge_unknown_usage(reservation)
         self._used_tokens += reservation
         self._usage_uncertain = True
         if self.strict:
@@ -81,18 +108,24 @@ class CostBudget:
 
     def stop_after_worker_failure(self) -> None:
         """Stop automatic execution after a technical worker failure, without refund."""
+        if self._planned_backend is not None:
+            return self._planned_backend.stop_after_worker_failure()
         if self._halt_on_unknown_usage:
             self._stop_reason = "strict_worker_failed"
 
     @property
     def stop_reason(self) -> str | None:
         """Expose a durable reason without interpreting an unknown response as zero."""
+        if self._planned_backend is not None:
+            return self._planned_backend.stop_reason
         if self._halt_on_unknown_usage and self._usage_uncertain:
             return "strict_usage_unknown"
         return self._stop_reason
 
     def record(self, usage: dict) -> None:
         """Add one provider usage record to the budget."""
+        if self._planned_backend is not None:
+            return self._planned_backend.record(usage)
         self._used_tokens += usage.get("prompt_tokens", 0)
         self._used_tokens += usage.get("completion_tokens", 0)
         self._call_count += 1
@@ -113,6 +146,8 @@ class CostBudget:
 
     def snapshot(self) -> dict:
         """Serialize cumulative usage for a safe-boundary resume."""
+        if self._planned_backend is not None:
+            return self._planned_backend.snapshot()
         return {
             "schema_version": 1,
             "max_tokens": self._max_tokens,
@@ -144,6 +179,14 @@ class CostBudget:
     @classmethod
     def from_snapshot(cls, data: dict) -> "CostBudget":
         """Restore usage without granting a fresh budget."""
+        if isinstance(data, dict) and data.get("schema_version") == 2:
+            from litagent.safety.planned_budget import PlannedBudget
+
+            if not isinstance(data.get("plan"), dict):
+                raise ValueError("invalid_cost_budget_snapshot")
+            result = PlannedBudget(data["plan"])
+            result.restore(data)
+            return result
         if not isinstance(data, dict) or data.get("schema_version") != 1:
             raise ValueError("invalid_cost_budget_snapshot")
         values = {
@@ -189,7 +232,29 @@ class CostBudget:
 
     def restore(self, data: dict) -> None:
         """Restore into the object already shared with LLM clients and scheduler."""
+        if self._planned_backend is not None:
+            return self._planned_backend.restore(data)
         restored = self.from_snapshot(data)
+        if data.get("schema_version") == 2:
+            # Runner checkpoints restore into an owner already shared by clients.
+            # Preserve it while installing only a fully validated v2 backend.
+            if (
+                not self.strict
+                or self._reserved_tokens
+                or self.stop_reason
+                or self._usage_uncertain
+            ):
+                raise ValueError("planned_budget_activation_unsafe")
+            current = (self._used_tokens, self._call_count, self._requests_sent)
+            prepared = (
+                restored.plan["spent_tokens"],
+                restored.plan["spent_requests"],
+                restored.plan["spent_requests"],
+            )
+            if current != (0, 0, 0) and current != prepared:
+                raise ValueError("planned_budget_spend_conflict")
+            self._planned_backend = restored
+            return
         if restored._max_tokens != self._max_tokens:
             raise ValueError("cost_budget_limit_mismatch")
         if self.strict != restored.strict:
@@ -207,10 +272,14 @@ class CostBudget:
 
     def is_exceeded(self) -> bool:
         """Return whether token use reached the hard limit."""
+        if self._planned_backend is not None:
+            return self._planned_backend.is_exceeded()
         return self._used_tokens >= self._max_tokens or self.stop_reason is not None
 
     def remaining(self, *, advance: bool = True) -> int:
         """Return available capacity, optionally without advancing the strict phase."""
+        if self._planned_backend is not None:
+            return self._planned_backend.remaining(advance=advance)
         ceiling = self._max_tokens
         if self.stop_reason:
             return 0
@@ -225,6 +294,8 @@ class CostBudget:
 
     def reserve(self, tokens: int) -> None:
         """Reserve a request upper bound before yielding to concurrent callers."""
+        if self._planned_backend is not None:
+            return self._planned_backend.reserve(tokens)
         if self.stop_reason:
             raise ValueError(self.stop_reason)
         if tokens < 0 or tokens > self.remaining():
@@ -233,6 +304,8 @@ class CostBudget:
 
     def release(self, tokens: int) -> None:
         """Release a completed request's reservation without changing actual usage."""
+        if self._planned_backend is not None:
+            return self._planned_backend.release(tokens)
         if tokens < 0 or tokens > self._reserved_tokens:
             raise ValueError("invalid_budget_reservation")
         self._reserved_tokens -= tokens
@@ -240,9 +313,13 @@ class CostBudget:
     @property
     def used(self) -> int:
         """Return the consumed budget."""
+        if self._planned_backend is not None:
+            return self._planned_backend.used
         return self._used_tokens
 
     @property
     def call_count(self) -> int:
         """Return the number of recorded LLM calls."""
+        if self._planned_backend is not None:
+            return self._planned_backend.call_count
         return self._call_count

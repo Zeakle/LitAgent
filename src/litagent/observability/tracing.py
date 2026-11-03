@@ -71,6 +71,16 @@ class LangFuseTracer:
             self._root.update_trace(session_id=data.get("session_id", ""))
             self._trace_url = self._client.get_trace_url(trace_id=self._trace_id)
 
+        elif event in {"budget.plan", "budget.updated"}:
+            span = self._spans.get(data.get("task_id", "")) or self._root
+            if span:
+                span.update(
+                    metadata={
+                        "budget_plan": data.get("budget_plan"),
+                        "budget_state": data.get("budget_state"),
+                    }
+                )
+
         elif event in {"writing.request.rejected", "evaluation.request.rejected"}:
             span = self._spans.get(data.get("task_id", "")) or self._root
             if span:
@@ -329,6 +339,19 @@ class LangFuseTracer:
                         "usage_complete": False,
                         "error_type": data.get("error_type"),
                         "reason_code": data.get("reason_code"),
+                        **{
+                            key: data[key]
+                            for key in (
+                                "provider_api",
+                                "max_tokens",
+                                "output_limit_parameter",
+                                "reasoning_effort",
+                                "request_stage",
+                                "request_timeout_seconds",
+                                "timeout_scope",
+                            )
+                            if key in data
+                        },
                     },
                 )
                 gen.end()

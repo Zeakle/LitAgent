@@ -1,10 +1,290 @@
 """Keep skipped Evaluation metrics distinct from actual scores in the workbench."""
 
+import hashlib
+import json
 import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
+from test_writer_v2 import case  # noqa: F401
+
+
+def render_repair_state(value, locale):
+    """Run the actual quality renderer and expose its immutable DOM projection."""
+    script = r"""
+const fs=require('node:fs');
+(async()=>{
+ class E{constructor(){this.children=[];this.dataset={};this.textContent='';}append(...x){this.children.push(...x);}replaceChildren(...x){this.children=x;}addEventListener(){}setAttribute(){}}
+ global.document={createElement:()=>new E()};
+ const {renderQuality}=await import('data:text/javascript;base64,'+fs.readFileSync(process.argv[1]+'/quality-view.js').toString('base64'));
+ const input=JSON.parse(fs.readFileSync(0,'utf8')),before=JSON.stringify(input),root=new E();
+ renderQuality(root,input.evaluation||{},input.quality||{},input.delivery||{},()=>{},x=>x,{...input.options,locale:process.argv[2]});
+ const walk=e=>[e,...e.children.flatMap(walk)],nodes=walk(root);
+ const heading=process.argv[2]==='en'?'Bounded targeted repairs':'有限定向修复';
+ const repairs=root.children.find(e=>e.children.some(c=>c.textContent===heading));
+ if(JSON.stringify(input)!==before)throw Error('Renderer mutated the producer input');
+ console.log(JSON.stringify({text:nodes.map(e=>e.textContent).join(' '),repairTexts:repairs?walk(repairs).map(e=>e.textContent):[],metricStatuses:nodes.filter(e=>e.className==='metric-row').map(e=>e.dataset.status)}));
+})().catch(e=>{console.error(e);process.exit(1)});
+"""
+    result = subprocess.run(
+        [
+            shutil.which("node") or "node",
+            "-e",
+            script,
+            str(Path("src/litagent/static/flow-demo").resolve()),
+            locale,
+        ],
+        input=json.dumps(value),
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
+    return json.loads(result.stdout)
+
+
+@pytest.mark.parametrize("locale", ["zh-CN", "en"])
+@pytest.mark.parametrize(
+    "purpose", ["bounded-inventory-recovery-v1", "bounded-inventory-recovery-v2"]
+)
+@pytest.mark.parametrize("status", ["completed", "failed", "started_no_replay"])
+def test_inventory_attempt_purpose_and_status_remain_distinct_from_body_repair(
+    locale, purpose, status
+):
+    """Label exact recovery contracts without changing counts or science gates."""
+    state = {
+        "version": "shared-targeted-repair-limit-v1",
+        "run_id": "offline-quality-view",
+        "limit": 2,
+        "attempts": [
+            {"index": 0, "stage": "evaluation", "purpose": purpose, "status": status}
+        ],
+    }
+    value = {
+        "evaluation": {"faithfulness": {"skipped": True, "score": None, "details": {}}},
+        "quality": {"status": "unverified"},
+        "delivery": {"status": "blocked", "publishable": False},
+        "options": {"qualityPolicy": "strict_auto_v2", "targetedRepairState": state},
+    }
+    before = json.dumps(value, sort_keys=True)
+    rendered = render_repair_state(value, locale)
+    en = locale == "en"
+    expected_status = {
+        "completed": "Completed" if en else "已完成",
+        "failed": "Failed" if en else "未通过",
+        "started_no_replay": (
+            "Sent; automatic replay forbidden" if en else "已发出，禁止自动重发"
+        ),
+    }[status]
+    label = "Inventory re-extraction" if en else "断言清单重抽取"
+    assert f"{label}: {expected_status}" in rendered["repairTexts"]
+    assert ("Attempts consumed: 1 / 2" if en else "已消耗次数: 1 / 2") in rendered[
+        "repairTexts"
+    ]
+    assert not any(
+        text.startswith("Evaluation repair:" if en else "正文定向修复:")
+        for text in rendered["repairTexts"]
+    )
+    assert ("does not establish scientific support" if en else "不代表科学支持") in (
+        rendered["text"]
+    )
+    assert rendered["metricStatuses"] == ["unverified"]
+    assert "1.000" not in rendered["text"]
+    assert json.dumps(value, sort_keys=True) == before
+
+
+@pytest.mark.parametrize("locale", ["zh-CN", "en"])
+@pytest.mark.parametrize(
+    "attempt,labels",
+    [
+        (
+            {"stage": "native_initial"},
+            ("初稿单元", "Initial native unit"),
+        ),
+        (
+            {"stage": "evaluation", "cause": "capacity"},
+            ("正文容量精简", "Body capacity refinement"),
+        ),
+        (
+            {"stage": "evaluation"},
+            ("正文定向修复", "Evaluation repair"),
+        ),
+        (
+            {"stage": "evaluation", "purpose": "bounded-inventory-recovery-v3"},
+            ("正文定向修复", "Evaluation repair"),
+        ),
+        (
+            {"stage": "evaluation", "purpose": "bounded-inventory-recovery-v2-extra"},
+            ("正文定向修复", "Evaluation repair"),
+        ),
+    ],
+)
+def test_inventory_label_does_not_absorb_existing_repair_branches(
+    locale, attempt, labels
+):
+    """Keep exact contract matching separate from stage and prefix guesses."""
+    value = {
+        "options": {
+            "targetedRepairState": {
+                "version": "shared-targeted-repair-limit-v1",
+                "limit": 2,
+                "attempts": [{"index": 0, "status": "completed", **attempt}],
+            }
+        }
+    }
+    rendered = render_repair_state(value, locale)
+    en = locale == "en"
+    assert f"{labels[en]}: {'Completed' if en else '已完成'}" in rendered["repairTexts"]
+    assert not any(
+        text.startswith("Inventory re-extraction:" if en else "断言清单重抽取:")
+        for text in rendered["repairTexts"]
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("locale", ["zh-CN", "en"])
+async def test_actual_mixed_recovery_state_renders_without_inventing_body_repair(
+    case, tmp_path, monkeypatch, locale
+):
+    """Follow SDK recovery output to the actual DOM with no mocked producer."""
+    from test_mixed_inventory_pipeline import execute
+
+    static_root = Path("src/litagent/static/flow-demo").resolve()
+    report, gateway = await execute(case, tmp_path, monkeypatch, fault="once")
+    state = report["metadata"]["targeted_repair_state"]
+    history = report["metadata"]["evaluation_history"]
+    attempt = state["attempts"][0]
+    assert attempt["stage"] == "evaluation"
+    assert attempt["purpose"] == "bounded-inventory-recovery-v2"
+    assert attempt["status"] == "completed" and attempt["index"] == 0
+    assert len(state["attempts"]) == 1 and state["limit"] == 2
+    assert gateway.repair_count == 0 and gateway.recovery_requests == 1
+    sha = hashlib.sha256(report["survey"].encode()).hexdigest()
+    first = history["initial_evaluation"]
+    assert first["faithfulness"]["details"]["source_report_sha256"] == sha
+    assert (
+        report["evaluation"]["faithfulness"]["details"]["source_report_sha256"] == sha
+    )
+    assert history["attempts"][0]["kind"] == "inventory_recovery"
+    assert history["attempts"][0]["committed"] is False
+    before = json.dumps(report, sort_keys=True)
+    # The helper's default relative static path must still resolve to project
+    # source if the real fixture later isolates its output working directory.
+    monkeypatch.chdir(static_root.parents[3])
+    options = {
+        "qualityPolicy": "strict_auto_v2",
+        "sha": sha,
+        "targetedRepairState": state,
+        "evaluationHistory": history,
+    }
+    rendered = render_repair_state(
+        {
+            "evaluation": report["evaluation"],
+            "quality": report["quality"],
+            "delivery": report["delivery"],
+            "options": options,
+        },
+        locale,
+    )
+    en = locale == "en"
+    assert (
+        "Inventory re-extraction: Completed" if en else "断言清单重抽取: 已完成"
+    ) in (rendered["repairTexts"])
+    assert ("Attempts consumed: 1 / 2" if en else "已消耗次数: 1 / 2") in rendered[
+        "repairTexts"
+    ]
+    assert not any(
+        text.startswith("Evaluation repair:" if en else "正文定向修复:")
+        for text in rendered["repairTexts"]
+    )
+    # The real first inventory was invalid. Its existing unverified/failed metric
+    # remains so even when the shared recovery-call state is completed.
+    initial = render_repair_state({"evaluation": first, "options": options}, locale)
+    assert initial["metricStatuses"][-1] in {"failed", "unverified"}
+    assert ("does not establish scientific support" if en else "不代表科学支持") in (
+        initial["text"]
+    )
+    assert json.dumps(report, sort_keys=True) == before
+
+
+@pytest.mark.parametrize("locale", ["zh-CN", "en"])
+@pytest.mark.parametrize("binding", ["current", "old_failure", "old_evaluation"])
+def test_terminal_and_upstream_causes_are_distinct_and_sha_bound(locale, binding):
+    """Expose current failures without importing another version's diagnosis."""
+    script = r"""
+const fs=require('node:fs');
+(async()=>{
+ class E{constructor(){this.children=[];this.dataset={};this.textContent='';}append(...x){this.children.push(...x);}replaceChildren(...x){this.children=x;}addEventListener(){}setAttribute(){}}
+ global.document={createElement:()=>new E()};
+ const {renderQuality}=await import('data:text/javascript;base64,'+fs.readFileSync(process.argv[1]+'/quality-view.js').toString('base64'));
+ const binding=process.argv[3],en=process.argv[2]==='en';
+ const evaluation={faithfulness:{skipped:true,details:{source_report_sha256:binding==='old_evaluation'?'old':'current',skipped_reason:'evaluation_capacity_refinement_required'}}};
+ const failure={source_report_sha256:binding==='old_failure'?'old':'current',family:'quality',code:'writer_capacity_new_unit_unaccounted'};
+ const before=JSON.stringify({evaluation,failure}),root=new E(),walk=e=>[e,...e.children.flatMap(walk)];
+ renderQuality(root,evaluation,{}, {},()=>{},x=>x,{locale:process.argv[2],sha:'current',writerFailure:failure});
+ const text=walk(root).map(e=>e.textContent).join(' ');
+ const terminal=en?'Terminal failure:':'最终失败原因:',upstream=en?'Upstream Evaluation:':'上游 Evaluation 原因:';
+ if(text.includes(terminal)!==(binding!=='old_failure'))throw Error(text);
+ if(text.includes(upstream)!==(binding==='current'))throw Error(text);
+ if(binding==='current'&&(!text.includes('writer_capacity_new_unit_unaccounted')||!text.includes('evaluation_capacity_refinement_required')))throw Error(text);
+ if(binding==='old_failure'&&text.includes('writer_capacity_new_unit_unaccounted'))throw Error('Borrowed another version failure');
+ if(text.includes('1.000')||JSON.stringify({evaluation,failure})!==before)throw Error('Promoted or mutated an unverified result');
+})().catch(e=>{console.error(e);process.exit(1)});
+"""
+    result = subprocess.run(
+        [
+            shutil.which("node") or "node",
+            "-e",
+            script,
+            str(Path("src/litagent/static/flow-demo").resolve()),
+            locale,
+            binding,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("locale", ["zh-CN", "en"])
+@pytest.mark.parametrize("partial", [False, True])
+def test_host_diagnostics_do_not_promote_an_invalid_inventory(locale, partial):
+    """Show the validation boundary while keeping the exact score and source intact."""
+    script = r"""
+const fs=require('node:fs');
+(async()=>{
+ class E{constructor(){this.children=[];this.dataset={};this.textContent='';}append(...x){this.children.push(...x);}replaceChildren(...x){this.children=x;}addEventListener(){}setAttribute(){}}
+ global.document={createElement:()=>new E()};
+ const {renderQuality}=await import('data:text/javascript;base64,'+fs.readFileSync(process.argv[1]+'/quality-view.js').toString('base64'));
+ const en=process.argv[2]==='en',partial=process.argv[3]==='true';
+ const details={evaluation_version:'survey-evaluation-v3',global_findings_contract:'located-global-findings-v1',inventory_check:{status:'failed'},coverage:{complete:false},factual_claim_count:5,supported_count:0,unsupported_count:0,unverified_count:5};
+ if(partial)details.partial_assessment={stage:'host_validated',overall_valid:false,processed_assertions:2,expected_assertions:5,supported_count:1,unsupported_count:1,unverified_count:0};
+ else {details.assessment_stage='host_validated';details.global_issues=[{owner:'inventory',code:'non_atomic',explanation:'A located inventory defect.'}];}
+ const evaluation={faithfulness:{score:null,skipped:true,details}},before=JSON.stringify(evaluation),root=new E(),walk=e=>[e,...e.children.flatMap(walk)];
+ renderQuality(root,evaluation,{status:'unverified'},{status:'blocked'},()=>{},x=>x,{locale:process.argv[2]});
+ const text=walk(root).map(e=>e.textContent).join(' ');
+ if(!text.includes(en?'Inventory validity':'抽取清单有效性'))throw Error(text);
+ const expected=partial?(en?'Partial host-checked diagnostics · not a final score':'部分宿主校验诊断 · 非最终分数'):(en?'Host-checked decisions; the overall evaluation remains invalid':'以上为宿主校验过的局部判断；整体验证仍无效');
+ if(!text.includes(expected))throw Error(text);
+ if(JSON.stringify(evaluation)!==before||text.includes('1.000'))throw Error('Promoted or mutated an invalid assessment');
+})().catch(e=>{console.error(e);process.exit(1)});
+"""
+    result = subprocess.run(
+        [
+            shutil.which("node") or "node",
+            "-e",
+            script,
+            str(Path("src/litagent/static/flow-demo").resolve()),
+            locale,
+            str(partial).lower(),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 @pytest.mark.parametrize("locale", ["zh-CN", "en"])
@@ -605,6 +885,116 @@ const fs=require('node:fs');
             script,
             str(Path("src/litagent/static/flow-demo").resolve()),
             locale,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("locale", ["zh-CN", "en"])
+@pytest.mark.parametrize("policy", ["planned-budget-v2", "planned-budget-v3"])
+def test_budget_admission_never_appears_as_a_quality_score(locale, policy):
+    """Render run-level conservative reservations with no invented paid usage."""
+    script = r"""
+const fs=require('node:fs');
+(async()=>{
+ class E{constructor(){this.children=[];this.dataset={};this.textContent='';}append(...x){this.children.push(...x);}replaceChildren(...x){this.children=x;}addEventListener(){}setAttribute(){}}
+ global.document={createElement:()=>new E()};
+ const {renderQuality}=await import('data:text/javascript;base64,'+fs.readFileSync(process.argv[1]+'/quality-view.js').toString('base64'));
+ const plan={contract:'planned-budget-v2',status:'preflight_rejected',required_tokens:4836524,planned_tokens:5330000,maximum_tokens:1000000,planned_requests:41,maximum_requests:64,reason:'budget_plan_total_exceeded',stages:{assessment:{count:24,request_cap:117964,reserved_tokens:2831136,bound:'context_upper_bound'}}};
+ plan.contract=process.argv[3]; if(plan.contract==='planned-budget-v3'){plan.repair_limit=0;plan.initial_evaluation_reserved=true;}
+ const original=JSON.stringify(plan),root=new E(),walk=e=>[e,...e.children.flatMap(walk)],en=process.argv[2]==='en';
+ renderQuality(root,{}, {},{},()=>{},x=>x,{locale:process.argv[2],budgetPlan:plan});
+ const text=walk(root).map(e=>e.textContent).join(' ');
+ for(const expected of [en?'Workflow budget admission':'完整流程预算准入',en?'Preflight rejected':'预算检查未通过',en?'Reservations are not actual charges':'预留不等于实际费用','4836524','1000000'])if(!text.includes(expected))throw Error(expected);
+ if(JSON.stringify(plan)!==original)throw Error('plan was changed');
+ if(walk(root).some(e=>e.dataset.status==='passed'))throw Error('budget became a passed scientific score');
+ if(plan.contract==='planned-budget-v3'&&!text.includes(en?'no allocation':'尚未分配'))throw Error('rejected path masquerades as allocated');
+})().catch(e=>{console.error(e);process.exit(1)});
+"""
+    result = subprocess.run(
+        [
+            shutil.which("node") or "node",
+            "-e",
+            script,
+            str(Path("src/litagent/static/flow-demo").resolve()),
+            locale,
+            policy,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("locale", ["zh-CN", "en"])
+def test_inventory_recovery_history_has_distinct_label_and_same_sha(locale):
+    script = r"""
+const fs=require('node:fs');
+(async()=>{
+ class E{constructor(){this.children=[];this.dataset={};this.textContent='';}append(...x){this.children.push(...x);}replaceChildren(...x){this.children=x;}addEventListener(){}setAttribute(){}}
+ global.document={createElement:()=>new E()};
+ const {renderQuality}=await import('data:text/javascript;base64,'+fs.readFileSync(process.argv[1]+'/quality-view.js').toString('base64'));
+ const walk=e=>[e,...e.children.flatMap(walk)],root=new E();
+ const evaluation={faithfulness:{details:{coverage:{processed_units:75,source_units:75},supported_count:14,unsupported_count:1,unverified_count:0,stages:{global_check:'completed'}}}};
+ const history={version:'version-bound-evaluation-history-v1',source_report_sha256:'abc',initial_evaluation:evaluation,final_evaluation:evaluation,attempts:[{kind:'inventory_recovery',reason_code:'inventory_recovery_evaluated',committed:false,candidate_evaluation:evaluation}]};
+ const before=JSON.stringify(history);
+ renderQuality(root,{}, {},{},()=>{},x=>x,{locale:process.argv[2],sha:'abc',evaluationHistory:history});
+ const text=walk(root).map(e=>e.textContent).join(' ');
+ for(const expected of ['inventory_recovery_evaluated','75 / 75',process.argv[2]==='en'?'Inventory re-extraction · prose unchanged':'断言清单重抽取 · 正文未修改'])if(!text.includes(expected))throw Error(text);
+ renderQuality(root,{}, {},{},()=>{},x=>x,{locale:process.argv[2],sha:'other',evaluationHistory:history});
+ if(walk(root).some(e=>e.textContent.includes('inventory_recovery_evaluated')))throw Error('Stale version history');
+ if(JSON.stringify(history)!==before)throw Error('History mutated');
+})().catch(e=>{console.error(e);process.exit(1)});
+"""
+    result = subprocess.run(
+        [
+            shutil.which("node") or "node",
+            "-e",
+            script,
+            str(Path("src/litagent/static/flow-demo").resolve()),
+            locale,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("locale", ["zh-CN", "en"])
+@pytest.mark.parametrize("no_report", [False, True])
+def test_summary_quantity_failure_is_visible_only_before_a_final_report(
+    locale, no_report
+):
+    """Show host quantity failures without converting an unrun evaluation to zero."""
+    script = r"""
+const fs=require('node:fs');
+(async()=>{
+ class E{constructor(){this.children=[];this.dataset={};this.textContent='';}append(...x){this.children.push(...x);}replaceChildren(...x){this.children=x;}addEventListener(){}setAttribute(){}}
+ global.document={createElement:()=>new E()};
+ const {renderQuality}=await import('data:text/javascript;base64,'+fs.readFileSync(process.argv[1]+'/quality-view.js').toString('base64'));
+ const noReport=process.argv[3]==='true',root=new E(),walk=e=>[e,...e.children.flatMap(walk)];
+ const failure={code:'writer_flat_schema_invalid',diagnostics:[{section:'conclusion',actual:3,maximum:2,summary_constraints:{contract:'effective-summary-limits-v1'}}]};
+ const evaluation={faithfulness:{score:null,skipped:true,details:{skipped_reason:noReport?'final_report_unavailable':'other'}}},before=JSON.stringify({failure,evaluation});
+ renderQuality(root,evaluation,{status:'unverified'},{status:'blocked'},()=>{},x=>x,{locale:process.argv[2],writerFailure:failure});
+ const text=walk(root).map(e=>e.textContent).join(' '),title=process.argv[2]==='en'?'Summary structure validation failed':'摘要结构校验失败';
+ if(text.includes(title)!==noReport)throw Error(text);
+ if(noReport&&!text.includes('3 / 2'))throw Error('Missing actual/maximum');
+ if(text.includes('1.000')||JSON.stringify({failure,evaluation})!==before)throw Error('Changed scientific state');
+})().catch(e=>{console.error(e);process.exit(1)});
+"""
+    result = subprocess.run(
+        [
+            shutil.which("node") or "node",
+            "-e",
+            script,
+            str(Path("src/litagent/static/flow-demo").resolve()),
+            locale,
+            str(no_report).lower(),
         ],
         capture_output=True,
         text=True,

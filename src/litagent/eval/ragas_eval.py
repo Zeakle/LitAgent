@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
+import re
+from collections import deque
 from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from litagent.config import AppConfig
@@ -59,6 +63,143 @@ def _format_evidence_item(item: Mapping[str, Any]) -> str:
         f"{item.get('source_locator', '')}) "
         f"{item.get('text', '')}"
     )
+
+
+def _checkpoint_failure(
+    exc: BaseException, survey: str, context: Mapping[str, Any]
+) -> None:
+    """Keep bounded failure frames in a local checkpoint copy, never the result."""
+    try:
+        from litagent.workbench import is_strict_policy
+
+        checkpoint = context.get("evaluation_checkpoint")
+        details = getattr(exc, "details", None)
+        progress = details.get("stages") if isinstance(details, Mapping) else None
+        if (
+            not is_strict_policy(context.get("quality_policy"))
+            or not callable(checkpoint)
+            or not isinstance(progress, dict)
+        ):
+            return
+
+        def label(value):
+            """Bound structural labels without retaining arbitrary exception text."""
+            return re.sub(r"[^A-Za-z0-9_./<>-]", "_", value)[:128]
+
+        def valid_sha(value):
+            """Recognize a complete host-produced SHA identity."""
+            return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value)
+
+        report_sha = hashlib.sha256(survey.encode()).hexdigest()
+        project = Path(__file__).resolve().parents[3]
+        chain, seen, current = [], set(), exc
+        while current is not None and id(current) not in seen and len(chain) < 4:
+            seen.add(id(current))
+            frames, count = deque(maxlen=16), 0
+            trace = current.__traceback__
+            while trace is not None:
+                code = trace.tb_frame.f_code
+                path = Path(code.co_filename)
+                file = (
+                    str(path.relative_to(project))
+                    if path.is_relative_to(project)
+                    else path.name
+                )
+                frames.append(
+                    {
+                        "file": label(file),
+                        "function": label(code.co_name),
+                        "line": trace.tb_lineno,
+                    }
+                )
+                count += 1
+                trace = trace.tb_next
+            chain.append(
+                {
+                    "type": label(type(current).__name__),
+                    "frames": list(frames),
+                    "frames_truncated": count > 16,
+                }
+            )
+            current = current.__cause__ or (
+                None if current.__suppress_context__ else current.__context__
+            )
+
+        capacity = progress.get("capacity") or {}
+        round_number = (capacity.get("round") or {}).get("number")
+        recovery = progress.get("inventory_recovery") or {}
+        attempt = recovery.get("attempt_index")
+        batches = progress.get("batches") or []
+        batch = batches[-1] if batches else {}
+        unfinished = batch.get("status") in {
+            "started_no_replay",
+            "interrupted_no_replay",
+            "invalid_response",
+        }
+        if progress.get("global_check") in {
+            "started_no_replay",
+            "interrupted_no_replay",
+        }:
+            stage = "global"
+        elif unfinished:
+            stage = "assessment"
+        elif (progress.get("global_preflight") or {}).get(
+            "status"
+        ) == "rejected_not_sent":
+            stage = "global_preflight"
+        else:
+            stage = "evaluation"
+        batch_sha = batch.get("input_sha256") if stage == "assessment" else None
+        batch_sha = batch_sha if valid_sha(batch_sha) else None
+        request_sha = None
+        matches = []
+        for request in progress.get("requests", []):
+            settlement = request.get("semantic_conflict_settlement") or {}
+            receipt = settlement.get("receipt") or {}
+            response = request.get("response")
+            if (
+                batch_sha is not None
+                and request.get("phase") == "assessment"
+                and request.get("status") == "response_received"
+                and valid_sha(request.get("input_sha256"))
+                and settlement.get("batch_payload_sha256") == batch_sha
+                and settlement.get("report_sha256") == report_sha
+                and settlement.get("input_sha256") == request["input_sha256"]
+                and isinstance(response, str)
+                and settlement.get("response_sha256")
+                == hashlib.sha256(response.encode()).hexdigest()
+                and isinstance(receipt, Mapping)
+                and receipt.get("contract") == "host-settled-assessment-receipt-v1"
+                and (
+                    round_number is None or receipt.get("round_number") == round_number
+                )
+            ):
+                matches.append(request["input_sha256"])
+        if len(matches) == 1:
+            request_sha = matches[0]
+        batch_index = batch.get("index") if stage == "assessment" else None
+        diagnostic = {
+            "contract_version": "evaluation-local-failure-v1",
+            "source_report_sha256": report_sha,
+            "exception_chain": chain,
+            "chain_truncated": current is not None,
+            "stage": stage,
+            "batch_index": (
+                batch_index if type(batch_index) is int and batch_index >= 0 else None
+            ),
+            "batch_payload_sha256": batch_sha,
+            "request_input_sha256": request_sha,
+            "capacity_round_number": (
+                round_number if type(round_number) is int else None
+            ),
+            "recovery_attempt_index": attempt if type(attempt) is int else None,
+        }
+        # save_progress projects event fields explicitly. The added key stays in
+        # this disk-only copy, outside exc.details and the shared result/trace.
+        checkpoint({**progress, "local_failure_diagnostic": diagnostic})
+    except Exception:
+        # A diagnostic I/O or malformed diagnostic context cannot mask the failure.
+        return
 
 
 class RagasFaithfulnessEvaluator(Evaluator):
@@ -299,6 +440,7 @@ class RagasFaithfulnessEvaluator(Evaluator):
             except asyncio.CancelledError:
                 raise
             except ScopedEvaluationError as exc:
+                _checkpoint_failure(exc, survey, context)
                 reason = str(exc)
                 failure_details = exc.details
             except TimeoutError:

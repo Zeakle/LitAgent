@@ -6,6 +6,8 @@ export function bindAutomaticAuditPreferences({ capabilities, t }) {
   const judge = $("#verification-judge");
   const jev = $("#verification-jev");
   const optional = () => $("#quality-policy").value === "strict_auto_v2";
+  const budgeted = caps => optional() && caps.default_generation_strategy === "body_summary_v2"
+    && caps.default_budget_policy === "planned-budget-v4" && !judge?.checked && !jev?.checked;
   function render() {
     const caps = capabilities() || {};
     const current = $("#quality-policy").value;
@@ -27,8 +29,10 @@ export function bindAutomaticAuditPreferences({ capabilities, t }) {
     if (!automatic && [...mode.options].find(option => option.value === mode.value)?.disabled) mode.value = "off";
     budget.disabled = automatic || mode.value === "off";
     const limits = caps.limits || {};
+    const surveyLimit = budgeted(caps) ? "1,000,000" : "500,000";
+    const capacity = budgeted(caps) ? t("budgetedWriterScopeHelp") : "";
     $("#auto-audit-budget-note").textContent = automatic
-      ? `${t(optional() ? "optionalVerificationHelp" : "strictAutoQuality")} · Survey 500,000 tokens / 64 calls${!optional() || judge?.checked ? " · Judge 100,000 tokens / 2 calls" : ""}${!optional() || jev?.checked ? " · Jev 200,000 input tokens / 20 calls" : ""}`
+      ? `${t(optional() ? "optionalVerificationHelp" : "strictAutoQuality")} · Survey ≤ ${surveyLimit} tokens / 64 calls${capacity ? ` · ${capacity}` : ""}${!optional() || judge?.checked ? " · Judge 100,000 tokens / 2 calls" : ""}${!optional() || jev?.checked ? " · Jev 200,000 input tokens / 20 calls" : ""}`
       : mode.value === "off" ? t("autoAuditOffHelp") : `${t("autoAuditBudgetHelp")} ${budget.value} · ${t("autoAuditPerVersion")} Judge ${limits.judge_calls ?? 2} × ${limits.judge_max_output_tokens_per_call ?? 16384} output tokens / ${limits.judge_timeout_seconds ?? 180}s${mode.value === "judge_jev" ? ` · Jev ${limits.jev?.max_requests ?? 20} requests / ${limits.jev?.max_input_tokens ?? 200000} input tokens` : ""}`;
     const reasons = [];
     if (!caps.judge_available) reasons.push(`${t("autoAuditJudgeUnavailable")}: ${caps.judge_reason || t("autoAuditNotConfigured")}`);
@@ -43,6 +47,7 @@ export function bindAutomaticAuditPreferences({ capabilities, t }) {
       if ((judge?.checked && !caps.judge_available) || (jev?.checked && !caps.jev_available)) throw new Error(t("autoAuditUnavailableSelection"));
       return {
         body_quality: "analysis_v1",
+        ...(budgeted(caps) ? {budget_policy:"planned-budget-v4"} : {}),
         ...(["body_summary_v1", "body_summary_v2"].includes(caps.default_generation_strategy) ? {generation_strategy:caps.default_generation_strategy} : {}),
         verification: { version: "optional-verification-v1", judge: !!judge?.checked, jev: !!jev?.checked },
         auto_audit_mode: judge?.checked ? "judge" : "off", auto_audit_max_versions: 1,

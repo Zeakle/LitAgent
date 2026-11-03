@@ -290,6 +290,9 @@ def build_config_summary(
     else:
         raise ValueError("unsupported_quality_policy")
 
+    if config.capacity is not None:
+        effective["capacity"] = config.capacity.model_dump()
+
     identity = {"schema_version": CONFIG_SUMMARY_SCHEMA_VERSION, "effective": effective}
 
     canonical = json.dumps(

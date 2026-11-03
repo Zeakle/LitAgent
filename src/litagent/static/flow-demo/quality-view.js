@@ -4,6 +4,20 @@ function scoreText(result) {
   const numeric = Number(result.score);
   return Number.isFinite(numeric) ? numeric.toFixed(3) : "—";
 }
+function renderAssessmentEffect(container, claim, L, currentReport) {
+  const effect = claim?.assessment_conflict_effect;
+  const codes = new Set(["positive_status_with_negative_required_aspect", "negative_status_with_complete_positive_diagnostics"]);
+  if (!currentReport || effect?.contract !== "host-assessment-conflict-effect-v1" || effect.policy !== "host-unverified-continue-v1" || !codes.has(effect.code)) return;
+  const grid = node(container, "div", null, "quality-conflict-grid");
+  const original = node(grid, "section");
+  node(original, "strong", L("originalDecision"));
+  node(original, "p", `${L(effect.original_status)} · ${effect.original_reason_code}`);
+  const host = node(grid, "section");
+  node(host, "strong", L("hostEffect"));
+  node(host, "p", L("pending"));
+  node(host, "small", effect.code);
+  node(container, "p", L("conflictHelp"));
+}
 const LABELS = {
   passed: ["通过", "Passed"], failed: ["未通过", "Failed"], unverified: ["未核验", "Unverified"],
   disabled: ["未启用", "Disabled"],
@@ -16,6 +30,8 @@ const LABELS = {
   current: ["新版评估 · 按断言实际引用核验", "Evaluation v2 · actual citations per assertion"],
   threshold: ["阈值", "Threshold"], unavailable: ["未记录／不可用", "Not recorded / unavailable"],
   supported: ["支持", "Supported"], unsupported: ["未获支持", "Unsupported"], pending: ["未核验", "Unverified"],
+  originalDecision: ["模型原判", "Original model decision"], hostEffect: ["宿主处理结果", "Host effect"],
+  conflictHelp: ["模型原判保持原样。语义冲突仅记为未核验，不能贡献支持数量；完成诊断不代表科学通过。", "The original decision is preserved. A semantic conflict remains unverified and adds no supported assertion; completed diagnostics do not establish scientific acceptance."],
   counts: ["科学断言数量", "Scientific assertion counts"], coverage: ["提取覆盖（处理单元／全部单元）", "Extraction coverage (processed / total units)"],
   checks: ["结构、方法与语言检查", "Structure, methodology and language checks"], language_checks: ["正文语言", "Report prose language"], support: ["支持依据契约", "Support basis contract"], basis: ["实际引用中的支持原文", "Support text from actual citations"], structure_checks: ["模板结构", "Template structure"], method_checks: ["方法披露", "Method disclosures"],
   not_applicable: ["不适用", "Not applicable"], issues: ["问题定位", "Located diagnostics"], noIssues: ["没有记录可定位问题；不代表额外核验通过。", "No located issues recorded; this does not establish additional verification."],
@@ -65,6 +81,36 @@ function meter(parent, value, label, threshold = null) {
     marker.setAttribute?.("aria-hidden", "true");
   }
 }
+function renderRunBudget(container, value, runId, en, plan) {
+  if (value == null && !runId) return;
+  const panel = node(container, "section", null, "quality-section");
+  node(panel, "h3", en ? "Run budget usage (last recorded)" : "运行预算用量（最后记录）");
+  const fields = ["plan_identity", "known_tokens", "requests", "usage_uncertain", "stop_reason", "unknown_hold"];
+  const keys = new Set(["contract", "scope", "run_id", "availability", "reason", ...fields]);
+  const reasons = new Set(["strict_usage_unknown", "strict_worker_failed", "planned_usage_bound_violation", "planned_ledger_persistence_failed"]);
+  const validBase = value && typeof value === "object" && !Array.isArray(value)
+    && Object.keys(value).every(key => keys.has(key)) && [...keys].every(key => Object.hasOwn(value, key))
+    && value.contract === "run-budget-state-v1" && value.scope === "run"
+    && typeof runId === "string" && runId.length > 0 && value.run_id === runId;
+  const integer = number => Number.isSafeInteger(number) && number >= 0;
+  const planMatches = !["planned-budget-v2", "planned-budget-v3", "planned-budget-v4", "planned-budget-v5", "planned-budget-v6", "planned-budget-v7"].includes(plan?.contract) || !Object.hasOwn(plan, "identity") || plan.identity === value?.plan_identity;
+  const valid = validBase && planMatches && value.availability === "available" && value.reason === null
+    && typeof value.plan_identity === "string" && /^[a-f0-9]{64}$/.test(value.plan_identity)
+    && [value.known_tokens, value.unknown_hold, value.requests].every(integer)
+    && typeof value.usage_uncertain === "boolean" && (value.stop_reason === null || reasons.has(value.stop_reason))
+    && !(value.unknown_hold > 0 && !value.usage_uncertain);
+  if (!valid) {
+    const missing = value == null || (validBase && value.availability === "missing" && value.reason === "not_recorded" && fields.every(key => value[key] === null));
+    node(panel, "p", missing ? (en ? "Not recorded" : "未记录") : (en ? "Budget record unavailable" : "预算记录不可用"));
+  } else {
+    node(panel, "p", `${en ? "Known usage" : "已知用量"}: ${value.known_tokens} tokens`);
+    node(panel, "p", `${en ? "Unknown reservation" : "未知占用"}: ${value.unknown_hold} tokens`);
+    node(panel, "p", `${en ? "Requests sent" : "已发请求"}: ${value.requests}`);
+    node(panel, "p", value.usage_uncertain ? (en ? "Usage incomplete" : "用量不完整") : (en ? "No unknown reservation recorded in this snapshot" : "本次快照未记录未知占用"));
+    if (value.stop_reason) node(panel, "p", `${en ? "Recorded stop reason" : "已记录停止原因"}: ${value.stop_reason}`);
+  }
+  node(panel, "p", en ? "Run-scoped last recorded usage, not a score or cost for this report version. Unknown reservations are conservative holds, not known billed usage, refunds or authorization to replay. Reservations and allocation-time savings are shown separately." : "这是整个运行的最后记录，不是当前报告版本的评分或成本。未知占用是保守保留额，不是已知实际用量、退款或重发授权；规划预留及分配时差额另行显示。");
+}
 export function renderQuality(container, evaluation, quality, delivery, onSelect, t = key => key, options = {}) {
   const L = key => LABELS[key]?.[options.locale === "en" ? 1 : 0] || key;
   const details = evaluation?.faithfulness?.details || {};
@@ -72,6 +118,47 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
   const noFinalReport = details.skipped_reason === "final_report_unavailable";
   const hasPipeline = options.pipelineVerification && Object.keys(options.pipelineVerification).length > 0;
   container.replaceChildren();
+  renderRunBudget(container, options.budgetState, options.runId, options.locale === "en", options.budgetPlan);
+  const budgetPlan = options.budgetPlan;
+  if (["planned-budget-v2", "planned-budget-v3", "planned-budget-v4", "planned-budget-v5", "planned-budget-v6", "planned-budget-v7"].includes(budgetPlan?.contract)) {
+    const en = options.locale === "en", panel = node(container, "section", null, "quality-section");
+    node(panel,"h3",en ? "Workflow budget admission" : "完整流程预算准入");
+    node(panel,"p",budgetPlan.status === "preflight_rejected" ? (en ? "Preflight rejected · writing was not started" : "预算检查未通过 · 未启动正文生成") : (en ? "Budget admitted · scientific verification still required" : "预算准入通过 · 仍须科学核验"));
+    node(panel,"p",`${en ? "Conservative reservation / allowance / ceiling" : "保守预留／计划额度／硬上限"}: ${budgetPlan.required_tokens} / ${budgetPlan.planned_tokens} / ${budgetPlan.maximum_tokens} tokens`);
+    node(panel,"p",`${en ? "Requests / maximum" : "请求数／上限"}: ${budgetPlan.planned_requests} / ${budgetPlan.maximum_requests} · ${budgetPlan.reason || "—"}`);
+    const adaptive = ["planned-budget-v6", "planned-budget-v7"].includes(budgetPlan.contract);
+    const joint = budgetPlan.joint_round_escrow?.contract === "joint-round-escrow-v1" ? budgetPlan.joint_round_escrow : null;
+    node(panel,"p",en ? "Run-scoped planning, not a score for this report version. Reservations are not actual charges." : "这是运行级规划，不是该报告版本的评分。预留不等于实际费用。");
+    node(panel,"p",adaptive
+      ? (en ? "Initial batch reservations are a planning baseline. Each evaluation round checks its complete requests; future candidates require another resource check. The initial batch count is not a guaranteed upper bound." : "初始批次预留是规划基线。每轮核验会检查完整请求，未来候选仍须重新检查资源；初始批数不是保证上界。")
+      : (en ? "Unknown future input uses an enforced upper bound." : "未知后续输入使用可执行的上界。"));
+    if (joint) node(panel,"p",`${en ? "Locked assessment domain per round: maximum requests / per-request cap / round total" : "每轮锁定核验资源域：最多请求数／单请求上限／整轮总预留"}: ${joint.assessment.max_requests} / ${joint.assessment.request_cap} / ${joint.assessment.reserved_tokens} · ${en ? "Future repair rounds retain the same domain; every complete candidate is checked before sending." : "后续修复轮保留同一资源域；每份完整候选仍在发送前检查。"}`);
+    if (["planned-budget-v3", "planned-budget-v4", "planned-budget-v5", "planned-budget-v6", "planned-budget-v7"].includes(budgetPlan.contract)) node(panel,"p",`${budgetPlan.status === "admitted" ? (en ? "Locked shared repair attempts / maximum" : "写作前锁定的共享修复次数／最高") : (en ? "Rejected repair path / no allocation" : "未准入修复路径／尚未分配")}: ${budgetPlan.repair_limit} / 2 · ${en ? "Complete initial Evaluation included" : "已计入首次完整 Evaluation"}`);
+    if (["planned-budget-v4", "planned-budget-v5", "planned-budget-v6", "planned-budget-v7"].includes(budgetPlan.contract) && budgetPlan.envelope) {
+      const scope=budgetPlan.envelope;
+      node(panel,"p",`${budgetPlan.status === "admitted" ? (en ? "Locked content capacity" : "写作前锁定的整体容量") : (en ? "Candidate capacity · unallocated" : "候选容量 · 尚未分配")}: ${en ? "body units / summary units per section / model assertions / assessment batches" : "正文单元／每节摘要结论单元／模型断言／支持批次"} ≤ ${scope.body_max_units} / ${scope.summary_max_units_per_section} / ${scope.model_assertions} / ${scope.assessment_batches}`);
+      if (["planned-budget-v6", "planned-budget-v7"].includes(budgetPlan.contract)) node(panel,"p",en ? "Initial verification capacity; settled savings may fund complete additional batches. Capacity does not establish scientific support." : "这是初始核验容量；已结算释放的额度可用于完整扩批，容量准入不代表科学支持。");
+      else node(panel,"p",en ? "Declared output and complete request size limits are enforced. Exceeding them stops the run without truncation; capacity admission does not establish scientific support." : "声明的输出及完整请求规模边界会被强制检查；越界保留原文并停止，不截断，不代表科学核验通过。");
+    }
+    const disclosure=node(panel,"details");node(disclosure,"summary",en ? "Stage reservations" : "各阶段预留");
+    const table=node(disclosure,"table",null,"quality-distribution"),body=node(table,"tbody");
+    for(const [name,stage] of Object.entries(budgetPlan.stages || {})){const row=node(body,"tr");node(row,"th",name);node(row,"td",joint ? `${en ? "Maximum requests" : "最多请求数"}: ${stage.count} · ${en ? "Per-request cap" : "单请求上限"}: ${stage.request_cap} · ${en ? "Total reservation" : "总预留"}: ${stage.reserved_tokens}` : `${stage.count} × ${stage.request_cap} = ${stage.reserved_tokens}`);node(row,"td",stage.bound);}
+  }
+  const capacity = details.stages?.capacity;
+  if (capacity) {
+    const panel=node(container,"section",null,"quality-section"),en=options.locale === "en";
+    node(panel,"h3",en ? "Capacity and complete assessment" : "容量与完整核验");
+    node(panel,"p",`${capacity.status} · ${capacity.reason || "—"}`);
+    if (capacity.round) node(panel,"p",`${en ? "Evaluation round / branch / original assessment state" : "核验轮次／执行分支／原稿核验状态"}: ${capacity.round.number} / ${capacity.round.mode} / ${capacity.round.status}`);
+    if (capacity.target_assertions != null) node(panel,"p",`${en ? "Refinement target, pending candidate resource checks: assertions / batches" : "精简目标，候选仍须资源检查：断言／批次"}: ${capacity.target_assertions} / ${capacity.target_batches}`);
+    if (capacity.assessment_reserved_tokens != null) node(panel,"p",`${en ? "Current complete assessment reservation (not billed usage)" : "当前完整核验请求预留（非实际费用）"}: ${capacity.assessment_reserved_tokens} tokens`);
+    node(panel,"p",`${en ? "Body / abstract and conclusion units" : "正文／摘要结论单元"}: ${capacity.authored_unit_counts?.body ?? "—"} / ${capacity.authored_unit_counts?.summary ?? "—"}`);
+    const frozenEnvelope = details.stages?.writer_envelope;
+    node(panel,"p",`${en ? "Initial / effective / actual assertions / batches" : "初始／有效／实际断言／批次"}: ${capacity.initial_assertions ?? frozenEnvelope?.capacity?.initial_assertions ?? "—"} / ${capacity.effective_assertions ?? frozenEnvelope?.model_assertions ?? "—"} / ${capacity.actual_assertions ?? "—"} / ${capacity.actual_batches ?? "—"}`);
+    if (capacity.reserved_with_margin != null) node(panel,"p",`${en ? "Remaining workflow plan including spent / fixed allowance" : "含已知消耗的完整计划／固定额度"}: ${capacity.reserved_with_margin} / ${capacity.fixed_allowance} tokens`);
+    if (capacity.known_tokens_at_allocation != null) node(panel,"p",`${en ? "Known usage / future locks at allocation / settled reservation savings" : "分配时已知用量／后续锁定／已结算预留差额"}: ${capacity.known_tokens_at_allocation} / ${capacity.future_locked_tokens} / ${capacity.settled_reservation_savings} tokens`);
+    node(panel,"p",en ? "Every retained scientific assertion requires assessment. Refinement does not itself establish factual support." : "最终保留的每项科学断言均须核验；精简正文并不代表事实已获支持。");
+  }
   const metrics = node(container, "div", null, "metric-grid");
   for (const [name, result] of Object.entries(evaluation || {})) {
     const button = node(metrics, "button", null, "metric-row"); button.type = "button";
@@ -87,6 +174,23 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
   const gate = node(container, "section", null, "quality-gate");
   node(gate, "h3", `${quality?.status || "unverified"} / ${delivery?.status || "pending"}`);
   node(gate, "p", `${L("gate")} · ${L("reasons")}: ${(delivery?.reason_codes || []).join(", ") || L("noReasons")}`);
+  const currentFailure = options.writerFailure;
+  if (noFinalReport && currentFailure?.code === "writer_flat_schema_invalid") {
+    const en=options.locale === "en";
+    for (const issue of currentFailure.diagnostics || []) {
+      if (issue.summary_constraints?.contract !== "effective-summary-limits-v1" || !["abstract","conclusion"].includes(issue.section) || !Number.isInteger(issue.actual) || !Number.isInteger(issue.maximum)) continue;
+      node(gate,"p",`${en ? "Summary structure validation failed" : "摘要结构校验失败"} · ${issue.section} · ${en ? "Actual / maximum units" : "实际／最多单元"}: ${issue.actual} / ${issue.maximum}`,"notice-error");
+    }
+  }
+  if (options.sha && currentFailure?.source_report_sha256 === options.sha) {
+    const en=options.locale === "en";
+    node(gate,"p",`${en ? "Terminal failure" : "最终失败原因"}: ${currentFailure.family} · ${currentFailure.code}`,"notice-error");
+    if(details.source_report_sha256 === options.sha) {
+      const upstream=details.skipped_reason || details.error || details.reason;
+      if(upstream)node(gate,"p",`${en ? "Upstream Evaluation" : "上游 Evaluation 原因"}: ${upstream}`);
+    }
+    node(gate,"p",en ? "A rejected repair is not a scientific verdict; incomplete assessment remains unverified." : "修复候选被拒不等于科学事实不支持；未完成核验仍显示未核验。");
+  }
   node(gate, "p", noFinalReport ? (options.locale === "en" ? "Writing validation failed; Evaluation was not run." : "写作校验失败；Evaluation 未运行。") : details.evaluation_version === "survey-evaluation-v3" ? `${options.locale === "en" ? "Evaluation v3 · complete batched assessment" : "评估 v3 · 完整分批核验"}` : v2 ? `${L(details.support_contract === "host-support-passages-v2" ? "current" : details.support_contract === "cited-support-spans-v1" ? "previousSupport" : "historicalV2")} · ${details.evaluation_version}` : hasPipeline && !Object.keys(evaluation || {}).length ? (options.locale === "en" ? "Evaluation was not run; no report scores were produced." : "Evaluation 未运行；尚未产生正文评分。") : L("historical"));
   if (options.revision) node(gate, "p", `r${options.revision}${options.sha ? ` · SHA ${options.sha}` : ""}`, "audit-binding");
   if (v2) node(gate,"p",`${L("support")}: ${details.support_contract || L("unavailable")}`);
@@ -142,6 +246,14 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
     const table = node(strict, "table", null, "quality-distribution quality-batches"); const body = node(table, "tbody");
     for (const batch of stages.batches || []) { const row = node(body, "tr"); node(row, "th", `${en ? "Batch" : "批次"} ${batch.index + 1}`); node(row, "td", L(batch.status)); node(row, "td", `${batch.claim_ids?.length || 0} ${L("claims")}`); }
     node(strict, "p", `${en ? "Global consistency" : "全局一致性"}: ${L(stages.global_check || "unverified")}`);
+    if (details.global_findings_contract) {
+      node(strict,"p",`${en ? "Inventory validity" : "抽取清单有效性"}: ${L(details.inventory_check?.status || "unverified")}`);
+      node(strict,"p",en ? "Completed requests and partial scientific decisions do not establish a complete valid evaluation. Inventory defects cannot authorize rewriting scientific prose." : "请求完成和部分科学判断不代表整体验证有效。抽取清单缺陷不能自动授权改写正文。");
+      for(const issue of details.global_issues || stages.global_issues || []) {
+        const owner = issue.owner === "inventory" ? (en ? "Inventory defect" : "抽取清单问题") : issue.owner === "report" ? (en ? "Report issue" : "正文问题") : (en ? "Unclassified global finding" : "未分类全局问题");
+        node(strict,"p",`${owner} · ${issue.code || "—"} · ${issue.explanation}`);
+      }
+    }
     if(stages.global_reason_code)node(strict,"p",L(stages.global_reason_code));
     if(details.scope_notice_contract)node(strict,"p",`${en ? "Substantive limitations" : "具体科学局限"}: ${L(details.limitations_check?.adequate === true ? "passed" : "unverified")} · ${details.limitations_check?.explanation || L("unavailable")}`);
     for (const requirement of details.coverage_requirements || []) {
@@ -166,6 +278,22 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
     if (v2 && numeric(details.factual_claim_count) > 0 && numeric(details[field]) != null) meter(box, details[field]/details.factual_claim_count, L(key));
   }
   node(counts, "p", `${L("coverage")}: ${v2 ? `${display(details.coverage?.processed_units)} / ${display(details.coverage?.source_units)}` : L("unavailable")}`);
+  if(details.assessment_stage === "host_validated" && details.coverage?.complete !== true)node(counts,"p",options.locale === "en" ? "Host-checked decisions; the overall evaluation remains invalid and cannot authorize delivery." : "以上为宿主校验过的局部判断；整体验证仍无效，不能交付。");
+  if(details.partial_assessment?.stage === "host_validated") {
+    const p=details.partial_assessment,box=node(counts,"section",null,"quality-section");
+    node(box,"h4",options.locale === "en" ? "Partial host-checked diagnostics · not a final score" : "部分宿主校验诊断 · 非最终分数");
+    node(box,"p",`${L("supported")}: ${display(p.supported_count)} · ${L("unsupported")}: ${display(p.unsupported_count)} · ${L("pending")}: ${display(p.unverified_count)}`);
+    node(box,"p",`${options.locale === "en" ? "Processed assertions" : "已处理断言"}: ${display(p.processed_assertions)} / ${display(p.expected_assertions)}`);
+    const list=node(box,"details",null,"quality-diagnostic");
+    node(list,"summary",options.locale === "en" ? "Processed partial assertions · locate source" : "已处理的局部断言 · 定位原文");
+    for(const claim of p.assertions || []) {
+      node(list,"p",`${claim.claim_id} · ${L(claim.status)} · ${claim.claim_text}`);
+      renderAssessmentEffect(list, claim, L, options.sha && details.source_report_sha256 === options.sha);
+      if(claim.local_error)node(list,"p",claim.local_error);
+      const button=node(list,"button",L("source"));button.type="button";button.disabled=!claim.source_quote;
+      button.addEventListener("click",()=>onSelect({kind:"quality-diagnostic",id:claim.claim_id,value:claim},button));
+    }
+  }
   const checks = node(container, "section", null, "quality-section"); node(checks, "h3", L("checks"));
   for (const name of ["structure_checks","method_checks","language_checks"]) {
     const check = v2 ? details[name] : null;
@@ -187,6 +315,7 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
   for (const issue of problems) {
     const item = node(diagnostics, "details", null, "quality-diagnostic"); node(item, "summary", `${L(issue.reason_code || "insufficient_support")} · ${issue.claim_text || issue.statement_id || "—"}`);
     node(item, "p", issue.explanation || "—");
+    renderAssessmentEffect(item, issue, L, options.sha && details.source_report_sha256 === options.sha);
     if (issue.local_error) node(item, "p", L(issue.local_error) === issue.local_error ? issue.local_error : `${L(issue.local_error)} [${issue.local_error}]`);
     if (issue.source_quote) node(item, "blockquote", issue.source_quote);
     for (const span of issue.support_validation?.spans || []) {
@@ -210,7 +339,10 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
     const writer = node(container,"section",null,"quality-section");
     node(writer,"h3", options.locale === "en" ? "Writing protocol and outcome" : "正文协议与执行结果");
     if (options.writerContract) node(writer,"p", options.writerContract);
-    if (options.writerFailure) node(writer,"p",`${options.writerFailure.family} · ${options.writerFailure.code}`);
+    if (options.writerFailure) {
+      if (options.sha && options.writerFailure.source_report_sha256 && options.writerFailure.source_report_sha256 !== options.sha) node(writer,"p",options.locale === "en" ? "This run-level failure is not bound to the selected report version." : "此运行失败不绑定当前选择的报告版本。");
+      else node(writer,"p",`${options.writerFailure.family} · ${options.writerFailure.code}`);
+    }
     node(writer,"p", options.locale === "en" ? "Chapter recommendations do not restrict the frozen source pool. Scientific support is verified independently by Evaluation." : "章节名单仅作推荐，引用限于冻结总证据；科学支持由 Evaluation 独立核验。");
   }
   const history = options.evaluationHistory;
@@ -243,7 +375,8 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
         show(en ? "Repair preflight · no request sent" : "修复预检 · 未发送请求",null,attempt.reason_code,false);
       } else {
         candidateNumber += 1;
-        show(`${editorialBound ? (en ? "Source-version repair candidate" : "来源版本修复候选") : (en ? "Repair candidate" : "修复候选")} ${candidateNumber}`,attempt.candidate_evaluation,attempt.reason_code,attempt.committed);
+        const recovery = attempt.kind === "inventory_recovery";
+        show(`${recovery ? (en ? "Inventory re-extraction · prose unchanged" : "断言清单重抽取 · 正文未修改") : editorialBound ? (en ? "Source-version repair candidate" : "来源版本修复候选") : (en ? "Repair candidate" : "修复候选")} ${candidateNumber}`,attempt.candidate_evaluation,attempt.reason_code,attempt.committed);
       }
     }
     if(editorialBound)node(section,"p",en ? "Local cleanup removed one confirmed redundant sentence. Earlier evaluations belong to source versions; the current report was assessed in full again." : "本地整理移除一条已确认重复句。前序评估属于来源版本；当前正文已重新完整核验。");
@@ -256,8 +389,14 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
     if(repairs.version !== "shared-targeted-repair-limit-v1" || repairs.limit !== 2 || !Array.isArray(repairs.attempts))node(section,"p",L("unavailable"));
     else {
       node(section,"p",`${en ? "Attempts consumed" : "已消耗次数"}: ${repairs.attempts.length} / 2`);
+      if(budgetPlan?.envelope?.closeout_profile === "engineering-closeout-v1") {
+        const inventory=repairs.attempts.filter(a=>["bounded-inventory-recovery-v1","bounded-inventory-recovery-v2"].includes(a.purpose)).length;
+        node(section,"p",`${en ? "Inventory rechecks" : "清单独立复核"}: ${inventory} / 1 · ${en ? "Prose repairs" : "正文修复"}: ${repairs.attempts.length-inventory} / 2`);
+        node(section,"p",en ? "Rechecking unchanged content does not prove it was split. Current full Evaluation determines acceptance." : "同一清单重新核验不代表已完成拆分；最终以当轮完整 Evaluation 为准。");
+      }
+
       node(section,"p",verification ? (en ? "A completed repair call does not establish scientific support; complete Evaluation and any enabled reviews must still pass." : "修复调用完成不代表科学支持；仍需完整 Evaluation 及已启用的复核通过。") : (en ? "A completed repair call does not establish scientific support; full Evaluation and Judge are still required." : "修复调用完成不代表科学支持；仍需完整 Evaluation 和 Judge。"));
-      for(const attempt of repairs.attempts)node(section,"p",`${attempt.stage === "native_initial" ? (en ? "Initial native unit" : "初稿单元") : (en ? "Evaluation repair" : "正文定向修复")}: ${L(attempt.status)}`);
+      for(const attempt of repairs.attempts)node(section,"p",`${["bounded-inventory-recovery-v1", "bounded-inventory-recovery-v2"].includes(attempt.purpose) ? (en ? "Inventory re-extraction" : "断言清单重抽取") : attempt.cause === "capacity" ? (en ? "Body capacity refinement" : "正文容量精简") : attempt.stage === "native_initial" ? (en ? "Initial native unit" : "初稿单元") : (en ? "Evaluation repair" : "正文定向修复")}: ${L(attempt.status)}`);
     }
   }
   if (hasPipeline) {

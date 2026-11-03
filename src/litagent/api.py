@@ -20,6 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from litagent.benchmark.survey_archive import SurveyBenchmarkArchive
+from litagent.capacity import resolve_capacity
 from litagent.citation_formats import (
     build_bibliographic_snapshot,
     export_bibliography,
@@ -101,9 +102,18 @@ class SurveyRequest(BaseModel):
         "legacy", "strict_v1", "strict_auto_v1", "strict_auto_v2"
     ] = "legacy"
     body_quality: Literal["legacy", "analysis_v1"] = "legacy"
-    generation_strategy: Literal["single_v1", "body_summary_v1", "body_summary_v2"] = (
-        "single_v1"
-    )
+    budget_policy: Literal[
+        "legacy",
+        "planned-budget-v2",
+        "planned-budget-v3",
+        "planned-budget-v4",
+        "planned-budget-v6",
+        "planned-budget-v7",
+    ] = "legacy"
+    capacity_policy: Literal["legacy", "adaptive-capacity-v1"] = "legacy"
+    generation_strategy: Literal[
+        "single_v1", "body_summary_v1", "body_summary_v2", "body_summary_v3"
+    ] = "single_v1"
     verification: VerificationOptions | None = None
     citation_style: CitationStyle = "numbered"
     auto_audit_mode: AutoAuditMode = "off"
@@ -121,6 +131,29 @@ class SurveyRequest(BaseModel):
     @model_validator(mode="after")
     def automatic_defaults(self):
         """Apply new automatic defaults without changing legacy request defaults."""
+        if (self.capacity_policy == "adaptive-capacity-v1") != (
+            self.budget_policy in ("planned-budget-v6", "planned-budget-v7")
+        ):
+            raise ValueError("adaptive_capacity_requires_planned_budget_v6")
+        if (
+            self.generation_strategy == "body_summary_v3"
+            and self.budget_policy not in ("planned-budget-v6", "planned-budget-v7")
+        ):
+            raise ValueError("flat_writer_requires_planned_budget_v6")
+        if self.budget_policy != "legacy" and (
+            self.generation_strategy
+            != (
+                "body_summary_v3"
+                if self.budget_policy in ("planned-budget-v6", "planned-budget-v7")
+                else "body_summary_v2"
+            )
+            or self.verification is None
+            or self.verification.judge
+            or self.verification.jev
+        ):
+            raise ValueError(
+                "planned_budget_requires_writer_v2_without_optional_audits"
+            )
         if self.body_quality != "legacy" and self.quality_policy != "strict_auto_v2":
             raise ValueError("body_analysis_requires_strict_auto_v2")
         if (
@@ -286,9 +319,8 @@ app.state.flow_repository = (
 )
 app.state.flow_runs: dict[str, SurveyTaskEntry] = {}
 app.state.flow_samples = load_bundled_samples()
-app.state.flow_archive_index = {
-    artifact["run_id"]: artifact for artifact in app.state.flow_repository.list()
-}
+# Lifespan owns archive I/O; importing the app must not load private run history.
+app.state.flow_archive_index = {}
 app.state.config = None
 app.state.survey_semaphore = None
 app.state.interactive_repository = (
@@ -578,6 +610,8 @@ async def create_survey(
         verification=req.verification,
         body_quality=req.body_quality,
         generation_strategy=req.generation_strategy,
+        budget_policy=req.budget_policy,
+        capacity_policy=req.capacity_policy,
         review_structure=req.review_structure,
         auto_audit_mode=req.auto_audit_mode,
         auto_audit_max_versions=req.auto_audit_max_versions,
@@ -806,6 +840,16 @@ async def get_workbench_context():
         "report_languages": ["zh-CN", "en"],
         "export_formats": ["md", "pdf", "docx"],
         "format_capabilities": format_capabilities(),
+        "capacity_capabilities": {
+            "policies": ["legacy", "adaptive-capacity-v1"],
+            "default": "legacy",
+            "experimental": True,
+            "budget_policy": "planned-budget-v6",
+            "available_budget_policies": ["planned-budget-v6", "planned-budget-v7"],
+            "limits": resolve_capacity(config.capacity).model_dump(),
+            "maximum_tokens": 4500000,
+            "maximum_requests": 64,
+        },
         "review_structures": ["academic_v2", "academic_v1", "method_transparent_v1"],
         "human_review_stages": ["paper_selection", "final_report"],
         "quality_policies": ["strict_auto_v2", "strict_auto_v1", "strict_v1", "legacy"],
@@ -816,6 +860,8 @@ async def get_workbench_context():
             "required_gates": ["evaluation"],
             "default_body_quality": "analysis_v1",
             "default_generation_strategy": "body_summary_v2",
+            "default_budget_policy": "planned-budget-v4",
+            "maximum_survey_tokens": 1000000,
             "optional_gates": ["judge", "extraction_jev"],
             "default_verification": VerificationOptions().model_dump(mode="json"),
             "omitted_verification": "historical_mandatory_gates",

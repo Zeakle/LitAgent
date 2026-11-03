@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import copy
 import html
 import json
 import re
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from litagent.context.evidence_selector import EvidenceSelection
 
 STRUCTURES = ("legacy", "academic_v1", "method_transparent_v1", "academic_v2")
 
@@ -299,7 +304,7 @@ def build_methodology(
     """Describe recorded discovery results without inferring screening procedures."""
     counts = {}
     for task_id, result in upstream.items():
-        if task_id.startswith("search_") and isinstance(result, list):
+        if task_id.startswith(("search_", "recall_")) and isinstance(result, list):
             counts[task_id] = len(result)
         if task_id in {"dedup", "relevance_gate"} and isinstance(result, list):
             counts[task_id] = len(result)
@@ -413,6 +418,27 @@ def render_methodology(record: Mapping | None, language: str = "en") -> str:
             counts.get("relevance_gate", missing),
         ),
     ]
+    recall_counts = [
+        v
+        for k, v in counts.items()
+        if k.startswith("recall_") and isinstance(v, int) and not isinstance(v, bool)
+    ]
+    if recall_counts:
+        labels.insert(
+            1,
+            ("记忆召回记录条数" if zh else "Memory recall records", sum(recall_counts)),
+        )
+        labels.insert(
+            2,
+            (
+                (
+                    "去重前发现记录条数（含记忆召回）"
+                    if zh
+                    else "Discovery records before deduplication (including memory recall)"
+                ),
+                sum(search_counts) + sum(recall_counts) if search_counts else missing,
+            ),
+        )
     evidence_counts = value.get("evidence_counts") or {}
     labels += [
         (
@@ -812,6 +838,106 @@ def method_material_coverage(
         "mode": "literal_material_mentions_not_benchmark_recall",
         "methods": coverage,
     }
+
+
+def prepare_writer_methodology(
+    record: dict,
+    *,
+    selection: EvidenceSelection,
+    cards: dict,
+    extractions: Sequence[dict],
+    requested_methods: Sequence[str] = (),
+    upstream_results: Mapping[str, Any] | None = None,
+) -> dict:
+    """Prepare immutable host disclosures identically before planning and writing."""
+    from litagent.context.evidence_selector import EvidenceSelection
+    from litagent.quality import build_fact_cards
+
+    if record is None:
+        raise ValueError("writer_envelope_methodology_required")
+    if not isinstance(record, dict):
+        raise ValueError("writer_methodology_record_invalid")
+    if not isinstance(selection, EvidenceSelection):
+        raise ValueError("writer_methodology_selection_invalid")
+    try:
+        EvidenceSelection.from_dict(selection.to_dict())
+    except (AttributeError, TypeError, ValueError) as exc:
+        raise ValueError("writer_methodology_selection_invalid") from exc
+    if any(
+        type(value) is not int
+        for value in (
+            selection.candidate_count,
+            selection.omitted_count,
+            selection.estimated_tokens,
+        )
+    ):
+        raise ValueError("writer_methodology_selection_invalid")
+    if not isinstance(cards, dict):
+        raise ValueError("writer_methodology_fact_cards_invalid")
+    try:
+        expected_cards = build_fact_cards(selection.selected_items)
+        supplied_identity = json.dumps(cards, sort_keys=True, allow_nan=False)
+        expected_identity = json.dumps(expected_cards, sort_keys=True, allow_nan=False)
+    except (AttributeError, TypeError, ValueError) as exc:
+        raise ValueError("writer_methodology_fact_cards_invalid") from exc
+    if supplied_identity != expected_identity:
+        raise ValueError("writer_methodology_fact_cards_invalid")
+    if (
+        not isinstance(extractions, Sequence)
+        or isinstance(extractions, (str, bytes))
+        or any(not isinstance(item, dict) for item in extractions)
+    ):
+        raise ValueError("writer_methodology_extractions_invalid")
+    if (
+        not isinstance(requested_methods, Sequence)
+        or isinstance(requested_methods, (str, bytes))
+        or any(
+            not isinstance(name, str) or not name.strip() for name in requested_methods
+        )
+    ):
+        raise ValueError("writer_methodology_requested_methods_invalid")
+    if upstream_results is not None and (
+        not isinstance(upstream_results, Mapping)
+        or any(not isinstance(key, str) for key in upstream_results)
+    ):
+        raise ValueError("writer_methodology_upstream_results_invalid")
+
+    acquisitions = {}
+    for item in extractions:
+        acquisition = item.get("fulltext_acquisition")
+        if not acquisition:
+            continue
+        paper_id = item.get("paper_id")
+        if (
+            not isinstance(paper_id, str)
+            or not paper_id
+            or not isinstance(acquisition, dict)
+        ):
+            raise ValueError("writer_methodology_acquisition_invalid")
+        acquisitions[paper_id] = copy.deepcopy(acquisition)
+
+    prepared = copy.deepcopy(record)
+    prepared["evidence_counts"] = {
+        "candidate": selection.candidate_count,
+        "selected": len(selection.selected_items),
+    }
+    prepared["named_method_material_coverage"] = method_material_coverage(
+        requested_methods, upstream_results or {}, selection.selected_items
+    )
+    prepared["fulltext_acquisition"] = acquisitions
+    if acquisitions:
+        has_fulltext = any(
+            card.get("content_scope") == "selected_fulltext" for card in cards.values()
+        )
+        prepared["content_mode"] = (
+            "abstract_and_selected_fulltext" if has_fulltext else "abstract_only"
+        )
+        prepared["full_text_review"] = (
+            "selected blocks only; complete document review not performed"
+            if has_fulltext
+            else "not performed; no selected fulltext evidence available"
+        )
+    return prepared
 
 
 def summary_section_spans(survey: str) -> list[dict]:

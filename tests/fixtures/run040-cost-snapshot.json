@@ -1,0 +1,1607 @@
+{
+  "contract": "historical-planned-cost-snapshot-v1",
+  "science_gold_standard": false,
+  "provenance": {
+    "source_suite_id": "frozen-writer-three-domain-20261101-040",
+    "manifest_sha256": "d1e0c551be2164d5213b70dd17e5b472e231c19a7f8655936c4f527d61bd4efd",
+    "state_sha256": "1a1c0d1c65e7970fb976866fbcbec1ac0f248ddbc31946e53b8d15c76f636ff8",
+    "persisted_ledger_sha256": "5265fe3b82d4df9832bf9fcc66d6a347fa80a60dd6548fb1ecacd191dea1458f",
+    "snapshot_canonical_sha256": "c4dc2def690a5bfdb7d243d07aaa6686f054276224aaea046720b668c85a7d8e",
+    "frozen_manifest_plan_identity": "fae4a724feb5db258665eea46e5e2a16ec2a313240818675612ad96d1c8051d0",
+    "cost_metadata_only": true,
+    "source_record_scope": "Exact original schema2 snapshot and all22 settled token breakdowns; no original report, HTTP payload, trace or credentials."
+  },
+  "snapshot": {
+    "schema_version": 2,
+    "strict_policy": "planned-budget-v7",
+    "plan": {
+      "contract": "planned-budget-v7",
+      "measurement": "complete-utf8-reservation-v1",
+      "input_identity": "0f454134b8a69cf4ec5b5b95e0547e6f82d0e9b2416197e69c7bd910f834bf88",
+      "status": "admitted",
+      "reason": null,
+      "required_tokens": 4032855,
+      "planned_tokens": 4440000,
+      "maximum_tokens": 4500000,
+      "planned_requests": 41,
+      "maximum_requests": 64,
+      "context_tokens": 131072,
+      "context_reservation_limit": 117964,
+      "context_margin": 0.1,
+      "spent_tokens": 0,
+      "spent_requests": 0,
+      "scope_bounds": {
+        "report_max_units": 70,
+        "authored_text_max_characters": 2000,
+        "diagnostic_string_max_characters": 2000,
+        "model_assertions": 128,
+        "assertions_per_batch": 16,
+        "assessment_batches": 8,
+        "shared_repairs": 2,
+        "envelope_contract": "flat-writer-envelope-v1"
+      },
+      "stages": {
+        "body": {
+          "count": 4,
+          "request_cap": 95415,
+          "output_tokens": 20000,
+          "bound": "host_envelope_upper_bound",
+          "reserved_tokens": 381660
+        },
+        "summary": {
+          "count": 3,
+          "request_cap": 70000,
+          "output_tokens": 20000,
+          "bound": "host_envelope_upper_bound",
+          "reserved_tokens": 210000
+        },
+        "reviewer": {
+          "count": 1,
+          "request_cap": 117964,
+          "output_tokens": 4096,
+          "bound": "host_envelope_upper_bound",
+          "reserved_tokens": 117964
+        },
+        "inventory": {
+          "count": 3,
+          "request_cap": 90000,
+          "output_tokens": 16384,
+          "bound": "host_envelope_upper_bound",
+          "reserved_tokens": 270000
+        },
+        "assessment": {
+          "count": 24,
+          "request_cap": 100000,
+          "output_tokens": 16384,
+          "bound": "host_envelope_upper_bound",
+          "reserved_tokens": 2400000
+        },
+        "global": {
+          "count": 3,
+          "request_cap": 117964,
+          "output_tokens": 16384,
+          "bound": "host_envelope_upper_bound",
+          "reserved_tokens": 353892
+        },
+        "repair": {
+          "count": 2,
+          "request_cap": 117964,
+          "output_tokens": 20000,
+          "bound": "host_envelope_upper_bound",
+          "reserved_tokens": 235928
+        },
+        "body_initial": {
+          "count": 1,
+          "output_tokens": 20000,
+          "bound": "exact_wire",
+          "request_cap": 63411,
+          "reserved_tokens": 63411
+        }
+      },
+      "repair_limit": 2,
+      "repair_selection": "fixed-two-complete-repairs-v1",
+      "repair_allocation": "locked",
+      "initial_evaluation_included": true,
+      "initial_evaluation_reserved": true,
+      "assessment_input_contract": "host-citation-support-aliases-v2",
+      "envelope": {
+        "contract": "flat-writer-envelope-v1",
+        "body_max_units": 66,
+        "summary_max_units_per_section": 2,
+        "model_assertions": 128,
+        "assessment_batches": 8,
+        "body_json_bytes": 32000,
+        "summary_json_bytes": 4000,
+        "claim_json_bytes": 30000,
+        "request_caps": {
+          "body": 95415,
+          "summary": 70000,
+          "reviewer": 117964,
+          "repair": 117964,
+          "inventory": 90000,
+          "assessment": 100000,
+          "global": 117964
+        },
+        "source_identity": "0f454134b8a69cf4ec5b5b95e0547e6f82d0e9b2416197e69c7bd910f834bf88",
+        "builder_identity": "e7c40cc20db2cf169a37718d54927238004ed357c3352a51ec69c6506446f779",
+        "frozen_component_reservation": 44746,
+        "claim_max_json_bytes": 2000,
+        "diagnostic_json_bytes": 12288,
+        "capacity": {
+          "target_body_units": 48,
+          "max_body_units": 66,
+          "max_summary_units": 2,
+          "max_unit_characters": 2000,
+          "initial_assertions": 128,
+          "batch_size": 16,
+          "max_assertions": null,
+          "max_assessment_batches": null,
+          "body_json_bytes": 32000,
+          "summary_json_bytes": 4000,
+          "claim_json_bytes": 30000,
+          "claim_max_json_bytes": 2000,
+          "diagnostic_json_bytes": 12288
+        },
+        "repair_mapping_contract": "capacity-edit-map-v2",
+        "global_findings_contract": "anchored-global-findings-v2",
+        "inventory_recovery_contract": "bounded-inventory-recovery-v2",
+        "summary_constraints_contract": "effective-summary-limits-v1",
+        "classification_review_contract": "independent-assertion-kinds-v1",
+        "repair_feedback_contract": "host-repair-feedback-v1",
+        "reference_contract": "ordered-reference-set-v1",
+        "transport_revision": "host-lossless-transport-v1",
+        "transport_identity": "2991020fe610092326658bba5dde942ab4a5cc63f00f3d39d28e3dc32200ef51",
+        "support_validation_revision": "host-support-receipts-v1",
+        "support_validation_identity": "532150f8b87c6ea0503713e94d9c22b1d3550b7c6177a4801f4fadaa9e33be97",
+        "identity": "f758f35017ed6c38bdfea94f1b4c812142677a775afb977febe46c323a391380"
+      },
+      "identity": "fae4a724feb5db258665eea46e5e2a16ec2a313240818675612ad96d1c8051d0"
+    },
+    "max_tokens": 4440000,
+    "used_tokens": 344347,
+    "call_count": 22,
+    "requests_sent": 22,
+    "usage_uncertain": false,
+    "stop_reason": null,
+    "entries": {
+      "7a9e61ae44cda7f770d771c96f2e9ee536fe8096a0bf782eaacf51a29738e343:body:introduction": {
+        "stage": "body_initial",
+        "status": "settled",
+        "reserved_tokens": 63411,
+        "actual_tokens": 11378,
+        "usage_sha256": "07baef84f96ea96e63a8a8366845e135517e77af0cd234cda87dab071f625b86",
+        "sent": true,
+        "wire_sha256": "c839913be0af444b6d6092a2143e2f79eb811a803b7c1a63f6822cf2439fe364"
+      },
+      "7a9e61ae44cda7f770d771c96f2e9ee536fe8096a0bf782eaacf51a29738e343:body:taxonomy": {
+        "stage": "body",
+        "status": "settled",
+        "reserved_tokens": 65421,
+        "actual_tokens": 12123,
+        "usage_sha256": "fc18c081ce7f2dad8e8bf9a8b82a2daeb26a0c1f35bd235c5e9240c14d52f8c1",
+        "sent": true,
+        "wire_sha256": "cd9f0655d85c99c6d29d34f59973b10e0a6b8b0276ee2ec89ed7ab66d6846eb7"
+      },
+      "7a9e61ae44cda7f770d771c96f2e9ee536fe8096a0bf782eaacf51a29738e343:body:methods": {
+        "stage": "body",
+        "status": "settled",
+        "reserved_tokens": 68718,
+        "actual_tokens": 14061,
+        "usage_sha256": "9f4523d77450bf4f8733e500f7a9f79dd7d9e28623b93acd66c2b602c1b6b6b4",
+        "sent": true,
+        "wire_sha256": "a890a2b677da76f98a041e55436de845bd8d9dd65f2e4208590638bec8d7314d"
+      },
+      "7a9e61ae44cda7f770d771c96f2e9ee536fe8096a0bf782eaacf51a29738e343:body:experiments": {
+        "stage": "body",
+        "status": "settled",
+        "reserved_tokens": 77043,
+        "actual_tokens": 15560,
+        "usage_sha256": "d861a2913d44a7dbf138cf8b482b92a2feb58ad6963c9bf0ffc5f480bd2450af",
+        "sent": true,
+        "wire_sha256": "335ab1396e0d32f0df8564d4584527f8d96c0a305f4904a2704dbb969ce70b9f"
+      },
+      "7a9e61ae44cda7f770d771c96f2e9ee536fe8096a0bf782eaacf51a29738e343:body:open_problems": {
+        "stage": "body",
+        "status": "settled",
+        "reserved_tokens": 83195,
+        "actual_tokens": 17019,
+        "usage_sha256": "6dad1251a23aa702c6e78b7295865f2ed3ff613375947fe1a0169de829e320bf",
+        "sent": true,
+        "wire_sha256": "d368cb6e311021294ff1e53499261f2a22f3fb8935f0fec01240dbf392c7b51b"
+      },
+      "7a9e61ae44cda7f770d771c96f2e9ee536fe8096a0bf782eaacf51a29738e343:summary_initial": {
+        "stage": "summary",
+        "status": "settled",
+        "reserved_tokens": 61566,
+        "actual_tokens": 10699,
+        "usage_sha256": "6722a68b676cc5434a85e2233c7c075a06f99917d37a6c00fc902e12fbec3392",
+        "sent": true,
+        "wire_sha256": "8a9159d7f9af8301dc971f95049b8b852e2416473f659b568ba7f8aab20c0285"
+      },
+      "7a9e61ae44cda7f770d771c96f2e9ee536fe8096a0bf782eaacf51a29738e343:reviewer": {
+        "stage": "reviewer",
+        "status": "settled",
+        "reserved_tokens": 86844,
+        "actual_tokens": 23504,
+        "usage_sha256": "beff646c81cd5432dd82f4c11e4da962ac88f29e421d03bff2c423c038eeb4da",
+        "sent": true,
+        "wire_sha256": "61c23618a3b3ea96fd2a7ae2f515899eb41dce5173264486c7ca426ca89e2753"
+      },
+      "0dfe81005a985c1e2b5810ef70ef77bb73af1369b1600c1b02c7bdca406a2774": {
+        "stage": "inventory",
+        "status": "settled",
+        "reserved_tokens": 69366,
+        "actual_tokens": 21596,
+        "usage_sha256": "1e1516ffbc40d522fa0b3a06e2ab4dcefa91b21dbdc8479a3a05320bd35d72f2",
+        "sent": true,
+        "wire_sha256": "d90125b8d6f2f6719c97b96a94a7e579195fd2e3c84b36c5d5885599a84eba93"
+      },
+      "449186ecae8027d611b52eb3d8e35924acbcdcaf9e81acb250c8a94d966f54d8": {
+        "stage": "assessment",
+        "status": "settled",
+        "reserved_tokens": 68088,
+        "actual_tokens": 15095,
+        "usage_sha256": "f8dd8b7f9d6b167cab7446eccb11021995577e9a8e82a84d867f1e6928a68d37",
+        "sent": true,
+        "round_number": 1,
+        "round_wire_sha256": "47b5c975ba1357c653bb9750095dec40e897663abbf5820ec04ae5a6c093fb7a",
+        "wire_sha256": "39bb5231c8460e5bac5ab4e097a40a7f2919c41b8506a1d046d570eea166b974"
+      },
+      "310a75e6d8519d583faf3526a6a5df32d6911571487db7d97153cd7c075d8076": {
+        "stage": "assessment",
+        "status": "settled",
+        "reserved_tokens": 64852,
+        "actual_tokens": 13950,
+        "usage_sha256": "14d1996c61435f4b99d40c4e7f6853a4f096f98a74a02931e4aaa0b811fa1d49",
+        "sent": true,
+        "round_number": 1,
+        "round_wire_sha256": "5dfb13d31b419c3527346c5ed5cbc5097a64c4afd6445f990345c289d0f8921c",
+        "wire_sha256": "e1afedfb5127bc061c02ecddc441ba1fcc2d511f7d1358ceaacb9187168d5bcb"
+      },
+      "a3a6d99dd517ce09701a63a36f412e0d36069fd71b43c9848b28c6e7d454e7f2": {
+        "stage": "assessment",
+        "status": "settled",
+        "reserved_tokens": 57821,
+        "actual_tokens": 12762,
+        "usage_sha256": "b7fe759101d7f5ab9f84dfae3c7e54148e50b1f6d0126bc63e9c1c4ba57a2ca2",
+        "sent": true,
+        "round_number": 1,
+        "round_wire_sha256": "7e9e99469fb6f207bc065247b59aca7c41b8da7e8666c61ec8ecac6bd8ccb750",
+        "wire_sha256": "6f75b7a6039250b3831716031885f2d1513e6a95d92591294f1c6bbf6a1fff28"
+      },
+      "6daad436dddc9ce4278b61bde4541b4590ba5df9dafc1bd0e4c1f0eb76009a05": {
+        "stage": "assessment",
+        "status": "settled",
+        "reserved_tokens": 58860,
+        "actual_tokens": 13369,
+        "usage_sha256": "9f4685b5255bc30483887487dc9fadd8243e2c40d11b4090aae36a4ca9b5ce00",
+        "sent": true,
+        "round_number": 1,
+        "round_wire_sha256": "4f2997cc6e85e4685494384584b1a21bf1e8b46619b47f5f405d3cc7c7082318",
+        "wire_sha256": "accbac3fcdcf13014052bc128315b2c437e273dbb10e770a7976d3427e6f9240"
+      },
+      "5354e76b0e07701ba1f4e5f516f812738e06460ba161436a40d31027c7a3e286": {
+        "stage": "assessment",
+        "status": "settled",
+        "reserved_tokens": 56354,
+        "actual_tokens": 12044,
+        "usage_sha256": "9c0d6b7eb59bdd7fb607040335c0ccbccadec7ad9a308d7ae92c47ab09b06253",
+        "sent": true,
+        "round_number": 1,
+        "round_wire_sha256": "67f53aa6df2616864afe1a58ee5b10a0855e8ccb87e894e53dbeb235c04b3d09",
+        "wire_sha256": "fda76d2a26eccfb4749087c1324f9be34fb0b730e76753ab1e998bc7b35a2aa8"
+      },
+      "f2bc6b90448fe7c3d5621f3b3ec188398ff8fa3a3da16eefe5c9255da8dd821f": {
+        "stage": "assessment",
+        "status": "settled",
+        "reserved_tokens": 63325,
+        "actual_tokens": 14648,
+        "usage_sha256": "1f2fc9a4b1a328d1b8d88eff77afe28bc31b102d27460d07047a98292ec7b906",
+        "sent": true,
+        "round_number": 1,
+        "round_wire_sha256": "b09750bf7aff27a9b844435f4783c15d9be47083daf21eedea9882f9f6b3d874",
+        "wire_sha256": "49623bacf91e84d43c5c494cf2a60299ac6c08adfe253a5c435958e1083bb5c1"
+      },
+      "e4a53b6f42933d7b58a3381f3aca5be9076afdecd1841c9f36e10676575bf9f2": {
+        "stage": "assessment",
+        "status": "settled",
+        "reserved_tokens": 65594,
+        "actual_tokens": 15671,
+        "usage_sha256": "d964e3d98b9b300b9cd2b339b6b00b9dc3a9172630a0bc71d80aed6eebbff01a",
+        "sent": true,
+        "round_number": 1,
+        "round_wire_sha256": "8f0feb4f1c3a91269c934e0d8aba7e680dc13d7839f86a14593cca43c7db9d2c",
+        "wire_sha256": "4f38696c17397a187a26877ed84b80d8b7afc350cdf919f82f70938ec1202028"
+      },
+      "767595c80959807d7982ab5e4d1048a314578d03e6677ef5ac2dc7bcac1d879a": {
+        "stage": "assessment",
+        "status": "settled",
+        "reserved_tokens": 63904,
+        "actual_tokens": 15688,
+        "usage_sha256": "f934d871213dc5b6be7ef37f54b804c395af4dbe90695d816df2d032af41bc13",
+        "sent": true,
+        "round_number": 1,
+        "round_wire_sha256": "3d990f801cb68dfd5f157e9cefb15c38853a348e99ad832bbd6dec46e8561259",
+        "wire_sha256": "738590c56d0e36b40bfbcf5b0f58c2449c50157ae66e4175a96559753dcf20f8"
+      },
+      "93f6a3f5527b6471ec3676edf132df9be6800acdcf2b02a85a4ad4e997254c11": {
+        "stage": "assessment",
+        "status": "settled",
+        "reserved_tokens": 59824,
+        "actual_tokens": 13886,
+        "usage_sha256": "2386c56650562d259734870186af823a64efb1415bacd9d81471b9edbc58bb99",
+        "sent": true,
+        "round_number": 1,
+        "round_wire_sha256": "0ef250cea02bf1a3d0579e0a620f3d96191d45e2cac15d3e49a87b424cb071ed",
+        "wire_sha256": "3fbfc47de7bbd13f7ba8178d453aaebb43ad7bfd8cef7a577a437feed44133df"
+      },
+      "7d45b4e09ceb191f813666e6d7e6e22cea64b1bb611f53e06dff7686b2d8fd22": {
+        "stage": "assessment",
+        "status": "settled",
+        "reserved_tokens": 66037,
+        "actual_tokens": 14979,
+        "usage_sha256": "168990660021769b55f4b4b3064e846c7fa0e7c00f182b9fe824965688e1e609",
+        "sent": true,
+        "round_number": 1,
+        "round_wire_sha256": "a804780cbdbf6abbd65d657710b2f4b9d19d21112a491e26ef6d89b39d7d394d",
+        "wire_sha256": "a7f0ef37fcd66169034e256def9ee865df76ef52a354830e98ff67571bad697b"
+      },
+      "a4b532ef7e74a09eeb20493179bf389a0a86f7af47c85779fb04daaa01f7ea0b": {
+        "stage": "assessment",
+        "status": "settled",
+        "reserved_tokens": 58186,
+        "actual_tokens": 11123,
+        "usage_sha256": "b13a139f747abb64cc66cbd1c0c6ed8d933868b204699ad51c1809d654aa9834",
+        "sent": true,
+        "round_number": 1,
+        "round_wire_sha256": "2719883a6b241aafa8b8044c3428a31d7eba456b610724c4934fce8207cff581",
+        "wire_sha256": "8d14afd8df167d7339c88ece9fc23d1cff05b6a3e6282d51792cdc2370663aee"
+      },
+      "c7892532bc48a61085a45bd5f2405a946835e3ac0f7e7f8809e23664a2a97dbd": {
+        "stage": "global",
+        "status": "settled",
+        "reserved_tokens": 104791,
+        "actual_tokens": 26862,
+        "usage_sha256": "80126f9143de8a23055239e79eb89c6a2f1b289cc5961c9985b01b536dfec529",
+        "sent": true,
+        "round_number": 1,
+        "round_wire_sha256": "7ac926569687711d924191c0dc9bf167ebc1a99818fa740e540fa7a4a420f644",
+        "wire_sha256": "c5a2d7009fdec869fc2df341225326c739c4e530171cb3db56bc7771085ac197"
+      },
+      "f129a2332eb9c3dad3ca0e284c90d83d0ad811931d7a92a8d70252b46a87ac65": {
+        "stage": "repair",
+        "status": "settled",
+        "reserved_tokens": 76912,
+        "actual_tokens": 23395,
+        "usage_sha256": "5f3072d6a632f5bfb1cc36bebf0569a655bb71bcc4a14b986bfbf20a4ea13504",
+        "sent": true,
+        "inventory_recovery": {
+          "contract": "bounded-inventory-recovery-v2",
+          "parent_allocation": "235f8a55f26405be1eef3bc7f464a373debec4c4c6d501a48b7ea78f545c4f52",
+          "source_report_sha256": "b03443c33948f5faa6d14711b7ecd6ee3aea2a2bfc0b5c8d722f68fdc2331566",
+          "feedback_sha256": "4285ba30d85a82a004e0d95df2bad2262effcb5bc56bf9a7db48ec54a296ba10",
+          "wire_sha256": "43209b3c6ac769a18176e8c77641e7a8a2679f05ac45134153f7583fddd7b868"
+        },
+        "wire_sha256": "ac66c253b8a1feb7a3453bf9f314e3ff7a9fb9656160b638e175442f7aa630e4"
+      },
+      "9659ce55518dbfdc468b05347944b61495221126d1cad13f352c872a0439b31d": {
+        "stage": "assessment",
+        "status": "settled",
+        "reserved_tokens": 67752,
+        "actual_tokens": 14935,
+        "usage_sha256": "dbf5cada6b4fc56d8f3f8f981afba0f633c93512d3aaa074c6a5adcd65404e6d",
+        "sent": true,
+        "round_number": 2,
+        "round_wire_sha256": "6bbe4f633f28edef5e3c226560f60de2877ce3eb9a2996d2c6bc5eb998f40f93",
+        "wire_sha256": "6c5308d7f61013bec8d608365993fbc60ea3f3d998aa2f39f2e4f7f290d7b1b4"
+      }
+    },
+    "closed_stages": [],
+    "capacity_revisions": [
+      {
+        "parent": "fae4a724feb5db258665eea46e5e2a16ec2a313240818675612ad96d1c8051d0",
+        "arguments": {
+          "assertions": 167,
+          "batches": 11,
+          "requests": [
+            {
+              "stage": "assessment",
+              "wire_sha256": "47b5c975ba1357c653bb9750095dec40e897663abbf5820ec04ae5a6c093fb7a",
+              "reserved_tokens": 68088,
+              "output_tokens": 16384
+            },
+            {
+              "stage": "assessment",
+              "wire_sha256": "5dfb13d31b419c3527346c5ed5cbc5097a64c4afd6445f990345c289d0f8921c",
+              "reserved_tokens": 64852,
+              "output_tokens": 16384
+            },
+            {
+              "stage": "assessment",
+              "wire_sha256": "7e9e99469fb6f207bc065247b59aca7c41b8da7e8666c61ec8ecac6bd8ccb750",
+              "reserved_tokens": 57821,
+              "output_tokens": 16384
+            },
+            {
+              "stage": "assessment",
+              "wire_sha256": "4f2997cc6e85e4685494384584b1a21bf1e8b46619b47f5f405d3cc7c7082318",
+              "reserved_tokens": 58860,
+              "output_tokens": 16384
+            },
+            {
+              "stage": "assessment",
+              "wire_sha256": "67f53aa6df2616864afe1a58ee5b10a0855e8ccb87e894e53dbeb235c04b3d09",
+              "reserved_tokens": 56354,
+              "output_tokens": 16384
+            },
+            {
+              "stage": "assessment",
+              "wire_sha256": "b09750bf7aff27a9b844435f4783c15d9be47083daf21eedea9882f9f6b3d874",
+              "reserved_tokens": 63325,
+              "output_tokens": 16384
+            },
+            {
+              "stage": "assessment",
+              "wire_sha256": "8f0feb4f1c3a91269c934e0d8aba7e680dc13d7839f86a14593cca43c7db9d2c",
+              "reserved_tokens": 65594,
+              "output_tokens": 16384
+            },
+            {
+              "stage": "assessment",
+              "wire_sha256": "3d990f801cb68dfd5f157e9cefb15c38853a348e99ad832bbd6dec46e8561259",
+              "reserved_tokens": 63904,
+              "output_tokens": 16384
+            },
+            {
+              "stage": "assessment",
+              "wire_sha256": "0ef250cea02bf1a3d0579e0a620f3d96191d45e2cac15d3e49a87b424cb071ed",
+              "reserved_tokens": 59824,
+              "output_tokens": 16384
+            },
+            {
+              "stage": "assessment",
+              "wire_sha256": "a804780cbdbf6abbd65d657710b2f4b9d19d21112a491e26ef6d89b39d7d394d",
+              "reserved_tokens": 66037,
+              "output_tokens": 16384
+            },
+            {
+              "stage": "assessment",
+              "wire_sha256": "2719883a6b241aafa8b8044c3428a31d7eba456b610724c4934fce8207cff581",
+              "reserved_tokens": 58186,
+              "output_tokens": 16384
+            },
+            {
+              "stage": "global",
+              "wire_sha256": "7ac926569687711d924191c0dc9bf167ebc1a99818fa740e540fa7a4a420f644",
+              "reserved_tokens": 104791,
+              "output_tokens": 16384
+            }
+          ],
+          "report_sha256": "b03443c33948f5faa6d14711b7ecd6ee3aea2a2bfc0b5c8d722f68fdc2331566",
+          "mode": "assess"
+        },
+        "entries": {
+          "7a9e61ae44cda7f770d771c96f2e9ee536fe8096a0bf782eaacf51a29738e343:body:introduction": {
+            "stage": "body_initial",
+            "status": "settled",
+            "reserved_tokens": 63411,
+            "actual_tokens": 11378,
+            "usage_sha256": "07baef84f96ea96e63a8a8366845e135517e77af0cd234cda87dab071f625b86",
+            "sent": true,
+            "wire_sha256": "c839913be0af444b6d6092a2143e2f79eb811a803b7c1a63f6822cf2439fe364"
+          },
+          "7a9e61ae44cda7f770d771c96f2e9ee536fe8096a0bf782eaacf51a29738e343:body:taxonomy": {
+            "stage": "body",
+            "status": "settled",
+            "reserved_tokens": 65421,
+            "actual_tokens": 12123,
+            "usage_sha256": "fc18c081ce7f2dad8e8bf9a8b82a2daeb26a0c1f35bd235c5e9240c14d52f8c1",
+            "sent": true,
+            "wire_sha256": "cd9f0655d85c99c6d29d34f59973b10e0a6b8b0276ee2ec89ed7ab66d6846eb7"
+          },
+          "7a9e61ae44cda7f770d771c96f2e9ee536fe8096a0bf782eaacf51a29738e343:body:methods": {
+            "stage": "body",
+            "status": "settled",
+            "reserved_tokens": 68718,
+            "actual_tokens": 14061,
+            "usage_sha256": "9f4523d77450bf4f8733e500f7a9f79dd7d9e28623b93acd66c2b602c1b6b6b4",
+            "sent": true,
+            "wire_sha256": "a890a2b677da76f98a041e55436de845bd8d9dd65f2e4208590638bec8d7314d"
+          },
+          "7a9e61ae44cda7f770d771c96f2e9ee536fe8096a0bf782eaacf51a29738e343:body:experiments": {
+            "stage": "body",
+            "status": "settled",
+            "reserved_tokens": 77043,
+            "actual_tokens": 15560,
+            "usage_sha256": "d861a2913d44a7dbf138cf8b482b92a2feb58ad6963c9bf0ffc5f480bd2450af",
+            "sent": true,
+            "wire_sha256": "335ab1396e0d32f0df8564d4584527f8d96c0a305f4904a2704dbb969ce70b9f"
+          },
+          "7a9e61ae44cda7f770d771c96f2e9ee536fe8096a0bf782eaacf51a29738e343:body:open_problems": {
+            "stage": "body",
+            "status": "settled",
+            "reserved_tokens": 83195,
+            "actual_tokens": 17019,
+            "usage_sha256": "6dad1251a23aa702c6e78b7295865f2ed3ff613375947fe1a0169de829e320bf",
+            "sent": true,
+            "wire_sha256": "d368cb6e311021294ff1e53499261f2a22f3fb8935f0fec01240dbf392c7b51b"
+          },
+          "7a9e61ae44cda7f770d771c96f2e9ee536fe8096a0bf782eaacf51a29738e343:summary_initial": {
+            "stage": "summary",
+            "status": "settled",
+            "reserved_tokens": 61566,
+            "actual_tokens": 10699,
+            "usage_sha256": "6722a68b676cc5434a85e2233c7c075a06f99917d37a6c00fc902e12fbec3392",
+            "sent": true,
+            "wire_sha256": "8a9159d7f9af8301dc971f95049b8b852e2416473f659b568ba7f8aab20c0285"
+          },
+          "7a9e61ae44cda7f770d771c96f2e9ee536fe8096a0bf782eaacf51a29738e343:reviewer": {
+            "stage": "reviewer",
+            "status": "settled",
+            "reserved_tokens": 86844,
+            "actual_tokens": 23504,
+            "usage_sha256": "beff646c81cd5432dd82f4c11e4da962ac88f29e421d03bff2c423c038eeb4da",
+            "sent": true,
+            "wire_sha256": "61c23618a3b3ea96fd2a7ae2f515899eb41dce5173264486c7ca426ca89e2753"
+          },
+          "0dfe81005a985c1e2b5810ef70ef77bb73af1369b1600c1b02c7bdca406a2774": {
+            "stage": "inventory",
+            "status": "settled",
+            "reserved_tokens": 69366,
+            "actual_tokens": 21596,
+            "usage_sha256": "1e1516ffbc40d522fa0b3a06e2ab4dcefa91b21dbdc8479a3a05320bd35d72f2",
+            "sent": true,
+            "wire_sha256": "d90125b8d6f2f6719c97b96a94a7e579195fd2e3c84b36c5d5885599a84eba93"
+          }
+        },
+        "allocation": {
+          "envelope": {
+            "contract": "flat-writer-envelope-v1",
+            "body_max_units": 66,
+            "summary_max_units_per_section": 2,
+            "model_assertions": 167,
+            "assessment_batches": 11,
+            "body_json_bytes": 32000,
+            "summary_json_bytes": 4000,
+            "claim_json_bytes": 30000,
+            "request_caps": {
+              "body": 95415,
+              "summary": 70000,
+              "reviewer": 117964,
+              "repair": 117964,
+              "inventory": 90000,
+              "assessment": 100000,
+              "global": 117964
+            },
+            "source_identity": "0f454134b8a69cf4ec5b5b95e0547e6f82d0e9b2416197e69c7bd910f834bf88",
+            "builder_identity": "e7c40cc20db2cf169a37718d54927238004ed357c3352a51ec69c6506446f779",
+            "frozen_component_reservation": 44746,
+            "claim_max_json_bytes": 2000,
+            "diagnostic_json_bytes": 12288,
+            "capacity": {
+              "target_body_units": 48,
+              "max_body_units": 66,
+              "max_summary_units": 2,
+              "max_unit_characters": 2000,
+              "initial_assertions": 128,
+              "batch_size": 16,
+              "max_assertions": null,
+              "max_assessment_batches": null,
+              "body_json_bytes": 32000,
+              "summary_json_bytes": 4000,
+              "claim_json_bytes": 30000,
+              "claim_max_json_bytes": 2000,
+              "diagnostic_json_bytes": 12288
+            },
+            "repair_mapping_contract": "capacity-edit-map-v2",
+            "global_findings_contract": "anchored-global-findings-v2",
+            "inventory_recovery_contract": "bounded-inventory-recovery-v2",
+            "summary_constraints_contract": "effective-summary-limits-v1",
+            "classification_review_contract": "independent-assertion-kinds-v1",
+            "repair_feedback_contract": "host-repair-feedback-v1",
+            "reference_contract": "ordered-reference-set-v1",
+            "transport_revision": "host-lossless-transport-v1",
+            "transport_identity": "2991020fe610092326658bba5dde942ab4a5cc63f00f3d39d28e3dc32200ef51",
+            "support_validation_revision": "host-support-receipts-v1",
+            "support_validation_identity": "532150f8b87c6ea0503713e94d9c22b1d3550b7c6177a4801f4fadaa9e33be97",
+            "identity": "70090caea1fc405201c9ea5b416428acaa04ce077f2d85e294219e086c44428c"
+          },
+          "stages": {
+            "body": {
+              "count": 4,
+              "request_cap": 95415,
+              "output_tokens": 20000,
+              "bound": "host_envelope_upper_bound",
+              "reserved_tokens": 58763
+            },
+            "summary": {
+              "count": 3,
+              "request_cap": 70000,
+              "output_tokens": 20000,
+              "bound": "host_envelope_upper_bound",
+              "reserved_tokens": 150699
+            },
+            "reviewer": {
+              "count": 1,
+              "request_cap": 117964,
+              "output_tokens": 4096,
+              "bound": "host_envelope_upper_bound",
+              "reserved_tokens": 23504
+            },
+            "inventory": {
+              "count": 3,
+              "request_cap": 90000,
+              "output_tokens": 16384,
+              "bound": "host_envelope_upper_bound",
+              "reserved_tokens": 201596
+            },
+            "assessment": {
+              "count": 33,
+              "request_cap": 100000,
+              "output_tokens": 16384,
+              "bound": "host_envelope_upper_bound",
+              "reserved_tokens": 2882845
+            },
+            "global": {
+              "count": 3,
+              "request_cap": 117964,
+              "output_tokens": 16384,
+              "bound": "host_envelope_upper_bound",
+              "reserved_tokens": 340719
+            },
+            "repair": {
+              "count": 2,
+              "request_cap": 117964,
+              "output_tokens": 20000,
+              "bound": "host_envelope_upper_bound",
+              "reserved_tokens": 235928
+            },
+            "body_initial": {
+              "count": 1,
+              "output_tokens": 20000,
+              "bound": "exact_wire",
+              "request_cap": 63411,
+              "reserved_tokens": 11378
+            }
+          },
+          "required_tokens": 3905432,
+          "with_margin_tokens": 4300000,
+          "planned_requests": 50,
+          "round": {
+            "number": 1,
+            "report_sha256": "b03443c33948f5faa6d14711b7ecd6ee3aea2a2bfc0b5c8d722f68fdc2331566",
+            "mode": "assess",
+            "status": "allocated",
+            "assertions": 167,
+            "batches": 11,
+            "remaining_repairs": 2,
+            "offsets": {
+              "assessment": 0,
+              "global": 0
+            },
+            "requests": [
+              {
+                "stage": "assessment",
+                "wire_sha256": "47b5c975ba1357c653bb9750095dec40e897663abbf5820ec04ae5a6c093fb7a",
+                "reserved_tokens": 68088,
+                "output_tokens": 16384
+              },
+              {
+                "stage": "assessment",
+                "wire_sha256": "5dfb13d31b419c3527346c5ed5cbc5097a64c4afd6445f990345c289d0f8921c",
+                "reserved_tokens": 64852,
+                "output_tokens": 16384
+              },
+              {
+                "stage": "assessment",
+                "wire_sha256": "7e9e99469fb6f207bc065247b59aca7c41b8da7e8666c61ec8ecac6bd8ccb750",
+                "reserved_tokens": 57821,
+                "output_tokens": 16384
+              },
+              {
+                "stage": "assessment",
+                "wire_sha256": "4f2997cc6e85e4685494384584b1a21bf1e8b46619b47f5f405d3cc7c7082318",
+                "reserved_tokens": 58860,
+                "output_tokens": 16384
+              },
+              {
+                "stage": "assessment",
+                "wire_sha256": "67f53aa6df2616864afe1a58ee5b10a0855e8ccb87e894e53dbeb235c04b3d09",
+                "reserved_tokens": 56354,
+                "output_tokens": 16384
+              },
+              {
+                "stage": "assessment",
+                "wire_sha256": "b09750bf7aff27a9b844435f4783c15d9be47083daf21eedea9882f9f6b3d874",
+                "reserved_tokens": 63325,
+                "output_tokens": 16384
+              },
+              {
+                "stage": "assessment",
+                "wire_sha256": "8f0feb4f1c3a91269c934e0d8aba7e680dc13d7839f86a14593cca43c7db9d2c",
+                "reserved_tokens": 65594,
+                "output_tokens": 16384
+              },
+              {
+                "stage": "assessment",
+                "wire_sha256": "3d990f801cb68dfd5f157e9cefb15c38853a348e99ad832bbd6dec46e8561259",
+                "reserved_tokens": 63904,
+                "output_tokens": 16384
+              },
+              {
+                "stage": "assessment",
+                "wire_sha256": "0ef250cea02bf1a3d0579e0a620f3d96191d45e2cac15d3e49a87b424cb071ed",
+                "reserved_tokens": 59824,
+                "output_tokens": 16384
+              },
+              {
+                "stage": "assessment",
+                "wire_sha256": "a804780cbdbf6abbd65d657710b2f4b9d19d21112a491e26ef6d89b39d7d394d",
+                "reserved_tokens": 66037,
+                "output_tokens": 16384
+              },
+              {
+                "stage": "assessment",
+                "wire_sha256": "2719883a6b241aafa8b8044c3428a31d7eba456b610724c4934fce8207cff581",
+                "reserved_tokens": 58186,
+                "output_tokens": 16384
+              },
+              {
+                "stage": "global",
+                "wire_sha256": "7ac926569687711d924191c0dc9bf167ebc1a99818fa740e540fa7a4a420f644",
+                "reserved_tokens": 104791,
+                "output_tokens": 16384
+              }
+            ]
+          },
+          "identity": "235f8a55f26405be1eef3bc7f464a373debec4c4c6d501a48b7ea78f545c4f52"
+        },
+        "identity": "4fc9d13dc889561c122cfc5d9606200c36c695aef43dd9f7a7c5638d229dd445"
+      },
+      {
+        "parent": "4fc9d13dc889561c122cfc5d9606200c36c695aef43dd9f7a7c5638d229dd445",
+        "arguments": {
+          "assertions": 168,
+          "batches": 11,
+          "requests": [
+            {
+              "stage": "assessment",
+              "wire_sha256": "6bbe4f633f28edef5e3c226560f60de2877ce3eb9a2996d2c6bc5eb998f40f93",
+              "reserved_tokens": 67752,
+              "output_tokens": 16384
+            },
+            {
+              "stage": "assessment",
+              "wire_sha256": "59790e1229ad52ff741bb00393c449f76a52e82891d5c5f1b4207970ac3f9558",
+              "reserved_tokens": 64649,
+              "output_tokens": 16384
+            },
+            {
+              "stage": "assessment",
+              "wire_sha256": "727add44ddcd0925e98d1485e6a6b47e511b5969729a71764979a9b5e8e01d1b",
+              "reserved_tokens": 55824,
+              "output_tokens": 16384
+            },
+            {
+              "stage": "assessment",
+              "wire_sha256": "bfe8d70ffcb3f1f82ca01482ebc29dea1e4f8e2ab353bcf52d6724486f8cdc38",
+              "reserved_tokens": 58711,
+              "output_tokens": 16384
+            },
+            {
+              "stage": "assessment",
+              "wire_sha256": "e3b5dd084724f4d6f405a7e8264ad6e88341d6c286e0662b9f85c9a0734f6cc5",
+              "reserved_tokens": 55626,
+              "output_tokens": 16384
+            },
+            {
+              "stage": "assessment",
+              "wire_sha256": "b3abc1c159c37651025897210e17d8b1c3f2fc7e4579621557253ecaeb01c5be",
+              "reserved_tokens": 63368,
+              "output_tokens": 16384
+            },
+            {
+              "stage": "assessment",
+              "wire_sha256": "abce2c991a7bd591ac0554a72e4c741b3cb438e46230a859613e0f14be8df38c",
+              "reserved_tokens": 62754,
+              "output_tokens": 16384
+            },
+            {
+              "stage": "assessment",
+              "wire_sha256": "70ee031d35011956948905a68662c7678550b7edd5c7934839e5363415be97f6",
+              "reserved_tokens": 67029,
+              "output_tokens": 16384
+            },
+            {
+              "stage": "assessment",
+              "wire_sha256": "3c01a2b9534576808b80547eadb9a43d2791a4ba5cb529525f6d90467dd6c3d0",
+              "reserved_tokens": 56080,
+              "output_tokens": 16384
+            },
+            {
+              "stage": "assessment",
+              "wire_sha256": "85dac147137d6c79190e795f62e5d713f5b53a061112b98256baeac42c743d8e",
+              "reserved_tokens": 63329,
+              "output_tokens": 16384
+            },
+            {
+              "stage": "assessment",
+              "wire_sha256": "9bd751b61b41b7dba0a1ef83b6648dfeafd4506e89c4f313cefc18fc49d2e939",
+              "reserved_tokens": 60173,
+              "output_tokens": 16384
+            },
+            {
+              "stage": "global",
+              "wire_sha256": "f1f6f21569173872842e5327539377fd25db73544baa41d139e82fe2cb4104a5",
+              "reserved_tokens": 104139,
+              "output_tokens": 16384
+            }
+          ],
+          "report_sha256": "b03443c33948f5faa6d14711b7ecd6ee3aea2a2bfc0b5c8d722f68fdc2331566",
+          "mode": "assess"
+        },
+        "entries": {
+          "7a9e61ae44cda7f770d771c96f2e9ee536fe8096a0bf782eaacf51a29738e343:body:introduction": {
+            "stage": "body_initial",
+            "status": "settled",
+            "reserved_tokens": 63411,
+            "actual_tokens": 11378,
+            "usage_sha256": "07baef84f96ea96e63a8a8366845e135517e77af0cd234cda87dab071f625b86",
+            "sent": true,
+            "wire_sha256": "c839913be0af444b6d6092a2143e2f79eb811a803b7c1a63f6822cf2439fe364"
+          },
+          "7a9e61ae44cda7f770d771c96f2e9ee536fe8096a0bf782eaacf51a29738e343:body:taxonomy": {
+            "stage": "body",
+            "status": "settled",
+            "reserved_tokens": 65421,
+            "actual_tokens": 12123,
+            "usage_sha256": "fc18c081ce7f2dad8e8bf9a8b82a2daeb26a0c1f35bd235c5e9240c14d52f8c1",
+            "sent": true,
+            "wire_sha256": "cd9f0655d85c99c6d29d34f59973b10e0a6b8b0276ee2ec89ed7ab66d6846eb7"
+          },
+          "7a9e61ae44cda7f770d771c96f2e9ee536fe8096a0bf782eaacf51a29738e343:body:methods": {
+            "stage": "body",
+            "status": "settled",
+            "reserved_tokens": 68718,
+            "actual_tokens": 14061,
+            "usage_sha256": "9f4523d77450bf4f8733e500f7a9f79dd7d9e28623b93acd66c2b602c1b6b6b4",
+            "sent": true,
+            "wire_sha256": "a890a2b677da76f98a041e55436de845bd8d9dd65f2e4208590638bec8d7314d"
+          },
+          "7a9e61ae44cda7f770d771c96f2e9ee536fe8096a0bf782eaacf51a29738e343:body:experiments": {
+            "stage": "body",
+            "status": "settled",
+            "reserved_tokens": 77043,
+            "actual_tokens": 15560,
+            "usage_sha256": "d861a2913d44a7dbf138cf8b482b92a2feb58ad6963c9bf0ffc5f480bd2450af",
+            "sent": true,
+            "wire_sha256": "335ab1396e0d32f0df8564d4584527f8d96c0a305f4904a2704dbb969ce70b9f"
+          },
+          "7a9e61ae44cda7f770d771c96f2e9ee536fe8096a0bf782eaacf51a29738e343:body:open_problems": {
+            "stage": "body",
+            "status": "settled",
+            "reserved_tokens": 83195,
+            "actual_tokens": 17019,
+            "usage_sha256": "6dad1251a23aa702c6e78b7295865f2ed3ff613375947fe1a0169de829e320bf",
+            "sent": true,
+            "wire_sha256": "d368cb6e311021294ff1e53499261f2a22f3fb8935f0fec01240dbf392c7b51b"
+          },
+          "7a9e61ae44cda7f770d771c96f2e9ee536fe8096a0bf782eaacf51a29738e343:summary_initial": {
+            "stage": "summary",
+            "status": "settled",
+            "reserved_tokens": 61566,
+            "actual_tokens": 10699,
+            "usage_sha256": "6722a68b676cc5434a85e2233c7c075a06f99917d37a6c00fc902e12fbec3392",
+            "sent": true,
+            "wire_sha256": "8a9159d7f9af8301dc971f95049b8b852e2416473f659b568ba7f8aab20c0285"
+          },
+          "7a9e61ae44cda7f770d771c96f2e9ee536fe8096a0bf782eaacf51a29738e343:reviewer": {
+            "stage": "reviewer",
+            "status": "settled",
+            "reserved_tokens": 86844,
+            "actual_tokens": 23504,
+            "usage_sha256": "beff646c81cd5432dd82f4c11e4da962ac88f29e421d03bff2c423c038eeb4da",
+            "sent": true,
+            "wire_sha256": "61c23618a3b3ea96fd2a7ae2f515899eb41dce5173264486c7ca426ca89e2753"
+          },
+          "0dfe81005a985c1e2b5810ef70ef77bb73af1369b1600c1b02c7bdca406a2774": {
+            "stage": "inventory",
+            "status": "settled",
+            "reserved_tokens": 69366,
+            "actual_tokens": 21596,
+            "usage_sha256": "1e1516ffbc40d522fa0b3a06e2ab4dcefa91b21dbdc8479a3a05320bd35d72f2",
+            "sent": true,
+            "wire_sha256": "d90125b8d6f2f6719c97b96a94a7e579195fd2e3c84b36c5d5885599a84eba93"
+          },
+          "449186ecae8027d611b52eb3d8e35924acbcdcaf9e81acb250c8a94d966f54d8": {
+            "stage": "assessment",
+            "status": "settled",
+            "reserved_tokens": 68088,
+            "actual_tokens": 15095,
+            "usage_sha256": "f8dd8b7f9d6b167cab7446eccb11021995577e9a8e82a84d867f1e6928a68d37",
+            "sent": true,
+            "round_number": 1,
+            "round_wire_sha256": "47b5c975ba1357c653bb9750095dec40e897663abbf5820ec04ae5a6c093fb7a",
+            "wire_sha256": "39bb5231c8460e5bac5ab4e097a40a7f2919c41b8506a1d046d570eea166b974"
+          },
+          "310a75e6d8519d583faf3526a6a5df32d6911571487db7d97153cd7c075d8076": {
+            "stage": "assessment",
+            "status": "settled",
+            "reserved_tokens": 64852,
+            "actual_tokens": 13950,
+            "usage_sha256": "14d1996c61435f4b99d40c4e7f6853a4f096f98a74a02931e4aaa0b811fa1d49",
+            "sent": true,
+            "round_number": 1,
+            "round_wire_sha256": "5dfb13d31b419c3527346c5ed5cbc5097a64c4afd6445f990345c289d0f8921c",
+            "wire_sha256": "e1afedfb5127bc061c02ecddc441ba1fcc2d511f7d1358ceaacb9187168d5bcb"
+          },
+          "a3a6d99dd517ce09701a63a36f412e0d36069fd71b43c9848b28c6e7d454e7f2": {
+            "stage": "assessment",
+            "status": "settled",
+            "reserved_tokens": 57821,
+            "actual_tokens": 12762,
+            "usage_sha256": "b7fe759101d7f5ab9f84dfae3c7e54148e50b1f6d0126bc63e9c1c4ba57a2ca2",
+            "sent": true,
+            "round_number": 1,
+            "round_wire_sha256": "7e9e99469fb6f207bc065247b59aca7c41b8da7e8666c61ec8ecac6bd8ccb750",
+            "wire_sha256": "6f75b7a6039250b3831716031885f2d1513e6a95d92591294f1c6bbf6a1fff28"
+          },
+          "6daad436dddc9ce4278b61bde4541b4590ba5df9dafc1bd0e4c1f0eb76009a05": {
+            "stage": "assessment",
+            "status": "settled",
+            "reserved_tokens": 58860,
+            "actual_tokens": 13369,
+            "usage_sha256": "9f4685b5255bc30483887487dc9fadd8243e2c40d11b4090aae36a4ca9b5ce00",
+            "sent": true,
+            "round_number": 1,
+            "round_wire_sha256": "4f2997cc6e85e4685494384584b1a21bf1e8b46619b47f5f405d3cc7c7082318",
+            "wire_sha256": "accbac3fcdcf13014052bc128315b2c437e273dbb10e770a7976d3427e6f9240"
+          },
+          "5354e76b0e07701ba1f4e5f516f812738e06460ba161436a40d31027c7a3e286": {
+            "stage": "assessment",
+            "status": "settled",
+            "reserved_tokens": 56354,
+            "actual_tokens": 12044,
+            "usage_sha256": "9c0d6b7eb59bdd7fb607040335c0ccbccadec7ad9a308d7ae92c47ab09b06253",
+            "sent": true,
+            "round_number": 1,
+            "round_wire_sha256": "67f53aa6df2616864afe1a58ee5b10a0855e8ccb87e894e53dbeb235c04b3d09",
+            "wire_sha256": "fda76d2a26eccfb4749087c1324f9be34fb0b730e76753ab1e998bc7b35a2aa8"
+          },
+          "f2bc6b90448fe7c3d5621f3b3ec188398ff8fa3a3da16eefe5c9255da8dd821f": {
+            "stage": "assessment",
+            "status": "settled",
+            "reserved_tokens": 63325,
+            "actual_tokens": 14648,
+            "usage_sha256": "1f2fc9a4b1a328d1b8d88eff77afe28bc31b102d27460d07047a98292ec7b906",
+            "sent": true,
+            "round_number": 1,
+            "round_wire_sha256": "b09750bf7aff27a9b844435f4783c15d9be47083daf21eedea9882f9f6b3d874",
+            "wire_sha256": "49623bacf91e84d43c5c494cf2a60299ac6c08adfe253a5c435958e1083bb5c1"
+          },
+          "e4a53b6f42933d7b58a3381f3aca5be9076afdecd1841c9f36e10676575bf9f2": {
+            "stage": "assessment",
+            "status": "settled",
+            "reserved_tokens": 65594,
+            "actual_tokens": 15671,
+            "usage_sha256": "d964e3d98b9b300b9cd2b339b6b00b9dc3a9172630a0bc71d80aed6eebbff01a",
+            "sent": true,
+            "round_number": 1,
+            "round_wire_sha256": "8f0feb4f1c3a91269c934e0d8aba7e680dc13d7839f86a14593cca43c7db9d2c",
+            "wire_sha256": "4f38696c17397a187a26877ed84b80d8b7afc350cdf919f82f70938ec1202028"
+          },
+          "767595c80959807d7982ab5e4d1048a314578d03e6677ef5ac2dc7bcac1d879a": {
+            "stage": "assessment",
+            "status": "settled",
+            "reserved_tokens": 63904,
+            "actual_tokens": 15688,
+            "usage_sha256": "f934d871213dc5b6be7ef37f54b804c395af4dbe90695d816df2d032af41bc13",
+            "sent": true,
+            "round_number": 1,
+            "round_wire_sha256": "3d990f801cb68dfd5f157e9cefb15c38853a348e99ad832bbd6dec46e8561259",
+            "wire_sha256": "738590c56d0e36b40bfbcf5b0f58c2449c50157ae66e4175a96559753dcf20f8"
+          },
+          "93f6a3f5527b6471ec3676edf132df9be6800acdcf2b02a85a4ad4e997254c11": {
+            "stage": "assessment",
+            "status": "settled",
+            "reserved_tokens": 59824,
+            "actual_tokens": 13886,
+            "usage_sha256": "2386c56650562d259734870186af823a64efb1415bacd9d81471b9edbc58bb99",
+            "sent": true,
+            "round_number": 1,
+            "round_wire_sha256": "0ef250cea02bf1a3d0579e0a620f3d96191d45e2cac15d3e49a87b424cb071ed",
+            "wire_sha256": "3fbfc47de7bbd13f7ba8178d453aaebb43ad7bfd8cef7a577a437feed44133df"
+          },
+          "7d45b4e09ceb191f813666e6d7e6e22cea64b1bb611f53e06dff7686b2d8fd22": {
+            "stage": "assessment",
+            "status": "settled",
+            "reserved_tokens": 66037,
+            "actual_tokens": 14979,
+            "usage_sha256": "168990660021769b55f4b4b3064e846c7fa0e7c00f182b9fe824965688e1e609",
+            "sent": true,
+            "round_number": 1,
+            "round_wire_sha256": "a804780cbdbf6abbd65d657710b2f4b9d19d21112a491e26ef6d89b39d7d394d",
+            "wire_sha256": "a7f0ef37fcd66169034e256def9ee865df76ef52a354830e98ff67571bad697b"
+          },
+          "a4b532ef7e74a09eeb20493179bf389a0a86f7af47c85779fb04daaa01f7ea0b": {
+            "stage": "assessment",
+            "status": "settled",
+            "reserved_tokens": 58186,
+            "actual_tokens": 11123,
+            "usage_sha256": "b13a139f747abb64cc66cbd1c0c6ed8d933868b204699ad51c1809d654aa9834",
+            "sent": true,
+            "round_number": 1,
+            "round_wire_sha256": "2719883a6b241aafa8b8044c3428a31d7eba456b610724c4934fce8207cff581",
+            "wire_sha256": "8d14afd8df167d7339c88ece9fc23d1cff05b6a3e6282d51792cdc2370663aee"
+          },
+          "c7892532bc48a61085a45bd5f2405a946835e3ac0f7e7f8809e23664a2a97dbd": {
+            "stage": "global",
+            "status": "settled",
+            "reserved_tokens": 104791,
+            "actual_tokens": 26862,
+            "usage_sha256": "80126f9143de8a23055239e79eb89c6a2f1b289cc5961c9985b01b536dfec529",
+            "sent": true,
+            "round_number": 1,
+            "round_wire_sha256": "7ac926569687711d924191c0dc9bf167ebc1a99818fa740e540fa7a4a420f644",
+            "wire_sha256": "c5a2d7009fdec869fc2df341225326c739c4e530171cb3db56bc7771085ac197"
+          },
+          "f129a2332eb9c3dad3ca0e284c90d83d0ad811931d7a92a8d70252b46a87ac65": {
+            "stage": "repair",
+            "status": "settled",
+            "reserved_tokens": 76912,
+            "actual_tokens": 23395,
+            "usage_sha256": "5f3072d6a632f5bfb1cc36bebf0569a655bb71bcc4a14b986bfbf20a4ea13504",
+            "sent": true,
+            "inventory_recovery": {
+              "contract": "bounded-inventory-recovery-v2",
+              "parent_allocation": "235f8a55f26405be1eef3bc7f464a373debec4c4c6d501a48b7ea78f545c4f52",
+              "source_report_sha256": "b03443c33948f5faa6d14711b7ecd6ee3aea2a2bfc0b5c8d722f68fdc2331566",
+              "feedback_sha256": "4285ba30d85a82a004e0d95df2bad2262effcb5bc56bf9a7db48ec54a296ba10",
+              "wire_sha256": "43209b3c6ac769a18176e8c77641e7a8a2679f05ac45134153f7583fddd7b868"
+            },
+            "wire_sha256": "ac66c253b8a1feb7a3453bf9f314e3ff7a9fb9656160b638e175442f7aa630e4"
+          }
+        },
+        "allocation": {
+          "envelope": {
+            "contract": "flat-writer-envelope-v1",
+            "body_max_units": 66,
+            "summary_max_units_per_section": 2,
+            "model_assertions": 168,
+            "assessment_batches": 11,
+            "body_json_bytes": 32000,
+            "summary_json_bytes": 4000,
+            "claim_json_bytes": 30000,
+            "request_caps": {
+              "body": 95415,
+              "summary": 70000,
+              "reviewer": 117964,
+              "repair": 117964,
+              "inventory": 90000,
+              "assessment": 100000,
+              "global": 117964
+            },
+            "source_identity": "0f454134b8a69cf4ec5b5b95e0547e6f82d0e9b2416197e69c7bd910f834bf88",
+            "builder_identity": "e7c40cc20db2cf169a37718d54927238004ed357c3352a51ec69c6506446f779",
+            "frozen_component_reservation": 44746,
+            "claim_max_json_bytes": 2000,
+            "diagnostic_json_bytes": 12288,
+            "capacity": {
+              "target_body_units": 48,
+              "max_body_units": 66,
+              "max_summary_units": 2,
+              "max_unit_characters": 2000,
+              "initial_assertions": 128,
+              "batch_size": 16,
+              "max_assertions": null,
+              "max_assessment_batches": null,
+              "body_json_bytes": 32000,
+              "summary_json_bytes": 4000,
+              "claim_json_bytes": 30000,
+              "claim_max_json_bytes": 2000,
+              "diagnostic_json_bytes": 12288
+            },
+            "repair_mapping_contract": "capacity-edit-map-v2",
+            "global_findings_contract": "anchored-global-findings-v2",
+            "inventory_recovery_contract": "bounded-inventory-recovery-v2",
+            "summary_constraints_contract": "effective-summary-limits-v1",
+            "classification_review_contract": "independent-assertion-kinds-v1",
+            "repair_feedback_contract": "host-repair-feedback-v1",
+            "reference_contract": "ordered-reference-set-v1",
+            "transport_revision": "host-lossless-transport-v1",
+            "transport_identity": "2991020fe610092326658bba5dde942ab4a5cc63f00f3d39d28e3dc32200ef51",
+            "support_validation_revision": "host-support-receipts-v1",
+            "support_validation_identity": "532150f8b87c6ea0503713e94d9c22b1d3550b7c6177a4801f4fadaa9e33be97",
+            "identity": "6eff724ba7b617adeaf41753b0634e7b0ff2935f2078c765700c9b230025224f"
+          },
+          "stages": {
+            "body": {
+              "count": 4,
+              "request_cap": 95415,
+              "output_tokens": 20000,
+              "bound": "host_envelope_upper_bound",
+              "reserved_tokens": 58763
+            },
+            "summary": {
+              "count": 2,
+              "request_cap": 70000,
+              "output_tokens": 20000,
+              "bound": "host_envelope_upper_bound",
+              "reserved_tokens": 80699
+            },
+            "reviewer": {
+              "count": 1,
+              "request_cap": 117964,
+              "output_tokens": 4096,
+              "bound": "host_envelope_upper_bound",
+              "reserved_tokens": 23504
+            },
+            "inventory": {
+              "count": 2,
+              "request_cap": 90000,
+              "output_tokens": 16384,
+              "bound": "host_envelope_upper_bound",
+              "reserved_tokens": 111596
+            },
+            "assessment": {
+              "count": 33,
+              "request_cap": 100000,
+              "output_tokens": 16384,
+              "bound": "host_envelope_upper_bound",
+              "reserved_tokens": 1928510
+            },
+            "global": {
+              "count": 3,
+              "request_cap": 117964,
+              "output_tokens": 16384,
+              "bound": "host_envelope_upper_bound",
+              "reserved_tokens": 248965
+            },
+            "repair": {
+              "count": 2,
+              "request_cap": 117964,
+              "output_tokens": 20000,
+              "bound": "host_envelope_upper_bound",
+              "reserved_tokens": 141359
+            },
+            "body_initial": {
+              "count": 1,
+              "output_tokens": 20000,
+              "bound": "exact_wire",
+              "request_cap": 63411,
+              "reserved_tokens": 11378
+            }
+          },
+          "required_tokens": 2604774,
+          "with_margin_tokens": 2870000,
+          "planned_requests": 48,
+          "round": {
+            "number": 2,
+            "report_sha256": "b03443c33948f5faa6d14711b7ecd6ee3aea2a2bfc0b5c8d722f68fdc2331566",
+            "mode": "assess",
+            "status": "allocated",
+            "assertions": 168,
+            "batches": 11,
+            "remaining_repairs": 1,
+            "offsets": {
+              "assessment": 11,
+              "global": 1
+            },
+            "requests": [
+              {
+                "stage": "assessment",
+                "wire_sha256": "6bbe4f633f28edef5e3c226560f60de2877ce3eb9a2996d2c6bc5eb998f40f93",
+                "reserved_tokens": 67752,
+                "output_tokens": 16384
+              },
+              {
+                "stage": "assessment",
+                "wire_sha256": "59790e1229ad52ff741bb00393c449f76a52e82891d5c5f1b4207970ac3f9558",
+                "reserved_tokens": 64649,
+                "output_tokens": 16384
+              },
+              {
+                "stage": "assessment",
+                "wire_sha256": "727add44ddcd0925e98d1485e6a6b47e511b5969729a71764979a9b5e8e01d1b",
+                "reserved_tokens": 55824,
+                "output_tokens": 16384
+              },
+              {
+                "stage": "assessment",
+                "wire_sha256": "bfe8d70ffcb3f1f82ca01482ebc29dea1e4f8e2ab353bcf52d6724486f8cdc38",
+                "reserved_tokens": 58711,
+                "output_tokens": 16384
+              },
+              {
+                "stage": "assessment",
+                "wire_sha256": "e3b5dd084724f4d6f405a7e8264ad6e88341d6c286e0662b9f85c9a0734f6cc5",
+                "reserved_tokens": 55626,
+                "output_tokens": 16384
+              },
+              {
+                "stage": "assessment",
+                "wire_sha256": "b3abc1c159c37651025897210e17d8b1c3f2fc7e4579621557253ecaeb01c5be",
+                "reserved_tokens": 63368,
+                "output_tokens": 16384
+              },
+              {
+                "stage": "assessment",
+                "wire_sha256": "abce2c991a7bd591ac0554a72e4c741b3cb438e46230a859613e0f14be8df38c",
+                "reserved_tokens": 62754,
+                "output_tokens": 16384
+              },
+              {
+                "stage": "assessment",
+                "wire_sha256": "70ee031d35011956948905a68662c7678550b7edd5c7934839e5363415be97f6",
+                "reserved_tokens": 67029,
+                "output_tokens": 16384
+              },
+              {
+                "stage": "assessment",
+                "wire_sha256": "3c01a2b9534576808b80547eadb9a43d2791a4ba5cb529525f6d90467dd6c3d0",
+                "reserved_tokens": 56080,
+                "output_tokens": 16384
+              },
+              {
+                "stage": "assessment",
+                "wire_sha256": "85dac147137d6c79190e795f62e5d713f5b53a061112b98256baeac42c743d8e",
+                "reserved_tokens": 63329,
+                "output_tokens": 16384
+              },
+              {
+                "stage": "assessment",
+                "wire_sha256": "9bd751b61b41b7dba0a1ef83b6648dfeafd4506e89c4f313cefc18fc49d2e939",
+                "reserved_tokens": 60173,
+                "output_tokens": 16384
+              },
+              {
+                "stage": "global",
+                "wire_sha256": "f1f6f21569173872842e5327539377fd25db73544baa41d139e82fe2cb4104a5",
+                "reserved_tokens": 104139,
+                "output_tokens": 16384
+              }
+            ]
+          },
+          "identity": "1d521e5acc65eaa982396dcb3169e4bddeb4090e5b412fc000d45d7f2b01a764"
+        },
+        "identity": "757010b91a5558c8ccd8ead5d18512d7a351cda0e1704c38270a3b1f9834f008"
+      }
+    ],
+    "capacity_allocation": {
+      "envelope": {
+        "contract": "flat-writer-envelope-v1",
+        "body_max_units": 66,
+        "summary_max_units_per_section": 2,
+        "model_assertions": 168,
+        "assessment_batches": 11,
+        "body_json_bytes": 32000,
+        "summary_json_bytes": 4000,
+        "claim_json_bytes": 30000,
+        "request_caps": {
+          "body": 95415,
+          "summary": 70000,
+          "reviewer": 117964,
+          "repair": 117964,
+          "inventory": 90000,
+          "assessment": 100000,
+          "global": 117964
+        },
+        "source_identity": "0f454134b8a69cf4ec5b5b95e0547e6f82d0e9b2416197e69c7bd910f834bf88",
+        "builder_identity": "e7c40cc20db2cf169a37718d54927238004ed357c3352a51ec69c6506446f779",
+        "frozen_component_reservation": 44746,
+        "claim_max_json_bytes": 2000,
+        "diagnostic_json_bytes": 12288,
+        "capacity": {
+          "target_body_units": 48,
+          "max_body_units": 66,
+          "max_summary_units": 2,
+          "max_unit_characters": 2000,
+          "initial_assertions": 128,
+          "batch_size": 16,
+          "max_assertions": null,
+          "max_assessment_batches": null,
+          "body_json_bytes": 32000,
+          "summary_json_bytes": 4000,
+          "claim_json_bytes": 30000,
+          "claim_max_json_bytes": 2000,
+          "diagnostic_json_bytes": 12288
+        },
+        "repair_mapping_contract": "capacity-edit-map-v2",
+        "global_findings_contract": "anchored-global-findings-v2",
+        "inventory_recovery_contract": "bounded-inventory-recovery-v2",
+        "summary_constraints_contract": "effective-summary-limits-v1",
+        "classification_review_contract": "independent-assertion-kinds-v1",
+        "repair_feedback_contract": "host-repair-feedback-v1",
+        "reference_contract": "ordered-reference-set-v1",
+        "transport_revision": "host-lossless-transport-v1",
+        "transport_identity": "2991020fe610092326658bba5dde942ab4a5cc63f00f3d39d28e3dc32200ef51",
+        "support_validation_revision": "host-support-receipts-v1",
+        "support_validation_identity": "532150f8b87c6ea0503713e94d9c22b1d3550b7c6177a4801f4fadaa9e33be97",
+        "identity": "6eff724ba7b617adeaf41753b0634e7b0ff2935f2078c765700c9b230025224f"
+      },
+      "stages": {
+        "body": {
+          "count": 4,
+          "request_cap": 95415,
+          "output_tokens": 20000,
+          "bound": "host_envelope_upper_bound",
+          "reserved_tokens": 58763
+        },
+        "summary": {
+          "count": 2,
+          "request_cap": 70000,
+          "output_tokens": 20000,
+          "bound": "host_envelope_upper_bound",
+          "reserved_tokens": 80699
+        },
+        "reviewer": {
+          "count": 1,
+          "request_cap": 117964,
+          "output_tokens": 4096,
+          "bound": "host_envelope_upper_bound",
+          "reserved_tokens": 23504
+        },
+        "inventory": {
+          "count": 2,
+          "request_cap": 90000,
+          "output_tokens": 16384,
+          "bound": "host_envelope_upper_bound",
+          "reserved_tokens": 111596
+        },
+        "assessment": {
+          "count": 33,
+          "request_cap": 100000,
+          "output_tokens": 16384,
+          "bound": "host_envelope_upper_bound",
+          "reserved_tokens": 1928510
+        },
+        "global": {
+          "count": 3,
+          "request_cap": 117964,
+          "output_tokens": 16384,
+          "bound": "host_envelope_upper_bound",
+          "reserved_tokens": 248965
+        },
+        "repair": {
+          "count": 2,
+          "request_cap": 117964,
+          "output_tokens": 20000,
+          "bound": "host_envelope_upper_bound",
+          "reserved_tokens": 141359
+        },
+        "body_initial": {
+          "count": 1,
+          "output_tokens": 20000,
+          "bound": "exact_wire",
+          "request_cap": 63411,
+          "reserved_tokens": 11378
+        }
+      },
+      "required_tokens": 2604774,
+      "with_margin_tokens": 2870000,
+      "planned_requests": 48,
+      "round": {
+        "number": 2,
+        "report_sha256": "b03443c33948f5faa6d14711b7ecd6ee3aea2a2bfc0b5c8d722f68fdc2331566",
+        "mode": "assess",
+        "status": "allocated",
+        "assertions": 168,
+        "batches": 11,
+        "remaining_repairs": 1,
+        "offsets": {
+          "assessment": 11,
+          "global": 1
+        },
+        "requests": [
+          {
+            "stage": "assessment",
+            "wire_sha256": "6bbe4f633f28edef5e3c226560f60de2877ce3eb9a2996d2c6bc5eb998f40f93",
+            "reserved_tokens": 67752,
+            "output_tokens": 16384
+          },
+          {
+            "stage": "assessment",
+            "wire_sha256": "59790e1229ad52ff741bb00393c449f76a52e82891d5c5f1b4207970ac3f9558",
+            "reserved_tokens": 64649,
+            "output_tokens": 16384
+          },
+          {
+            "stage": "assessment",
+            "wire_sha256": "727add44ddcd0925e98d1485e6a6b47e511b5969729a71764979a9b5e8e01d1b",
+            "reserved_tokens": 55824,
+            "output_tokens": 16384
+          },
+          {
+            "stage": "assessment",
+            "wire_sha256": "bfe8d70ffcb3f1f82ca01482ebc29dea1e4f8e2ab353bcf52d6724486f8cdc38",
+            "reserved_tokens": 58711,
+            "output_tokens": 16384
+          },
+          {
+            "stage": "assessment",
+            "wire_sha256": "e3b5dd084724f4d6f405a7e8264ad6e88341d6c286e0662b9f85c9a0734f6cc5",
+            "reserved_tokens": 55626,
+            "output_tokens": 16384
+          },
+          {
+            "stage": "assessment",
+            "wire_sha256": "b3abc1c159c37651025897210e17d8b1c3f2fc7e4579621557253ecaeb01c5be",
+            "reserved_tokens": 63368,
+            "output_tokens": 16384
+          },
+          {
+            "stage": "assessment",
+            "wire_sha256": "abce2c991a7bd591ac0554a72e4c741b3cb438e46230a859613e0f14be8df38c",
+            "reserved_tokens": 62754,
+            "output_tokens": 16384
+          },
+          {
+            "stage": "assessment",
+            "wire_sha256": "70ee031d35011956948905a68662c7678550b7edd5c7934839e5363415be97f6",
+            "reserved_tokens": 67029,
+            "output_tokens": 16384
+          },
+          {
+            "stage": "assessment",
+            "wire_sha256": "3c01a2b9534576808b80547eadb9a43d2791a4ba5cb529525f6d90467dd6c3d0",
+            "reserved_tokens": 56080,
+            "output_tokens": 16384
+          },
+          {
+            "stage": "assessment",
+            "wire_sha256": "85dac147137d6c79190e795f62e5d713f5b53a061112b98256baeac42c743d8e",
+            "reserved_tokens": 63329,
+            "output_tokens": 16384
+          },
+          {
+            "stage": "assessment",
+            "wire_sha256": "9bd751b61b41b7dba0a1ef83b6648dfeafd4506e89c4f313cefc18fc49d2e939",
+            "reserved_tokens": 60173,
+            "output_tokens": 16384
+          },
+          {
+            "stage": "global",
+            "wire_sha256": "f1f6f21569173872842e5327539377fd25db73544baa41d139e82fe2cb4104a5",
+            "reserved_tokens": 104139,
+            "output_tokens": 16384
+          }
+        ]
+      },
+      "identity": "1d521e5acc65eaa982396dcb3169e4bddeb4090e5b412fc000d45d7f2b01a764"
+    }
+  },
+  "usage_records": [
+    {
+      "request_id": "7a9e61ae44cda7f770d771c96f2e9ee536fe8096a0bf782eaacf51a29738e343:body:introduction",
+      "prompt_tokens": 10871,
+      "completion_tokens": 507,
+      "total_tokens": 11378
+    },
+    {
+      "request_id": "7a9e61ae44cda7f770d771c96f2e9ee536fe8096a0bf782eaacf51a29738e343:body:taxonomy",
+      "prompt_tokens": 11362,
+      "completion_tokens": 761,
+      "total_tokens": 12123
+    },
+    {
+      "request_id": "7a9e61ae44cda7f770d771c96f2e9ee536fe8096a0bf782eaacf51a29738e343:body:methods",
+      "prompt_tokens": 12153,
+      "completion_tokens": 1908,
+      "total_tokens": 14061
+    },
+    {
+      "request_id": "7a9e61ae44cda7f770d771c96f2e9ee536fe8096a0bf782eaacf51a29738e343:body:experiments",
+      "prompt_tokens": 14099,
+      "completion_tokens": 1461,
+      "total_tokens": 15560
+    },
+    {
+      "request_id": "7a9e61ae44cda7f770d771c96f2e9ee536fe8096a0bf782eaacf51a29738e343:body:open_problems",
+      "prompt_tokens": 15641,
+      "completion_tokens": 1378,
+      "total_tokens": 17019
+    },
+    {
+      "request_id": "7a9e61ae44cda7f770d771c96f2e9ee536fe8096a0bf782eaacf51a29738e343:summary_initial",
+      "prompt_tokens": 10097,
+      "completion_tokens": 602,
+      "total_tokens": 10699
+    },
+    {
+      "request_id": "7a9e61ae44cda7f770d771c96f2e9ee536fe8096a0bf782eaacf51a29738e343:reviewer",
+      "prompt_tokens": 22741,
+      "completion_tokens": 763,
+      "total_tokens": 23504
+    },
+    {
+      "request_id": "0dfe81005a985c1e2b5810ef70ef77bb73af1369b1600c1b02c7bdca406a2774",
+      "prompt_tokens": 13081,
+      "completion_tokens": 8515,
+      "total_tokens": 21596
+    },
+    {
+      "request_id": "449186ecae8027d611b52eb3d8e35924acbcdcaf9e81acb250c8a94d966f54d8",
+      "prompt_tokens": 11424,
+      "completion_tokens": 3671,
+      "total_tokens": 15095
+    },
+    {
+      "request_id": "310a75e6d8519d583faf3526a6a5df32d6911571487db7d97153cd7c075d8076",
+      "prompt_tokens": 10449,
+      "completion_tokens": 3501,
+      "total_tokens": 13950
+    },
+    {
+      "request_id": "a3a6d99dd517ce09701a63a36f412e0d36069fd71b43c9848b28c6e7d454e7f2",
+      "prompt_tokens": 9020,
+      "completion_tokens": 3742,
+      "total_tokens": 12762
+    },
+    {
+      "request_id": "6daad436dddc9ce4278b61bde4541b4590ba5df9dafc1bd0e4c1f0eb76009a05",
+      "prompt_tokens": 9152,
+      "completion_tokens": 4217,
+      "total_tokens": 13369
+    },
+    {
+      "request_id": "5354e76b0e07701ba1f4e5f516f812738e06460ba161436a40d31027c7a3e286",
+      "prompt_tokens": 8449,
+      "completion_tokens": 3595,
+      "total_tokens": 12044
+    },
+    {
+      "request_id": "f2bc6b90448fe7c3d5621f3b3ec188398ff8fa3a3da16eefe5c9255da8dd821f",
+      "prompt_tokens": 10212,
+      "completion_tokens": 4436,
+      "total_tokens": 14648
+    },
+    {
+      "request_id": "e4a53b6f42933d7b58a3381f3aca5be9076afdecd1841c9f36e10676575bf9f2",
+      "prompt_tokens": 10763,
+      "completion_tokens": 4908,
+      "total_tokens": 15671
+    },
+    {
+      "request_id": "767595c80959807d7982ab5e4d1048a314578d03e6677ef5ac2dc7bcac1d879a",
+      "prompt_tokens": 10562,
+      "completion_tokens": 5126,
+      "total_tokens": 15688
+    },
+    {
+      "request_id": "93f6a3f5527b6471ec3676edf132df9be6800acdcf2b02a85a4ad4e997254c11",
+      "prompt_tokens": 9397,
+      "completion_tokens": 4489,
+      "total_tokens": 13886
+    },
+    {
+      "request_id": "7d45b4e09ceb191f813666e6d7e6e22cea64b1bb611f53e06dff7686b2d8fd22",
+      "prompt_tokens": 10838,
+      "completion_tokens": 4141,
+      "total_tokens": 14979
+    },
+    {
+      "request_id": "a4b532ef7e74a09eeb20493179bf389a0a86f7af47c85779fb04daaa01f7ea0b",
+      "prompt_tokens": 8963,
+      "completion_tokens": 2160,
+      "total_tokens": 11123
+    },
+    {
+      "request_id": "c7892532bc48a61085a45bd5f2405a946835e3ac0f7e7f8809e23664a2a97dbd",
+      "prompt_tokens": 21850,
+      "completion_tokens": 5012,
+      "total_tokens": 26862
+    },
+    {
+      "request_id": "f129a2332eb9c3dad3ca0e284c90d83d0ad811931d7a92a8d70252b46a87ac65",
+      "prompt_tokens": 15018,
+      "completion_tokens": 8377,
+      "total_tokens": 23395
+    },
+    {
+      "request_id": "9659ce55518dbfdc468b05347944b61495221126d1cad13f352c872a0439b31d",
+      "prompt_tokens": 11342,
+      "completion_tokens": 3593,
+      "total_tokens": 14935
+    }
+  ]
+}

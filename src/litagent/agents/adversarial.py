@@ -108,7 +108,10 @@ class AdversarialReviewWorker(Worker):
         # Initial synthesis is required; only later failures may return a draft.
         async with self._sub_span(task.task_id, "synthesis", 1):
             synthesis_result = await self._synthesis.execute(task)
-        if task.input_data.get("generation_strategy") == "body_summary_v2":
+        if task.input_data.get("generation_strategy") in (
+            "body_summary_v2",
+            "body_summary_v3",
+        ):
             self._reviewer._writer_path = self._synthesis._repair_state_path_provider()
             self._reviewer._writer_run_id = self._synthesis._run_id_provider()
             async with self._sub_span(task.task_id, "reviewer", 1):

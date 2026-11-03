@@ -23,37 +23,42 @@ const identity=id=>({key:'archive:'+id,runId:id,source:'archive',query:id,status
 (async()=>{
  const adapters=await moduleFrom('adapters.js'),{createWorkbenchStore}=await moduleFrom('state.js');
  const store=createWorkbenchStore(),requests=[],notices=[],urls=[],elements=new Map();
- const $=s=>{if(!elements.has(s))elements.set(s,{dataset:{},hidden:false,disabled:false,textContent:''});return elements.get(s)};
+ const $=s=>{if(!elements.has(s))elements.set(s,{dataset:{},attributes:{},hidden:false,disabled:false,textContent:'',setAttribute(name,value){this.attributes[name]=value;}});return elements.get(s)};
  const api={abort(){},json(p){if(p==='/workbench/context')return Promise.resolve({mode:'offline',live_enabled:false});return new Promise((resolve,reject)=>requests.push({path:p,resolve,reject}))}};
- const ctx=vm.createContext({store,api,$,context:null,historyLoading:false,eventSource:null,citationPreferences:new Map(),URLSearchParams,
+ const ctx=vm.createContext({store,api,$,context:null,historyLoading:false,eventSource:null,mobileSidebar:null,citationPreferences:new Map(),URLSearchParams,
    location:{search:scenario==='default'?'':'?run=archive%3Atarget&view=quality'},history:{replaceState:(_,__,url)=>urls.push(url)},
    automaticAuditPreferences:{render(){}},t:x=>x,setNotice:message=>notices.push(message),
    ...adapters,setSection(){},refreshInteractive(){throw Error('unexpected interactive fallback')}});
  const start=app.indexOf('async function selectRun('),end=app.indexOf('async function submitReview(');
  assert(start>0&&end>start);
+ const closeStart=app.indexOf('function closeRunSidebar('),closeEnd=app.indexOf('function setInspector(');
+ assert(closeStart>0&&closeEnd>closeStart);
  const initStart=app.indexOf('async function initialize('),initEnd=app.indexOf('store.subscribe(render);');
- vm.runInContext(app.slice(start,end)+'\n'+app.slice(initStart,initEnd),ctx);
+ vm.runInContext(app.slice(closeStart,closeEnd)+'\n'+app.slice(start,end)+'\n'+app.slice(initStart,initEnd),ctx);
  assert(app.includes('$("#load-run-history").addEventListener("click", reloadHistory)'));
+ $('#run-sidebar').dataset.open='true';$('#sidebar-toggle').setAttribute('aria-expanded','true');
+ const assertClosed=()=>{assert.equal($('#run-sidebar').dataset.open,'false');assert.equal($('#sidebar-scrim').hidden,true);assert.equal($('#sidebar-toggle').attributes['aria-expanded'],'false');};
  const initialization=ctx.initialize();await tick();
  if(scenario==='default'){
    assert.equal(requests.length,2);assert.equal(requests[0].path,'/workbench/runs');assert.equal(requests[1].path,'/flow-demo/runs');
    requests[0].resolve([]);requests[1].resolve([{run_id:'target',query:'Question target',status:'completed'}]);await tick();
    assert.equal(requests[2].path,'/flow-demo/runs/target/view');requests[2].resolve(raw('target'));await initialization;
-   assert.equal(store.get().view.reportSha,'sha-target');return;
+   assert.equal(store.get().view.reportSha,'sha-target');assertClosed();return;
  }
  assert.equal(requests.length,1);assert.equal(requests[0].path,'/flow-demo/runs/target/view');
  assert.equal(store.get().selectedRunKey,'archive:target');assert.equal(store.get().view,null);
  if(scenario==='missing'){
    requests[0].reject({status:404,message:'missing exact report'});await initialization;
-   assert.equal(requests.length,1);assert.equal(store.get().view,null);assert.equal(notices.length,1);return;
+   assert.equal(requests.length,1);assert.equal(store.get().view,null);assert.equal(notices.length,1);assertClosed();return;
  }
  if(scenario==='identity'){
    requests[0].resolve(raw('other'));await initialization;
-   assert.equal(store.get().view,null);assert.match(notices[0],/archive_run_identity_mismatch/);return;
+   assert.equal(store.get().view,null);assert.match(notices[0],/archive_run_identity_mismatch/);assertClosed();return;
  }
  requests[0].resolve(raw('target'));await initialization;
  assert.equal(requests.length,1);assert.equal(store.get().view.reportSha,'sha-target');
  assert.equal(store.get().view.identity.query,'Question target');assert.equal(store.get().activeSection,'quality');
+ assertClosed();
  if(scenario==='direct')return;
  const history=ctx.reloadHistory();await tick();
  assert.equal(requests[1].path,'/workbench/runs');assert.equal(requests[2].path,'/flow-demo/runs');
@@ -72,6 +77,7 @@ const identity=id=>({key:'archive:'+id,runId:id,source:'archive',query:id,status
  assert.equal(store.get().view.reportSha,'sha-next');assert.equal(store.get().selectedRunKey,'archive:next');
  assert(store.get().runs.some(r=>r.key==='archive:next'));assert.match(urls.at(-1),/archive%3Anext/);
  assert.equal(notices.length,0);assert.equal(requests.length,5);
+ assertClosed();
 })().catch(error=>{console.error(error);process.exit(1)});
 """
     completed = subprocess.run(

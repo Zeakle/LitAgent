@@ -198,3 +198,19 @@ report_audit:
   judge_context_tokens: 131072
   judge_input_tokens: 200000
   jev_enabled: true     # Requires TYPESAFE_API_KEY; never runs automatically.
+
+# Optional adaptive-capacity-v1 server profile; inactive for historical policies.
+# capacity:
+#   target_body_units: 48
+#   max_body_units: 66
+#   max_summary_units: 2
+#   max_unit_characters: 2000
+#   initial_assertions: 128
+#   batch_size: 16
+#   max_assertions: null
+#   max_assessment_batches: null
+#   body_json_bytes: 32000
+#   summary_json_bytes: 4000
+#   claim_json_bytes: 30000
+#   claim_max_json_bytes: 2000
+#   diagnostic_json_bytes: 12288

@@ -1,0 +1,1898 @@
+{
+  "source_run": "frozen-writer-three-domain-20261030-028-few-shot-metric",
+  "raw_review_sha256": "57a7037bcc803904f420b51660d9e7c20f6403c77028af25bec746d303582d64",
+  "units": [
+    "v1",
+    "v2",
+    "v3",
+    "v4",
+    "v5",
+    "v6",
+    "v7",
+    "v8",
+    "v9",
+    "v10",
+    "v11",
+    "v12",
+    "v13",
+    "v14",
+    "v15",
+    "v16",
+    "v17",
+    "v18",
+    "v19",
+    "v20",
+    "v21",
+    "v22",
+    "v23",
+    "v24",
+    "v25",
+    "v26",
+    "v27",
+    "v28",
+    "v29",
+    "v30",
+    "v31",
+    "v32",
+    "v33",
+    "v34",
+    "v35",
+    "v36",
+    "v37",
+    "v38"
+  ],
+  "assertions": [
+    {
+      "claim_id": "a1",
+      "source_fragment_id": "f1",
+      "claim_text": "少样本图像分类中的度量学习方法，核心是在每类仅有少量标注样本时，通过嵌入空间中的查询—支持相似度比较识别新类别。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v1"
+    },
+    {
+      "claim_id": "a2",
+      "source_fragment_id": "f1",
+      "claim_text": "现有度量学习路线可按主要改进位置分为特征嵌入、类别表示和距离/关系度量三类。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v1"
+    },
+    {
+      "claim_id": "a3",
+      "source_fragment_id": "f1",
+      "claim_text": "K-tuplet 与 Proto-Triplet/ICNN 分别强化样本关系或类内、类间约束。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v1"
+    },
+    {
+      "claim_id": "a4",
+      "source_fragment_id": "f1",
+      "claim_text": "SRL 用子空间替代全局向量作为类别表示。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v1"
+    },
+    {
+      "claim_id": "a5",
+      "source_fragment_id": "f1",
+      "claim_text": "关系网络和条件类表示引入可学习比较。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v1"
+    },
+    {
+      "claim_id": "a6",
+      "source_fragment_id": "f1",
+      "claim_text": "MSENet 与不确定性框架则分别利用多层特征和相似度可靠性。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v1"
+    },
+    {
+      "claim_id": "a7",
+      "source_fragment_id": "f2",
+      "claim_text": "这些方法分别在 miniImageNet、MiniImageNet/FC100、TieredImageNet/CUB 及若干跨域基准上报告优势、竞争力或高准确率。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v2"
+    },
+    {
+      "claim_id": "a8",
+      "source_fragment_id": "f2",
+      "claim_text": "论文间的骨干、shot/way、训练源域、目标域和基线矩阵不一致，因此只能比较证据范围与结论强度，不能形成统一准确率排名。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v2"
+    },
+    {
+      "claim_id": "a9",
+      "source_fragment_id": "f3",
+      "claim_text": "少样本图像分类要解决的核心问题，是在每个新类别只有少量标注样本的条件下识别未见过的视觉概念。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v3"
+    },
+    {
+      "claim_id": "a10",
+      "source_fragment_id": "f3",
+      "claim_text": "深度度量学习通过神经网络学习查询样本与支持样本之间的特征相似性，使分类依赖嵌入空间中的距离或相似度比较，而不是直接在少量样本上训练高容量类别分类器。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v3"
+    },
+    {
+      "claim_id": "a11",
+      "source_fragment_id": "f4",
+      "claim_text": "少样本图像分类的主要风险是模型容易过拟合少量标注样本。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v4"
+    },
+    {
+      "claim_id": "a12",
+      "source_fragment_id": "f4",
+      "claim_text": "文献把少样本学习区分为元学习、迁移学习和度量学习等路径。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v4"
+    },
+    {
+      "claim_id": "a13",
+      "source_fragment_id": "f4",
+      "claim_text": "元学习强调在许多不同分类任务上训练可迁移的学习能力。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v4"
+    },
+    {
+      "claim_id": "a14",
+      "source_fragment_id": "f4",
+      "claim_text": "迁移学习强调先在上游数据集（如 ImageNet）预训练、再适应下游任务。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v4"
+    },
+    {
+      "claim_id": "a15",
+      "source_fragment_id": "f4",
+      "claim_text": "度量学习则把比较重点放在特征嵌入、类别表示或距离度量上。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v4"
+    },
+    {
+      "claim_id": "a16",
+      "source_fragment_id": "f5",
+      "claim_text": "本综述的比较范围限定为面向少样本图像分类的度量学习方法：既包括改进嵌入学习的方法，例如用深度 K-tuplet 网络利用样本间关系、或用 Proto-Triplet 与 ICNN 损失约束类内和类间距离，也包括把静态距离替换为可学习比较关系、把向量表示扩展到子空间表示、以及利用多层特征或相似度不确定性的方法。",
+      "kind": "report_structure",
+      "evidence_aliases": [],
+      "source_unit_id": "v5"
+    },
+    {
+      "claim_id": "a17",
+      "source_fragment_id": "f6",
+      "claim_text": "评估这些方法时，本文关注它们在标准少样本任务中的同域精度与跨域泛化，而不把大规模迁移学习的上游预训练结果直接等同于情节式度量学习结果。",
+      "kind": "report_structure",
+      "evidence_aliases": [],
+      "source_unit_id": "v6"
+    },
+    {
+      "claim_id": "a18",
+      "source_fragment_id": "f6",
+      "claim_text": "已有的 Meta-Dataset 观察表明，迁移学习与情节式方法各有局限。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v6"
+    },
+    {
+      "claim_id": "a19",
+      "source_fragment_id": "f6",
+      "claim_text": "后续章节只在数据集、训练设置、shot/way 设定和评价指标可比时进行横向比较。",
+      "kind": "report_structure",
+      "evidence_aliases": [],
+      "source_unit_id": "v6"
+    },
+    {
+      "claim_id": "a20",
+      "source_fragment_id": "f7",
+      "claim_text": "少样本学习可分为迁移学习与元学习两大类。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v7"
+    },
+    {
+      "claim_id": "a21",
+      "source_fragment_id": "f7",
+      "claim_text": "迁移学习先在 ImageNet 等上游数据集预训练，再微调到下游任务。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v7"
+    },
+    {
+      "claim_id": "a22",
+      "source_fragment_id": "f7",
+      "claim_text": "元学习则通过许多不同分类任务获得可泛化知识。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v7"
+    },
+    {
+      "claim_id": "a23",
+      "source_fragment_id": "f7",
+      "claim_text": "度量学习通常借助支持集—查询集的情节式任务学习相似性比较，因此可作为元学习框架内的一类方法来分析，但不能把所有少样本方法都归入度量学习。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v7"
+    },
+    {
+      "claim_id": "a24",
+      "source_fragment_id": "f8",
+      "claim_text": "在度量学习内部，可按比较流水线的主要改进位置分类：2018—2022 年的综述将深度度量学习方法划分为学习特征嵌入、学习类别表示和学习距离度量三个阶段。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v7"
+    },
+    {
+      "claim_id": "a25",
+      "source_fragment_id": "f8",
+      "claim_text": "这一标准区分的是方法把归纳偏置放在样本编码、支持集聚合，还是查询—支持关系判别上。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v7"
+    },
+    {
+      "claim_id": "a26",
+      "source_fragment_id": "f9",
+      "claim_text": "第一类“特征嵌入”方法关注单个或一组样本如何形成可迁移表示。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v8"
+    },
+    {
+      "claim_id": "a27",
+      "source_fragment_id": "f9",
+      "claim_text": "深度 K-tuplet 网络把经典 triplet network 扩展到 K 个样本关系，并通过情节训练利用输入样本之间的关系。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v8"
+    },
+    {
+      "claim_id": "a28",
+      "source_fragment_id": "f9",
+      "claim_text": "Proto-Triplet 与 ICNN 损失则分别从三元组式类内/类间约束和近邻分数约束改善潜在空间。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v8"
+    },
+    {
+      "claim_id": "a29",
+      "source_fragment_id": "f9",
+      "claim_text": "MSENet 通过多阶段输出、自注意力和可学习阶段权重利用浅层到抽象的多层特征。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v8"
+    },
+    {
+      "claim_id": "a30",
+      "source_fragment_id": "f9",
+      "claim_text": "它们的共同分类依据是主要改变嵌入空间或嵌入网络，而不是预先规定最终分类必须采用某一种固定距离。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v8"
+    },
+    {
+      "claim_id": "a31",
+      "source_fragment_id": "f10",
+      "claim_text": "第二类“类别表示”方法关注支持集中的少量标注样本如何聚合成可比较的类模型。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v8"
+    },
+    {
+      "claim_id": "a32",
+      "source_fragment_id": "f10",
+      "claim_text": "以最近原型为代表的做法根据查询与支持原型的特征相似性寻找最近原型。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v8"
+    },
+    {
+      "claim_id": "a33",
+      "source_fragment_id": "f10",
+      "claim_text": "SRL 则把传统全局向量表示扩展为局部 CNN 特征空间中的子空间，用加权子空间距离比较图像，并通过 prototypical subspace 或 discriminative subspace 聚合 K-shot 信息。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v8"
+    },
+    {
+      "claim_id": "a34",
+      "source_fragment_id": "f10",
+      "claim_text": "原型向量与子空间模板的差别是类别表示粒度和结构保持方式的差别。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v8"
+    },
+    {
+      "claim_id": "a35",
+      "source_fragment_id": "f11",
+      "claim_text": "第三类“距离或关系度量”方法关注相似度函数本身是否固定。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v9"
+    },
+    {
+      "claim_id": "a36",
+      "source_fragment_id": "f11",
+      "claim_text": "早期度量式方法通常学习可迁移嵌入，却预定义欧氏距离等固定度量。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v9"
+    },
+    {
+      "claim_id": "a37",
+      "source_fragment_id": "f11",
+      "claim_text": "关系网络式方法把固定度量替换为可学习、非线性的关系模块，使网络根据当前查询学习类别之间的比较。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v9"
+    },
+    {
+      "claim_id": "a38",
+      "source_fragment_id": "f11",
+      "claim_text": "动态条件类表示方法还让类表示针对每个少样本试次和目标图像条件化，并训练网络执行类别间比较，这使它同时跨越类别表示和可学习比较两个阶段，而不是只能单列为一种静态距离。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v9"
+    },
+    {
+      "claim_id": "a39",
+      "source_fragment_id": "f12",
+      "claim_text": "按任务目标划分时，还应把不确定性建模与跨域评估同“效率改进”区分开。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v9"
+    },
+    {
+      "claim_id": "a40",
+      "source_fragment_id": "f12",
+      "claim_text": "不确定性感知框架把查询—支持相似度转换为概率表示，并用图模型联合估计查询与各原型之间的相似度不确定性，其目标是改善少样本优化和分类性能。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v9"
+    },
+    {
+      "claim_id": "a41",
+      "source_fragment_id": "f12",
+      "claim_text": "深度 K-tuplet 与 Proto-Triplet/ICCNN 在 Caltech-101、CUB、Dogs、Cars 等数据集上的测试，以及 MSENet 的八个跨域基准，检验的是跨域泛化。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v9"
+    },
+    {
+      "claim_id": "a42",
+      "source_fragment_id": "f12",
+      "claim_text": "迁移学习与情节式方法在 Meta-Dataset 上的比较属于训练范式和适用边界问题。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v9"
+    },
+    {
+      "claim_id": "a43",
+      "source_fragment_id": "f12",
+      "claim_text": "在来源未给出相同骨干、shot/way、训练数据和指标时，不能把大规模预训练的竞争力或某一方法的跨域结果转换成统一效率排名。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v9"
+    },
+    {
+      "claim_id": "a44",
+      "source_fragment_id": "f13",
+      "claim_text": "本节按比较流水线分析方法，而不把“使用距离”本身视为充分机制。",
+      "kind": "report_structure",
+      "evidence_aliases": [],
+      "source_unit_id": "v10"
+    },
+    {
+      "claim_id": "a45",
+      "source_fragment_id": "f13",
+      "claim_text": "度量学习方法通过学习特征嵌入和/或距离（或其逆形式相似度），把未见样本映射到嵌入空间并依据其与已见样本的距离进行分类。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v10"
+    },
+    {
+      "claim_id": "a46",
+      "source_fragment_id": "f13",
+      "claim_text": "每种方法的贡献需要说明它改变了样本编码、类别聚合，还是改变了查询—支持关系函数。",
+      "kind": "report_structure",
+      "evidence_aliases": [],
+      "source_unit_id": "v10"
+    },
+    {
+      "claim_id": "a47",
+      "source_fragment_id": "f14",
+      "claim_text": "深度 K-tuplet 网络针对的机制问题是，许多基于度量的少样本方法关注查询样本与支持样本之间的相似性比较，却相对忽略训练样本之间关系所塑造的特征嵌入质量。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v11"
+    },
+    {
+      "claim_id": "a48",
+      "source_fragment_id": "f14",
+      "claim_text": "它把经典深度度量学习中的 triplet network 扩展为深度 K-tuplet network，并通过情节训练利用多个输入样本之间的关系来学习通用表示。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v11"
+    },
+    {
+      "claim_id": "a49",
+      "source_fragment_id": "f15",
+      "claim_text": "该方法训练后可对未见过的新类别提取判别性特征，并可与非线性距离度量函数结合完成少样本分类。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v11"
+    },
+    {
+      "claim_id": "a50",
+      "source_fragment_id": "f15",
+      "claim_text": "其适用边界在于，来源证据支持的是“嵌入关系建模加非线性距离”的组合，而不是证明任意固定距离或任意骨干网络都能获得同等收益。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v11"
+    },
+    {
+      "claim_id": "a51",
+      "source_fragment_id": "f16",
+      "claim_text": "Proto-Triplet 与 ICNN 损失针对的机制问题是潜在空间本身的类间可分性没有被充分强制。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v12"
+    },
+    {
+      "claim_id": "a52",
+      "source_fragment_id": "f16",
+      "claim_text": "二者都显式利用少量样本之间的类内距离和类间距离。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v12"
+    },
+    {
+      "claim_id": "a53",
+      "source_fragment_id": "f16",
+      "claim_text": "Proto-Triplet Loss 是在原始 triplet loss 基础上为少样本情境作出修改。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v12"
+    },
+    {
+      "claim_id": "a54",
+      "source_fragment_id": "f16",
+      "claim_text": "ICNN loss 则依据类内与类间最近邻分数评估并改进训练网络所得嵌入的质量。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v12"
+    },
+    {
+      "claim_id": "a55",
+      "source_fragment_id": "f17",
+      "claim_text": "这一路线的贡献位于嵌入目标函数而非推理比较器。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v12"
+    },
+    {
+      "claim_id": "a56",
+      "source_fragment_id": "f17",
+      "claim_text": "作者报告在 miniImageNet 上相对其他基于度量的少样本学习方法取得约 2 个百分点的准确率提升，并把该提升解释为网络对先前未见类别的泛化改善。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v12"
+    },
+    {
+      "claim_id": "a57",
+      "source_fragment_id": "f17",
+      "claim_text": "其边界是，摘要给出的 2% 是相对其他度量方法的总体准确率优势，并未在当前材料中提供逐基线、逐 shot/way 设置的配对差值。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v12"
+    },
+    {
+      "claim_id": "a58",
+      "source_fragment_id": "f18",
+      "claim_text": "同一损失函数研究还报告，在 Caltech CUB、Dogs 和 Cars 等其他域上具有与现有先进方法相竞争的泛化能力。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v12"
+    },
+    {
+      "claim_id": "a59",
+      "source_fragment_id": "f18",
+      "claim_text": "这说明其证据不仅针对 miniImageNet 同域任务，但“competitive”不能被改写为在所有跨域数据集上均显著优于全部基线。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v12"
+    },
+    {
+      "claim_id": "a60",
+      "source_fragment_id": "f19",
+      "claim_text": "MSENet 的机制出发点是传统度量方法通常只依赖查询特征与支持特征之间的单一距离值，从而忽略浅层特征的贡献。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v13"
+    },
+    {
+      "claim_id": "a61",
+      "source_fragment_id": "f19",
+      "claim_text": "它采用多输出嵌入网络，把样本映射到不同特征空间，并在网络不同阶段提取特征向量，以同时捕获全局特征和更抽象的特征。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v13"
+    },
+    {
+      "claim_id": "a62",
+      "source_fragment_id": "f20",
+      "claim_text": "在多阶段特征之外，MSENet 用自注意力机制精炼每一阶段的特征，并为各阶段分配可学习权重。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v13"
+    },
+    {
+      "claim_id": "a63",
+      "source_fragment_id": "f20",
+      "claim_text": "其主要贡献是把单层嵌入比较扩展为带阶段选择和特征精炼的多空间比较，而来源摘要只支持这些组件改善总体表示和性能，并未在给定材料中拆分各组件的独立增益。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v13"
+    },
+    {
+      "claim_id": "a64",
+      "source_fragment_id": "f21",
+      "claim_text": "SRL（subspace representation learning）框架改变的是图像和类模板的表示单位：它在局部 CNN 特征空间中用一个子空间表示图像，并按加权子空间距离（weighted subspace distance, WSD）度量两幅图像之间的相似性，从而把基于度量学习的技术从向量表示扩展到子空间表示。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v14"
+    },
+    {
+      "claim_id": "a65",
+      "source_fragment_id": "f22",
+      "claim_text": "当每个类别有 K 张图像时，SRL 构造 prototypical subspace 与 discriminative subspace 两类模板子空间来聚合 K-shot 信息。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v14"
+    },
+    {
+      "claim_id": "a66",
+      "source_fragment_id": "f22",
+      "claim_text": "相对于多数先前工作采用的全局向量表示，子空间表示的机制目标是保留图像内部的空间结构和多样性。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v14"
+    },
+    {
+      "claim_id": "a67",
+      "source_fragment_id": "f23",
+      "claim_text": "SRL 的适用边界来自表示假设：其优势依赖局部 CNN 特征能够形成有意义的子空间，并依赖 WSD 能有效刻画子空间间关系。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v14"
+    },
+    {
+      "claim_id": "a68",
+      "source_fragment_id": "f23",
+      "claim_text": "来源证明该框架在 MiniImageNet、TieredImageNet 和 CUB 上被实现并评估，但没有依据把这种子空间优势外推到非 CNN 局部特征或非图像少样本任务。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v14"
+    },
+    {
+      "claim_id": "a69",
+      "source_fragment_id": "f24",
+      "claim_text": "以最近原型为代表的基础原型式机制，是先由支持集形成类别原型，再根据特征相似性为查询样本寻找最近原型。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v15"
+    },
+    {
+      "claim_id": "a70",
+      "source_fragment_id": "f24",
+      "claim_text": "这种机制把推理限制为查询到原型的相似度比较，结构简单，但也意味着原型质量和相似度可靠性会直接决定分类结果。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v15"
+    },
+    {
+      "claim_id": "a71",
+      "source_fragment_id": "f25",
+      "claim_text": "关系网络式方法针对的是固定度量的表达限制：先前许多度量式少样本方法主要学习可迁移嵌入，却预定义欧氏距离等固定度量。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v16"
+    },
+    {
+      "claim_id": "a72",
+      "source_fragment_id": "f25",
+      "claim_text": "关系网络则进一步学习可迁移的深度度量，把固定度量替换为可学习而非固定、非线性而非线性的关系比较。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v16"
+    },
+    {
+      "claim_id": "a73",
+      "source_fragment_id": "f26",
+      "claim_text": "这种设计的贡献是让模型学习图像之间的关系，而不只是学习一个通用向量后交给手工距离判断。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v16"
+    },
+    {
+      "claim_id": "a74",
+      "source_fragment_id": "f26",
+      "claim_text": "其适用边界是，可学习关系模块增加了端到端学习的比较能力，但来源材料没有提供计算成本、参数量或在所有数据集上相对固定距离稳定占优的证据，因此不能仅凭非线性机制推断效率或普遍优越性。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v16"
+    },
+    {
+      "claim_id": "a75",
+      "source_fragment_id": "f27",
+      "claim_text": "面向目标图像的条件类表示方法进一步改变类模型的生成方式：它在每个少样本试次中根据目标图像对类别表示进行条件化，使类表示不再是与查询无关的静态原型。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v17"
+    },
+    {
+      "claim_id": "a76",
+      "source_fragment_id": "f27",
+      "claim_text": "这一机制回应的是从少量示例中学习高质量类别表示的问题。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v17"
+    },
+    {
+      "claim_id": "a77",
+      "source_fragment_id": "f28",
+      "claim_text": "该方法还偏离传统度量学习中依赖静态度量比较的做法，转而训练网络执行类别之间的比较，使网络能够判断在当前比较中每个类别的哪些方面是重要的。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v17"
+    },
+    {
+      "claim_id": "a78",
+      "source_fragment_id": "f28",
+      "claim_text": "因此，它同时涉及查询条件化的类别表示和可学习比较器，边界是来源摘要报告其在 Caltech-UCSD Birds 细粒度分类任务上达到先进性能，而不能据此直接推出粗粒度数据集上的统一排名。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v17"
+    },
+    {
+      "claim_id": "a79",
+      "source_fragment_id": "f29",
+      "claim_text": "不确定性感知框架针对的机制问题是，神经网络对不同查询—支持对计算出的相似度具有不同不确定性，而普通最近原型决策通常把这些相似度当作同等可靠。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v18"
+    },
+    {
+      "claim_id": "a80",
+      "source_fragment_id": "f29",
+      "claim_text": "该框架把观察到的相似度转换为概率表示，并将其纳入损失，以便在少样本优化中更有效地利用有限样本。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v18"
+    },
+    {
+      "claim_id": "a81",
+      "source_fragment_id": "f30",
+      "claim_text": "为联合考虑一个查询与支持集中多个原型之间的相似度，该框架使用图模型估计各查询—支持对的不确定性。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v18"
+    },
+    {
+      "claim_id": "a82",
+      "source_fragment_id": "f30",
+      "claim_text": "其贡献是把相似度可靠性显式建模到优化过程中，而来源证据限定为在强基线基础上带来显著改进并达到先进性能，不能把它解释为消除标注样本稀缺或替代嵌入学习本身。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v18"
+    },
+    {
+      "claim_id": "a83",
+      "source_fragment_id": "f31",
+      "claim_text": "实验比较首先按评价协议分组，而不是把所有报告中的“state-of-the-art”合并成单一排名。",
+      "kind": "report_structure",
+      "evidence_aliases": [],
+      "source_unit_id": "v19"
+    },
+    {
+      "claim_id": "a84",
+      "source_fragment_id": "f31",
+      "claim_text": "来源材料明确给出的共同指标是少样本分类准确率，常见任务形式为 N-way、K-shot 的支持集—查询集情节。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v19"
+    },
+    {
+      "claim_id": "a85",
+      "source_fragment_id": "f31",
+      "claim_text": "各摘要对骨干网络、训练轮数、episode 采样和置信区间的披露不一致，因此只能比较来源已陈述的结果方向与适用数据集。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v19"
+    },
+    {
+      "claim_id": "a86",
+      "source_fragment_id": "f32",
+      "claim_text": "在同域基准上，深度 K-tuplet 网络的作者报告其在 miniImageNet 上优于其他基于度量的少样本分类方法。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v20"
+    },
+    {
+      "claim_id": "a87",
+      "source_fragment_id": "f32",
+      "claim_text": "Proto-Triplet 与 ICNN 损失的作者则报告在 miniImageNet 上相对其他基于度量的方法有约 2 个百分点的准确率提升。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v20"
+    },
+    {
+      "claim_id": "a88",
+      "source_fragment_id": "f32",
+      "claim_text": "由于这两条证据来自不同论文且当前材料没有列出共同基线表、shot/way 单元格和相同训练设置，不能据“优于其他方法”和“2%”判定二者之间谁更高。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v20"
+    },
+    {
+      "claim_id": "a89",
+      "source_fragment_id": "f33",
+      "claim_text": "MSENet 的同域评估范围在来源中最具体：它在 MiniImageNet 与 FC100 上测试 5-way 1-shot 和 5-way 5-shot，并声称相对先进方法有效。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v21"
+    },
+    {
+      "claim_id": "a90",
+      "source_fragment_id": "f33",
+      "claim_text": "这使其结果可按 shot 数区分 1-shot 与 5-shot 场景，但给定摘要没有提供具体准确率数值、骨干网络或逐项基线差值，所以不能把它与 K-tuplet 或 Proto-Triplet/ICNN 的 miniImageNet 声明做数值排名。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v21"
+    },
+    {
+      "claim_id": "a91",
+      "source_fragment_id": "f34",
+      "claim_text": "SRL 的同域与跨类数据集覆盖包括 MiniImageNet、TieredImageNet 和 CUB，作者报告其实验结果相对既往先进方法具有竞争力或优势。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v22"
+    },
+    {
+      "claim_id": "a92",
+      "source_fragment_id": "f34",
+      "claim_text": "这说明证据不限于单一 miniImageNet 基准，但“competitive/superior”是跨三个数据集的概括性结论，当前材料没有给出每个数据集、每种 shot/way 下的具体准确率，因而不能把它解释为在所有设置中均优于同一组基线。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v22"
+    },
+    {
+      "claim_id": "a93",
+      "source_fragment_id": "f35",
+      "claim_text": "跨域泛化是这些方法中可直接比较的第二个维度，但训练源域和目标域必须保留。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v23"
+    },
+    {
+      "claim_id": "a94",
+      "source_fragment_id": "f35",
+      "claim_text": "深度 K-tuplet 网络使用 miniImageNet 训练后，在 Caltech-101、CUB-200、Stanford Dogs 和 Stanford Cars 上评估，并报告显著优于既往少样本方法。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v23"
+    },
+    {
+      "claim_id": "a95",
+      "source_fragment_id": "f35",
+      "claim_text": "Proto-Triplet/ICNN 研究则报告在 Caltech CUB、Dogs 和 Cars 上与先进方法具有竞争力。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v23"
+    },
+    {
+      "claim_id": "a96",
+      "source_fragment_id": "f35",
+      "claim_text": "二者目标域相近但结论强度不同，且前者包含 Caltech-101、后者的来源摘要未给出该数据集结果，因此不能把“显著优于”与“具有竞争力”视为同一配对实验。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v23"
+    },
+    {
+      "claim_id": "a97",
+      "source_fragment_id": "f36",
+      "claim_text": "MSENet 的跨域评估覆盖八个基准数据集，并报告在测试域取得高准确率。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v24"
+    },
+    {
+      "claim_id": "a98",
+      "source_fragment_id": "f36",
+      "claim_text": "不过来源只说明执行了跨域任务，没有在摘要中逐一列出八个数据集名称、训练域、shot/way 设置或准确率数值。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v24"
+    },
+    {
+      "claim_id": "a99",
+      "source_fragment_id": "f36",
+      "claim_text": "因而可确认其跨域评估范围较广，但不能仅凭数据集数量把它排在 K-tuplet 或 Proto-Triplet/ICNN 之上。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v24"
+    },
+    {
+      "claim_id": "a100",
+      "source_fragment_id": "f37",
+      "claim_text": "面向细粒度任务时，条件类表示方法的证据集中在 Caltech-UCSD Birds：作者报告该架构在 CUB 细粒度分类任务上达到当时先进性能。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v25"
+    },
+    {
+      "claim_id": "a101",
+      "source_fragment_id": "f37",
+      "claim_text": "关系网络式可学习深度度量的来源材料主要说明其相对固定欧氏度量和线性分类器的机制差异，没有在给定摘要中提供与条件类表示方法相同的 CUB 数值表。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v25"
+    },
+    {
+      "claim_id": "a102",
+      "source_fragment_id": "f37",
+      "claim_text": "因此，二者在 CUB 上不具备可直接排名的配对条件。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v25"
+    },
+    {
+      "claim_id": "a103",
+      "source_fragment_id": "f38",
+      "claim_text": "以最近原型为基础的不确定性感知框架，其实验声明是在强基线之上带来显著改进并达到先进性能。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v26"
+    },
+    {
+      "claim_id": "a104",
+      "source_fragment_id": "f38",
+      "claim_text": "该结论针对查询—支持原型相似度的概率建模和图模型不确定性估计。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v26"
+    },
+    {
+      "claim_id": "a105",
+      "source_fragment_id": "f38",
+      "claim_text": "由于来源摘要没有给出具体数据集、shot/way 数值或与 K-tuplet、SRL、MSENet 相同的基线矩阵，不能把“显著改进”外推为这些方法之间的统一准确率排序。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v26"
+    },
+    {
+      "claim_id": "a106",
+      "source_fragment_id": "f39",
+      "claim_text": "与度量学习相邻的大规模迁移学习证据需要单独成组。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v27"
+    },
+    {
+      "claim_id": "a107",
+      "source_fragment_id": "f39",
+      "claim_text": "大规模视觉模型在 ImageNet、CIFAR 和 VTAB-1k 等常用分类基准上迁移良好。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v27"
+    },
+    {
+      "claim_id": "a108",
+      "source_fragment_id": "f39",
+      "claim_text": "把 Meta-Dataset 协议用于大规模数据和大容量迁移学习器时，研究同时指出情节式方法的局限以及迁移学习不足的场景。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v27"
+    },
+    {
+      "claim_id": "a109",
+      "source_fragment_id": "f39",
+      "claim_text": "这一比较的训练前提是上游大规模预训练，不同于上述情节式度量学习方法。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v27"
+    },
+    {
+      "claim_id": "a110",
+      "source_fragment_id": "f39",
+      "claim_text": "在没有相同上游数据、模型容量和少样本协议数值时，不能用它证明迁移学习普遍优于度量学习，也不能反向证明度量学习普遍更适合。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v27"
+    },
+    {
+      "claim_id": "a111",
+      "source_fragment_id": "f40",
+      "claim_text": "K-tuplet 的证据强调 miniImageNet 同域优势以及从 miniImageNet 到四个目标域的显著泛化。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v28"
+    },
+    {
+      "claim_id": "a112",
+      "source_fragment_id": "f40",
+      "claim_text": "Proto-Triplet/ICNN 给出 miniImageNet 约 2 个百分点的准确率优势和在 CUB、Dogs、Cars 上的竞争力。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v28"
+    },
+    {
+      "claim_id": "a113",
+      "source_fragment_id": "f40",
+      "claim_text": "SRL 在 MiniImageNet、TieredImageNet、CUB 上具有竞争力或优势。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v28"
+    },
+    {
+      "claim_id": "a114",
+      "source_fragment_id": "f40",
+      "claim_text": "MSENet 明确覆盖 MiniImageNet、FC100 的 5-way 1/5-shot 与八个跨域基准。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v28"
+    },
+    {
+      "claim_id": "a115",
+      "source_fragment_id": "f40",
+      "claim_text": "由于这些来源没有提供统一表格、共同基线和完整设置，本章只能按证据范围和结论强度比较，不能生成跨论文的总排名。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v28"
+    },
+    {
+      "claim_id": "a116",
+      "source_fragment_id": "f41",
+      "claim_text": "开放问题首先来自评价协议的不可通约性，而不是单一方法的准确率不足。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v29"
+    },
+    {
+      "claim_id": "a117",
+      "source_fragment_id": "f41",
+      "claim_text": "已有研究把 Meta-Dataset 协议应用于大规模数据和大容量迁移学习器后，既暴露了情节式方法的局限，也发现迁移学习存在不足。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v29"
+    },
+    {
+      "claim_id": "a118",
+      "source_fragment_id": "f41",
+      "claim_text": "这说明“情节式度量学习”和“上游大规模预训练后迁移”的训练前提不同，不能把任一方在特定协议中的优势解释为少样本图像分类的普遍最优。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v29"
+    },
+    {
+      "claim_id": "a119",
+      "source_fragment_id": "f42",
+      "claim_text": "这种范式差异对方法比较的直接含义是：若没有相同的上游数据规模、模型容量、训练任务和少样本评测设置，大规模迁移学习在 ImageNet、CIFAR、VTAB-1k 等常用分类基准上的良好迁移表现，不能被转换成对度量学习方法的统一排名。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v29"
+    },
+    {
+      "claim_id": "a120",
+      "source_fragment_id": "f42",
+      "claim_text": "反过来，情节式度量方法在 miniImageNet 等基准上的结果，也不能自动否定大规模迁移学习的竞争力。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v29"
+    },
+    {
+      "claim_id": "a121",
+      "source_fragment_id": "f43",
+      "claim_text": "固定距离与可学习关系之间仍存在表达能力和可检验性的权衡。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v30"
+    },
+    {
+      "claim_id": "a122",
+      "source_fragment_id": "f43",
+      "claim_text": "许多先前的度量式少样本方法主要学习可迁移嵌入，却预定义欧氏距离等固定度量。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v30"
+    },
+    {
+      "claim_id": "a123",
+      "source_fragment_id": "f43",
+      "claim_text": "关系网络式方法把它替换为可学习、非线性的深度度量，因而能够学习图像间关系，但当前来源只支持这种机制差异及其设计动机，未给出计算成本、参数量或跨全部数据集稳定优于固定距离的证据。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v30"
+    },
+    {
+      "claim_id": "a124",
+      "source_fragment_id": "f44",
+      "claim_text": "因此，非线性比较器不应被简单理解为无代价改进：它把“如何比较”的一部分负担从手工距离转移到端到端学习的关系模块，可能提高拟合复杂关系的能力。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v30"
+    },
+    {
+      "claim_id": "a125",
+      "source_fragment_id": "f44",
+      "claim_text": "但在来源没有提供相同骨干、训练预算和推理成本对照时，不能据此断言它比固定欧氏距离更快、更省参数或在所有少样本场景中更可靠。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v30"
+    },
+    {
+      "claim_id": "a126",
+      "source_fragment_id": "f45",
+      "claim_text": "嵌入空间约束的证据也存在粒度限制。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v31"
+    },
+    {
+      "claim_id": "a127",
+      "source_fragment_id": "f45",
+      "claim_text": "Proto-Triplet 与 ICNN 损失通过类内、类间距离及最近邻分数改善潜在空间，作者报告其在 miniImageNet 上相对其他基于度量的方法有约 2 个百分点的准确率提升，并在 CUB、Dogs、Cars 上具有竞争力。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v31"
+    },
+    {
+      "claim_id": "a128",
+      "source_fragment_id": "f45",
+      "claim_text": "但摘要没有提供逐基线、逐 shot/way 单元格的差值，也没有拆分两种损失各自的贡献。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v31"
+    },
+    {
+      "claim_id": "a129",
+      "source_fragment_id": "f46",
+      "claim_text": "这一限制影响结论的适用范围：2 个百分点可以支持“在作者的 miniImageNet 实验设置下，所提损失组合相对所比较的度量方法具有准确率优势”。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v31"
+    },
+    {
+      "claim_id": "a130",
+      "source_fragment_id": "f46",
+      "claim_text": "但不能支持“Proto-Triplet 或 ICNN 分别稳定带来 2% 增益”，也不能支持它们在任意骨干、任意数据集或任意跨域任务中都产生同等改进。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v31"
+    },
+    {
+      "claim_id": "a131",
+      "source_fragment_id": "f47",
+      "claim_text": "子空间表示路线面临表示假设带来的适用边界。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v32"
+    },
+    {
+      "claim_id": "a132",
+      "source_fragment_id": "f47",
+      "claim_text": "SRL 用局部 CNN 特征空间中的子空间表示图像，以加权子空间距离进行比较，并通过 prototypical subspace 与 discriminative subspace 聚合 K-shot 信息。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v32"
+    },
+    {
+      "claim_id": "a133",
+      "source_fragment_id": "f47",
+      "claim_text": "其机制目标是保留空间结构和类内多样性，而不是把每张图像或每个类别压缩为全局向量。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v32"
+    },
+    {
+      "claim_id": "a134",
+      "source_fragment_id": "f48",
+      "claim_text": "该框架在 MiniImageNet、TieredImageNet 和 CUB 上被报告为相对既往先进方法具有竞争力或优势，但这些证据依赖局部 CNN 特征和子空间距离能够有效描述图像变化。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v32"
+    },
+    {
+      "claim_id": "a135",
+      "source_fragment_id": "f48",
+      "claim_text": "来源没有提供非 CNN 局部特征、非图像任务或不同距离函数下的结果，因此不能把子空间表示的优势外推为所有嵌入架构的通用结论。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v32"
+    },
+    {
+      "claim_id": "a136",
+      "source_fragment_id": "f49",
+      "claim_text": "多阶段和多空间嵌入同样存在组件归因不足的问题。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v33"
+    },
+    {
+      "claim_id": "a137",
+      "source_fragment_id": "f49",
+      "claim_text": "MSENet 针对传统度量方法只依赖单一距离、忽略浅层特征的问题，引入多输出嵌入网络、不同阶段特征、自注意力精炼和可学习阶段权重。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v33"
+    },
+    {
+      "claim_id": "a138",
+      "source_fragment_id": "f49",
+      "claim_text": "来源报告这些设计共同改善表示和性能，并在 MiniImageNet、FC100 的 5-way 1-shot/5-shot 以及八个跨域基准上评估。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v33"
+    },
+    {
+      "claim_id": "a139",
+      "source_fragment_id": "f50",
+      "claim_text": "不过，给定材料没有提供多输出网络、自注意力和可学习阶段权重的逐项消融，也没有列出八个跨域数据集的全部名称、设置和准确率。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v33"
+    },
+    {
+      "claim_id": "a140",
+      "source_fragment_id": "f50",
+      "claim_text": "因此可支持的结论是该多阶段系统在作者设置下有效，而不能判断哪一个组件是性能提升的必要原因，也不能仅凭覆盖八个跨域基准断言它优于只报告四个或三个目标域的方法。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v33"
+    },
+    {
+      "claim_id": "a141",
+      "source_fragment_id": "f51",
+      "claim_text": "跨域泛化结论还受到目标域和结论强度差异的限制。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v34"
+    },
+    {
+      "claim_id": "a142",
+      "source_fragment_id": "f51",
+      "claim_text": "深度 K-tuplet 网络使用 miniImageNet 训练后，在 Caltech-101、CUB-200、Stanford Dogs 和 Stanford Cars 上被报告为显著优于既往方法。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v34"
+    },
+    {
+      "claim_id": "a143",
+      "source_fragment_id": "f51",
+      "claim_text": "Proto-Triplet/ICNN 在 CUB、Dogs、Cars 上仅被报告为与先进方法相竞争。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v34"
+    },
+    {
+      "claim_id": "a144",
+      "source_fragment_id": "f51",
+      "claim_text": "MSENet 报告八个跨域基准上的高准确率，但摘要未给出完整数值。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v34"
+    },
+    {
+      "claim_id": "a145",
+      "source_fragment_id": "f52",
+      "claim_text": "这些结果共同说明跨域评估已成为度量式少样本学习的重要维度，但目标域集合、训练源域、shot/way 协议和结果披露均不完全一致。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v34"
+    },
+    {
+      "claim_id": "a146",
+      "source_fragment_id": "f52",
+      "claim_text": "因此，“显著优于”“具有竞争力”和“高准确率”不能合并为一个跨论文排序，后续可检验的比较应在相同训练源域、相同目标域和相同 episode 协议下重新计算。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v34"
+    },
+    {
+      "claim_id": "a147",
+      "source_fragment_id": "f53",
+      "claim_text": "相似度可靠性仍是原型式决策的核心脆弱点。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v35"
+    },
+    {
+      "claim_id": "a148",
+      "source_fragment_id": "f53",
+      "claim_text": "普通原型式方法根据查询与支持原型的特征相似性寻找最近原型，而不确定性感知框架指出神经网络对不同查询—支持对计算出的相似度具有不同不确定性，并用概率表示和图模型估计这些不确定性。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v35"
+    },
+    {
+      "claim_id": "a149",
+      "source_fragment_id": "f53",
+      "claim_text": "这意味着把所有相似度视为同等可靠，可能在 1-shot 或支持样本噪声较大时放大错误比较。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v35"
+    },
+    {
+      "claim_id": "a150",
+      "source_fragment_id": "f54",
+      "claim_text": "不确定性建模虽被报告能在强基线之上带来显著改进，但来源摘要没有给出具体数据集、shot/way 数值或与 K-tuplet、SRL、MSENet 等方法的共同基线矩阵。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v35"
+    },
+    {
+      "claim_id": "a151",
+      "source_fragment_id": "f54",
+      "claim_text": "因此它支持“相似度不确定性是可建模且可能改善优化的问题”，但不支持不确定性框架在所有基准上普遍优于其他度量学习方法。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v35"
+    },
+    {
+      "claim_id": "a152",
+      "source_fragment_id": "f55",
+      "claim_text": "总体而言，现有材料揭示的开放问题不是缺少更多“使用距离”的模型，而是如何在统一协议下分离嵌入、类别表示和关系函数的贡献。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v36"
+    },
+    {
+      "claim_id": "a153",
+      "source_fragment_id": "f55",
+      "claim_text": "未来比较需要同时报告数据集、shot/way、骨干网络、训练数据规模、基线矩阵、准确率数值、消融结果和跨域设置。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v36"
+    },
+    {
+      "claim_id": "a154",
+      "source_fragment_id": "f55",
+      "claim_text": "在这些条件缺失时，来源中的 state-of-the-art、显著优于或具有竞争力都只能保留为原论文条件下的局部结论。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v36"
+    },
+    {
+      "claim_id": "a155",
+      "source_fragment_id": "f56",
+      "claim_text": "度量学习相较的关键不在于是否“使用距离”，而在于归纳偏置落在样本编码、支持集聚合还是查询—支持关系函数。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v37"
+    },
+    {
+      "claim_id": "a156",
+      "source_fragment_id": "f56",
+      "claim_text": "嵌入约束路线改善可分性。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v37"
+    },
+    {
+      "claim_id": "a157",
+      "source_fragment_id": "f56",
+      "claim_text": "子空间路线保持结构与多样性。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v37"
+    },
+    {
+      "claim_id": "a158",
+      "source_fragment_id": "f56",
+      "claim_text": "可学习关系和条件类表示增强比较灵活性。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v37"
+    },
+    {
+      "claim_id": "a159",
+      "source_fragment_id": "f56",
+      "claim_text": "不确定性建模则处理相似度并不可靠的问题。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v37"
+    },
+    {
+      "claim_id": "a160",
+      "source_fragment_id": "f57",
+      "claim_text": "可保留的权衡是：固定距离简单但表达受限，非线性关系模块增强能力却缺少成本、参数量和普遍优势证据。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v38"
+    },
+    {
+      "claim_id": "a161",
+      "source_fragment_id": "f57",
+      "claim_text": "多阶段、子空间和不确定性方法均依赖各自表示假设，且存在组件归因不足。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v38"
+    },
+    {
+      "claim_id": "a162",
+      "source_fragment_id": "f57",
+      "claim_text": "跨论文选择方法时，应把原论文的“显著优于”“具有竞争力”或“高准确率”限制在其数据集、训练源域、shot/way 和基线条件内，而不是据此宣称普遍最优。",
+      "kind": null,
+      "evidence_aliases": null,
+      "source_unit_id": "v38"
+    }
+  ],
+  "response": {
+    "units": [
+      {
+        "source_unit_id": "v1",
+        "complete": true,
+        "explanation": "f1 完整提取了摘要中关于少样本度量学习核心定义、三类改进位置及各代表方法定位的全部原子断言，无遗漏。"
+      },
+      {
+        "source_unit_id": "v2",
+        "complete": true,
+        "explanation": "f2 完整提取了摘要中关于各方法跨基准证据范围、实验设置不一致及无法形成统一排名的全部原子断言，无遗漏。"
+      },
+      {
+        "source_unit_id": "v3",
+        "complete": true,
+        "explanation": "f3 完整提取了引言中关于少样本图像分类核心问题、深度度量学习工作机制的全部原子断言，无遗漏。"
+      },
+      {
+        "source_unit_id": "v4",
+        "complete": true,
+        "explanation": "f4 完整提取了引言中关于少样本学习过拟合风险、三类学习路径（元学习、迁移学习、度量学习）定义的全部原子断言，无遗漏。"
+      },
+      {
+        "source_unit_id": "v5",
+        "complete": true,
+        "explanation": "f5 为综述范围界定的报告结构声明，已正确标记为 report_structure 类型，无科学断言遗漏。"
+      },
+      {
+        "source_unit_id": "v6",
+        "complete": true,
+        "explanation": "f6 中科学断言（Meta-Dataset 观察到迁移学习与情节式方法各有局限）已提取为 a18，其余为报告比较规则的结构声明，已正确标记为 report_structure 类型，无遗漏。"
+      },
+      {
+        "source_unit_id": "v7",
+        "complete": true,
+        "explanation": "f7 完整提取了分类章节中关于少样本学习两大范式（迁移学习、元学习）定义、度量学习在范式中定位的全部原子断言，无遗漏。"
+      },
+      {
+        "source_unit_id": "v8",
+        "complete": true,
+        "explanation": "f8 完整提取了分类章节中关于度量学习内部三阶段分类标准、归纳偏置区分维度的全部原子断言，无遗漏。"
+      },
+      {
+        "source_unit_id": "v9",
+        "complete": true,
+        "explanation": "f9 完整提取了分类章节中关于特征嵌入类方法定义、各代表方法（K-tuplet、Proto-Triplet/ICNN、MSENet）机制及分类依据的全部原子断言，无遗漏。"
+      },
+      {
+        "source_unit_id": "v10",
+        "complete": true,
+        "explanation": "f10 完整提取了分类章节中关于类别表示类方法定义、原型机制、SRL 子空间表示及类别表示粒度差异的全部原子断言，无遗漏。"
+      },
+      {
+        "source_unit_id": "v11",
+        "complete": true,
+        "explanation": "f11 完整提取了分类章节中关于距离/关系度量类方法定义、固定度量局限、关系网络可学习比较、条件类表示跨阶段属性的全部原子断言，无遗漏。"
+      },
+      {
+        "source_unit_id": "v12",
+        "complete": true,
+        "explanation": "f12 完整提取了分类章节中关于任务目标区分（不确定性建模、跨域评估、效率改进）、不确定性框架目标、跨域测试范围、范式比较边界及不可排名规则的全部原子断言，无遗漏。"
+      },
+      {
+        "source_unit_id": "v13",
+        "complete": true,
+        "explanation": "f13 中科学断言（度量学习通用分类机制）已提取为 a45，其余为方法章节分析规则的结构声明，已正确标记为 report_structure 类型，无遗漏。"
+      },
+      {
+        "source_unit_id": "v14",
+        "complete": true,
+        "explanation": "f14 完整提取了方法章节中关于深度 K-tuplet 网络针对的机制问题、对 triplet network 的扩展及情节训练机制的全部原子断言，无遗漏。"
+      },
+      {
+        "source_unit_id": "v15",
+        "complete": true,
+        "explanation": "f15 完整提取了方法章节中关于 K-tuplet 方法的新类别特征提取能力、与非线性距离结合的适用边界的全部原子断言，无遗漏。"
+      },
+      {
+        "source_unit_id": "v16",
+        "complete": true,
+        "explanation": "f16 完整提取了方法章节中关于 Proto-Triplet/ICNN 针对的潜在空间可分性问题、类内/类间距离利用、两种损失各自机制的全部原子断言，无遗漏。"
+      },
+      {
+        "source_unit_id": "v17",
+        "complete": true,
+        "explanation": "f17 完整提取了方法章节中关于 Proto-Triplet/ICNN 贡献位置、miniImageNet 约2%准确率提升报告及证据粒度边界的全部原子断言，无遗漏。"
+      },
+      {
+        "source_unit_id": "v18",
+        "complete": true,
+        "explanation": "f18 完整提取了方法章节中关于 Proto-Triplet/ICNN 跨域竞争力报告及不能改写为全面优于基线的边界的全部原子断言，无遗漏。"
+      },
+      {
+        "source_unit_id": "v19",
+        "complete": true,
+        "explanation": "f19 完整提取了方法章节中关于 MSENet 针对的单一距离局限、多输出嵌入网络及多阶段特征提取机制的全部原子断言，无遗漏。"
+      },
+      {
+        "source_unit_id": "v20",
+        "complete": true,
+        "explanation": "f20 完整提取了方法章节中关于 MSENet 自注意力精炼、可学习阶段权重、多空间比较贡献及组件增益未拆分边界的全部原子断言，无遗漏。"
+      },
+      {
+        "source_unit_id": "v21",
+        "complete": true,
+        "explanation": "f21 完整提取了方法章节中关于 SRL 子空间表示单位、加权子空间距离及从向量扩展到子空间的贡献的全部原子断言，无遗漏。"
+      },
+      {
+        "source_unit_id": "v22",
+        "complete": true,
+        "explanation": "f22 完整提取了方法章节中关于 SRL 两类模板子空间聚合 K-shot 信息、子空间保留空间结构与多样性机制目标的全部原子断言，无遗漏。"
+      },
+      {
+        "source_unit_id": "v23",
+        "complete": true,
+        "explanation": "f23 完整提取了方法章节中关于 SRL 适用边界（依赖局部CNN特征与WSD）、已评估数据集范围及不能外推到非CNN/非图像任务的全部原子断言，无遗漏。"
+      },
+      {
+        "source_unit_id": "v24",
+        "complete": true,
+        "explanation": "f24 完整提取了方法章节中关于基础原型式机制、推理流程及原型质量与相似度可靠性影响的全部原子断言，无遗漏。"
+      },
+      {
+        "source_unit_id": "v25",
+        "complete": true,
+        "explanation": "f25 完整提取了方法章节中关于关系网络针对的固定度量表达限制、可学习非线性深度度量替换机制的全部原子断言，无遗漏。"
+      },
+      {
+        "source_unit_id": "v26",
+        "complete": true,
+        "explanation": "f26 完整提取了方法章节中关于关系网络学习图像关系的贡献、缺少成本/参数量/普遍优势证据的适用边界的全部原子断言，无遗漏。"
+      },
+      {
+        "source_unit_id": "v27",
+        "complete": true,
+        "explanation": "f27 完整提取了方法章节中关于条件类表示针对的静态原型局限、按目标图像条件化类表示机制的全部原子断言，无遗漏。"
+      },
+      {
+        "source_unit_id": "v28",
+        "complete": true,
+        "explanation": "f28 完整提取了方法章节中关于条件类表示训练网络执行类别比较、跨类别表示与可学习比较的属性、CUB细粒度先进性能及不能外推到粗粒度排名的全部原子断言，无遗漏。"
+      },
+      {
+        "source_unit_id": "v29",
+        "complete": true,
+        "explanation": "f29 完整提取了方法章节中关于不确定性框架针对的相似度可靠性差异问题、相似度概率转换及纳入损失的优化机制的全部原子断言，无遗漏。"
+      },
+      {
+        "source_unit_id": "v30",
+        "complete": true,
+        "explanation": "f30 完整提取了方法章节中关于不确定性框架图模型联合估计多原型相似度不确定性、显式建模相似度可靠性的贡献及不能替代嵌入学习的边界的全部原子断言，无遗漏。"
+      },
+      {
+        "source_unit_id": "v31",
+        "complete": true,
+        "explanation": "f31 中科学断言（共同指标、任务形式、设置披露不一致）已提取为 a84、a85，其余为实验章节分组规则的结构声明，已正确标记为 report_structure 类型，无遗漏。"
+      },
+      {
+        "source_unit_id": "v32",
+        "complete": true,
+        "explanation": "f32 完整提取了实验章节中关于 K-tuplet 与 Proto-Triplet/ICNN 各自 miniImageNet 同域结果报告、因设置不一致无法判定二者排名的全部原子断言，无遗漏。"
+      },
+      {
+        "source_unit_id": "v33",
+        "complete": true,
+        "explanation": "f33 完整提取了实验章节中关于 MSENet 同域评估范围（MiniImageNet/FC100 5-way 1/5-shot）、缺少具体数值无法与其他方法排名的全部原子断言，无遗漏。"
+      },
+      {
+        "source_unit_id": "v34",
+        "complete": true,
+        "explanation": "f34 完整提取了实验章节中关于 SRL 数据集覆盖范围、竞争力/优势概括性结论及不能解释为所有设置优于基线的全部原子断言，无遗漏。"
+      },
+      {
+        "source_unit_id": "v35",
+        "complete": true,
+        "explanation": "f35 完整提取了实验章节中关于跨域泛化比较维度、K-tuplet 跨域训练与目标域结果、Proto-Triplet/ICNN 跨域竞争力、目标域集合差异无法视为同一配对实验的全部原子断言，无遗漏。"
+      },
+      {
+        "source_unit_id": "v36",
+        "complete": true,
+        "explanation": "f36 完整提取了实验章节中关于 MSENet 跨域八个基准覆盖、缺少具体数据集/设置/数值披露、不能仅凭数据集数量排名的全部原子断言，无遗漏。"
+      },
+      {
+        "source_unit_id": "v37",
+        "complete": true,
+        "explanation": "f37 完整提取了实验章节中关于条件类表示 CUB 细粒度先进性能、关系网络缺少同条件 CUB 数值表、二者无法直接排名的全部原子断言，无遗漏。"
+      },
+      {
+        "source_unit_id": "v38",
+        "complete": true,
+        "explanation": "f38 完整提取了实验章节中关于不确定性框架强基线显著改进声明、缺少共同基线矩阵无法外推为统一排序的全部原子断言，无遗漏。"
+      }
+    ],
+    "conflicts": [],
+    "issues": [
+      {
+        "source_unit_id": "v9",
+        "explanation": "f12 中出现“深度 K-tuplet 与 Proto-Triplet/ICCNN”的表述，与全文其他位置统一使用的“ICNN”命名不一致，属于术语拼写偏差，未改变实际指代对象。",
+        "code": "source_fidelity",
+        "claim_ids": [
+          "a41"
+        ]
+      },
+      {
+        "source_unit_id": "v12",
+        "explanation": "f12 中出现“Proto-Triplet/ICCNN”的表述，与全文其他位置统一使用的“ICNN”命名不一致，属于术语拼写偏差，未改变实际指代对象。",
+        "code": "source_fidelity",
+        "claim_ids": [
+          "a41"
+        ]
+      }
+    ],
+    "coverage": [
+      {
+        "requirement_id": "question",
+        "answered": true,
+        "claim_ids": [
+          "a1",
+          "a2",
+          "a3",
+          "a4",
+          "a5",
+          "a6",
+          "a7",
+          "a8",
+          "a26",
+          "a27",
+          "a28",
+          "a29",
+          "a31",
+          "a32",
+          "a33",
+          "a35",
+          "a37",
+          "a38",
+          "a47",
+          "a48",
+          "a49",
+          "a50",
+          "a51",
+          "a52",
+          "a53",
+          "a54",
+          "a55",
+          "a56",
+          "a57",
+          "a58",
+          "a59",
+          "a60",
+          "a61",
+          "a62",
+          "a63",
+          "a64",
+          "a65",
+          "a66",
+          "a67",
+          "a68",
+          "a69",
+          "a70",
+          "a71",
+          "a72",
+          "a73",
+          "a74",
+          "a75",
+          "a76",
+          "a77",
+          "a78",
+          "a79",
+          "a80",
+          "a81",
+          "a82",
+          "a84",
+          "a85",
+          "a86",
+          "a87",
+          "a88",
+          "a89",
+          "a90",
+          "a91",
+          "a92",
+          "a93",
+          "a94",
+          "a95",
+          "a96",
+          "a97",
+          "a98",
+          "a99",
+          "a100",
+          "a101",
+          "a102",
+          "a103",
+          "a104",
+          "a105",
+          "a111",
+          "a112",
+          "a113",
+          "a114",
+          "a115"
+        ],
+        "explanation": "报告围绕少样本图像分类的度量学习方法比较，完成了方法分类、各代表方法机制与适用边界分析、同域与跨域实验证据梳理、不可通约性说明及无法形成统一排名的结论，完整覆盖了比较任务的核心要求。"
+      }
+    ],
+    "limitations": {
+      "adequate": true,
+      "claim_ids": [
+        "a116",
+        "a117",
+        "a118",
+        "a119",
+        "a120",
+        "a121",
+        "a122",
+        "a123",
+        "a124",
+        "a125",
+        "a126",
+        "a127",
+        "a128",
+        "a129",
+        "a130",
+        "a131",
+        "a132",
+        "a133",
+        "a134",
+        "a135",
+        "a136",
+        "a137",
+        "a138",
+        "a139",
+        "a140",
+        "a141",
+        "a142",
+        "a143",
+        "a144",
+        "a145",
+        "a146",
+        "a147",
+        "a148",
+        "a149",
+        "a150",
+        "a151",
+        "a152",
+        "a153",
+        "a154"
+      ],
+      "explanation": "开放问题章节系统梳理了评价协议不可通约性、固定距离与可学习关系的权衡、嵌入约束证据粒度限制、子空间表示适用边界、多阶段组件归因不足、跨域结论强度差异、相似度可靠性脆弱点等多个来源支持的具体局限与开放问题，符合要求。"
+    },
+    "analyses": [
+      {
+        "section_key": "introduction",
+        "adequate": true,
+        "claim_ids": [
+          "a9",
+          "a10",
+          "a11",
+          "a12",
+          "a13",
+          "a14",
+          "a15",
+          "a18"
+        ],
+        "explanation": "引言清晰界定了少样本图像分类的核心问题、深度度量学习的工作机制、过拟合风险、三类学习路径的定义及 Meta-Dataset 范式比较的背景，为后续比较建立了明确的问题与范围基础。"
+      },
+      {
+        "section_key": "taxonomy",
+        "adequate": true,
+        "claim_ids": [
+          "a20",
+          "a21",
+          "a22",
+          "a23",
+          "a24",
+          "a25",
+          "a26",
+          "a27",
+          "a28",
+          "a29",
+          "a30",
+          "a31",
+          "a32",
+          "a33",
+          "a34",
+          "a35",
+          "a36",
+          "a37",
+          "a38",
+          "a39",
+          "a40",
+          "a41",
+          "a42",
+          "a43"
+        ],
+        "explanation": "分类章节明确了学习范式的第一层划分标准、度量学习内部三阶段（特征嵌入、类别表示、距离/关系度量）的分类依据，区分了不确定性建模、跨域评估与效率改进等不同任务目标，清晰界定了各类方法的归纳偏置位置与边界。"
+      },
+      {
+        "section_key": "methods",
+        "adequate": true,
+        "claim_ids": [
+          "a45",
+          "a47",
+          "a48",
+          "a49",
+          "a50",
+          "a51",
+          "a52",
+          "a53",
+          "a54",
+          "a55",
+          "a56",
+          "a57",
+          "a58",
+          "a59",
+          "a60",
+          "a61",
+          "a62",
+          "a63",
+          "a64",
+          "a65",
+          "a66",
+          "a67",
+          "a68",
+          "a69",
+          "a70",
+          "a71",
+          "a72",
+          "a73",
+          "a74",
+          "a75",
+          "a76",
+          "a77",
+          "a78",
+          "a79",
+          "a80",
+          "a81",
+          "a82"
+        ],
+        "explanation": "方法章节逐一分析了 K-tuplet、Proto-Triplet/ICNN、MSENet、SRL、原型机制、关系网络、条件类表示、不确定性框架等代表方法的针对问题、核心机制、贡献位置与适用边界，未仅停留在方法命名层面。"
+      },
+      {
+        "section_key": "experiments",
+        "adequate": true,
+        "claim_ids": [
+          "a84",
+          "a85",
+          "a86",
+          "a87",
+          "a88",
+          "a89",
+          "a90",
+          "a91",
+          "a92",
+          "a93",
+          "a94",
+          "a95",
+          "a96",
+          "a97",
+          "a98",
+          "a99",
+          "a100",
+          "a101",
+          "a102",
+          "a103",
+          "a104",
+          "a105",
+          "a106",
+          "a107",
+          "a108",
+          "a109",
+          "a110",
+          "a111",
+          "a112",
+          "a113",
+          "a114",
+          "a115"
+        ],
+        "explanation": "实验章节按同域精度与跨域泛化两个维度梳理了各方法的报告结果，保留了数据集、shot/way 设置、训练源域与目标域等关键条件，明确指出了不同论文设置不可通约、无法形成统一排名的结论，未虚构跨方法排名。"
+      },
+      {
+        "section_key": "open_problems",
+        "adequate": true,
+        "claim_ids": [
+          "a116",
+          "a117",
+          "a118",
+          "a119",
+          "a120",
+          "a121",
+          "a122",
+          "a123",
+          "a124",
+          "a125",
+          "a126",
+          "a127",
+          "a128",
+          "a129",
+          "a130",
+          "a131",
+          "a132",
+          "a133",
+          "a134",
+          "a135",
+          "a136",
+          "a137",
+          "a138",
+          "a139",
+          "a140",
+          "a141",
+          "a142",
+          "a143",
+          "a144",
+          "a145",
+          "a146",
+          "a147",
+          "a148",
+          "a149",
+          "a150",
+          "a151",
+          "a152",
+          "a153",
+          "a154"
+        ],
+        "explanation": "开放问题章节基于来源证据系统讨论了评价协议不可通约性、固定距离与可学习关系的权衡、嵌入约束证据粒度、子空间表示适用边界、多阶段组件归因不足、跨域结论强度差异、相似度可靠性脆弱点等具体局限与未来统一比较的要求，未以范围声明替代科学局限分析。"
+      },
+      {
+        "section_key": "abstract",
+        "adequate": true,
+        "claim_ids": [
+          "a1",
+          "a2",
+          "a3",
+          "a4",
+          "a5",
+          "a6",
+          "a7",
+          "a8"
+        ],
+        "explanation": "摘要凝练了少样本度量学习的核心定义、三类改进路线的代表方法、各方法的证据范围及实验设置不一致无法形成统一排名的核心结论，符合摘要的简洁综合要求。"
+      },
+      {
+        "section_key": "conclusion",
+        "adequate": true,
+        "claim_ids": [
+          "a155",
+          "a156",
+          "a157",
+          "a158",
+          "a159",
+          "a160",
+          "a161",
+          "a162"
+        ],
+        "explanation": "结论从归纳偏置位置的核心差异出发，总结了各路线的权衡、适用边界及跨论文选择方法时需保留原实验条件的原则，与摘要的证据范围总结形成不同侧重，完成了比较问题的回应。"
+      }
+    ]
+  },
+  "human_gold": false
+}

@@ -1,6 +1,7 @@
 const dictionaries = {
   "zh-CN": {
     loadHistory: "加载其他运行记录",
+    budgetedWriterScopeHelp: "写作前按完整预算锁定整体容量；越界保留失败，预留不是费用",
     executionStatus: "执行状态", executionCompleted: "执行结束",
     metricSkipped: "已跳过／未核验",
     cancelDialog: "取消",
@@ -51,6 +52,7 @@ const dictionaries = {
   },
   en: {
     loadHistory: "Load other runs",
+    budgetedWriterScopeHelp: "Whole-report capacity is locked before writing; overflow fails; reservations are not costs",
     executionStatus: "Execution", executionCompleted: "Execution finished",
     metricSkipped: "Skipped / unverified",
     cancelDialog: "Cancel",

@@ -1,16 +1,16 @@
-import { bindAuditControls, bindAutomaticAuditPreferences } from "./audit-controls.js?v=15.10.6.161-source-view";
+import { bindAuditControls, bindAutomaticAuditPreferences } from "./audit-controls.js?v=15.10.6.163-summary-contract";
 import { bindFormatControls } from "./format-controls.js?v=15.10.10";
 import { createApiClient, openEventStream } from "./api-client.js";
-import { createBenchmarkController } from "./benchmark-controller.js?v=15.10.6.161-source-view";
-import { renderBenchmarkDetail, renderBenchmarkList, renderBenchmarkObservation } from "./benchmark-view.js?v=15.10.6.161-source-view";
-import { adaptArchiveView, adaptInteractiveView, chooseDefaultSection, normalizeRunList } from "./adapters.js?v=15.10.6.161-source-view";
+import { createBenchmarkController } from "./benchmark-controller.js?v=15.10.6.163-summary-contract";
+import { renderBenchmarkDetail, renderBenchmarkList, renderBenchmarkObservation } from "./benchmark-view.js?v=15.10.6.163-summary-contract";
+import { adaptArchiveView, adaptInteractiveView, chooseDefaultSection, normalizeRunList } from "./adapters.js?v=15.10.6.325-closeout";
 import { evidenceMap, renderEvidenceList } from "./evidence-view.js";
 import { createExecutionWorkspace } from "./execution-workspace.js";
 import { renderExecutionInspector } from "./execution-inspector.js";
 import { renderHistory } from "./history-view.js";
-import { applyTranslations, translator } from "./i18n.js?v=15.10.6.161-source-view";
-import { renderQuality, locateReportDiagnostic } from "./quality-view.js?v=15.10.6.161-source-view";
-import { renderOutline, renderReportDocument, renderSearchRecords } from "./report-view.js?v=15.10.10";
+import { applyTranslations, translator } from "./i18n.js?v=15.10.6.163-summary-contract";
+import { renderQuality, locateReportDiagnostic } from "./quality-view.js?v=15.10.6.325-closeout";
+import { navigateReportHeading, renderOutline, renderReportDocument, renderSearchRecords } from "./report-view.js?v=15.10.260";
 import { renderReview } from "./review-view.js?v=15.10.5-strict";
 import { createWorkbenchStore } from "./state.js";
 const $ = (selector) => document.querySelector(selector);
@@ -22,16 +22,23 @@ const citationPreferences = new Map();
 let eventSource = null;
 let inspectorTrigger = null;
 let historyLoading = false;
+const mobileSidebar = globalThis.matchMedia?.("(max-width: 760px)");
 const benchmarkState = { results: [], selectedId: null, detail: null, observation: null, loaded: false };
 const api = createApiClient(() => context?.operation_token);
 const executionWorkspace = createExecutionWorkspace({ store, t, onInspect: setInspector });
-const automaticAuditPreferences = bindAutomaticAuditPreferences({ capabilities: () => ({...context?.auto_audit_capabilities, default_generation_strategy:context?.automatic_acceptance?.default_generation_strategy}), t });
+const automaticAuditPreferences = bindAutomaticAuditPreferences({ capabilities: () => ({...context?.auto_audit_capabilities, default_generation_strategy:context?.automatic_acceptance?.default_generation_strategy, default_budget_policy:context?.automatic_acceptance?.default_budget_policy, maximum_survey_tokens:context?.automatic_acceptance?.maximum_survey_tokens}), t });
 function t(key) { return translator(store.get().locale)(key); }
 function setNotice(message = "", kind = "info") {
   const element = $("#notice");
   element.hidden = !message;
   element.dataset.kind = kind;
   element.textContent = message;
+}
+function closeRunSidebar(restoreFocus = false) {
+  $("#run-sidebar").dataset.open = "false";
+  $("#sidebar-scrim").hidden = true;
+  $("#sidebar-toggle").setAttribute("aria-expanded", "false");
+  if (restoreFocus && (!mobileSidebar || mobileSidebar.matches)) $("#sidebar-toggle").focus();
 }
 function setInspector(selection, trigger = null) {
   const drawer = $("#inspector-drawer");
@@ -117,7 +124,7 @@ function renderReport(view) {
     setInspector({ kind: "evidence", id: references.join(", "), value: evidence.get(references[0]), references: references.map(id => evidence.get(id)).filter(Boolean) }, trigger);
   });
   renderOutline($("#report-outline"), result.headings, (heading) => {
-    const target = document.getElementById(heading.anchor); if (!target) return; const details = target.closest("details"); if (details) details.open = true; target.tabIndex = -1; target.scrollIntoView({ behavior: "smooth", block: "start" }); target.focus({ preventScroll: true });
+    navigateReportHeading($("#report-document"), heading, $("#section-report"));
   });
 }
 
@@ -183,7 +190,7 @@ function renderQualityContent() {
   const state = store.get(); const view = state.view;
   const revision = Number(view?.displayRevision || view?.versions?.[0]?.revision || 1);
   const snapshot = independentAuditState?.target && view?.identity && independentAuditState.target.runId === view.identity.runId && independentAuditState.target.revision === revision ? independentAuditState : null;
-  renderQuality($("#quality-content"), view?.runtimeEvaluation || {}, view?.quality, view?.delivery, setInspector, t, { locale: state.locale, revision: view?.report?.survey ? revision : null, sha: snapshot?.data?.source_report_sha256 || view?.reportSha, audits: snapshot, qualityPolicy: view?.report?.metadata?.quality_policy, verification: view?.report?.metadata?.verification, bodyDiagnostics: view?.report?.metadata?.body_diagnostics, analysisPlan: view?.report?.metadata?.analysis_plan, pipelineVerification: view?.pipelineVerification, extractionVerification: view?.report?.metadata?.extraction_verification, automaticAcceptance: view?.report?.metadata?.automatic_acceptance, evaluationHistory: view?.report?.metadata?.evaluation_history, writerFailure: view?.report?.metadata?.writer_failure, writerContract: view?.report?.metadata?.writing_bindings?.writer_contract, targetedRepairState: view?.report?.metadata?.targeted_repair_state || (view?.report?.survey ? null : view?.targetedRepairState) });
+  renderQuality($("#quality-content"), view?.runtimeEvaluation || {}, view?.quality, view?.delivery, setInspector, t, { budgetPlan: view?.budgetPlan, budgetState: view?.budgetState, runId: view?.identity?.runId, locale: state.locale, revision: view?.report?.survey ? revision : null, sha: snapshot?.data?.source_report_sha256 || view?.reportSha, audits: snapshot, qualityPolicy: view?.report?.metadata?.quality_policy, verification: view?.report?.metadata?.verification, bodyDiagnostics: view?.report?.metadata?.body_diagnostics, analysisPlan: view?.report?.metadata?.analysis_plan, pipelineVerification: view?.pipelineVerification, extractionVerification: view?.report?.metadata?.extraction_verification, automaticAcceptance: view?.report?.metadata?.automatic_acceptance, evaluationHistory: view?.report?.metadata?.evaluation_history, writerFailure: view?.report?.metadata?.writer_failure, writerContract: view?.report?.metadata?.writing_bindings?.writer_contract, targetedRepairState: view?.report?.metadata?.targeted_repair_state || (view?.report?.survey ? null : view?.targetedRepairState) });
 }
 
 function renderBenchmarkState() {
@@ -274,7 +281,7 @@ async function selectRun(key, preferredSection = null) {
   }
   if (store.get().selectedRunKey !== key) return false;
   history.replaceState(null, "", `?run=${encodeURIComponent(key)}&view=${encodeURIComponent(store.get().activeSection)}`);
-  $("#run-sidebar").dataset.open = "false"; $("#sidebar-scrim").hidden = true;
+  closeRunSidebar();
   return Boolean(store.get().view);
 }
 
@@ -362,12 +369,21 @@ bindAuditControls({ store, api, setNotice, onSource: claim => {if (!locateReport
   if (item) setInspector({kind: "evidence", id: normalized, value: item}, button);
   else setNotice(store.get().locale === "zh-CN" ? `证据不可用：${id}` : `Evidence unavailable: ${id}`, "error");
 } });
-$("#sidebar-toggle").addEventListener("click", () => { $("#run-sidebar").dataset.open = "true"; $("#sidebar-scrim").hidden = false; });
-$("#sidebar-scrim").addEventListener("click", () => { $("#run-sidebar").dataset.open = "false"; $("#sidebar-scrim").hidden = true; });
-document.addEventListener("keydown", event => {
-  if (event.key !== "Escape" || $("#run-sidebar").dataset.open !== "true" || document.querySelector("dialog[open]")) return;
-  event.preventDefault(); $("#run-sidebar").dataset.open = "false"; $("#sidebar-scrim").hidden = true; $("#sidebar-toggle").focus();
+$("#sidebar-toggle").addEventListener("click", () => {
+  if (mobileSidebar && !mobileSidebar.matches) return;
+  $("#run-sidebar").dataset.open = "true";
+  $("#sidebar-scrim").hidden = false;
+  $("#sidebar-toggle").setAttribute("aria-expanded", "true");
 });
+$("#sidebar-scrim").addEventListener("click", () => closeRunSidebar(true));
+mobileSidebar?.addEventListener("change", event => { if (!event.matches) closeRunSidebar(); });
+document.addEventListener("keydown", event => {
+  if (event.key !== "Escape" || document.querySelector("dialog[open]")) return;
+  if ($("#inspector-drawer").dataset.open === "true") { event.preventDefault(); setInspector(null); return; }
+  if ($("#run-sidebar").dataset.open !== "true") return;
+  event.preventDefault(); closeRunSidebar(true);
+});
+closeRunSidebar();
 executionWorkspace.bind();
 render();
 initialize().catch((error) => setNotice(`${t("operationFailed")}: ${error.message}`, "error"));

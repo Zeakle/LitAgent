@@ -1,0 +1,896 @@
+{
+  "version": "recorded-051-atomic-support-observations-v1",
+  "scientific_gold_verified": false,
+  "scope": "Historical raw/schema data and canonical negative controls only; no current owner authentication or science regrading.",
+  "report_sha256": "724262783c60bb456ddcfed5dbd2b170b3e25be22bb7b450f63b2541e72caedb",
+  "recorded_support_identity": "d9d165363b9c3549a9f6f45cd423c22e34def712c767d6c1ac0bae7a85ee97bf",
+  "inputs": {
+    "artifacts/runs/frozen-writer-three-domain-20261103-051-few-shot-metric.json": "6ff424964bfca73a8383970418770b3ddbc5823fb7b817c935dd9350ba20bb82",
+    "artifacts/evaluations/6199dd094ad345b1e2829f9e00edf7a8017118177cc3e0db8e19178d77311790/progress.json": "74a0d330841e126a67e318a034cba830772b12575a8e414050d712a5d0d72444",
+    "artifacts/evaluations/da99f1036c8495d44d47b56b8cae3a14045d466b3765ce40e2f9d1da4b48bf71/progress.json": "2d02865bf2c09d798a9f78a67639a118722104f61f51fbf55207ef45add6be8e"
+  },
+  "raw_batches": [
+    {
+      "batch_index": 0,
+      "raw_response": "{\"units\": [{\"source_unit_id\": \"unit:0:31\", \"complete\": true, \"explanation\": \"The batch covers all assigned scientific assertions from the abstract fragments f1 and f2, including method categorizations, reported results, and the comparability limitation.\"}, {\"source_unit_id\": \"unit:1:1835\", \"complete\": true, \"explanation\": \"The batch covers both assigned assertions from fragment f3: the core problem of few-shot image classification and the overfitting difficulty.\"}, {\"source_unit_id\": \"unit:2:1956\", \"complete\": true, \"explanation\": \"The batch covers the report-structure scope assertion and the prototypical-setting query rule from fragment f4.\"}, {\"source_unit_id\": \"unit:3:2166\", \"complete\": true, \"explanation\": \"The batch covers the distinction between metric learning, transfer learning, and meta learning from fragment f5.\"}], \"decisions\": [{\"claim_id\": \"claim_0\", \"correct_kind\": \"report_structure\", \"atomic\": true, \"source_faithful\": true, \"status\": \"supported\", \"reason_code\": \"supported\", \"explanation\": \"This is a report-scope statement about the review's own comparison scope, faithfully extracted from the abstract fragment. It is not a paper-evidence scientific claim.\", \"support_basis\": [], \"aspect_checks\": []}, {\"claim_id\": \"claim_1\", \"correct_kind\": \"scientific\", \"atomic\": false, \"source_faithful\": true, \"status\": \"unsupported\", \"reason_code\": \"insufficient_support\", \"explanation\": \"The claim bundles three distinct methods into one assertion. K-tuplet is supported by s4, Proto-Triplet/ICNN by s5, and MSENet by s6, but no single cited source covers all three methods' embedding-space/multi-layer feature improvements as a combined claim.\", \"support_basis\": [{\"support_id\": \"p4\"}, {\"support_id\": \"p5\"}, {\"support_id\": \"p6\"}], \"aspect_checks\": [{\"aspect\": \"predicate\", \"supported\": false, \"support_ids\": [\"p4\", \"p5\", \"p6\"], \"explanation\": \"Each source supports only its own method's feature/embedding improvement; no source establishes the combined grouping of all three methods as primarily improving embedding space or multi-layer features.\"}, {\"aspect\": \"conditions\", \"supported\": true, \"support_ids\": [\"p4\", \"p5\", \"p6\"], \"explanation\": \"Each source describes its method in the few-shot image classification setting with appropriate datasets.\"}]}, {\"claim_id\": \"claim_2\", \"correct_kind\": \"scientific\", \"atomic\": false, \"source_faithful\": true, \"status\": \"unsupported\", \"reason_code\": \"insufficient_support\", \"explanation\": \"The claim bundles prototype methods and SRL into one assertion. Prototype methods are described in s2, while SRL's subspace aggregation is supported by s7; no single source covers both as a combined claim.\", \"support_basis\": [{\"support_id\": \"p2\"}, {\"support_id\": \"p7\"}], \"aspect_checks\": [{\"aspect\": \"predicate\", \"supported\": false, \"support_ids\": [\"p2\", \"p7\"], \"explanation\": \"s2 describes prototype-based classification, and s7 describes SRL's subspace representation; no source establishes the combined grouping of prototype methods and SRL as separate support-aggregation approaches.\"}, {\"aspect\": \"conditions\", \"supported\": true, \"support_ids\": [\"p2\", \"p7\"], \"explanation\": \"Both sources describe few-shot image classification settings.\"}]}, {\"claim_id\": \"claim_3\", \"correct_kind\": \"scientific\", \"atomic\": false, \"source_faithful\": true, \"status\": \"unsupported\", \"reason_code\": \"insufficient_support\", \"explanation\": \"The claim bundles relation networks, target-conditioned comparators, and uncertainty frameworks into one assertion. Relation networks are supported by s8/s11, target-conditioned embeddings by s9, and uncertainty frameworks by s2; no single source covers all three as a combined claim.\", \"support_basis\": [{\"support_id\": \"p2\"}, {\"support_id\": \"p8\"}, {\"support_id\": \"p9\"}], \"aspect_checks\": [{\"aspect\": \"predicate\", \"supported\": false, \"support_ids\": [\"p2\", \"p8\", \"p9\"], \"explanation\": \"Each source supports only its own method's comparison-function parameterization or uncertainty modeling; no source establishes the combined grouping of all three method families.\"}, {\"aspect\": \"conditions\", \"supported\": true, \"support_ids\": [\"p2\", \"p8\", \"p9\"], \"explanation\": \"All sources describe few-shot image classification settings.\"}]}, {\"claim_id\": \"claim_4\", \"correct_kind\": \"scientific\", \"atomic\": true, \"source_faithful\": true, \"status\": \"supported\", \"reason_code\": \"supported\", \"explanation\": \"s4 explicitly states that K-tuplet outperforms other metric-based methods on miniImageNet and significantly outperforms prior methods on four cross-domain datasets (Caltech-101, CUB-200, Stanford Dogs, Cars).\", \"support_basis\": [{\"support_id\": \"p4\"}], \"aspect_checks\": [{\"aspect\": \"predicate\", \"supported\": true, \"support_ids\": [\"p4\"], \"explanation\": \"s4 states the K-tuplet network outperforms other metric-based few-shot methods on miniImageNet and on four cross-domain datasets.\"}, {\"aspect\": \"conditions\", \"supported\": true, \"support_ids\": [\"p4\"], \"explanation\": \"s4 specifies miniImageNet training and evaluation on Caltech-101, CUB-200, Stanford Dogs, and Cars datasets.\"}]}, {\"claim_id\": \"claim_5\", \"correct_kind\": \"scientific\", \"atomic\": true, \"source_faithful\": true, \"status\": \"supported\", \"reason_code\": \"supported\", \"explanation\": \"s5 explicitly states a 2% accuracy improvement on miniImageNet compared to other metric-based few-shot learning methods for Proto-Triplet/ICNN loss functions.\", \"support_basis\": [{\"support_id\": \"p5\"}], \"aspect_checks\": [{\"aspect\": \"predicate\", \"supported\": true, \"support_ids\": [\"p5\"], \"explanation\": \"s5 states the proposed loss functions achieve significant improvement in accuracy on miniImageNet compared to other metric-based methods.\"}, {\"aspect\": \"conditions\", \"supported\": true, \"support_ids\": [\"p5\"], \"explanation\": \"s5 specifies the miniImageNet benchmark for few-shot image classification.\"}, {\"aspect\": \"quantities\", \"supported\": true, \"support_ids\": [\"p5\"], \"explanation\": \"s5 explicitly states the margin is 2% accuracy improvement.\"}]}, {\"claim_id\": \"claim_6\", \"correct_kind\": \"scientific\", \"atomic\": true, \"source_faithful\": true, \"status\": \"supported\", \"reason_code\": \"supported\", \"explanation\": \"s6 explicitly states evaluations on MiniImageNet and FC100 in 5-way 1-shot and 5-way 5-shot scenarios, plus cross-domain tasks across eight benchmark datasets.\", \"support_basis\": [{\"support_id\": \"p6\"}], \"aspect_checks\": [{\"aspect\": \"predicate\", \"supported\": true, \"support_ids\": [\"p6\"], \"explanation\": \"s6 describes MSENet's multi-output embedding network evaluated on the specified benchmarks.\"}, {\"aspect\": \"conditions\", \"supported\": true, \"support_ids\": [\"p6\"], \"explanation\": \"s6 specifies MiniImageNet, FC100, 5-way 1-shot, 5-way 5-shot, and eight cross-domain benchmark datasets.\"}, {\"aspect\": \"quantities\", \"supported\": true, \"support_ids\": [\"p6\"], \"explanation\": \"s6 explicitly states 5-way 1-shot, 5-way 5-shot, and eight cross-domain benchmarks.\"}]}, {\"claim_id\": \"claim_7\", \"correct_kind\": \"scientific\", \"atomic\": true, \"source_faithful\": true, \"status\": \"supported\", \"reason_code\": \"supported\", \"explanation\": \"s7 explicitly states competitive/superior performance of SRL on MiniImageNet, TieredImageNet, and CUB compared to previous state-of-the-art.\", \"support_basis\": [{\"support_id\": \"p7\"}], \"aspect_checks\": [{\"aspect\": \"predicate\", \"supported\": true, \"support_ids\": [\"p7\"], \"explanation\": \"s7 states SRL demonstrates competitive/superior performance compared to previous state-of-the-art.\"}, {\"aspect\": \"conditions\", \"supported\": true, \"support_ids\": [\"p7\"], \"explanation\": \"s7 specifies evaluation on MiniImageNet, TieredImageNet, and Caltech-UCSD Birds-200-2011 (CUB).\"}]}, {\"claim_id\": \"claim_8\", \"correct_kind\": \"scientific\", \"atomic\": true, \"source_faithful\": true, \"status\": \"unsupported\", \"reason_code\": \"insufficient_support\", \"explanation\": \"The claim asserts that missing unified backbones, training epochs, shot settings, common baselines, and side-by-side tables prevent merging results into a global leaderboard. The cited sources describe individual methods' results but do not collectively establish that these specific missing factors exist across all sources or that they prevent global ranking.\", \"support_basis\": [{\"support_id\": \"p5\"}, {\"support_id\": \"p6\"}, {\"support_id\": \"p7\"}, {\"support_id\": \"p8\"}, {\"support_id\": \"p10\"}, {\"support_id\": \"p11\"}, {\"support_id\": \"p12\"}, {\"support_id\": \"p13\"}, {\"support_id\": \"p14\"}, {\"support_id\": \"p15\"}], \"aspect_checks\": [{\"aspect\": \"predicate\", \"supported\": false, \"support_ids\": [], \"explanation\": \"No cited source explicitly states that results cannot be merged into a global leaderboard due to missing unified backbones, training epochs, shot settings, common baselines, or side-by-side tables.\"}, {\"aspect\": \"conditions\", \"supported\": false, \"support_ids\": [], \"explanation\": \"The cited sources do not collectively document the absence of unified experimental conditions across studies.\"}, {\"aspect\": \"causal_relation\", \"supported\": false, \"support_ids\": [], \"explanation\": \"The causal link between missing experimental standardization and inability to construct a global leaderboard is not established by any cited source.\"}]}, {\"claim_id\": \"claim_9\", \"correct_kind\": \"scientific\", \"atomic\": true, \"source_faithful\": true, \"status\": \"unsupported\", \"reason_code\": \"insufficient_support\", \"explanation\": \"The claim asserts that different methods correspond to design trade-offs in separability, structure preservation, comparison flexibility, and uncertainty handling. While individual sources touch on these themes, no cited source collectively establishes this synthesis as a supported conclusion.\", \"support_basis\": [{\"support_id\": \"p5\"}, {\"support_id\": \"p6\"}, {\"support_id\": \"p7\"}, {\"support_id\": \"p8\"}, {\"support_id\": \"p10\"}, {\"support_id\": \"p11\"}, {\"support_id\": \"p12\"}, {\"support_id\": \"p13\"}, {\"support_id\": \"p14\"}, {\"support_id\": \"p15\"}], \"aspect_checks\": [{\"aspect\": \"predicate\", \"supported\": false, \"support_ids\": [], \"explanation\": \"No cited source explicitly states that methods correspond to design trade-offs across separability, structure preservation, comparison flexibility, and uncertainty handling.\"}, {\"aspect\": \"conditions\", \"supported\": false, \"support_ids\": [], \"explanation\": \"The cited sources do not collectively establish this comparative framework as a supported conclusion.\"}]}, {\"claim_id\": \"claim_10\", \"correct_kind\": \"scientific\", \"atomic\": true, \"source_faithful\": true, \"status\": \"supported\", \"reason_code\": \"supported\", \"explanation\": \"s4 explicitly states the goal of few-shot learning is to recognize new visual concepts with just a few labeled samples in each class.\", \"support_basis\": [{\"support_id\": \"p5\"}], \"aspect_checks\": [{\"aspect\": \"predicate\", \"supported\": true, \"support_ids\": [\"p5\"], \"explanation\": \"s5 describes few-shot learning as aiming to learn new concepts with only a few labeled samples.\"}, {\"aspect\": \"conditions\", \"supported\": true, \"support_ids\": [\"p5\"], \"explanation\": \"s5 specifies the few-shot setting with limited labeled samples per class.\"}]}, {\"claim_id\": \"claim_11\", \"correct_kind\": \"scientific\", \"atomic\": true, \"source_faithful\": true, \"status\": \"supported\", \"reason_code\": \"supported\", \"explanation\": \"s1 explicitly states the biggest challenge in few-shot classification is a high risk of model overfitting to the few labeled training samples.\", \"support_basis\": [{\"support_id\": \"p5\"}], \"aspect_checks\": [{\"aspect\": \"predicate\", \"supported\": true, \"support_ids\": [\"p5\"], \"explanation\": \"s5 describes the learning process becoming important due to lack of data, consistent with overfitting risk on limited samples.\"}, {\"aspect\": \"conditions\", \"supported\": true, \"support_ids\": [\"p5\"], \"explanation\": \"s5 specifies the few-shot setting with limited labeled data.\"}]}, {\"claim_id\": \"claim_12\", \"correct_kind\": \"report_structure\", \"atomic\": true, \"source_faithful\": true, \"status\": \"supported\", \"reason_code\": \"supported\", \"explanation\": \"This is a report-scope statement about the review's comparison scope being limited to metric learning, faithfully extracted from the introduction fragment.\", \"support_basis\": [], \"aspect_checks\": []}, {\"claim_id\": \"claim_13\", \"correct_kind\": \"scientific\", \"atomic\": true, \"source_faithful\": true, \"status\": \"supported\", \"reason_code\": \"supported\", \"explanation\": \"s2 explicitly states that in metric learning based approaches, a query sample is classified by finding the nearest prototype from the support set based on feature similarities.\", \"support_basis\": [{\"support_id\": \"p1\"}, {\"support_id\": \"p2\"}], \"aspect_checks\": [{\"aspect\": \"predicate\", \"supported\": true, \"support_ids\": [\"p2\"], \"explanation\": \"s2 explicitly states a query sample is classified by finding the nearest prototype from the support set based on feature similarities.\"}, {\"aspect\": \"conditions\", \"supported\": true, \"support_ids\": [\"p2\"], \"explanation\": \"s2 describes the prototypical few-shot classification setting.\"}]}, {\"claim_id\": \"claim_14\", \"correct_kind\": \"scientific\", \"atomic\": true, \"source_faithful\": true, \"status\": \"supported\", \"reason_code\": \"supported\", \"explanation\": \"s12 groups few-shot learning approaches into transfer learning and meta-learning categories, and s1 describes metric learning as a distinct approach; the distinction is established.\", \"support_basis\": [{\"support_id\": \"p16\"}, {\"support_id\": \"p17\"}], \"aspect_checks\": [{\"aspect\": \"predicate\", \"supported\": true, \"support_ids\": [\"p16\", \"p17\"], \"explanation\": \"s12 distinguishes transfer learning and meta-learning as separate categories, and s1 describes metric learning as a distinct approach.\"}, {\"aspect\": \"conditions\", \"supported\": true, \"support_ids\": [\"p16\", \"p17\"], \"explanation\": \"Both sources describe few-shot learning methodology categories.\"}]}, {\"claim_id\": \"claim_15\", \"correct_kind\": \"scientific\", \"atomic\": true, \"source_faithful\": true, \"status\": \"supported\", \"reason_code\": \"supported\", \"explanation\": \"s12 explicitly states that for transfer learning, a model is first pre-trained on an upstream dataset (e.g., ImageNet) and later fine-tuned on different downstream tasks.\", \"support_basis\": [{\"support_id\": \"p16\"}], \"aspect_checks\": [{\"aspect\": \"predicate\", \"supported\": true, \"support_ids\": [\"p16\"], \"explanation\": \"s12 explicitly describes transfer learning as pre-training on upstream datasets like ImageNet followed by fine-tuning on downstream tasks.\"}, {\"aspect\": \"conditions\", \"supported\": true, \"support_ids\": [\"p16\"], \"explanation\": \"s12 specifies ImageNet as an example upstream dataset and downstream tasks for fine-tuning.\"}]}], \"conflicts\": []}",
+      "raw_sha256": "38652b6d477c7e7eda7449d7109e921d59e5970bedf76531e86a92f2085ab704",
+      "native_format": {
+        "type": "json_schema",
+        "json_schema": {
+          "name": "host_batch_assessment_v1",
+          "strict": true,
+          "schema": {
+            "$defs": {
+              "AspectCheck": {
+                "additionalProperties": false,
+                "properties": {
+                  "aspect": {
+                    "enum": [
+                      "predicate",
+                      "conditions",
+                      "quantities",
+                      "causal_relation"
+                    ],
+                    "type": "string",
+                    "description": "Use [aspects]; all/only required_support_aspects once."
+                  },
+                  "supported": {
+                    "type": "boolean",
+                    "description": "Selected basis establishes this aspect under [aspects]."
+                  },
+                  "support_ids": {
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "p1",
+                        "p2",
+                        "p3",
+                        "p4",
+                        "p5",
+                        "p6",
+                        "p7",
+                        "p8",
+                        "p9",
+                        "p10",
+                        "p11",
+                        "p12",
+                        "p13",
+                        "p14",
+                        "p15",
+                        "p16",
+                        "p17"
+                      ]
+                    },
+                    "type": "array",
+                    "description": "Only IDs from this claim's selected support_basis."
+                  },
+                  "explanation": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "aspect",
+                  "supported",
+                  "support_ids",
+                  "explanation"
+                ],
+                "type": "object"
+              },
+              "Conflict": {
+                "additionalProperties": false,
+                "properties": {
+                  "claim_a": {
+                    "type": "string"
+                  },
+                  "claim_b": {
+                    "type": "string"
+                  },
+                  "reason": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "claim_a",
+                  "claim_b",
+                  "reason"
+                ],
+                "type": "object"
+              },
+              "PassageDecision": {
+                "additionalProperties": false,
+                "properties": {
+                  "claim_id": {
+                    "type": "string",
+                    "enum": [
+                      "claim_0",
+                      "claim_1",
+                      "claim_2",
+                      "claim_3",
+                      "claim_4",
+                      "claim_5",
+                      "claim_6",
+                      "claim_7",
+                      "claim_8",
+                      "claim_9",
+                      "claim_10",
+                      "claim_11",
+                      "claim_12",
+                      "claim_13",
+                      "claim_14",
+                      "claim_15"
+                    ]
+                  },
+                  "correct_kind": {
+                    "enum": [
+                      "scientific",
+                      "runtime_method",
+                      "report_structure"
+                    ],
+                    "type": "string",
+                    "description": "Use [classification] independently of the assigned kind."
+                  },
+                  "atomic": {
+                    "type": "boolean",
+                    "description": "Use [atomic]."
+                  },
+                  "source_faithful": {
+                    "type": "boolean",
+                    "description": "Use [fidelity], independently of paper support."
+                  },
+                  "status": {
+                    "enum": [
+                      "supported",
+                      "unsupported",
+                      "unverifiable"
+                    ],
+                    "type": "string",
+                    "description": "Use [consistency]; must match reason_code."
+                  },
+                  "reason_code": {
+                    "enum": [
+                      "supported",
+                      "insufficient_support",
+                      "uncited_claim",
+                      "attribution_mismatch",
+                      "record_mismatch",
+                      "unverifiable"
+                    ],
+                    "type": "string",
+                    "description": "supported/supported;unsupported/insufficient_support|uncited_claim|attribution_mismatch|record_mismatch;unverifiable/unverifiable"
+                  },
+                  "explanation": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "support_basis": {
+                    "items": {
+                      "$ref": "#/$defs/SupportSelection"
+                    },
+                    "maxItems": 16,
+                    "type": "array"
+                  },
+                  "aspect_checks": {
+                    "items": {
+                      "$ref": "#/$defs/AspectCheck"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "claim_id",
+                  "correct_kind",
+                  "atomic",
+                  "source_faithful",
+                  "status",
+                  "reason_code",
+                  "explanation",
+                  "support_basis",
+                  "aspect_checks"
+                ],
+                "type": "object"
+              },
+              "SupportSelection": {
+                "additionalProperties": false,
+                "properties": {
+                  "support_id": {
+                    "type": "string",
+                    "enum": [
+                      "p1",
+                      "p2",
+                      "p3",
+                      "p4",
+                      "p5",
+                      "p6",
+                      "p7",
+                      "p8",
+                      "p9",
+                      "p10",
+                      "p11",
+                      "p12",
+                      "p13",
+                      "p14",
+                      "p15",
+                      "p16",
+                      "p17"
+                    ],
+                    "description": "Use [support]; only this claim's allowed_support_ids."
+                  }
+                },
+                "required": [
+                  "support_id"
+                ],
+                "type": "object"
+              },
+              "UnitDecision": {
+                "additionalProperties": false,
+                "properties": {
+                  "source_unit_id": {
+                    "type": "string",
+                    "enum": [
+                      "unit:0:31",
+                      "unit:1:1835",
+                      "unit:2:1956",
+                      "unit:3:2166"
+                    ]
+                  },
+                  "complete": {
+                    "type": "boolean",
+                    "description": "Use [complete] for this batch's assigned subset."
+                  },
+                  "explanation": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "source_unit_id",
+                  "complete",
+                  "explanation"
+                ],
+                "type": "object"
+              }
+            },
+            "additionalProperties": false,
+            "properties": {
+              "units": {
+                "items": {
+                  "$ref": "#/$defs/UnitDecision"
+                },
+                "type": "array",
+                "minItems": 4,
+                "maxItems": 4
+              },
+              "decisions": {
+                "items": {
+                  "$ref": "#/$defs/PassageDecision"
+                },
+                "type": "array",
+                "minItems": 16,
+                "maxItems": 16
+              },
+              "conflicts": {
+                "items": {
+                  "$ref": "#/$defs/Conflict"
+                },
+                "type": "array",
+                "maxItems": 0
+              }
+            },
+            "required": [
+              "units",
+              "decisions",
+              "conflicts"
+            ],
+            "type": "object",
+            "description": "[atomic] One independently true/false primary relation, retaining its full subjects, objects, negation, conditions and qualifiers. Separate independent mechanisms, metrics, datasets and results. A comparison can be one relation with two methods; multiple entities or punctuation alone do not make it compound. Keep a single conditional relation intact; do not invent separate experiments from one jointly reported result. Missing paper support is not non-atomic; a lost report premise is a fidelity defect, not automatically a second relation.\n[classification] Determine correct_kind from content independently of the assigned kind; The host derives agreement with the assigned kind; never silently change the denominator. Scientific includes mechanisms, results, empirical comparisons, established classifications, limitations and research-proposal premises. runtime_method means actual execution queries, dates, sources, counts or procedures, checked only against host records, never inferred from prose. report_structure means only this report's organization, chosen scope, aims or grouping. A choice not to rank methods is organization; a claim that cited materials lack comparable results concerns source content and needs evidence. Split mixed statements; their scientific premises remain scientific. Headings, 'this review', hedging, proposals, matching text or absent citations never exempt science. Keep the report language.\n[fidelity] source_faithful compares extraction ONLY to its owning report fragment, including same-unit context for subjects and qualifiers, never borrowed citations. Preserve entity, number, condition, negation, qualifier and citation ownership and logical scope: 'cannot infer P' is not 'infer not-P'. Ambiguous ownership is unverifiable. A faithfully extracted uncited claim can have true fidelity but no paper support. A paper's 60 cannot repair report 30 extracted as 60. Neither location equality nor paper entailment establishes classification or report fidelity.\n[support] Science uses ONLY this claim's allowed_support_ids and complete original intervals reached through its own citations, not model knowledge, candidates, another claim or neighboring context. The allowed set is permission; basis may be a sufficient subset or combine passages. An unused citation alone is not attribution_mismatch; assess its relevance separately. Select actual findings, not introductory motivation or window previews. full_original is not automatic support. document_subject only resolves that paper's we/our, never proves a mechanism or result. Do not guess aliases, spelling, ownership or PDF word breaks. Partial negatives may keep basis for established aspects; missing aspects stay false. Non-scientific or baseless decisions use empty basis. Runtime compares host_runtime_record only; absent records are unverifiable, explicit not-performed records can support an honest disclosure.\n[aspects] Check all and only required_support_aspects once using selected basis IDs; emit no extra N/A true/false rows. The full claim still needs checking: keep genuine defects in the relevant required check and status, never omit them. predicate includes full subject/method ownership, relation, object/comparator and polarity; a paper comparing A/B does not prove B's mechanism. conditions includes task, dataset, model, training/hardware setup and applicability. quantities binds object, metric, value, unit, direction and average/peak: FLOPs is not speed, top-5 not top-1, percent not percentage points, reduced TO not BY, up-to not average. Dimensions, resolution and counts are quantities; digits in names are not automatically results. causal_relation checks the actual causal or inferential relation and its cited premises. Bounded synthesis may reason from full cited originals; missing supplied text cannot prove different conditions, field-wide absence, not-P or causation. Lack of grounds to infer P is not evidence for not-P. Negated protocol labels are not positive results. Entity/number overlap or plausibility is insufficient.\n[consistency] Determine kind, atomicity and report fidelity independently, then basis and required aspects, then a consistent status/reason. Supported science needs valid cited basis covering every required aspect. A negative aspect prevents supported; with faithful atomic classification and fully established aspects, do not return unsupported. Never force a positive aspect to obtain a status. Wrong entity/method/setting/number uses attribution_mismatch; absent/weaker support insufficient_support; no citation uncited_claim; unknown unverifiable. This consistency check is not scientific proof or permission to change prose.\n[complete] Completeness means faithful coverage of the assigned report inventory, not paper support. Unsupported but faithful science can be completely extracted. Include scientific and other assertions, exclusions, tables, Abstract and Conclusion. Matching IDs, processing or exclusions do not prove no omissions."
+          }
+        }
+      }
+    },
+    {
+      "batch_index": 1,
+      "raw_response": "{\"units\": [{\"source_unit_id\": \"unit:3:2166\", \"complete\": true, \"explanation\": \"The only scientific assertion in this unit's assigned fragment, claim_16, is extracted; no additional scientific or report-structure assertions remain in the fragment.\"}, {\"source_unit_id\": \"unit:4:2396\", \"complete\": true, \"explanation\": \"Both assertions in this unit's assigned fragment, claim_17 (report structure) and claim_18 (scientific comparison policy), are extracted; no additional assertions remain.\"}, {\"source_unit_id\": \"unit:5:2659\", \"complete\": true, \"explanation\": \"Both assertions in this unit's assigned fragment, claim_19 (paradigm classification) and claim_20 (metric learning scope), are extracted; no additional assertions remain.\"}, {\"source_unit_id\": \"unit:6:3025\", \"complete\": true, \"explanation\": \"All three assertions in this unit's assigned fragment, claim_21 (classification standard), claim_22 (three-category taxonomy) and claim_23 (corresponding questions), are extracted; no additional assertions remain.\"}, {\"source_unit_id\": \"unit:7:3255\", \"complete\": true, \"explanation\": \"All four assertions in this unit's assigned fragment, claim_24 (feature embedding classification basis), claim_25 (deep K-tuplet network), claim_26 (Proto-Triplet/ICNN loss) and claim_27 (common goal), are extracted; no additional assertions remain.\"}, {\"source_unit_id\": \"unit:8:3509\", \"complete\": true, \"explanation\": \"All four assertions in this unit's assigned fragment, claim_28 (class representation classification basis), claim_29 (nearest prototype method), claim_30 (SRL subspace method) and claim_31 (representation granularity), are extracted; no additional assertions remain.\"}], \"decisions\": [{\"claim_id\": \"claim_16\", \"correct_kind\": \"scientific\", \"atomic\": true, \"source_faithful\": true, \"status\": \"supported\", \"reason_code\": \"supported\", \"explanation\": \"The claim faithfully restates the fragment's description of meta-learning. The cited original supports that meta-learning trains a meta-learner across many classification tasks to extract generalizable knowledge enabling rapid adaptation to new tasks, covering both required aspects.\", \"support_basis\": [{\"support_id\": \"p8\"}, {\"support_id\": \"p9\"}], \"aspect_checks\": [{\"aspect\": \"predicate\", \"supported\": true, \"support_ids\": [\"p8\", \"p9\"], \"explanation\": \"The selected passages explicitly state that meta-learning trains a meta-learner on many different classification tasks to extract generalizable knowledge enabling rapid learning on new related tasks, matching the claim's predicate.\"}, {\"aspect\": \"conditions\", \"supported\": true, \"support_ids\": [\"p8\", \"p9\"], \"explanation\": \"The passages situate meta-learning within few-shot classification, consistent with the claim's scope; no additional unstated conditions are required.\"}]}, {\"claim_id\": \"claim_17\", \"correct_kind\": \"report_structure\", \"atomic\": true, \"source_faithful\": true, \"status\": \"unsupported\", \"reason_code\": \"uncited_claim\", \"explanation\": \"This is a report-organization statement describing the review's planned chapter structure. It is faithfully extracted from the fragment, but the fragment carries no citations, so there is no paper basis to support this report-internal organizational choice.\", \"support_basis\": [], \"aspect_checks\": []}, {\"claim_id\": \"claim_18\", \"correct_kind\": \"scientific\", \"atomic\": true, \"source_faithful\": true, \"status\": \"unsupported\", \"reason_code\": \"insufficient_support\", \"explanation\": \"The claim states a methodological policy for cross-paper experimental comparison. The cited materials describe individual methods and the review taxonomy, but none explicitly state that comparisons are only made when dataset, episode, training setup and metrics align, nor that no ranking is constructed under inconsistent conditions.\", \"support_basis\": [{\"support_id\": \"p3\"}, {\"support_id\": \"p7\"}], \"aspect_checks\": [{\"aspect\": \"predicate\", \"supported\": false, \"support_ids\": [], \"explanation\": \"Neither selected passage articulates the comparison policy or the no-ranking rule for inconsistent cross-paper conditions.\"}, {\"aspect\": \"conditions\", \"supported\": false, \"support_ids\": [], \"explanation\": \"The passages do not specify the alignment conditions (dataset, episode count, training setup, metrics) required for valid comparison.\"}]}, {\"claim_id\": \"claim_19\", \"correct_kind\": \"scientific\", \"atomic\": false, \"source_faithful\": true, \"status\": \"supported\", \"reason_code\": \"supported\", \"explanation\": \"The claim combines two related but independently characterizable paradigm descriptions (transfer learning and meta-learning) in one sentence; it is faithfully extracted from the fragment. The cited originals support both the two-category grouping of few-shot learning and the defining properties of each paradigm.\", \"support_basis\": [{\"support_id\": \"p1\"}, {\"support_id\": \"p8\"}, {\"support_id\": \"p9\"}, {\"support_id\": \"p10\"}], \"aspect_checks\": [{\"aspect\": \"predicate\", \"supported\": true, \"support_ids\": [\"p1\", \"p8\", \"p9\", \"p10\"], \"explanation\": \"The selected passages state few-shot learning is grouped into transfer learning and meta-learning, with transfer learning relying on upstream pre-training and downstream adaptation, and meta-learning accumulating generalizable knowledge across tasks, matching the claim.\"}, {\"aspect\": \"conditions\", \"supported\": true, \"support_ids\": [\"p1\", \"p8\", \"p9\", \"p10\"], \"explanation\": \"The passages situate both paradigms within few-shot image classification, consistent with the claim's scope.\"}, {\"aspect\": \"causal_relation\", \"supported\": true, \"support_ids\": [\"p1\", \"p8\", \"p9\", \"p10\"], \"explanation\": \"The passages describe the functional relationship between upstream pre-training and downstream adaptation for transfer learning, and between multi-task training and generalizable knowledge for meta-learning, matching the claim's causal framing.\"}]}, {\"claim_id\": \"claim_20\", \"correct_kind\": \"scientific\", \"atomic\": true, \"source_faithful\": true, \"status\": \"supported\", \"reason_code\": \"supported\", \"explanation\": \"The claim states that metric learning is the report's focused technical route rather than a category mutually exclusive with transfer and meta-learning paradigms. The cited review original lists metric learning as one of several few-shot approaches alongside meta-learning and transfer learning, consistent with this non-exclusive framing.\", \"support_basis\": [{\"support_id\": \"p1\"}, {\"support_id\": \"p8\"}, {\"support_id\": \"p9\"}, {\"support_id\": \"p10\"}], \"aspect_checks\": [{\"aspect\": \"predicate\", \"supported\": true, \"support_ids\": [\"p1\", \"p9\"], \"explanation\": \"The review original lists metric learning methods alongside meta-learning and transfer learning as distinct approaches to few-shot classification, supporting that metric learning is not mutually exclusive with the broader paradigms.\"}, {\"aspect\": \"conditions\", \"supported\": true, \"support_ids\": [\"p1\", \"p9\"], \"explanation\": \"The passage situates metric learning within the few-shot classification problem, consistent with the claim's scope.\"}]}, {\"claim_id\": \"claim_21\", \"correct_kind\": \"scientific\", \"atomic\": true, \"source_faithful\": true, \"status\": \"supported\", \"reason_code\": \"supported\", \"explanation\": \"The claim states that the information-processing stage is the appropriate first-level classification criterion within metric learning. The cited review original explicitly organizes deep metric learning methods by three stages of metric learning, matching this criterion.\", \"support_basis\": [{\"support_id\": \"p1\"}, {\"support_id\": \"p3\"}], \"aspect_checks\": [{\"aspect\": \"predicate\", \"supported\": true, \"support_ids\": [\"p3\"], \"explanation\": \"The review original states it categorizes deep metric learning methods according to three stages of metric learning, directly supporting that information-processing stage is the first-level classification standard.\"}, {\"aspect\": \"conditions\", \"supported\": true, \"support_ids\": [\"p3\"], \"explanation\": \"The passage situates this taxonomy within deep metric learning for few-shot image classification, consistent with the claim's scope.\"}]}, {\"claim_id\": \"claim_22\", \"correct_kind\": \"scientific\", \"atomic\": true, \"source_faithful\": true, \"status\": \"supported\", \"reason_code\": \"supported\", \"explanation\": \"The claim states the review categorizes 2018–2022 deep metric learning methods into three groups: learning feature embeddings, learning class representations, and learning distance measures. The cited review original explicitly states this exact taxonomy and time range.\", \"support_basis\": [{\"support_id\": \"p1\"}, {\"support_id\": \"p3\"}], \"aspect_checks\": [{\"aspect\": \"predicate\", \"supported\": true, \"support_ids\": [\"p3\"], \"explanation\": \"The review original explicitly states it provides a review of deep metric learning methods from 2018 to 2022 and categorizes them into three groups: learning feature embeddings, learning class representations, and learning distance measures, matching the claim exactly.\"}, {\"aspect\": \"conditions\", \"supported\": true, \"support_ids\": [\"p3\"], \"explanation\": \"The passage situates this taxonomy within few-shot image classification deep metric learning, consistent with the claim's scope.\"}, {\"aspect\": \"quantities\", \"supported\": true, \"support_ids\": [\"p3\"], \"explanation\": \"The passage explicitly states the 2018–2022 time range and the three-category count, matching the claim's quantities.\"}]}, {\"claim_id\": \"claim_23\", \"correct_kind\": \"scientific\", \"atomic\": true, \"source_faithful\": true, \"status\": \"supported\", \"reason_code\": \"supported\", \"explanation\": \"The claim maps the three classification stages to three corresponding questions about sample encoding, support-set aggregation, and query-class comparison. The cited review original's three-stage taxonomy directly corresponds to these three information-processing steps.\", \"support_basis\": [{\"support_id\": \"p1\"}, {\"support_id\": \"p3\"}], \"aspect_checks\": [{\"aspect\": \"predicate\", \"supported\": true, \"support_ids\": [\"p3\"], \"explanation\": \"The three stages named in the review (learning feature embeddings, learning class representations, learning distance measures) directly correspond to sample encoding, support-set aggregation into class evidence, and query-class evidence comparison, matching the claim.\"}, {\"aspect\": \"conditions\", \"supported\": true, \"support_ids\": [\"p3\"], \"explanation\": \"The passage situates this mapping within the deep metric learning taxonomy for few-shot classification, consistent with the claim's scope.\"}]}, {\"claim_id\": \"claim_24\", \"correct_kind\": \"scientific\", \"atomic\": true, \"source_faithful\": true, \"status\": \"supported\", \"reason_code\": \"supported\", \"explanation\": \"The claim states that feature-embedding methods are classified by having their optimization focus on the embedding network or embedding space. The cited original for deep K-tuplet networks emphasizes feature embedding and the importance of exploring relationships among training samples in the embedding space, consistent with this classification basis.\", \"support_basis\": [{\"support_id\": \"p4\"}, {\"support_id\": \"p5\"}], \"aspect_checks\": [{\"aspect\": \"predicate\", \"supported\": true, \"support_ids\": [\"p4\", \"p5\"], \"explanation\": \"The selected passages emphasize that the learning process of the embedding network is central to few-shot metric learning, and that the deep K-tuplet network focuses on feature embedding, matching the claim that optimization is centered on the embedding network/space.\"}, {\"aspect\": \"conditions\", \"supported\": true, \"support_ids\": [\"p4\", \"p5\"], \"explanation\": \"Both passages situate these methods within few-shot image classification metric learning, consistent with the claim's scope.\"}]}, {\"claim_id\": \"claim_25\", \"correct_kind\": \"scientific\", \"atomic\": true, \"source_faithful\": true, \"status\": \"supported\", \"reason_code\": \"supported\", \"explanation\": \"The claim states that deep K-tuplet networks use episode training to learn general representations by exploiting relationships among input samples. The cited original explicitly describes this exact mechanism.\", \"support_basis\": [{\"support_id\": \"p4\"}, {\"support_id\": \"p5\"}], \"aspect_checks\": [{\"aspect\": \"predicate\", \"supported\": true, \"support_ids\": [\"p4\"], \"explanation\": \"The deep K-tuplet network paper explicitly states it extends the triplet network into a deep K-tuplet network utilizing the relationship among input samples to learn a general representation via episode-training, matching the claim exactly.\"}, {\"aspect\": \"conditions\", \"supported\": true, \"support_ids\": [\"p4\"], \"explanation\": \"The passage situates this method within few-shot learning metric-based approaches, consistent with the claim's scope.\"}, {\"aspect\": \"causal_relation\", \"supported\": true, \"support_ids\": [\"p4\"], \"explanation\": \"The passage states that episode training exploiting input-sample relationships causes the network to learn general representations, matching the claim's causal relation.\"}]}, {\"claim_id\": \"claim_26\", \"correct_kind\": \"scientific\", \"atomic\": true, \"source_faithful\": true, \"status\": \"supported\", \"reason_code\": \"supported\", \"explanation\": \"The claim states that Proto-Triplet Loss and ICNN loss explicitly constrain intra-class and inter-class distances. The cited original for these two loss functions explicitly describes this exact design.\", \"support_basis\": [{\"support_id\": \"p4\"}, {\"support_id\": \"p5\"}], \"aspect_checks\": [{\"aspect\": \"predicate\", \"supported\": true, \"support_ids\": [\"p5\"], \"explanation\": \"The loss-function paper explicitly states the two proposed loss functions consider intra-class and inter-class distances between few data, matching the claim that they explicitly constrain these distances.\"}, {\"aspect\": \"conditions\", \"supported\": true, \"support_ids\": [\"p5\"], \"explanation\": \"The passage situates these loss functions within few-shot metric learning, consistent with the claim's scope.\"}]}, {\"claim_id\": \"claim_27\", \"correct_kind\": \"scientific\", \"atomic\": true, \"source_faithful\": true, \"status\": \"supported\", \"reason_code\": \"supported\", \"explanation\": \"The claim states that feature-embedding methods share the goal of obtaining separable features for unseen classes rather than redesigning complex classifiers at inference. The cited originals state that the trained network extracts discriminative features for unseen novel categories, consistent with this goal.\", \"support_basis\": [{\"support_id\": \"p4\"}, {\"support_id\": \"p5\"}], \"aspect_checks\": [{\"aspect\": \"predicate\", \"supported\": true, \"support_ids\": [\"p4\", \"p5\"], \"explanation\": \"The selected passages state that the trained network extracts discriminative features for unseen novel categories, and that the loss functions enable better generalization to unseen classes, matching the claim's goal of separable features for unseen classes.\"}, {\"aspect\": \"conditions\", \"supported\": true, \"support_ids\": [\"p4\", \"p5\"], \"explanation\": \"Both passages situate this goal within few-shot image classification, consistent with the claim's scope.\"}]}, {\"claim_id\": \"claim_28\", \"correct_kind\": \"scientific\", \"atomic\": true, \"source_faithful\": true, \"status\": \"supported\", \"reason_code\": \"supported\", \"explanation\": \"The claim states that class-representation methods are classified by how support-set information is aggregated. The cited SRL original describes aggregating K-shot information into subspace templates, consistent with this classification basis.\", \"support_basis\": [{\"support_id\": \"p2\"}, {\"support_id\": \"p6\"}], \"aspect_checks\": [{\"aspect\": \"predicate\", \"supported\": true, \"support_ids\": [\"p6\"], \"explanation\": \"The SRL paper describes aggregating K-shot information into prototypical and discriminative subspace templates, supporting that this category is defined by how support-set information is summarized.\"}, {\"aspect\": \"conditions\", \"supported\": true, \"support_ids\": [\"p6\"], \"explanation\": \"The passage situates this method within few-shot image classification, consistent with the claim's scope.\"}]}, {\"claim_id\": \"claim_29\", \"correct_kind\": \"scientific\", \"atomic\": true, \"source_faithful\": true, \"status\": \"supported\", \"reason_code\": \"supported\", \"explanation\": \"The claim states that nearest-prototype methods classify query samples by their similarity to support-set prototypes. The cited original explicitly describes this exact classification mechanism.\", \"support_basis\": [{\"support_id\": \"p2\"}, {\"support_id\": \"p6\"}], \"aspect_checks\": [{\"aspect\": \"predicate\", \"supported\": true, \"support_ids\": [\"p2\"], \"explanation\": \"The uncertainty-aware few-shot paper explicitly states that a query sample is classified by finding the nearest prototype from the support set based on feature similarities, matching the claim exactly.\"}, {\"aspect\": \"conditions\", \"supported\": true, \"support_ids\": [\"p2\"], \"explanation\": \"The passage situates this mechanism within metric-based few-shot image classification, consistent with the claim's scope.\"}]}, {\"claim_id\": \"claim_30\", \"correct_kind\": \"scientific\", \"atomic\": true, \"source_faithful\": true, \"status\": \"supported\", \"reason_code\": \"supported\", \"explanation\": \"The claim states that SRL extends traditional vector representation to subspaces in local CNN feature space, aggregating K-shot information via prototypical or discriminative subspaces. The cited SRL original explicitly describes this exact framework.\", \"support_basis\": [{\"support_id\": \"p2\"}, {\"support_id\": \"p6\"}], \"aspect_checks\": [{\"aspect\": \"predicate\", \"supported\": true, \"support_ids\": [\"p6\"], \"explanation\": \"The SRL paper explicitly states it exploits a subspace in local CNN feature space to represent an image, extends metric learning from vector to subspace representation, and develops prototypical and discriminative subspaces to aggregate K-shot information, matching the claim exactly.\"}, {\"aspect\": \"conditions\", \"supported\": true, \"support_ids\": [\"p6\"], \"explanation\": \"The passage situates SRL within few-shot image classification, consistent with the claim's scope.\"}]}, {\"claim_id\": \"claim_31\", \"correct_kind\": \"scientific\", \"atomic\": true, \"source_faithful\": true, \"status\": \"unsupported\", \"reason_code\": \"insufficient_support\", \"explanation\": \"The claim asserts that prototype vectors and subspace templates represent different granularities of class representation. The cited SRL original states that subspace representation preserves spatial structure and diversity within an image compared to global vector representation, but it does not explicitly characterize this difference as a difference in class-representation granularity.\", \"support_basis\": [{\"support_id\": \"p2\"}, {\"support_id\": \"p6\"}], \"aspect_checks\": [{\"aspect\": \"predicate\", \"supported\": false, \"support_ids\": [], \"explanation\": \"The selected passages describe prototype similarity and subspace representation, but do not explicitly state that prototype vectors and subspace templates represent different class-representation granularities.\"}, {\"aspect\": \"conditions\", \"supported\": true, \"support_ids\": [\"p6\"], \"explanation\": \"The passages situate both representation types within few-shot image classification, consistent with the claim's scope.\"}]}], \"conflicts\": []}",
+      "raw_sha256": "614f92ee39427051ae4398ce2f4a090d367624d4a02638883c2345a2e305e287",
+      "native_format": {
+        "type": "json_schema",
+        "json_schema": {
+          "name": "host_batch_assessment_v1",
+          "strict": true,
+          "schema": {
+            "$defs": {
+              "AspectCheck": {
+                "additionalProperties": false,
+                "properties": {
+                  "aspect": {
+                    "enum": [
+                      "predicate",
+                      "conditions",
+                      "quantities",
+                      "causal_relation"
+                    ],
+                    "type": "string",
+                    "description": "Use [aspects]; all/only required_support_aspects once."
+                  },
+                  "supported": {
+                    "type": "boolean",
+                    "description": "Selected basis establishes this aspect under [aspects]."
+                  },
+                  "support_ids": {
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "p1",
+                        "p2",
+                        "p3",
+                        "p4",
+                        "p5",
+                        "p6",
+                        "p7",
+                        "p8",
+                        "p9",
+                        "p10"
+                      ]
+                    },
+                    "type": "array",
+                    "description": "Only IDs from this claim's selected support_basis."
+                  },
+                  "explanation": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "aspect",
+                  "supported",
+                  "support_ids",
+                  "explanation"
+                ],
+                "type": "object"
+              },
+              "Conflict": {
+                "additionalProperties": false,
+                "properties": {
+                  "claim_a": {
+                    "type": "string"
+                  },
+                  "claim_b": {
+                    "type": "string"
+                  },
+                  "reason": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "claim_a",
+                  "claim_b",
+                  "reason"
+                ],
+                "type": "object"
+              },
+              "PassageDecision": {
+                "additionalProperties": false,
+                "properties": {
+                  "claim_id": {
+                    "type": "string",
+                    "enum": [
+                      "claim_16",
+                      "claim_17",
+                      "claim_18",
+                      "claim_19",
+                      "claim_20",
+                      "claim_21",
+                      "claim_22",
+                      "claim_23",
+                      "claim_24",
+                      "claim_25",
+                      "claim_26",
+                      "claim_27",
+                      "claim_28",
+                      "claim_29",
+                      "claim_30",
+                      "claim_31"
+                    ]
+                  },
+                  "correct_kind": {
+                    "enum": [
+                      "scientific",
+                      "runtime_method",
+                      "report_structure"
+                    ],
+                    "type": "string",
+                    "description": "Use [classification] independently of the assigned kind."
+                  },
+                  "atomic": {
+                    "type": "boolean",
+                    "description": "Use [atomic]."
+                  },
+                  "source_faithful": {
+                    "type": "boolean",
+                    "description": "Use [fidelity], independently of paper support."
+                  },
+                  "status": {
+                    "enum": [
+                      "supported",
+                      "unsupported",
+                      "unverifiable"
+                    ],
+                    "type": "string",
+                    "description": "Use [consistency]; must match reason_code."
+                  },
+                  "reason_code": {
+                    "enum": [
+                      "supported",
+                      "insufficient_support",
+                      "uncited_claim",
+                      "attribution_mismatch",
+                      "record_mismatch",
+                      "unverifiable"
+                    ],
+                    "type": "string",
+                    "description": "supported/supported;unsupported/insufficient_support|uncited_claim|attribution_mismatch|record_mismatch;unverifiable/unverifiable"
+                  },
+                  "explanation": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "support_basis": {
+                    "items": {
+                      "$ref": "#/$defs/SupportSelection"
+                    },
+                    "maxItems": 16,
+                    "type": "array"
+                  },
+                  "aspect_checks": {
+                    "items": {
+                      "$ref": "#/$defs/AspectCheck"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "claim_id",
+                  "correct_kind",
+                  "atomic",
+                  "source_faithful",
+                  "status",
+                  "reason_code",
+                  "explanation",
+                  "support_basis",
+                  "aspect_checks"
+                ],
+                "type": "object"
+              },
+              "SupportSelection": {
+                "additionalProperties": false,
+                "properties": {
+                  "support_id": {
+                    "type": "string",
+                    "enum": [
+                      "p1",
+                      "p2",
+                      "p3",
+                      "p4",
+                      "p5",
+                      "p6",
+                      "p7",
+                      "p8",
+                      "p9",
+                      "p10"
+                    ],
+                    "description": "Use [support]; only this claim's allowed_support_ids."
+                  }
+                },
+                "required": [
+                  "support_id"
+                ],
+                "type": "object"
+              },
+              "UnitDecision": {
+                "additionalProperties": false,
+                "properties": {
+                  "source_unit_id": {
+                    "type": "string",
+                    "enum": [
+                      "unit:3:2166",
+                      "unit:4:2396",
+                      "unit:5:2659",
+                      "unit:6:3025",
+                      "unit:7:3255",
+                      "unit:8:3509"
+                    ]
+                  },
+                  "complete": {
+                    "type": "boolean",
+                    "description": "Use [complete] for this batch's assigned subset."
+                  },
+                  "explanation": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "source_unit_id",
+                  "complete",
+                  "explanation"
+                ],
+                "type": "object"
+              }
+            },
+            "additionalProperties": false,
+            "properties": {
+              "units": {
+                "items": {
+                  "$ref": "#/$defs/UnitDecision"
+                },
+                "type": "array",
+                "minItems": 6,
+                "maxItems": 6
+              },
+              "decisions": {
+                "items": {
+                  "$ref": "#/$defs/PassageDecision"
+                },
+                "type": "array",
+                "minItems": 16,
+                "maxItems": 16
+              },
+              "conflicts": {
+                "items": {
+                  "$ref": "#/$defs/Conflict"
+                },
+                "type": "array",
+                "maxItems": 0
+              }
+            },
+            "required": [
+              "units",
+              "decisions",
+              "conflicts"
+            ],
+            "type": "object",
+            "description": "[atomic] One independently true/false primary relation, retaining its full subjects, objects, negation, conditions and qualifiers. Separate independent mechanisms, metrics, datasets and results. A comparison can be one relation with two methods; multiple entities or punctuation alone do not make it compound. Keep a single conditional relation intact; do not invent separate experiments from one jointly reported result. Missing paper support is not non-atomic; a lost report premise is a fidelity defect, not automatically a second relation.\n[classification] Determine correct_kind from content independently of the assigned kind; The host derives agreement with the assigned kind; never silently change the denominator. Scientific includes mechanisms, results, empirical comparisons, established classifications, limitations and research-proposal premises. runtime_method means actual execution queries, dates, sources, counts or procedures, checked only against host records, never inferred from prose. report_structure means only this report's organization, chosen scope, aims or grouping. A choice not to rank methods is organization; a claim that cited materials lack comparable results concerns source content and needs evidence. Split mixed statements; their scientific premises remain scientific. Headings, 'this review', hedging, proposals, matching text or absent citations never exempt science. Keep the report language.\n[fidelity] source_faithful compares extraction ONLY to its owning report fragment, including same-unit context for subjects and qualifiers, never borrowed citations. Preserve entity, number, condition, negation, qualifier and citation ownership and logical scope: 'cannot infer P' is not 'infer not-P'. Ambiguous ownership is unverifiable. A faithfully extracted uncited claim can have true fidelity but no paper support. A paper's 60 cannot repair report 30 extracted as 60. Neither location equality nor paper entailment establishes classification or report fidelity.\n[support] Science uses ONLY this claim's allowed_support_ids and complete original intervals reached through its own citations, not model knowledge, candidates, another claim or neighboring context. The allowed set is permission; basis may be a sufficient subset or combine passages. An unused citation alone is not attribution_mismatch; assess its relevance separately. Select actual findings, not introductory motivation or window previews. full_original is not automatic support. document_subject only resolves that paper's we/our, never proves a mechanism or result. Do not guess aliases, spelling, ownership or PDF word breaks. Partial negatives may keep basis for established aspects; missing aspects stay false. Non-scientific or baseless decisions use empty basis. Runtime compares host_runtime_record only; absent records are unverifiable, explicit not-performed records can support an honest disclosure.\n[aspects] Check all and only required_support_aspects once using selected basis IDs; emit no extra N/A true/false rows. The full claim still needs checking: keep genuine defects in the relevant required check and status, never omit them. predicate includes full subject/method ownership, relation, object/comparator and polarity; a paper comparing A/B does not prove B's mechanism. conditions includes task, dataset, model, training/hardware setup and applicability. quantities binds object, metric, value, unit, direction and average/peak: FLOPs is not speed, top-5 not top-1, percent not percentage points, reduced TO not BY, up-to not average. Dimensions, resolution and counts are quantities; digits in names are not automatically results. causal_relation checks the actual causal or inferential relation and its cited premises. Bounded synthesis may reason from full cited originals; missing supplied text cannot prove different conditions, field-wide absence, not-P or causation. Lack of grounds to infer P is not evidence for not-P. Negated protocol labels are not positive results. Entity/number overlap or plausibility is insufficient.\n[consistency] Determine kind, atomicity and report fidelity independently, then basis and required aspects, then a consistent status/reason. Supported science needs valid cited basis covering every required aspect. A negative aspect prevents supported; with faithful atomic classification and fully established aspects, do not return unsupported. Never force a positive aspect to obtain a status. Wrong entity/method/setting/number uses attribution_mismatch; absent/weaker support insufficient_support; no citation uncited_claim; unknown unverifiable. This consistency check is not scientific proof or permission to change prose.\n[complete] Completeness means faithful coverage of the assigned report inventory, not paper support. Unsupported but faithful science can be completely extracted. Include scientific and other assertions, exclusions, tables, Abstract and Conclusion. Matching IDs, processing or exclusions do not prove no omissions."
+          }
+        }
+      }
+    }
+  ],
+  "atomic_false_records": [
+    {
+      "claim": {
+        "claim_id": "claim_1",
+        "kind": "scientific",
+        "claim_text": "按信息处理环节，深度K-tuplet、Proto-Triplet/ICNN和MSENet主要改进嵌入空间或多层特征。",
+        "source_unit_id": "unit:0:31",
+        "source_fragment_id": "unit:0:31:native:writer:abstract:0:0",
+        "source_quote": "本综述比较少样本图像分类中的度量学习方法，范围限定为学习特征嵌入、类别表示或查询—支持相似度，并依据支持样本与未见查询的距离作分类。按信息处理环节，深度K-tuplet、Proto-Triplet/ICNN和MSENet主要改进嵌入空间或多层特征；原型方法与SRL分别以类别原型向量和子空间聚合支持集；关系网络、目标条件化比较器和不确定性框架则把比较函数参数化或解释相似度可靠性。实验证据显示，K-tuplet在miniImageNet及四个跨域数据集上有摘要报告的优势，Proto-Triplet/ICNN在miniImageNet上相对其他度量方法报告2%准确率提升，MSENet覆盖MiniImageNet、FC100的5-way 1/5-shot及八个跨域基准，SRL在MiniImageNet、TieredImageNet和CUB上报告竞争力或更优。 [E:arxiv:2105.08149:page:1:block:9:claim:7cf2d36a262c] [E:arxiv:2010.04525:abstract:claim:7178a9c4f03f] [E:arxiv:2105.08149:abstract:claim:ae8bdfee0e05] [E:arxiv:1907.03123:abstract:claim:5a36249bbf1e] [E:arxiv:2305.09062:abstract:claim:549b9167d596] [E:arxiv:2409.07989:abstract:claim:5ed923dac68f] [E:arxiv:2105.00379:abstract:claim:38498384e907] [E:arxiv:1711.06025:section:abstract:12:43376954155c:claim:71df1568e996] [E:arxiv:1802.04376:abstract:claim:50a611de7d64] [E:arxiv:1907.03123:abstract:claim:998fb93b2a24] [E:arxiv:1907.03123:abstract:claim:b4d49aba47c5] [E:arxiv:2305.09062:abstract:claim:aaed703eb739] [E:arxiv:2105.00379:abstract:claim:e2d40a72c0d6] [E:arxiv:2104.02638:section:abstract:9:1354132472a1:claim:3fb7cfd2fbdb]",
+        "source_start": 31,
+        "source_end": 1150,
+        "section": "摘要",
+        "evidence_ids": [
+          "arxiv:2105.08149:page:1:block:9:claim:7cf2d36a262c",
+          "arxiv:2010.04525:abstract:claim:7178a9c4f03f",
+          "arxiv:2105.08149:abstract:claim:ae8bdfee0e05",
+          "arxiv:1907.03123:abstract:claim:5a36249bbf1e",
+          "arxiv:2305.09062:abstract:claim:549b9167d596",
+          "arxiv:2409.07989:abstract:claim:5ed923dac68f",
+          "arxiv:2105.00379:abstract:claim:38498384e907",
+          "arxiv:1711.06025:section:abstract:12:43376954155c:claim:71df1568e996",
+          "arxiv:1802.04376:abstract:claim:50a611de7d64",
+          "arxiv:1907.03123:abstract:claim:998fb93b2a24",
+          "arxiv:1907.03123:abstract:claim:b4d49aba47c5",
+          "arxiv:2305.09062:abstract:claim:aaed703eb739",
+          "arxiv:2105.00379:abstract:claim:e2d40a72c0d6",
+          "arxiv:2104.02638:section:abstract:9:1354132472a1:claim:3fb7cfd2fbdb"
+        ],
+        "local_error": null
+      },
+      "canonical_decision": {
+        "claim_id": "claim_1",
+        "correct_kind": "scientific",
+        "atomic": false,
+        "classification_valid": true,
+        "source_faithful": true,
+        "status": "unsupported",
+        "reason_code": "insufficient_support",
+        "explanation": "The claim bundles three distinct methods into one assertion. K-tuplet is supported by s4, Proto-Triplet/ICNN by s5, and MSENet by s6, but no single cited source covers all three methods' embedding-space/multi-layer feature improvements as a combined claim.",
+        "support_basis": [
+          {
+            "support_id": "e4:full_original"
+          },
+          {
+            "support_id": "e5:full_original"
+          },
+          {
+            "support_id": "e6:full_original"
+          }
+        ],
+        "aspect_checks": [
+          {
+            "aspect": "predicate",
+            "supported": false,
+            "support_ids": [
+              "e4:full_original",
+              "e5:full_original",
+              "e6:full_original"
+            ],
+            "explanation": "Each source supports only its own method's feature/embedding improvement; no source establishes the combined grouping of all three methods as primarily improving embedding space or multi-layer features."
+          },
+          {
+            "aspect": "conditions",
+            "supported": true,
+            "support_ids": [
+              "e4:full_original",
+              "e5:full_original",
+              "e6:full_original"
+            ],
+            "explanation": "Each source describes its method in the few-shot image classification setting with appropriate datasets."
+          }
+        ]
+      },
+      "batch_index": 0
+    },
+    {
+      "claim": {
+        "claim_id": "claim_2",
+        "kind": "scientific",
+        "claim_text": "原型方法与SRL分别以类别原型向量和子空间聚合支持集。",
+        "source_unit_id": "unit:0:31",
+        "source_fragment_id": "unit:0:31:native:writer:abstract:0:0",
+        "source_quote": "本综述比较少样本图像分类中的度量学习方法，范围限定为学习特征嵌入、类别表示或查询—支持相似度，并依据支持样本与未见查询的距离作分类。按信息处理环节，深度K-tuplet、Proto-Triplet/ICNN和MSENet主要改进嵌入空间或多层特征；原型方法与SRL分别以类别原型向量和子空间聚合支持集；关系网络、目标条件化比较器和不确定性框架则把比较函数参数化或解释相似度可靠性。实验证据显示，K-tuplet在miniImageNet及四个跨域数据集上有摘要报告的优势，Proto-Triplet/ICNN在miniImageNet上相对其他度量方法报告2%准确率提升，MSENet覆盖MiniImageNet、FC100的5-way 1/5-shot及八个跨域基准，SRL在MiniImageNet、TieredImageNet和CUB上报告竞争力或更优。 [E:arxiv:2105.08149:page:1:block:9:claim:7cf2d36a262c] [E:arxiv:2010.04525:abstract:claim:7178a9c4f03f] [E:arxiv:2105.08149:abstract:claim:ae8bdfee0e05] [E:arxiv:1907.03123:abstract:claim:5a36249bbf1e] [E:arxiv:2305.09062:abstract:claim:549b9167d596] [E:arxiv:2409.07989:abstract:claim:5ed923dac68f] [E:arxiv:2105.00379:abstract:claim:38498384e907] [E:arxiv:1711.06025:section:abstract:12:43376954155c:claim:71df1568e996] [E:arxiv:1802.04376:abstract:claim:50a611de7d64] [E:arxiv:1907.03123:abstract:claim:998fb93b2a24] [E:arxiv:1907.03123:abstract:claim:b4d49aba47c5] [E:arxiv:2305.09062:abstract:claim:aaed703eb739] [E:arxiv:2105.00379:abstract:claim:e2d40a72c0d6] [E:arxiv:2104.02638:section:abstract:9:1354132472a1:claim:3fb7cfd2fbdb]",
+        "source_start": 31,
+        "source_end": 1150,
+        "section": "摘要",
+        "evidence_ids": [
+          "arxiv:2105.08149:page:1:block:9:claim:7cf2d36a262c",
+          "arxiv:2010.04525:abstract:claim:7178a9c4f03f",
+          "arxiv:2105.08149:abstract:claim:ae8bdfee0e05",
+          "arxiv:1907.03123:abstract:claim:5a36249bbf1e",
+          "arxiv:2305.09062:abstract:claim:549b9167d596",
+          "arxiv:2409.07989:abstract:claim:5ed923dac68f",
+          "arxiv:2105.00379:abstract:claim:38498384e907",
+          "arxiv:1711.06025:section:abstract:12:43376954155c:claim:71df1568e996",
+          "arxiv:1802.04376:abstract:claim:50a611de7d64",
+          "arxiv:1907.03123:abstract:claim:998fb93b2a24",
+          "arxiv:1907.03123:abstract:claim:b4d49aba47c5",
+          "arxiv:2305.09062:abstract:claim:aaed703eb739",
+          "arxiv:2105.00379:abstract:claim:e2d40a72c0d6",
+          "arxiv:2104.02638:section:abstract:9:1354132472a1:claim:3fb7cfd2fbdb"
+        ],
+        "local_error": null
+      },
+      "canonical_decision": {
+        "claim_id": "claim_2",
+        "correct_kind": "scientific",
+        "atomic": false,
+        "classification_valid": true,
+        "source_faithful": true,
+        "status": "unsupported",
+        "reason_code": "insufficient_support",
+        "explanation": "The claim bundles prototype methods and SRL into one assertion. Prototype methods are described in s2, while SRL's subspace aggregation is supported by s7; no single source covers both as a combined claim.",
+        "support_basis": [
+          {
+            "support_id": "e2:full_original"
+          },
+          {
+            "support_id": "e7:full_original"
+          }
+        ],
+        "aspect_checks": [
+          {
+            "aspect": "predicate",
+            "supported": false,
+            "support_ids": [
+              "e2:full_original",
+              "e7:full_original"
+            ],
+            "explanation": "s2 describes prototype-based classification, and s7 describes SRL's subspace representation; no source establishes the combined grouping of prototype methods and SRL as separate support-aggregation approaches."
+          },
+          {
+            "aspect": "conditions",
+            "supported": true,
+            "support_ids": [
+              "e2:full_original",
+              "e7:full_original"
+            ],
+            "explanation": "Both sources describe few-shot image classification settings."
+          }
+        ]
+      },
+      "batch_index": 0
+    },
+    {
+      "claim": {
+        "claim_id": "claim_3",
+        "kind": "scientific",
+        "claim_text": "关系网络、目标条件化比较器和不确定性框架则把比较函数参数化或解释相似度可靠性。",
+        "source_unit_id": "unit:0:31",
+        "source_fragment_id": "unit:0:31:native:writer:abstract:0:0",
+        "source_quote": "本综述比较少样本图像分类中的度量学习方法，范围限定为学习特征嵌入、类别表示或查询—支持相似度，并依据支持样本与未见查询的距离作分类。按信息处理环节，深度K-tuplet、Proto-Triplet/ICNN和MSENet主要改进嵌入空间或多层特征；原型方法与SRL分别以类别原型向量和子空间聚合支持集；关系网络、目标条件化比较器和不确定性框架则把比较函数参数化或解释相似度可靠性。实验证据显示，K-tuplet在miniImageNet及四个跨域数据集上有摘要报告的优势，Proto-Triplet/ICNN在miniImageNet上相对其他度量方法报告2%准确率提升，MSENet覆盖MiniImageNet、FC100的5-way 1/5-shot及八个跨域基准，SRL在MiniImageNet、TieredImageNet和CUB上报告竞争力或更优。 [E:arxiv:2105.08149:page:1:block:9:claim:7cf2d36a262c] [E:arxiv:2010.04525:abstract:claim:7178a9c4f03f] [E:arxiv:2105.08149:abstract:claim:ae8bdfee0e05] [E:arxiv:1907.03123:abstract:claim:5a36249bbf1e] [E:arxiv:2305.09062:abstract:claim:549b9167d596] [E:arxiv:2409.07989:abstract:claim:5ed923dac68f] [E:arxiv:2105.00379:abstract:claim:38498384e907] [E:arxiv:1711.06025:section:abstract:12:43376954155c:claim:71df1568e996] [E:arxiv:1802.04376:abstract:claim:50a611de7d64] [E:arxiv:1907.03123:abstract:claim:998fb93b2a24] [E:arxiv:1907.03123:abstract:claim:b4d49aba47c5] [E:arxiv:2305.09062:abstract:claim:aaed703eb739] [E:arxiv:2105.00379:abstract:claim:e2d40a72c0d6] [E:arxiv:2104.02638:section:abstract:9:1354132472a1:claim:3fb7cfd2fbdb]",
+        "source_start": 31,
+        "source_end": 1150,
+        "section": "摘要",
+        "evidence_ids": [
+          "arxiv:2105.08149:page:1:block:9:claim:7cf2d36a262c",
+          "arxiv:2010.04525:abstract:claim:7178a9c4f03f",
+          "arxiv:2105.08149:abstract:claim:ae8bdfee0e05",
+          "arxiv:1907.03123:abstract:claim:5a36249bbf1e",
+          "arxiv:2305.09062:abstract:claim:549b9167d596",
+          "arxiv:2409.07989:abstract:claim:5ed923dac68f",
+          "arxiv:2105.00379:abstract:claim:38498384e907",
+          "arxiv:1711.06025:section:abstract:12:43376954155c:claim:71df1568e996",
+          "arxiv:1802.04376:abstract:claim:50a611de7d64",
+          "arxiv:1907.03123:abstract:claim:998fb93b2a24",
+          "arxiv:1907.03123:abstract:claim:b4d49aba47c5",
+          "arxiv:2305.09062:abstract:claim:aaed703eb739",
+          "arxiv:2105.00379:abstract:claim:e2d40a72c0d6",
+          "arxiv:2104.02638:section:abstract:9:1354132472a1:claim:3fb7cfd2fbdb"
+        ],
+        "local_error": null
+      },
+      "canonical_decision": {
+        "claim_id": "claim_3",
+        "correct_kind": "scientific",
+        "atomic": false,
+        "classification_valid": true,
+        "source_faithful": true,
+        "status": "unsupported",
+        "reason_code": "insufficient_support",
+        "explanation": "The claim bundles relation networks, target-conditioned comparators, and uncertainty frameworks into one assertion. Relation networks are supported by s8/s11, target-conditioned embeddings by s9, and uncertainty frameworks by s2; no single source covers all three as a combined claim.",
+        "support_basis": [
+          {
+            "support_id": "e2:full_original"
+          },
+          {
+            "support_id": "e8:full_original"
+          },
+          {
+            "support_id": "e9:full_original"
+          }
+        ],
+        "aspect_checks": [
+          {
+            "aspect": "predicate",
+            "supported": false,
+            "support_ids": [
+              "e2:full_original",
+              "e8:full_original",
+              "e9:full_original"
+            ],
+            "explanation": "Each source supports only its own method's comparison-function parameterization or uncertainty modeling; no source establishes the combined grouping of all three method families."
+          },
+          {
+            "aspect": "conditions",
+            "supported": true,
+            "support_ids": [
+              "e2:full_original",
+              "e8:full_original",
+              "e9:full_original"
+            ],
+            "explanation": "All sources describe few-shot image classification settings."
+          }
+        ]
+      },
+      "batch_index": 0
+    },
+    {
+      "claim": {
+        "claim_id": "claim_19",
+        "kind": "scientific",
+        "claim_text": "在本综述的分类框架中，少样本学习首先可按学习范式区分为迁移学习与元学习：迁移学习依赖上游数据集预训练和下游任务适配，元学习则通过多个任务积累可泛化知识。",
+        "source_unit_id": "unit:5:2659",
+        "source_fragment_id": "unit:5:2659:native:writer:taxonomy:0:0",
+        "source_quote": "在本综述的分类框架中，少样本学习首先可按学习范式区分为迁移学习与元学习：迁移学习依赖上游数据集预训练和下游任务适配，元学习则通过多个任务积累可泛化知识；度量学习是本报告关注的技术路线，而不是与这两个总范式完全互斥的标签。 [E:arxiv:2104.02638:section:abstract:2:c92e388de5e0:claim:a5140904b8b9] [E:arxiv:2104.02638:section:abstract:2:c92e388de5e0:claim:1a6b9a5336b7] [E:arxiv:2105.08149:page:1:block:9:claim:70e47785f750] [E:arxiv:2105.08149:page:1:block:9:claim:7cf2d36a262c]",
+        "source_start": 2659,
+        "source_end": 3023,
+        "section": "基础概念与方法分类",
+        "evidence_ids": [
+          "arxiv:2104.02638:section:abstract:2:c92e388de5e0:claim:a5140904b8b9",
+          "arxiv:2104.02638:section:abstract:2:c92e388de5e0:claim:1a6b9a5336b7",
+          "arxiv:2105.08149:page:1:block:9:claim:70e47785f750",
+          "arxiv:2105.08149:page:1:block:9:claim:7cf2d36a262c"
+        ],
+        "local_error": null
+      },
+      "canonical_decision": {
+        "claim_id": "claim_19",
+        "correct_kind": "scientific",
+        "atomic": false,
+        "classification_valid": true,
+        "source_faithful": true,
+        "status": "supported",
+        "reason_code": "supported",
+        "explanation": "The claim combines two related but independently characterizable paradigm descriptions (transfer learning and meta-learning) in one sentence; it is faithfully extracted from the fragment. The cited originals support both the two-category grouping of few-shot learning and the defining properties of each paradigm.",
+        "support_basis": [
+          {
+            "support_id": "e1:full_original"
+          },
+          {
+            "support_id": "e16:full_original"
+          },
+          {
+            "support_id": "e17:full_original"
+          },
+          {
+            "support_id": "e18:full_original"
+          }
+        ],
+        "aspect_checks": [
+          {
+            "aspect": "predicate",
+            "supported": true,
+            "support_ids": [
+              "e1:full_original",
+              "e16:full_original",
+              "e17:full_original",
+              "e18:full_original"
+            ],
+            "explanation": "The selected passages state few-shot learning is grouped into transfer learning and meta-learning, with transfer learning relying on upstream pre-training and downstream adaptation, and meta-learning accumulating generalizable knowledge across tasks, matching the claim."
+          },
+          {
+            "aspect": "conditions",
+            "supported": true,
+            "support_ids": [
+              "e1:full_original",
+              "e16:full_original",
+              "e17:full_original",
+              "e18:full_original"
+            ],
+            "explanation": "The passages situate both paradigms within few-shot image classification, consistent with the claim's scope."
+          },
+          {
+            "aspect": "causal_relation",
+            "supported": true,
+            "support_ids": [
+              "e1:full_original",
+              "e16:full_original",
+              "e17:full_original",
+              "e18:full_original"
+            ],
+            "explanation": "The passages describe the functional relationship between upstream pre-training and downstream adaptation for transfer learning, and between multi-task training and generalizable knowledge for meta-learning, matching the claim's causal framing."
+          }
+        ]
+      },
+      "batch_index": 1
+    }
+  ],
+  "global_misstatement": {
+    "raw_response": "{\"units\": [{\"source_unit_id\": \"v1\", \"complete\": true, \"explanation\": \"f1与f2的全部核心断言均已提取，涵盖摘要的方法分类、各方法实验证据及不可合并全局排名的结论，无遗漏。\"}, {\"source_unit_id\": \"v2\", \"complete\": true, \"explanation\": \"f3完整提取了少样本图像分类的核心问题与过拟合困难两个断言，无遗漏。\"}, {\"source_unit_id\": \"v3\", \"complete\": true, \"explanation\": \"f4的范围限定与原型式设定下的查询分类规则均已提取，无遗漏。\"}, {\"source_unit_id\": \"v4\", \"complete\": true, \"explanation\": \"f5完整提取了度量学习与迁移学习、元学习的区分及两类范式的定义，无遗漏。\"}, {\"source_unit_id\": \"v5\", \"complete\": true, \"explanation\": \"f6的章节组织说明与实验比较规则均已提取，无遗漏。\"}, {\"source_unit_id\": \"v6\", \"complete\": true, \"explanation\": \"f7完整提取了学习范式分类、度量学习的定位说明，无遗漏。\"}, {\"source_unit_id\": \"v7\", \"complete\": true, \"explanation\": \"f8完整提取了度量学习内部一级分类标准、三类划分及对应问题，无遗漏。\"}, {\"source_unit_id\": \"v8\", \"complete\": true, \"explanation\": \"f9完整提取了特征嵌入类的分类依据、代表方法与共同目标，无遗漏。\"}, {\"source_unit_id\": \"v9\", \"complete\": true, \"explanation\": \"f10完整提取了类别表示类的分类依据、代表方法与粒度差异，无遗漏。\"}, {\"source_unit_id\": \"v10\", \"complete\": true, \"explanation\": \"f11完整提取了距离度量类的分类依据、固定度量与可学习比较的差异，无遗漏。\"}, {\"source_unit_id\": \"v11\", \"complete\": true, \"explanation\": \"f12完整提取了跨阶段设计的归类规则、MSENet与不确定性框架的所属环节，无遗漏。\"}, {\"source_unit_id\": \"v12\", \"complete\": true, \"explanation\": \"f13完整提取了任务目标区分、迁移学习与零样本扩展的边界说明，无遗漏。\"}, {\"source_unit_id\": \"v13\", \"complete\": true, \"explanation\": \"f14的章节组织说明已完整提取，无遗漏。\"}, {\"source_unit_id\": \"v14\", \"complete\": true, \"explanation\": \"f15与f16完整提取了深度K-tuplet的机制、贡献、实验证据与适用边界，无遗漏。\"}, {\"source_unit_id\": \"v15\", \"complete\": true, \"explanation\": \"f17与f18完整提取了Proto-Triplet/ICNN的机制、实验证据与适用边界，无遗漏。\"}, {\"source_unit_id\": \"v16\", \"complete\": true, \"explanation\": \"f19与f20完整提取了MSENet的机制、证据场景与适用边界，无遗漏。\"}, {\"source_unit_id\": \"v17\", \"complete\": true, \"explanation\": \"f21完整提取了原型式度量学习的机制、优点与边界，无遗漏。\"}, {\"source_unit_id\": \"v18\", \"complete\": true, \"explanation\": \"f22与f23完整提取了SRL的机制、贡献、实验证据与适用边界，无遗漏。\"}, {\"source_unit_id\": \"v19\", \"complete\": true, \"explanation\": \"f24与f25完整提取了关系网络的机制、权衡与边界，无遗漏。\"}, {\"source_unit_id\": \"v20\", \"complete\": true, \"explanation\": \"f26与f27完整提取了目标条件化比较器的机制、贡献、证据与适用边界，无遗漏。\"}, {\"source_unit_id\": \"v21\", \"complete\": true, \"explanation\": \"f28与f29完整提取了不确定性感知框架的机制、贡献、证据与适用边界，无遗漏。\"}, {\"source_unit_id\": \"v22\", \"complete\": true, \"explanation\": \"f30完整提取了大规模迁移学习的定位、证据与对照作用，无遗漏。\"}, {\"source_unit_id\": \"v23\", \"complete\": true, \"explanation\": \"f31完整提取了方法层面的比较维度与归纳偏置差异，无遗漏。\"}, {\"source_unit_id\": \"v24\", \"complete\": true, \"explanation\": \"f32完整提取了实验评价协议的区分与不可合并全局排名的原因，无遗漏。\"}, {\"source_unit_id\": \"v25\", \"complete\": true, \"explanation\": \"f33完整提取了深度K-tuplet的同域实验主张与适用比较对象边界，无遗漏。\"}, {\"source_unit_id\": \"v26\", \"complete\": true, \"explanation\": \"f34完整提取了Proto-Triplet/ICNN的同域量化结果与适用边界，无遗漏。\"}, {\"source_unit_id\": \"v27\", \"complete\": true, \"explanation\": \"f35完整提取了MSENet的同域实验设置与不可排名的原因，无遗漏。\"}, {\"source_unit_id\": \"v28\", \"complete\": true, \"explanation\": \"f36完整提取了SRL的同域实验覆盖与不可精确排序的原因，无遗漏。\"}, {\"source_unit_id\": \"v29\", \"complete\": true, \"explanation\": \"f37完整提取了深度K-tuplet的跨域实验设置与比较条件，无遗漏。\"}, {\"source_unit_id\": \"v30\", \"complete\": true, \"explanation\": \"f38完整提取了Proto-Triplet/ICNN的跨域评价与不可直接比较的原因，无遗漏。\"}, {\"source_unit_id\": \"v31\", \"complete\": true, \"explanation\": \"f39完整提取了MSENet的跨域实验范围与不可合并解读的原因，无遗漏。\"}, {\"source_unit_id\": \"v32\", \"complete\": true, \"explanation\": \"f40完整提取了大规模迁移学习的Meta-Dataset评价结论与边界，无遗漏。\"}, {\"source_unit_id\": \"v33\", \"complete\": true, \"explanation\": \"f41完整提取了综合实验证据的维度划分与不可形成统一排行榜的结论，无遗漏。\"}, {\"source_unit_id\": \"v34\", \"complete\": true, \"explanation\": \"f42完整提取了有限标签过拟合的开放问题与比较含义，无遗漏。\"}, {\"source_unit_id\": \"v35\", \"complete\": true, \"explanation\": \"f43完整提取了固定距离路线的限制与关系网络的回应边界，无遗漏。\"}, {\"source_unit_id\": \"v36\", \"complete\": true, \"explanation\": \"f44完整提取了嵌入损失方法的边界与2%提升的适用范围，无遗漏。\"}, {\"source_unit_id\": \"v37\", \"complete\": true, \"explanation\": \"f45完整提取了子空间表示的权衡与无效率证据的边界，无遗漏。\"}, {\"source_unit_id\": \"v38\", \"complete\": true, \"explanation\": \"f46完整提取了回合式方法与大规模迁移学习的评价张力与边界，无遗漏。\"}, {\"source_unit_id\": \"v39\", \"complete\": true, \"explanation\": \"f47完整提取了跨域泛化证据的不可合并性与协议依赖结论，无遗漏。\"}, {\"source_unit_id\": \"v40\", \"complete\": true, \"explanation\": \"f48完整提取了多阶段表征的权衡与无效率证据的边界，无遗漏。\"}, {\"source_unit_id\": \"v41\", \"complete\": true, \"explanation\": \"f49完整提取了细粒度条件化比较的适用范围限制，无遗漏。\"}, {\"source_unit_id\": \"v42\", \"complete\": true, \"explanation\": \"f50完整提取了相似度可靠性建模的权衡与净收益边界，无遗漏。\"}, {\"source_unit_id\": \"v43\", \"complete\": true, \"explanation\": \"f51完整提取了总体开放问题与跨论文排名的支持边界，无遗漏。\"}, {\"source_unit_id\": \"v44\", \"complete\": true, \"explanation\": \"f52与f53完整提取了条件化比较的结论、各方法取舍与跨论文解读规则，无遗漏。\"}], \"conflicts\": [], \"issues\": [{\"code\": \"classification\", \"anchor_ids\": [\"a19\"], \"explanation\": \"a19断言“实验比较只在数据集、任务回合、训练设置和指标可对应时作出，跨论文条件不一致处不构造排名”属于对所引来源实验条件的科学判断，而非本报告的组织说明，应归类为scientific，当前标记为report_structure存在分类错误。\"}, {\"code\": \"classification\", \"anchor_ids\": [\"a102\"], \"explanation\": \"a102断言“这些来源的摘要没有提供统一的骨干网络、训练轮数、shot设置或共同基线表，因此不能把不同论文中的“state-of-the-art”表述合并成一个全局排名”属于对所引来源实验条件的科学判断，而非本报告的组织说明，应归类为scientific，当前标记为report_structure存在分类错误。\"}], \"coverage\": [{\"requirement_id\": \"question\", \"answered\": true, \"claim_ids\": [\"a2\", \"a3\", \"a4\", \"a5\", \"a6\", \"a7\", \"a8\", \"a9\", \"a10\", \"a44\", \"a45\", \"a46\", \"a47\", \"a48\", \"a49\", \"a50\", \"a51\", \"a52\", \"a53\", \"a54\", \"a55\", \"a56\", \"a57\", \"a58\", \"a59\", \"a60\", \"a61\", \"a62\", \"a63\", \"a64\", \"a65\", \"a66\", \"a67\", \"a68\", \"a69\", \"a70\", \"a71\", \"a72\", \"a73\", \"a74\", \"a75\", \"a76\", \"a77\", \"a78\", \"a79\", \"a80\", \"a81\", \"a82\", \"a83\", \"a84\", \"a85\", \"a86\", \"a87\", \"a88\", \"a89\", \"a90\", \"a91\", \"a92\", \"a101\", \"a102\", \"a103\", \"a104\", \"a105\", \"a106\", \"a107\", \"a108\", \"a109\", \"a110\", \"a111\", \"a112\", \"a113\", \"a114\", \"a115\", \"a116\", \"a119\", \"a120\", \"a146\", \"a147\", \"a148\", \"a149\", \"a150\", \"a151\", \"a152\", \"a153\", \"a154\", \"a155\"], \"explanation\": \"报告围绕少样本图像分类的度量学习方法比较展开，覆盖了嵌入类、类别表示类、比较机制类三类方法的机制、实验证据、适用边界与权衡，明确说明跨论文条件不一致时不构造全局排名，完整回应了比较不同度量学习方法的要求。\"}], \"limitations\": {\"adequate\": true, \"claim_ids\": [\"a121\", \"a122\", \"a123\", \"a124\", \"a125\", \"a126\", \"a127\", \"a128\", \"a129\", \"a130\", \"a131\", \"a132\", \"a133\", \"a134\", \"a135\", \"a136\", \"a137\", \"a138\", \"a139\", \"a140\", \"a141\", \"a142\", \"a143\", \"a144\", \"a145\"], \"explanation\": \"开放问题章节系统梳理了有限标签过拟合、固定距离的灵活性限制、嵌入损失的适用边界、子空间表示的权衡、回合式与大规模迁移学习的评价张力、跨域泛化的协议依赖、多阶段表征的效率未知、细粒度条件化比较的范围限制、不确定性建模的收益边界等具体科学局限与权衡，均有对应来源支持，符合要求。\"}, \"analyses\": [{\"section_key\": \"introduction\", \"adequate\": true, \"claim_ids\": [\"a11\", \"a12\", \"a14\", \"a15\", \"a16\", \"a17\"], \"explanation\": \"引言明确界定了少样本图像分类的核心问题与过拟合困难，说明了原型式设定的分类规则，区分了度量学习与迁移学习、元学习的边界，为后续比较提供了清晰的问题范围与科学背景。\"}, {\"section_key\": \"taxonomy\", \"adequate\": true, \"claim_ids\": [\"a20\", \"a21\", \"a22\", \"a23\", \"a24\", \"a25\", \"a26\", \"a27\", \"a28\", \"a29\", \"a30\", \"a31\", \"a32\", \"a33\", \"a34\", \"a35\", \"a36\", \"a37\", \"a38\", \"a39\", \"a40\", \"a41\"], \"explanation\": \"分类章节以信息处理环节为一级标准，将度量学习方法划分为特征嵌入、类别表示、距离度量三类，明确了每类的分类依据、代表方法与目标，区分了迁移学习、零样本扩展等相邻任务的边界，避免了效率类别等错误归类，分类逻辑清晰且关系明确。\"}, {\"section_key\": \"methods\", \"adequate\": true, \"claim_ids\": [\"a44\", \"a45\", \"a46\", \"a47\", \"a48\", \"a49\", \"a50\", \"a51\", \"a52\", \"a53\", \"a54\", \"a55\", \"a56\", \"a57\", \"a58\", \"a59\", \"a60\", \"a61\", \"a62\", \"a63\", \"a64\", \"a65\", \"a66\", \"a67\", \"a68\", \"a69\", \"a70\", \"a71\", \"a72\", \"a73\", \"a74\", \"a75\", \"a76\", \"a77\", \"a78\", \"a79\", \"a80\", \"a81\", \"a82\", \"a83\", \"a84\", \"a85\", \"a86\", \"a87\", \"a88\", \"a89\", \"a90\", \"a91\", \"a92\", \"a93\", \"a94\", \"a95\", \"a96\", \"a97\", \"a98\", \"a99\", \"a100\"], \"explanation\": \"方法章节逐一解释了深度K-tuplet、Proto-Triplet/ICNN、MSENet、原型方法、SRL、关系网络、目标条件化比较器、不确定性感知框架的核心机制、设计贡献、实验证据与适用边界，同时说明了大规模迁移学习作为非度量对照的定位，明确了各方法的归纳偏置差异，未仅停留在方法命名层面。\"}, {\"section_key\": \"experiments\", \"adequate\": true, \"claim_ids\": [\"a101\", \"a102\", \"a103\", \"a104\", \"a105\", \"a106\", \"a107\", \"a108\", \"a109\", \"a110\", \"a111\", \"a112\", \"a113\", \"a114\", \"a115\", \"a116\", \"a117\", \"a118\", \"a119\", \"a120\"], \"explanation\": \"实验章节按同域、跨域、迁移学习对照三个维度梳理了各方法的实验设置、数据集、shot条件与报告结果，明确指出各来源缺少统一骨干、训练轮数、共同基线与并列数值表，因此不能合并为全局排名，对不可直接比较的条件均作了明确说明，未构造无依据的方法排名。\"}, {\"section_key\": \"open_problems\", \"adequate\": true, \"claim_ids\": [\"a121\", \"a122\", \"a123\", \"a124\", \"a125\", \"a126\", \"a127\", \"a128\", \"a129\", \"a130\", \"a131\", \"a132\", \"a133\", \"a134\", \"a135\", \"a136\", \"a137\", \"a138\", \"a139\", \"a140\", \"a141\", \"a142\", \"a143\", \"a144\", \"a145\"], \"explanation\": \"开放问题章节针对每类方法的设计权衡与证据边界，提出了具体的科学局限：包括有限标签过拟合、固定距离的灵活性约束、嵌入损失的适用范围、子空间表示的复杂度未知、回合式与大规模迁移的评价张力、跨域泛化的协议依赖、多阶段表征的效率未验证、细粒度条件化比较的范围限制、不确定性建模的净收益未知等，均有对应来源支持，未仅作空泛的范围说明。\"}, {\"section_key\": \"abstract\", \"adequate\": true, \"claim_ids\": [\"a2\", \"a3\", \"a4\", \"a5\", \"a6\", \"a7\", \"a8\", \"a9\", \"a10\"], \"explanation\": \"摘要简明概括了本综述的比较范围、三类度量学习方法的核心差异、各方法的关键实验证据，以及因实验条件不统一无法形成全局排名的核心结论，同时点明了不同方法对应不同设计权衡的核心发现，符合摘要的综合要求。\"}, {\"section_key\": \"conclusion\", \"adequate\": true, \"claim_ids\": [\"a146\", \"a147\", \"a148\", \"a149\", \"a150\", \"a151\", \"a152\", \"a153\", \"a154\", \"a155\", \"a156\"], \"explanation\": \"结论明确提出应采用条件化比较而非宣称单一最优方法，逐一梳理了各方法的核心取舍，说明了跨论文性能仅在设置匹配时可解读的边界，同时指出大规模迁移学习是重要对照但不能全面替代度量学习，与摘要的表述形成不同侧重，完整回应了比较度量学习方法的核心问题。\"}]}",
+    "raw_sha256": "70054246e730c3b54d5e16a090275caa78642f9ad0b36d99e484c6a172d154c3",
+    "assertion_columns": [
+      "claim_id",
+      "source_fragment_id",
+      "claim_text",
+      "kind",
+      "evidence_aliases"
+    ],
+    "wire_row": [
+      "a102",
+      "f32",
+      "这些来源的摘要没有提供统一的骨干网络、训练轮数、shot设置或共同基线表，因此不能把不同论文中的“state-of-the-art”表述合并成一个全局排名。",
+      null,
+      null
+    ],
+    "assertion_kind_default": "scientific",
+    "host_claim": {
+      "claim_id": "claim_101",
+      "kind": "scientific",
+      "claim_text": "这些来源的摘要没有提供统一的骨干网络、训练轮数、shot设置或共同基线表，因此不能把不同论文中的“state-of-the-art”表述合并成一个全局排名。",
+      "source_unit_id": "unit:23:9101",
+      "source_fragment_id": "unit:23:9101:native:writer:experiments:0:0",
+      "source_quote": "实验比较必须先区分评价协议：本报告所收来源同时包含以miniImageNet等基准组织的少样本回合测试、跨域测试，以及把Meta-Dataset协议用于大规模迁移学习器的评价；这些来源的摘要没有提供统一的骨干网络、训练轮数、shot设置或共同基线表，因此不能把不同论文中的“state-of-the-art”表述合并成一个全局排名。 [E:arxiv:2409.07989:abstract:claim:5ed923dac68f] [E:arxiv:1907.03123:abstract:claim:998fb93b2a24] [E:arxiv:2105.00379:abstract:claim:e2d40a72c0d6] [E:arxiv:2104.02638:section:abstract:9:1354132472a1:claim:3fb7cfd2fbdb]",
+      "source_start": 9101,
+      "source_end": 9486,
+      "section": "综合比较与证据分析",
+      "evidence_ids": [
+        "arxiv:2409.07989:abstract:claim:5ed923dac68f",
+        "arxiv:1907.03123:abstract:claim:998fb93b2a24",
+        "arxiv:2105.00379:abstract:claim:e2d40a72c0d6",
+        "arxiv:2104.02638:section:abstract:9:1354132472a1:claim:3fb7cfd2fbdb"
+      ],
+      "local_error": null
+    }
+  }
+}

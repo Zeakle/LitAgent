@@ -6,6 +6,7 @@ import copy
 import hashlib
 import json
 import math
+import re
 from pathlib import Path
 from typing import Any, Literal, Mapping
 
@@ -146,10 +147,9 @@ def extract_report_evidence(
         return _extract_evidence(nodes)
     metadata = _mapping(report.get("metadata"))
     bindings = _mapping(metadata.get("writing_bindings"))
-    if (
-        bindings.get("writer_contract") != "grounded-writer-v1"
-        and metadata.get("generation_strategy") != "body_summary_v2"
-    ):
+    if bindings.get("writer_contract") != "grounded-writer-v1" and metadata.get(
+        "generation_strategy"
+    ) not in ("body_summary_v2", "body_summary_v3"):
         return _extract_evidence(nodes)
     survey = report.get("survey")
     if (
@@ -173,7 +173,10 @@ def extract_report_evidence(
             node.get("kind", "")
         ).startswith("evidence.retrieve"):
             pool = _mapping(output.get("selected_items"))
-        elif output.get("generation_strategy") == "body_summary_v2":
+        elif output.get("generation_strategy") in (
+            "body_summary_v2",
+            "body_summary_v3",
+        ):
             selection = _mapping(output.get("evidence_selection"))
             if (
                 selection.get("valid") is False
@@ -366,6 +369,11 @@ def project_flow_demo_view(
         "graph": _mapping(report.get("graph_data")),
         "evaluation": _mapping(report.get("evaluation")),
         "pipeline_verification": pipeline,
+        "budget_state": _snapshot_budget_state(
+            artifact.get("budget_state"),
+            run_id=artifact.get("run_id"),
+            budget_plan=artifact.get("budget_plan"),
+        ),
         "targeted_repair_state": metadata.get("targeted_repair_state")
         or artifact.get("targeted_repair_state"),
         "quality": quality,
@@ -394,4 +402,103 @@ def project_flow_demo_view(
         if invalid_count
         else []
     )
+    if artifact.get("budget_plan"):
+        projection["budget_plan"] = _snapshot_budget_plan(artifact["budget_plan"])
     return projection
+
+
+def _snapshot_budget_state(
+    state: Any, *, run_id: str, budget_plan: Mapping[str, Any] | None = None
+) -> dict[str, Any]:
+    """Project only safe run-level accounting scalars without inferring charges."""
+    fields = (
+        "plan_identity",
+        "known_tokens",
+        "requests",
+        "usage_uncertain",
+        "stop_reason",
+        "unknown_hold",
+    )
+    owner = (
+        run_id
+        if isinstance(run_id, str) and run_id and run_id == run_id.strip()
+        else None
+    )
+    result = {
+        "contract": "run-budget-state-v1",
+        "scope": "run",
+        "run_id": owner,
+        "availability": "missing" if state is None else "invalid",
+        "reason": "not_recorded" if state is None else "invalid_record",
+        **dict.fromkeys(fields),
+    }
+    if state is None or owner is None:
+        return result
+    if not isinstance(state, Mapping) or set(state) != set(fields):
+        return result
+    if any(
+        type(state[name]) is not int or not 0 <= state[name] <= 2**53 - 1
+        for name in ("known_tokens", "requests", "unknown_hold")
+    ):
+        return result
+    if (
+        type(state["usage_uncertain"]) is not bool
+        or not isinstance(state["plan_identity"], str)
+        or re.fullmatch(r"[0-9a-f]{64}", state["plan_identity"]) is None
+        or state["unknown_hold"] > 0
+        and not state["usage_uncertain"]
+    ):
+        return result
+    reason = state["stop_reason"]
+    if reason is not None and (
+        not isinstance(reason, str)
+        or reason
+        not in {
+            "strict_usage_unknown",
+            "strict_worker_failed",
+            "planned_usage_bound_violation",
+            "planned_ledger_persistence_failed",
+        }
+    ):
+        return result
+    if (
+        isinstance(budget_plan, Mapping)
+        and budget_plan.get("contract")
+        in (
+            "planned-budget-v2",
+            "planned-budget-v3",
+            "planned-budget-v4",
+            "planned-budget-v5",
+            "planned-budget-v6",
+            "planned-budget-v7",
+        )
+        and "identity" in budget_plan
+        and budget_plan["identity"] != state["plan_identity"]
+    ):
+        return result
+    return {
+        **result,
+        "availability": "available",
+        "reason": None,
+        **{name: state[name] for name in fields},
+    }
+
+
+def _snapshot_budget_plan(plan):
+    """Expose run-scoped reservations without confusing them with report scores."""
+    import copy
+
+    return (
+        copy.deepcopy(plan)
+        if isinstance(plan, dict)
+        and plan.get("contract")
+        in (
+            "planned-budget-v2",
+            "planned-budget-v3",
+            "planned-budget-v4",
+            "planned-budget-v5",
+            "planned-budget-v6",
+            "planned-budget-v7",
+        )
+        else None
+    )

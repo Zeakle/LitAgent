@@ -7,7 +7,7 @@ import json
 import time
 from typing import Literal, Mapping, Protocol
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
 
 ReviewStructure = Literal[
     "legacy", "academic_v1", "method_transparent_v1", "academic_v2"
@@ -82,13 +82,107 @@ class RunOptions(Contract):
     quality_policy: QualityPolicy = "legacy"
     verification: VerificationOptions | None = None
     body_quality: Literal["legacy", "analysis_v1"] = "legacy"
-    generation_strategy: Literal["single_v1", "body_summary_v1", "body_summary_v2"] = (
-        "single_v1"
-    )
+    budget_policy: Literal[
+        "legacy",
+        "planned-budget-v2",
+        "planned-budget-v3",
+        "planned-budget-v4",
+        "planned-budget-v5",
+        "planned-budget-v6",
+        "planned-budget-v7",
+    ] = "legacy"
+    capacity_policy: Literal["legacy", "adaptive-capacity-v1"] = "legacy"
+    classification_review: bool = Field(default=False, strict=True)
+    repair_feedback: bool = Field(default=False, strict=True)
+    mixed_inventory_recovery: bool = Field(default=False, strict=True)
+    reference_contract: Literal["ordered-reference-set-v1"] | None = None
+    transport_revision: Literal["host-lossless-transport-v1"] | None = None
+    support_validation_revision: (
+        Literal["host-support-receipts-v1", "host-support-receipts-v2"] | None
+    ) = None
+    generation_strategy: Literal[
+        "single_v1", "body_summary_v1", "body_summary_v2", "body_summary_v3"
+    ] = "single_v1"
+
+    @model_serializer(mode="wrap")
+    def serialize_budget_policy(self, handler):
+        """Keep inactive defaults out of historical wire identities."""
+        value = handler(self)
+        if self.capacity_policy == "legacy":
+            value.pop("capacity_policy", None)
+        if self.budget_policy == "legacy":
+            value.pop("budget_policy", None)
+        if not self.classification_review:
+            value.pop("classification_review", None)
+        if not self.repair_feedback:
+            value.pop("repair_feedback", None)
+        if not self.mixed_inventory_recovery:
+            value.pop("mixed_inventory_recovery", None)
+        if self.reference_contract is None:
+            value.pop("reference_contract", None)
+        if self.transport_revision is None:
+            value.pop("transport_revision", None)
+        if self.support_validation_revision is None:
+            value.pop("support_validation_revision", None)
+        return value
 
     @model_validator(mode="after")
     def enforce_strict_review(self):
         """Apply policy-owned defaults while honoring explicit optional reviewers."""
+        if self.support_validation_revision is not None and (
+            self.budget_policy != "planned-budget-v7"
+            or self.generation_strategy != "body_summary_v3"
+            or self.classification_review is not True
+            or self.mixed_inventory_recovery is not True
+            or self.repair_feedback is not True
+            or self.reference_contract != "ordered-reference-set-v1"
+            or self.transport_revision != "host-lossless-transport-v1"
+        ):
+            raise ValueError("support_validation_requires_explicit_v7_contracts")
+        if self.classification_review and self.budget_policy != "planned-budget-v7":
+            raise ValueError("classification_review_requires_planned_budget_v7")
+        if self.repair_feedback and self.budget_policy != "planned-budget-v7":
+            raise ValueError("repair_feedback_requires_planned_budget_v7")
+        if self.mixed_inventory_recovery and self.budget_policy != "planned-budget-v7":
+            raise ValueError("mixed_inventory_recovery_requires_planned_budget_v7")
+        if (
+            self.reference_contract is not None
+            and self.budget_policy != "planned-budget-v7"
+        ):
+            raise ValueError("reference_contract_requires_planned_budget_v7")
+        if self.transport_revision is not None and (
+            self.budget_policy != "planned-budget-v7"
+            or self.generation_strategy != "body_summary_v3"
+            or self.mixed_inventory_recovery is not True
+            or self.repair_feedback is not True
+            or self.reference_contract != "ordered-reference-set-v1"
+        ):
+            raise ValueError("transport_revision_requires_explicit_v7_contracts")
+        if (self.budget_policy in ("planned-budget-v6", "planned-budget-v7")) != (
+            self.capacity_policy == "adaptive-capacity-v1"
+        ):
+            raise ValueError("adaptive_capacity_requires_planned_budget_v6")
+        if self.budget_policy != "legacy" and (
+            self.generation_strategy
+            != (
+                "body_summary_v3"
+                if self.budget_policy
+                in ("planned-budget-v5", "planned-budget-v6", "planned-budget-v7")
+                else "body_summary_v2"
+            )
+            or self.verification is None
+            or self.verification.judge
+            or self.verification.jev
+        ):
+            raise ValueError(
+                "planned_budget_requires_writer_v2_without_optional_audits"
+            )
+        if (
+            self.generation_strategy == "body_summary_v3"
+            and self.budget_policy
+            not in ("planned-budget-v5", "planned-budget-v6", "planned-budget-v7")
+        ):
+            raise ValueError("flat_writer_requires_planned_budget_v5")
         if self.body_quality != "legacy" and self.quality_policy != "strict_auto_v2":
             raise ValueError("body_analysis_requires_strict_auto_v2")
         if (
@@ -117,7 +211,7 @@ class RunOptions(Contract):
             if self.review_structure == "legacy":
                 object.__setattr__(self, "review_structure", "academic_v2")
         if (
-            self.generation_strategy == "body_summary_v2"
+            self.generation_strategy in ("body_summary_v2", "body_summary_v3")
             and self.review_structure != "academic_v2"
         ):
             raise ValueError("writer_v2_requires_academic_v2")
@@ -126,9 +220,143 @@ class RunOptions(Contract):
     def fingerprint(self) -> str:
         """Bind generation and review choices to a stable run identity."""
         payload = self.model_dump(mode="json")
+        if self.budget_policy == "legacy":
+            payload.pop("budget_policy", None)
+        else:
+            payload["budget_contract"] = {
+                "maximum_tokens": (
+                    4500000
+                    if self.budget_policy
+                    in ("planned-budget-v5", "planned-budget-v6", "planned-budget-v7")
+                    else 1000000
+                ),
+                "requests": 64,
+                "repairs": 2,
+                "thinking": "disabled",
+                "context_margin": 0.1,
+            }
+            if self.budget_policy in ("planned-budget-v3", "planned-budget-v4"):
+                from litagent.body_quality import ADAPTIVE_ASSESSMENT_INPUT_CONTRACT
+
+                payload["budget_contract"].update(
+                    repairs="preplanned_0_to_2",
+                    repair_selection="largest-admissible-complete-path-v1",
+                    initial_evaluation_reserved=True,
+                    assessment_input_contract=ADAPTIVE_ASSESSMENT_INPUT_CONTRACT,
+                )
+        if self.budget_policy == "planned-budget-v4":
+            from litagent.writing_v2 import (
+                BOUNDED_EOF_FOOTPRINT_CONTRACT,
+                NATIVE_WIRE_CONTRACT,
+            )
+
+            payload["budget_contract"].update(
+                envelope_contract="budgeted-writer-envelope-v1",
+                capacity_selection="largest-content-then-repairs-v1",
+                prepared_methodology_contract="prepared-writer-methodology-v1",
+                native_capacity_contract="bounded-native-chapter-v1",
+                request_builder_contract="budgeted-writer-request-builders-v2",
+                bounded_eof_footprint_contract=BOUNDED_EOF_FOOTPRINT_CONTRACT,
+                writer_wire_contract=NATIVE_WIRE_CONTRACT,
+            )
+        if self.budget_policy in (
+            "planned-budget-v5",
+            "planned-budget-v6",
+            "planned-budget-v7",
+        ):
+            from litagent.writing_flat import REQUEST_BUILDERS
+
+            payload["budget_contract"].update(
+                request_builder_contract=REQUEST_BUILDERS,
+                writer_wire_contract="flat-writer-v1",
+                envelope_contract="flat-writer-envelope-v1",
+                body_max_units=66,
+                model_assertions=128,
+                shared_repairs=2,
+                evaluation_input_contract="flat-evaluation-input-v1",
+                repair_input_contract="flat-repair-input-v1",
+                claim_json_bytes=30000,
+                claim_max_json_bytes=2000,
+                diagnostic_json_bytes=12288,
+            )
+        if self.capacity_policy != "legacy":
+            payload["budget_contract"]["capacity_policy"] = self.capacity_policy
+        if self.budget_policy == "planned-budget-v7":
+            from litagent.eval.batched import (
+                CURRENT_FINDINGS_CONTRACT,
+                global_findings_identity,
+            )
+            from litagent.eval.scoped import located_evaluation_identity
+            from litagent.writing_v2 import SUMMARY_CONSTRAINTS_CONTRACT
+
+            payload["budget_contract"][
+                "global_findings_contract"
+            ] = CURRENT_FINDINGS_CONTRACT
+            payload["budget_contract"][
+                "global_findings_identity"
+            ] = global_findings_identity()
+            payload["budget_contract"][
+                "evaluation_instruction_identity"
+            ] = located_evaluation_identity()
+            payload["budget_contract"][
+                "summary_constraints_contract"
+            ] = SUMMARY_CONSTRAINTS_CONTRACT
+            if self.reference_contract is not None:
+                from litagent.writing_flat import reference_set_identity
+
+                payload["budget_contract"][
+                    "reference_contract"
+                ] = self.reference_contract
+                payload["budget_contract"][
+                    "reference_set_identity"
+                ] = reference_set_identity()
+            if self.transport_revision is not None:
+                from litagent.writing_flat import transport_identity
+
+                payload["budget_contract"][
+                    "transport_revision"
+                ] = self.transport_revision
+                payload["budget_contract"]["transport_identity"] = transport_identity()
+            if self.support_validation_revision is not None:
+                from litagent.eval.scoped import support_validation_identity
+
+                payload["budget_contract"][
+                    "support_validation_revision"
+                ] = self.support_validation_revision
+                payload["budget_contract"]["support_validation_identity"] = (
+                    support_validation_identity()
+                    if self.support_validation_revision == "host-support-receipts-v1"
+                    else support_validation_identity(self.support_validation_revision)
+                )
+            if self.classification_review:
+                from litagent.eval.scoped import independent_classification_identity
+
+                payload["budget_contract"][
+                    "classification_review_identity"
+                ] = independent_classification_identity()
+            if self.repair_feedback:
+                from litagent.writing_flat import repair_feedback_identity
+
+                payload["budget_contract"][
+                    "repair_feedback_identity"
+                ] = repair_feedback_identity()
+            if self.mixed_inventory_recovery:
+                from litagent.eval.inventory_recovery import (
+                    mixed_inventory_recovery_identity,
+                )
+
+                payload["budget_contract"]["mixed_inventory_recovery_identity"] = (
+                    mixed_inventory_recovery_identity(
+                        **(
+                            {"stable": True}
+                            if self.support_validation_revision is not None
+                            else {}
+                        )
+                    )
+                )
         if self.generation_strategy == "single_v1":
             payload.pop("generation_strategy")
-        elif self.generation_strategy == "body_summary_v2":
+        elif self.generation_strategy in ("body_summary_v2", "body_summary_v3"):
             from litagent.body_quality import (
                 NATIVE_REPORT_INPUT_CONTRACT,
                 WRITER_CONTENT_CONTRACT,

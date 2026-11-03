@@ -12,7 +12,7 @@ from abc import ABC, abstractmethod
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 
-from openai import AsyncOpenAI
+from openai import APITimeoutError, AsyncOpenAI
 
 from litagent.logging import get_logger
 from litagent.observability.context import get_task_id, remaining_deadline_seconds
@@ -20,6 +20,12 @@ from litagent.safety.budget import CostBudget, strict_request_reservation
 
 logger = get_logger("llm.client")
 _active_timeout: ContextVar[float | None] = ContextVar("request_timeout", default=None)
+_active_request_stage: ContextVar[str | None] = ContextVar(
+    "request_stage", default=None
+)
+_active_request_deadline: ContextVar[asyncio.Timeout | None] = ContextVar(
+    "request_deadline", default=None
+)
 
 
 def _output_limit(kwargs: dict, default: int) -> tuple[str, int]:
@@ -46,6 +52,76 @@ class RequestDeadlineExceeded(TimeoutError):
     """Reject a request locally when its complete time reservation cannot fit."""
 
 
+class LLMRequestTimeout(TimeoutError):
+    """Identify an expired host request deadline without changing its allowance."""
+
+    reason_code = "llm_request_timeout"
+
+    def __init__(self, stage: str, seconds: float):
+        """Retain host-owned timeout provenance, never scientific request text."""
+        super().__init__(f"LLM request timed out after {seconds:g}s ({stage})")
+        self.diagnostics = [
+            {
+                "timeout_scope": "request",
+                "request_stage": stage,
+                "request_timeout_seconds": seconds,
+                "response_received": False,
+            }
+        ]
+
+
+async def _await_request(call, *, timeout, stage):
+    """Share one owned deadline between the caller and the actual SDK attempt."""
+    existing = _active_request_deadline.get()
+    if (
+        existing is not None
+        and existing.when() is not None
+        and existing.when() <= asyncio.get_running_loop().time() + timeout
+    ):
+        return await call
+    deadline = asyncio.timeout(timeout)
+    tokens = (
+        _active_timeout.set(timeout),
+        _active_request_stage.set(stage),
+        _active_request_deadline.set(deadline),
+    )
+    try:
+        async with deadline:
+            return await call
+    except TimeoutError as exc:
+        # An inner provider TimeoutError must retain its original provenance.
+        if deadline.expired():
+            raise LLMRequestTimeout(stage, timeout) from exc
+        raise
+    finally:
+        _active_request_deadline.reset(tokens[2])
+        _active_request_stage.reset(tokens[1])
+        _active_timeout.reset(tokens[0])
+
+
+def _failure_timeout_metadata(exc):
+    """Classify cancellation at the point where its owning deadline is visible."""
+    result = {"request_stage": _active_request_stage.get() or _timeout_stage()}
+    timeout = _active_timeout.get()
+    if timeout is not None:
+        result["request_timeout_seconds"] = timeout
+    deadline = _active_request_deadline.get()
+    if deadline is not None and deadline.expired():
+        result.update(reason_code="llm_request_timeout", timeout_scope="request")
+    elif isinstance(exc, asyncio.CancelledError):
+        remaining = remaining_deadline_seconds()
+        upstream = remaining is not None and remaining <= 0
+        result.update(
+            reason_code="upstream_deadline" if upstream else "cancelled",
+            timeout_scope="upstream" if upstream else "external",
+        )
+    elif isinstance(exc, APITimeoutError):
+        result.update(
+            reason_code="provider_transport_timeout", timeout_scope="transport"
+        )
+    return result
+
+
 def request_timeout_seconds(llm, stage: str, default: float = 180) -> float:
     """Resolve trusted stage settings without depending on mock-client attributes."""
     timeouts = getattr(llm, "_request_timeouts", None)
@@ -57,11 +133,9 @@ def request_timeout_seconds(llm, stage: str, default: float = 180) -> float:
 async def chat_with_timeout(llm, messages, *, stage: str, default=180, **kwargs):
     """Share one timeout between caller and owned transport, preserving mock inputs."""
     timeout = request_timeout_seconds(llm, stage, default)
-    token = _active_timeout.set(timeout)
-    try:
-        return await asyncio.wait_for(llm.chat(messages, **kwargs), timeout)
-    finally:
-        _active_timeout.reset(token)
+    return await _await_request(
+        llm.chat(messages, **kwargs), timeout=timeout, stage=stage
+    )
 
 
 def _timeout_stage() -> str:
@@ -279,19 +353,38 @@ class OpenAICompatibleClient(BaseLLMClient):
                 output_limit,
                 kwargs.get("response_format"),
             )
+            from litagent.safety.planned_budget import (
+                locked_writer_envelope,
+                planned_backend,
+            )
+
+            planned = planned_backend(self._cost_budget)
+            if locked_writer_envelope(self._cost_budget) is not None:
+                planned.check_wire(
+                    messages, output_limit, kwargs.get("response_format")
+                )
             if reservation > int(131072 * 0.9):
                 raise ValueError("strict_context_budget_exceeded")
             # Scoped evaluation and repair already own their exact reservation.
-            caller_owns = (get_task_id() or "").startswith(
-                "evaluation"
-            ) or get_task_id() == "evidence_rewrite"
+            if planned is not None:
+                planned.check_wire(
+                    messages, output_limit, kwargs.get("response_format")
+                )
+            caller_owns = planned is None and (
+                (get_task_id() or "").startswith("evaluation")
+                or get_task_id() == "evidence_rewrite"
+            )
             if not caller_owns:
                 self._cost_budget.reserve(reservation)
             try:
+                if planned is not None:
+                    planned.bind_wire([messages, kwargs, provider_api])
                 self._cost_budget.begin_request()
                 try:
-                    result = await asyncio.wait_for(
-                        self._chat_attempt(messages, **kwargs), timeout
+                    result = await _await_request(
+                        self._chat_attempt(messages, **kwargs),
+                        timeout=timeout,
+                        stage=_active_request_stage.get() or _timeout_stage(),
                     )
                 except BaseException:
                     # Transport may have consumed tokens even when no response arrived.
@@ -306,6 +399,26 @@ class OpenAICompatibleClient(BaseLLMClient):
             finally:
                 if not caller_owns:
                     self._cost_budget.release(reservation)
+                if planned is not None:
+                    snapshot = planned.snapshot()
+                    self._emit(
+                        "budget.updated",
+                        {
+                            "task_id": get_task_id(),
+                            "budget_state": {
+                                "plan_identity": snapshot["plan"]["identity"],
+                                "known_tokens": snapshot["used_tokens"],
+                                "requests": snapshot["requests_sent"],
+                                "usage_uncertain": snapshot["usage_uncertain"],
+                                "stop_reason": snapshot["stop_reason"],
+                                "unknown_hold": sum(
+                                    e["reserved_tokens"]
+                                    for e in snapshot["entries"].values()
+                                    if e["status"] == "interrupted_no_replay"
+                                ),
+                            },
+                        },
+                    )
         if (
             not isinstance(attempts, int)
             or not 1 <= attempts <= self._transport_max_attempts
@@ -315,8 +428,10 @@ class OpenAICompatibleClient(BaseLLMClient):
             self._check_request_deadline(timeout)
             try:
                 if self._request_timeouts:
-                    return await asyncio.wait_for(
-                        self._chat_attempt(messages, **kwargs), timeout
+                    return await _await_request(
+                        self._chat_attempt(messages, **kwargs),
+                        timeout=timeout,
+                        stage=_active_request_stage.get() or _timeout_stage(),
                     )
                 return await self._chat_attempt(messages, **kwargs)
             except (APIConnectionError, APIStatusError) as exc:
@@ -359,6 +474,7 @@ class OpenAICompatibleClient(BaseLLMClient):
                 "operation_id": op_id,
                 "task_id": get_task_id(),
                 "model": model,
+                "provider_api": "chat",
                 "messages": messages,
                 "max_tokens": max_tokens,
                 "output_limit_parameter": limit_parameter,
@@ -438,7 +554,11 @@ class OpenAICompatibleClient(BaseLLMClient):
                         }
                     )
 
-            if self._cost_budget:
+            if self._cost_budget and (
+                usage["usage_available"] or not self._cost_budget.strict
+            ):
+                # Unknown strict usage must remain in flight so the outer
+                # transport can retain its reservation instead of settling zero.
                 self._cost_budget.record(usage)
 
             response = LLMResponse(
@@ -462,6 +582,7 @@ class OpenAICompatibleClient(BaseLLMClient):
                     "operation_id": op_id,
                     "task_id": get_task_id(),
                     "model": model,
+                    "provider_api": "chat",
                     "messages": messages,
                     "content": response.content,
                     "prompt_tokens": usage.get("prompt_tokens", 0),
@@ -500,10 +621,14 @@ class OpenAICompatibleClient(BaseLLMClient):
                     "operation_id": op_id,
                     "task_id": get_task_id(),
                     "model": model,
+                    "provider_api": "chat",
+                    "max_tokens": max_tokens,
+                    "output_limit_parameter": limit_parameter,
                     "elapsed_ms": elapsed_ms,
                     "error_type": type(e).__name__,
                     "error": str(e)[:512],
                     "usage_available": False,
+                    **_failure_timeout_metadata(e),
                 },
             )
             raise
@@ -610,6 +735,7 @@ class OpenAICompatibleClient(BaseLLMClient):
                     "error_type": type(exc).__name__,
                     "elapsed_ms": int((time.perf_counter() - started) * 1000),
                     "usage_available": False,
+                    **_failure_timeout_metadata(exc),
                 },
             )
             raise

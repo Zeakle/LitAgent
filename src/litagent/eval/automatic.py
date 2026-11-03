@@ -48,8 +48,142 @@ def frozen_judge_fingerprint() -> str:
     )
 
 
+def _funded_automatic_capacity(report: dict, budget) -> dict:
+    """Authorize growth only from an entirely settled host-owned evaluation round."""
+    from litagent.capacity import POLICY
+    from litagent.safety.planned_accounting import validate_accounting_snapshot
+    from litagent.safety.planned_budget import (
+        ROUND_BUDGET_CONTRACT,
+        PlannedBudget,
+        planned_backend,
+    )
+
+    owner = planned_backend(budget)
+    if not isinstance(owner, PlannedBudget) or (
+        owner.plan.get("contract") != ROUND_BUDGET_CONTRACT
+    ):
+        raise ValueError("automatic_inventory_invalid")
+
+    def require(condition):
+        if not condition:
+            raise ValueError("automatic_capacity_binding_invalid")
+
+    try:
+        snapshot = validate_accounting_snapshot(
+            owner.snapshot(), expected_plan=owner.plan
+        )
+        require(
+            snapshot["usage_uncertain"] is False
+            and snapshot["stop_reason"] is None
+            and snapshot["used_tokens"] <= snapshot["max_tokens"]
+            and all(
+                entry["sent"] is True and entry["status"] == "settled"
+                for entry in snapshot["entries"].values()
+            )
+        )
+        metadata = report.get("metadata", {})
+        details = report["evaluation"]["faithfulness"]["details"]
+        stages = details["stages"]
+        capacity = stages["capacity"]
+        report_sha = hashlib.sha256(report["survey"].encode()).hexdigest()
+        claims = details["assertions"]
+        batches = stages["batches"]
+        require(
+            details["quality_policy"] == "strict_auto_v2"
+            and metadata.get("capacity_policy", POLICY) == POLICY
+            and metadata.get("budget_policy", ROUND_BUDGET_CONTRACT)
+            == ROUND_BUDGET_CONTRACT
+            and metadata.get("generation_strategy", "body_summary_v3")
+            == "body_summary_v3"
+            and capacity["policy"] == POLICY
+            and capacity["budget_policy"] == ROUND_BUDGET_CONTRACT
+            and capacity["status"] == "allocated"
+            and capacity.get("reason") is None
+            and details["source_report_sha256"]
+            == capacity["source_report_sha256"]
+            == report_sha
+        )
+        # A failed candidate can leave a newer allocation behind. Select the
+        # completed round of this retained report, never the most recent by age.
+        allocations = [
+            event["allocation"]
+            for event in snapshot["capacity_revisions"]
+            if event["allocation"]["identity"] == capacity["allocation_identity"]
+        ]
+        require(len(allocations) == 1)
+        allocation = allocations[0]
+        current = allocation["round"]
+        require(
+            digest(current) == digest(capacity["round"])
+            and current["mode"] == "assess"
+            and current["status"] == "allocated"
+            and current["report_sha256"] == report_sha
+            and type(capacity["actual_assertions"]) is int
+            and capacity["actual_assertions"] == current["assertions"] == len(claims)
+            and type(capacity["initial_assertions"]) is int
+            and capacity["initial_assertions"]
+            == snapshot["plan"]["envelope"]["model_assertions"]
+            and type(capacity["effective_assertions"]) is int
+            and capacity["effective_assertions"]
+            == allocation["envelope"]["model_assertions"]
+            and len(claims) <= allocation["envelope"]["model_assertions"]
+            and type(capacity["actual_batches"]) is int
+            and capacity["actual_batches"] == current["batches"] == len(batches)
+            and type(stages["expected_batches"]) is int
+            and stages["expected_batches"] == len(batches)
+            and type(stages["expected_assertions"]) is int
+            and type(stages["processed_assertions"]) is int
+            and stages["expected_assertions"]
+            == stages["processed_assertions"]
+            == len(claims)
+            and stages["global_check"] == "completed"
+            and all(batch["status"] == "completed" for batch in batches)
+        )
+        # The real flat batcher may balance material weight across batches.
+        # strict_acceptance already requires unique, complete claim-ID coverage;
+        # cross-batch order does not change the source-anchored denominator.
+        for stage, expected_count in (
+            ("assessment", len(batches)),
+            ("global", 1),
+        ):
+            slots = [r for r in current["requests"] if r["stage"] == stage]
+            entries = [
+                entry
+                for entry in snapshot["entries"].values()
+                if entry["stage"] == stage
+            ]
+            offset = current["offsets"][stage]
+            completed = entries[offset : offset + len(slots)]
+            require(len(slots) == len(completed) == expected_count)
+            require(
+                all(
+                    entry["sent"] is True
+                    and entry["status"] == "settled"
+                    and entry["round_number"] == current["number"]
+                    and entry["round_wire_sha256"] == slot["wire_sha256"]
+                    and entry["reserved_tokens"] == slot["reserved_tokens"]
+                    for entry, slot in zip(completed, slots, strict=True)
+                )
+            )
+        return {
+            "contract": "host-automatic-capacity-v1",
+            "budget_policy": ROUND_BUDGET_CONTRACT,
+            "capacity_policy": POLICY,
+            "budget_plan_identity": snapshot["plan"]["identity"],
+            "budget_snapshot_sha256": digest(snapshot),
+            "allocation_identity": allocation["identity"],
+            "source_report_sha256": report_sha,
+            "round_number": current["number"],
+            "actual_assertions": len(claims),
+            "effective_assertions": allocation["envelope"]["model_assertions"],
+            "actual_batches": len(batches),
+        }
+    except (KeyError, TypeError, AttributeError, ValueError) as exc:
+        raise ValueError("automatic_capacity_binding_invalid") from exc
+
+
 def freeze_automatic_inputs(
-    report: dict, ledger: Mapping, *, run_id: str, revision: int = 1
+    report: dict, ledger: Mapping, *, run_id: str, revision: int = 1, budget=None
 ) -> dict:
     """Bind complete original sources, evaluated assertions and host records to one SHA."""
     from litagent.eval.scoped import (
@@ -137,8 +271,11 @@ def freeze_automatic_inputs(
     }
     assertions = details.get("assertions", [])
     ids = [c["claim_id"] for c in assertions]
-    if not ids or len(ids) != len(set(ids)) or len(ids) > 128:
+    if not ids or len(ids) != len(set(ids)):
         raise ValueError("automatic_inventory_invalid")
+    capacity_receipt = (
+        _funded_automatic_capacity(report, budget) if len(ids) > 128 else None
+    )
     science = []
     for claim in assertions:
         unit = units.get(claim["source_unit_id"])
@@ -204,6 +341,9 @@ def freeze_automatic_inputs(
         "ledger": dict(ledger),
         "artifact": {"run_id": run_id, "quality_policy": policy},
         "frozen_inventory": {
+            **(
+                {"capacity_authorization": capacity_receipt} if capacity_receipt else {}
+            ),
             **(
                 {"writer_bindings": metadata["writing_bindings"]}
                 if native_fragments
