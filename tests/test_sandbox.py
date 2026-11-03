@@ -2,8 +2,8 @@
 
 import pytest
 
-from litagent.sandbox.docker_cmd import build_sandbox_command
 from litagent.mcp.connection import MCPConnection
+from litagent.sandbox.docker_cmd import build_sandbox_command
 
 
 class TestBuildSandboxCommand:

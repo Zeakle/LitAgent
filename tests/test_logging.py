@@ -4,8 +4,8 @@ import logging
 
 import pytest
 
-from litagent.logging import setup_logging, get_logger
 from litagent.config import LoggingConfig
+from litagent.logging import get_logger, setup_logging
 
 
 class TestGetLogger:

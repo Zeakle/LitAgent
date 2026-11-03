@@ -3,8 +3,8 @@
 import httpx
 from langchain_core.documents import Document
 
-from litagent.rag.interfaces import DocumentLoader
 from litagent.logging import get_logger
+from litagent.rag.interfaces import DocumentLoader
 
 logger = get_logger("rag.loader")
 

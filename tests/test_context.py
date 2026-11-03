@@ -3,11 +3,11 @@
 import pytest
 
 from litagent.context.budget import BudgetManager, CharBasedCounter, TokenCounter
-from litagent.context.pipeline import ContextPipeline, ContextLayer
-from litagent.context.compressor import TierCompressor, PaperInfo
+from litagent.context.compressor import PaperInfo, TierCompressor
+from litagent.context.pipeline import ContextLayer, ContextPipeline
 from litagent.context.templates import (
-    wrap_xml,
     build_system_prompt,
+    wrap_xml,
 )
 
 

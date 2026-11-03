@@ -2,9 +2,9 @@
 
 import pytest
 
-from litagent.runner import LitAgent
 from litagent.config import load_config
-from litagent.eval.base import EvalResult, CTX_PAPERS, CTX_CLAIMS
+from litagent.eval.base import CTX_CLAIMS, CTX_PAPERS, EvalResult
+from litagent.runner import LitAgent
 
 
 class _StubEval:
@@ -33,7 +33,9 @@ async def test_evaluate_aggregates_results():
         _StubEval("faithfulness", 0.85, skipped=True),
     ]
     results = {"extract": [{"title": "P", "abstract": "a", "claims": ["c1"]}]}
-    out = await agent._evaluate(query="q", survey="survey text", results=results, phase="initial")
+    out = await agent._evaluate(
+        query="q", survey="survey text", results=results, phase="initial"
+    )
     assert out["citation_accuracy"]["score"] == 0.9
     assert out["internal_consistency"]["passed"] is False
     assert out["faithfulness"]["skipped"] is True
@@ -44,7 +46,9 @@ async def test_evaluate_no_evaluators_empty():
     """An empty evaluator set produces an empty result."""
     agent = LitAgent(load_config())
     agent._evaluators = []
-    assert await agent._evaluate(query="q", survey="s", results={}, phase="initial") == {}
+    assert (
+        await agent._evaluate(query="q", survey="s", results={}, phase="initial") == {}
+    )
 
 
 @pytest.mark.asyncio
@@ -63,7 +67,12 @@ async def test_one_evaluator_raises_others_survive():
 
     agent = LitAgent(load_config())
     agent._evaluators = [_Boom(), _StubEval("citation_accuracy", 0.9)]
-    out = await agent._evaluate(query="q", survey="s", results={"extract": [{"title": "P", "claims": []}]}, phase="initial")
+    out = await agent._evaluate(
+        query="q",
+        survey="s",
+        results={"extract": [{"title": "P", "claims": []}]},
+        phase="initial",
+    )
     assert "citation_accuracy" in out and "boom" not in out
 
 

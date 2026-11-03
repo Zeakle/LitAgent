@@ -1,8 +1,8 @@
 """Tests for cost budgets, injection detection, and safety errors."""
 
+from litagent.exceptions import LitAgentError, SafetyError
 from litagent.safety.budget import CostBudget
 from litagent.safety.injection import InjectionDetector, InjectionRisk
-from litagent.exceptions import SafetyError, LitAgentError
 
 
 class TestCostBudget:

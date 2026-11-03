@@ -1,6 +1,6 @@
 """LitAgent — Multi-agent adversarial literature review framework."""
 
-from litagent.config import load_config, AppConfig
+from litagent.config import AppConfig, load_config
 from litagent.runner import LitAgent
 
 __version__ = "0.1.0"

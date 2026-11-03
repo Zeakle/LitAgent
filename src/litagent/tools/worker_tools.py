@@ -2,8 +2,8 @@
 
 from langchain_core.tools import tool
 
-from litagent.memory.manager import MemoryManager
 from litagent.logging import get_logger
+from litagent.memory.manager import MemoryManager
 from litagent.skills.manager import SkillManager
 
 logger = get_logger("tools.worker")

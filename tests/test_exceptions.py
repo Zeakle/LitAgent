@@ -2,7 +2,7 @@
 
 import pytest
 
-from litagent.exceptions import LitAgentError, ConfigError, MCPError, SafetyError
+from litagent.exceptions import ConfigError, LitAgentError, MCPError, SafetyError
 
 
 class TestExceptionHierarchy:
