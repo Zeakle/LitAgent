@@ -82,6 +82,12 @@ def validate_writer_envelope(value: dict) -> dict:
         "frozen_component_reservation",
         "identity",
     }
+    if isinstance(value, dict) and "output_tokens" in value:
+        fields.add("output_tokens")
+        if value.get("contract") != FLAT_ENVELOPE_CONTRACT or (
+            "repair_mapping_contract" not in value
+        ):
+            raise ValueError("stage_output_capacity_policy_invalid")
     if isinstance(value, dict) and value.get("contract") == FLAT_ENVELOPE_CONTRACT:
         fields.update(("diagnostic_json_bytes", "claim_max_json_bytes"))
     if isinstance(value, dict) and {
@@ -389,6 +395,22 @@ def validate_writer_envelope(value: dict) -> dict:
         )
         selected_dimensions(value)
     if isinstance(value, dict) and {
+        "evaluation_result_contract",
+        "evaluation_result_identity",
+    }.intersection(value):
+        from litagent.eval.results import FIELDS, selected
+
+        fields.update(FIELDS)
+        selected(value)
+    if isinstance(value, dict) and {
+        "assessment_decision_contract",
+        "assessment_decision_identity",
+    }.intersection(value):
+        from litagent.eval.decision_output import FIELDS, selected
+
+        fields.update(FIELDS)
+        selected(value)
+    if isinstance(value, dict) and {
         "repair_prompt_revision",
         "repair_prompt_identity",
     }.intersection(value):
@@ -454,6 +476,10 @@ def validate_writer_envelope(value: dict) -> dict:
         "assessment": 16384,
         "global": 16384,
     }
+    if "output_tokens" in value:
+        from litagent.output_capacity import envelope_output_tokens
+
+        outputs = envelope_output_tokens(value)
     if (
         value["contract"] not in (ENVELOPE_CONTRACT, FLAT_ENVELOPE_CONTRACT)
         or any(
@@ -584,7 +610,9 @@ def make_writer_envelope(
     repair_prompt_revision=None,
     writer_source_view=None,
     evaluation_dimensions_contract=None,
+    evaluation_result_contract=None,
     closeout_profile=None,
+    output_tokens=None,
 ):
     """Define explicit producer limits, not estimates of unconstrained outputs."""
     from litagent.eval.scoped import SUPPORT_VALIDATION_REVISIONS
@@ -753,6 +781,12 @@ def make_writer_envelope(
         "builder_identity": builder_identity,
         "frozen_component_reservation": frozen_component_reservation,
     }
+    if output_tokens is not None:
+        from litagent.output_capacity import validate_output_tokens
+
+        if contract != FLAT_ENVELOPE_CONTRACT or not round_budget:
+            raise ValueError("stage_output_capacity_policy_invalid")
+        value["output_tokens"] = validate_output_tokens(output_tokens)
     if contract == FLAT_ENVELOPE_CONTRACT:
         # Full-capacity prose is no longer squeezed to the v4 small-body path.
         value["request_caps"]["reviewer"] = CONTEXT_LIMIT
@@ -762,6 +796,12 @@ def make_writer_envelope(
         value["claim_json_bytes"] = 30000
         value["claim_max_json_bytes"] = 2000
         value["diagnostic_json_bytes"] = 12288
+    if output_tokens is not None:
+        value["request_caps"].update(
+            inventory=100000,
+            **{"global": 120000},
+            repair=CONTEXT_LIMIT + output_tokens["repair"] - 20000,
+        )
     if capacity is not None:
         from litagent.capacity import resolve_capacity
 
@@ -871,6 +911,18 @@ def make_writer_envelope(
 
         value["evaluation_dimensions_contract"] = evaluation_dimensions_contract
         value["evaluation_dimensions_identity"] = dimensions_identity()
+    if evaluation_result_contract is not None:
+        from litagent.eval.results import CONTRACT as RESULT_CONTRACT
+        from litagent.eval.results import contract_identity
+
+        if evaluation_result_contract != RESULT_CONTRACT or round_budget is not True:
+            raise ValueError("evaluation_result_contract_invalid")
+        value["evaluation_result_contract"] = evaluation_result_contract
+        value["evaluation_result_identity"] = contract_identity()
+        if evaluation_dimensions_contract is not None:
+            from litagent.eval.decision_output import fields as decision_fields
+
+            value.update(decision_fields())
     if closeout_profile is not None:
         from litagent.closeout import PROFILE, profile_identity
 
@@ -906,6 +958,10 @@ def envelope_budget_plan(
         "assessment": 16384,
         "global": 16384,
     }
+    if "output_tokens" in envelope:
+        from litagent.output_capacity import envelope_output_tokens
+
+        outputs = envelope_output_tokens(envelope)
     stages = {
         k: {
             "count": n,
@@ -917,10 +973,10 @@ def envelope_budget_plan(
     }
     stages["body_initial"] = {
         "count": 1,
-        "output_tokens": 20000,
+        "output_tokens": outputs["body"],
         "bound": "exact_wire",
         "request_cap": wire_reservation(
-            first_request["messages"], 20000, first_request["response_format"]
+            first_request["messages"], outputs["body"], first_request["response_format"]
         ),
     }
     return build_budget_plan(
@@ -1037,6 +1093,11 @@ def build_budget_plan(
             "assessment": 16384,
             "global": 16384,
         }
+        if envelope and "output_tokens" in envelope:
+            from litagent.output_capacity import envelope_output_tokens
+
+            outputs = envelope_output_tokens(envelope)
+            outputs["body_initial"] = outputs["body"]
         if (
             body not in {(5, 0), (4, 1)}
             or counts != required_counts
@@ -1071,9 +1132,12 @@ def build_budget_plan(
     requests = spent_requests + sum(s["count"] for s in projected.values())
     # Integer arithmetic avoids rounding an allowance below the required margin.
     allowance = max(500000, ((required * 11 + 99999) // 100000) * 10000)
+    from litagent.output_capacity import envelope_context_limit, envelope_context_tokens
+
+    context_limit = envelope_context_limit(envelope)
     reason = (
         "budget_plan_context_exceeded"
-        if any(s["request_cap"] > CONTEXT_LIMIT for s in projected.values())
+        if any(s["request_cap"] > context_limit for s in projected.values())
         else (
             "writer_envelope_frozen_components_exceeded"
             if envelope
@@ -1102,8 +1166,8 @@ def build_budget_plan(
         "maximum_tokens": maximum_tokens,
         "planned_requests": requests,
         "maximum_requests": 64,
-        "context_tokens": 131072,
-        "context_reservation_limit": CONTEXT_LIMIT,
+        "context_tokens": envelope_context_tokens(envelope),
+        "context_reservation_limit": context_limit,
         "context_margin": 0.1,
         "spent_tokens": spent_tokens,
         "spent_requests": spent_requests,
@@ -1171,7 +1235,12 @@ def _joint_baseline_plan(plan):
 
 def joint_round_escrow_identity() -> str:
     """Bind only the opt-in aggregate rule and its live root validation."""
-    from litagent.capacity_rounds import _allocate, choose_refinement
+    from litagent.capacity_evaluation import preflight_round
+    from litagent.capacity_rounds import (
+        RoundRequestCapacityError,
+        _allocate,
+        choose_refinement,
+    )
 
     return _digest(
         [
@@ -1181,6 +1250,8 @@ def joint_round_escrow_identity() -> str:
             inspect.getsource(PlannedBudget.__init__),
             inspect.getsource(_allocate),
             inspect.getsource(choose_refinement),
+            inspect.getsource(RoundRequestCapacityError),
+            inspect.getsource(preflight_round),
         ]
     )
 
@@ -1528,7 +1599,12 @@ class PlannedBudget(CostBudget):
                 stage, "complete_wire_reservation", amount, spec["request_cap"]
             )
         if (
-            output_tokens != (16384 if recovery else spec["output_tokens"])
+            output_tokens
+            != (
+                self.plan["stages"]["inventory"]["output_tokens"]
+                if recovery
+                else spec["output_tokens"]
+            )
             or amount > spec["request_cap"]
         ):
             raise ValueError("planned_request_envelope_exceeded")
@@ -1942,7 +2018,7 @@ def _assessment_settlement(budget, request_id):
         entry.get("round_number") != allocation["round"]["number"]
         or entry.get("round_wire_sha256") != slot["wire_sha256"]
         or entry["reserved_tokens"] != slot["reserved_tokens"]
-        or slot["output_tokens"] != 16384
+        or slot["output_tokens"] != plan["stages"]["assessment"]["output_tokens"]
         or not isinstance(entry.get("wire_sha256"), str)
         or len(entry["wire_sha256"]) != 64
         or any(c not in "0123456789abcdef" for c in entry["wire_sha256"])

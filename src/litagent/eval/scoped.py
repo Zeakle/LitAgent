@@ -434,6 +434,12 @@ def evaluation_definition_prompt(stage: str, payload: dict) -> str:
     field, contract = contracts[stage]
     if payload.get(field) != contract:
         raise ValueError("evaluation_definition_stage_invalid")
+    from litagent.eval.results import selected as independent_results
+
+    if stage == "global" and independent_results(payload.get("writer_envelope")):
+        from litagent.eval.responsibilities import GLOBAL_INSTRUCTION
+
+        return GLOBAL_INSTRUCTION
     prompt = _EVALUATION_STAGE_PROMPTS_V2[stage]
     if stage == "inventory" and payload.get("inventory_recovery") is not None:
         from litagent.eval.inventory_recovery import recovery_instruction
@@ -1611,6 +1617,32 @@ def build_evaluation_request(
             stage=definition_stage,
             host_kind_agreement=host_kind_agreement,
         )
+    from litagent.eval.results import selected as independent_results
+
+    if definition_stage == "global" and independent_results(
+        payload.get("writer_envelope")
+    ):
+        from litagent.eval.global_permissions import project_format as global_format
+        from litagent.eval.global_permissions import (
+            project_prompt as global_prompt_view,
+        )
+        from litagent.eval.responsibilities import project_global_schema
+
+        if native_format is not None:
+            native_format["json_schema"]["schema"] = project_global_schema(
+                native_format["json_schema"]["schema"]
+            )
+        else:
+            wire_payload = {
+                **wire_payload,
+                "schema": project_global_schema(wire_payload["schema"]),
+            }
+        native_format = global_format(native_format, payload)
+        from litagent.eval.global_input import project_input, project_prompt
+
+        wire_payload = project_input(wire_payload, payload)
+        prompt = project_prompt(prompt, payload)
+        prompt = global_prompt_view(prompt, payload)
     if payload.get("assessment_output_contract") == "host-batch-assessment-v1" and (
         "assessment_input_contract" in payload
     ):
@@ -1663,6 +1695,24 @@ def build_evaluation_request(
             native_format = project_dimensions_format(native_format, payload)
             projected_format = project_dimensions_format(projected_format, payload)
             prompt += "\n" + DIMENSIONS_INSTRUCTION
+        from litagent.eval.decision_output import CONTRACT as DECISION_OUTPUT_CONTRACT
+        from litagent.eval.decision_output import (
+            project_format,
+            project_prompt,
+        )
+        from litagent.eval.decision_output import selected as reason_only_decisions
+
+        if reason_only_decisions(payload.get("writer_envelope")):
+            # The planner and sender measure the same final two wire candidates.
+            # Canonical host decisions keep status; the provider emits one code.
+            native_format = project_format(native_format, payload)
+            projected_format = project_format(projected_format, payload)
+            old_wire = {
+                **old_wire,
+                "assessment_decision_contract": DECISION_OUTPUT_CONTRACT,
+            }
+            projected["assessment_decision_contract"] = DECISION_OUTPUT_CONTRACT
+            prompt = project_prompt(prompt, payload)
         old_messages = _evaluation_messages(prompt, old_wire)
         new_messages = _evaluation_messages(prompt + BATCH_ALIAS_INSTRUCTION, projected)
         # Include both native schemas, the explanatory prompt and outer JSON
@@ -2140,6 +2190,40 @@ def _protected_entities(text: str) -> set[str]:
         )
         and word.lower() not in {"flop", "flops", "top-1", "top-5"}
     }
+
+
+def ordered_support_entities(text: str, envelope=None) -> list[str] | set[str]:
+    """Keep a stable representative diagnostic for the selected frozen evaluator."""
+    from litagent.eval.decision_output import selected
+
+    entities = _protected_entities(text)
+    if not selected(envelope):
+        return entities
+    normalized = text.replace("–", "-").casefold()
+    return sorted(
+        entities,
+        key=lambda entity: (
+            normalized.find(entity.casefold()),
+            entity.casefold(),
+            entity,
+        ),
+    )
+
+
+def support_diagnostics_identity() -> str:
+    """Bind deterministic diagnostics without changing legacy support identities."""
+    import inspect
+
+    return hashlib.sha256(
+        json.dumps(
+            [
+                "support-entity-source-order-v1",
+                inspect.getsource(ordered_support_entities),
+                inspect.getsource(_protected_entities),
+            ],
+            ensure_ascii=False,
+        ).encode()
+    ).hexdigest()
 
 
 _NUMBER = re.compile(r"(?<![A-Za-z0-9_.-])([+-]?(?:\d+(?:\.\d+)?|\.\d+))\s*(%|％)?")
@@ -2880,7 +2964,7 @@ def validate_support_basis(
     ):
         text = re.sub(re.escape(phrase), abbreviation, text, flags=re.I)
     # Absence is not proof of falsehood. Keep uncertain aliases/units unverified.
-    for entity in _protected_entities(text):
+    for entity in ordered_support_entities(text, evaluation_dimensions_envelope):
         forms = _source_entity_forms(entity, sources)
         if not any(
             re.search(
@@ -3689,6 +3773,11 @@ async def _evaluate_scoped(*, llm, survey, context, config) -> dict:
     # Ignore externally supplied private context keys. Only the locked writer
     # owner can select a new host support policy or response layout.
     context["_evaluation_dimensions_envelope"] = envelope if boundary_fields else None
+    from litagent.eval.results import FIELDS as RESULT_FIELDS
+    from litagent.eval.results import selected as independent_results
+
+    if independent_results(envelope):
+        progress.update({key: envelope[key] for key in RESULT_FIELDS})
     if boundary_fields:
         progress.update(boundary_fields)
     context["_support_validation_revision"] = support_revision
@@ -4023,7 +4112,8 @@ async def _evaluate_scoped(*, llm, survey, context, config) -> dict:
                     "planned_request_envelope_exceeded",
                     "budget_plan_contract_breached",
                 }
-                and config.max_tokens == 16384
+                and config.max_tokens
+                == (envelope or {}).get("output_tokens", {}).get("inventory", 16384)
                 and not getattr(budget, "stop_reason", None)
             ):
                 actual = strict_request_reservation(
@@ -4831,7 +4921,15 @@ async def _evaluate_scoped(*, llm, survey, context, config) -> dict:
         for row in progress.get("analysis_check", {}).get("sections", [])
         for code in row.get("host_validation", {}).get("failure_codes", [])
     )
-    if ownership_invalid:
+    from litagent.eval.results import selected as independent_results
+
+    independent = independent_results(envelope)
+    if ownership_invalid and independent:
+        progress.setdefault("global_sections", {})["analyses"] = {
+            "status": "error",
+            "reason_codes": ["evaluation_analysis_claim_ownership_invalid"],
+        }
+    if ownership_invalid and not independent:
         progress["global_check"] = "invalid_response"
         progress["global_reason_code"] = "evaluation_analysis_claim_ownership_invalid"
         checkpoint = context.get("evaluation_checkpoint")

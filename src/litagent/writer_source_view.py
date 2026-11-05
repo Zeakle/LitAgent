@@ -6,6 +6,21 @@ import inspect
 import re
 
 CONTRACT = "source-only-writer-v1"
+GROUNDING_INSTRUCTION = """
+Ground every comparison, negative statement and limitation in the actual cited
+originals. Not reported in the selected text does not mean absent in a method or
+the field. Describe observed settings and findings instead of inventing missing
+ablations, costs, universal rankings or negative applicability conclusions.
+Keep useful synthesis and all core methods with their necessary conditions;
+do not replace them with caveats. Summaries inherit no new premises. Reviewer
+must locate unsupported inferences; repairs retain only source-backed claims.
+"""
+SUMMARY_BODY_VIEW_INSTRUCTION = """
+body_units maps host IDs to complete frozen prose; body_sections preserves
+chapter and paragraph order as lists of those IDs. Read both as context.
+Never delete core requirements, weaken conditions or pack independent facts to
+fit: unit ceilings are not assertion allowances.
+"""
 _PAIR = ("writer_source_view", "writer_source_view_identity")
 _LOOKUP_FIELDS = ("source_ref", "evidence_id", "semantic_status")
 _CANDIDATE_FIELDS = (
@@ -50,6 +65,7 @@ _AUGMENTATION_FIELDS = {
     "host_priority_card_refs",
     "writing_envelope",
     "summary_constraints",
+    "grounding_instruction",
 }
 _STAGE_FIELDS = {
     "chapter": set(_PACKET_FIELDS)
@@ -73,6 +89,7 @@ _STAGE_FIELDS = {
         "query",
         "language",
         "body_units",
+        "body_sections",
         "requirements",
         "summary_limits_per_section",
     },
@@ -116,9 +133,15 @@ def _hex_digest(value):
 
 def source_view_identity() -> str:
     """Bind only this optional projection and its explicit field boundaries."""
+    from litagent.writing_v2 import _summary_request_bound, summary_request_upper_bound
+
     return _digest(
         [
             CONTRACT,
+            GROUNDING_INSTRUCTION,
+            SUMMARY_BODY_VIEW_INSTRUCTION,
+            inspect.getsource(summary_request_upper_bound),
+            inspect.getsource(_summary_request_bound),
             _PAIR,
             _LOOKUP_FIELDS,
             _CANDIDATE_FIELDS,
@@ -133,6 +156,9 @@ def source_view_identity() -> str:
                     _invalid,
                     _hex_digest,
                     selected_source_view,
+                    selected_summary_body_view,
+                    summary_body_view,
+                    validate_summary_body_view,
                     source_view_fields,
                     _source_lookup,
                     _payload_stage,
@@ -175,6 +201,96 @@ def source_view_fields(envelope) -> dict:
     return (
         {key: envelope[key] for key in _PAIR} if selected_source_view(envelope) else {}
     )
+
+
+def selected_summary_body_view(envelope) -> bool:
+    """Select the compact summary premises only on the independent wire."""
+    if not selected_source_view(envelope):
+        return False
+    from litagent.eval.decision_output import selected
+
+    return selected(envelope)
+
+
+def summary_body_view(units, envelope) -> dict | None:
+    """Keep complete ordered prose and paragraphs; retain citation ownership locally."""
+    if not selected_summary_body_view(envelope):
+        return None
+    from litagent.writing_v2 import BODY
+
+    if type(units) is not dict or not units:
+        _invalid()
+    if list(units) != [f"u{i}" for i in range(1, len(units) + 1)]:
+        _invalid()
+    texts, sections = {}, {}
+    for uid, unit in units.items():
+        if type(unit) is not dict or set(unit) != {"path", "text", "fact_card_refs"}:
+            _invalid()
+        path, refs = unit["path"], unit["fact_card_refs"]
+        if (
+            type(path) is not list
+            or len(path) != 3
+            or path[0] not in BODY
+            or any(type(i) is not int or i < 0 for i in path[1:])
+            or type(refs) is not list
+            or any(type(ref) is not str for ref in refs)
+        ):
+            _invalid()
+        section, paragraph, sentence = path
+        groups = sections.setdefault(section, [])
+        if paragraph == len(groups):
+            groups.append([])
+        if paragraph >= len(groups) or sentence != len(groups[paragraph]):
+            _invalid()
+        # Authored positions must be in sequence, not merely present somewhere.
+        if paragraph != len(groups) - 1:
+            _invalid()
+        groups[paragraph].append(uid)
+        texts[uid] = unit["text"]
+    view = {"body_units": texts, "body_sections": sections}
+    validate_summary_body_view(view, envelope)
+    return view
+
+
+def validate_summary_body_view(payload, envelope) -> None:
+    """Require a complete ordered partition without searching for equal prose."""
+    if not selected_summary_body_view(envelope):
+        if "body_sections" in payload:
+            _invalid()
+        return
+    from litagent.writing_v2 import BODY
+
+    texts, sections = payload.get("body_units"), payload.get("body_sections")
+    if (
+        type(texts) is not dict
+        or not texts
+        or len(texts) > envelope["body_max_units"]
+        or list(texts) != [f"u{i}" for i in range(1, len(texts) + 1)]
+        or any(
+            type(text) is not str
+            or not text.strip()
+            or len(text) > envelope["capacity"]["max_unit_characters"]
+            for text in texts.values()
+        )
+        or type(sections) is not dict
+        or not sections
+        or list(sections) != [key for key in BODY if key in sections]
+    ):
+        _invalid()
+    flattened = []
+    for groups in sections.values():
+        if type(groups) is not list or not groups:
+            _invalid()
+        for group in groups:
+            if (
+                type(group) is not list
+                or not group
+                or any(type(uid) is not str for uid in group)
+            ):
+                _invalid()
+            flattened.extend(group)
+    if flattened != list(texts):
+        _invalid()
 
 
 def _source_lookup(packet):
@@ -275,10 +391,15 @@ def project_source_view(system, payload, packet, envelope) -> tuple:
         _invalid()
     lookup = _source_lookup(packet)
     stage = _payload_stage(payload)
+    if "grounding_instruction" in payload and (
+        stage != "repair" or payload["grounding_instruction"] != GROUNDING_INSTRUCTION
+    ):
+        _invalid()
     for key in set(packet) - {"cards", "sources"}:
         if key in payload and payload[key] != packet[key]:
             _invalid()
     if stage == "summary":
+        validate_summary_body_view(payload, envelope)
         # Summary premises stay body-only; a projection never grants new sources.
         if "sources" in payload or "cards" in payload:
             _invalid()
@@ -298,6 +419,15 @@ def project_source_view(system, payload, packet, envelope) -> tuple:
     result = copy.deepcopy(payload)
     if "cards" in result:
         result["cards"] = lookup
+    if stage == "repair":
+        # The concise repair system has an existing exact identity. Keep that
+        # boundary intact; this authenticated input rule grants no paper support.
+        result["grounding_instruction"] = GROUNDING_INSTRUCTION
+        return system, result
+    if system.count(GROUNDING_INSTRUCTION) > 1:
+        _invalid()
+    if GROUNDING_INSTRUCTION not in system:
+        system += "\n" + GROUNDING_INSTRUCTION
     return system, result
 
 

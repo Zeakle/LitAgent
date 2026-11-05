@@ -4126,6 +4126,11 @@ def render_grounded_report_traced(
 
 def strict_acceptance(details: dict) -> dict:
     """Require every scientific claim and every core requirement before approval."""
+    from litagent.eval.results import CONTRACT as RESULT_CONTRACT
+    from litagent.eval.results import acceptance
+
+    if details.get("evaluation_result_contract") == RESULT_CONTRACT:
+        return acceptance(details)
     failures = []
     claims = details.get("assertions") or []
     science = [c for c in claims if c.get("kind") == "scientific"]

@@ -3201,6 +3201,9 @@ def _feedback_capacity(diagnostic, current_body):
     if not isinstance(diagnostic, dict) or set(diagnostic) - {
         "source_report_sha256",
         "reason",
+        "field",
+        "actual",
+        "maximum",
         "actual_assertions",
         "target_assertions",
         "target_batches",

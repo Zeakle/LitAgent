@@ -31,6 +31,73 @@ class FlatGateway(Gateway):
         async def chat(messages, **options):
             messages = copy.deepcopy(messages)
             payload = json.loads(messages[1]["content"])
+            if payload.get("global_input_contract") == "unit-local-global-input-v1":
+                # Decode only inside the fake HTTP provider. Actual outbound
+                # bytes, native schema, reservation and host consumers stay real.
+                units, sections = {}, {}
+                groups = {
+                    kind: []
+                    for kind in ("scientific", "report_structure", "runtime_method")
+                }
+                layout = []
+                for section in payload["report_sections"]:
+                    for part in section["layout"]:
+                        if "fragment" not in part:
+                            layout.append(copy.deepcopy(part))
+                            continue
+                        entry = {
+                            "source_fragment_id": part["fragment"],
+                            "source_unit_id": part["unit"],
+                            "section": section["section"],
+                            "citation_refs": part["citations"],
+                            "assertions_by_kind": {
+                                k: part[k] for k in groups if k in part
+                            },
+                        }
+                        entry.update(
+                            {k: part[k] for k in ("text", "prose") if k in part}
+                        )
+                        layout.append(entry)
+                payload["report_layout"] = layout
+                payload.update(
+                    body_analysis_contract="body-analysis-v1",
+                    global_findings_contract="anchored-global-findings-v2",
+                    evaluation_input_contract="flat-evaluation-input-v1",
+                    global_identity_contract="flat-global-identities-v1",
+                    report_input_contract="host-report-input-v1",
+                    writer_content_contract="grounded-writer-content-v1",
+                    summary_constraints_contract="effective-summary-limits-v1",
+                )
+                for entry in layout:
+                    if "source_fragment_id" not in entry:
+                        continue
+                    uid, fid = entry["source_unit_id"], entry["source_fragment_id"]
+                    fragment = {
+                        "source_fragment_id": fid,
+                        "citation_aliases": [
+                            payload["citation_aliases"][ref - 1]
+                            for ref in entry["citation_refs"]
+                        ],
+                    }
+                    if "text" in entry:
+                        fragment["text"] = entry["text"]
+                    units.setdefault(uid, []).append(fragment)
+                    if uid not in sections.setdefault(entry["section"], []):
+                        sections[entry["section"]].append(uid)
+                    for kind, rows in entry["assertions_by_kind"].items():
+                        for row in rows:
+                            cid, text, refs = row
+                            groups[kind].append([int(cid[1:]), cid, fid, text, refs])
+                payload["source_units"] = units
+                payload["source_units_by_section"] = sections
+                payload["assertions_by_kind"] = groups
+                payload["assertion_columns"] = [
+                    "sequence",
+                    "claim_id",
+                    "source_fragment_id",
+                    "claim_text",
+                    "evidence_aliases",
+                ]
             if isinstance(payload["source_units"], dict):
                 payload["source_units"] = [
                     {"source_unit_id": uid, "source_fragments": fragments}

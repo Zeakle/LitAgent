@@ -1,0 +1,42 @@
+{
+  "report_sha256": "0d517d1e689b6ab65d8047e36d8d23db218cec46c1ff7af1baa11b3aa2ec99c9",
+  "global_raw_response_sha256": "117532ebf9d07fdefa2674875597d2a25d16b0fe460f3f7f02bb00846eb6539d",
+  "global_findings_rejected": [
+    {
+      "code": "missing_assertion",
+      "raw_anchor_ids": [
+        "v6",
+        "a21",
+        "a22"
+      ],
+      "restored_anchor_ids": [
+        "unit:unit:5:3184",
+        "claim:claim_20",
+        "claim:claim_21"
+      ],
+      "failure_code": "evaluation_global_finding_identity_invalid",
+      "cause": "missing_assertion accepts original unit anchors, but this finding also includes existing claim anchors",
+      "explanation": "源单元v6（f6）中“这不同于先在上游大规模数据上预训练、再迁移或微调到下游任务的迁移学习范式，也不同于把学习快速优化规则作为中心目标的一般元学习方法”的科学区分事实，未在已列科学断言中完整表示；该事实属于引言部分的科学范围界定，不应仅作为报告结构遗漏。"
+    },
+    {
+      "code": "missing_assertion",
+      "raw_anchor_ids": [
+        "v16",
+        "a85",
+        "a86",
+        "a87"
+      ],
+      "restored_anchor_ids": [
+        "unit:unit:15:9396",
+        "claim:claim_84",
+        "claim:claim_85",
+        "claim:claim_86"
+      ],
+      "failure_code": "evaluation_global_finding_identity_invalid",
+      "cause": "missing_assertion accepts original unit anchors, but this finding also includes existing claim anchors",
+      "explanation": "源单元v16（f33）开头“总体而言，这些方法分别改变嵌入空间的统计结构、支持类别的描述形态或相似度比较函数”的总括性科学断言，未在已列科学断言中单独表示；现有a85-a87仅分别列举三类方法的强化方向，未覆盖“分别改变嵌入空间统计结构、类别描述形态、相似度比较函数”这一总括事实。"
+    }
+  ],
+  "scientific_gold_standard": false,
+  "origin": "060 global response; rejected findings only; no reconstructed verdict"
+}

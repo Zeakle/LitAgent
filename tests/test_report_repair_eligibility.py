@@ -340,6 +340,105 @@ async def run_semantic(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "failures,fault", [(0, None), (2, None), (0, "source_fidelity")]
+)
+async def test_independent_host_semantic_failure_reaches_full_bounded_prose_repair(
+    case, tmp_path, monkeypatch, failures, fault
+):
+    """Retain model_adequate during authenticated replay, without upgrading facts."""
+    from test_evaluation_dimensions_pipeline import separated_peer
+
+    from litagent.closeout import PROFILE, profile_flags
+    from litagent.eval.results import CONTRACT
+
+    prepare_case(case)
+    case.body["open_problems"][0]["sentences"][0]["text"] = case.semantic_wrong
+    gateway = SemanticGateway(case, failures, fault=fault)
+    original = gateway.evaluator.chat
+
+    async def chat(messages, **options):
+        response = await original(messages, **options)
+        payload = gateway.evaluator.base.calls[-1]
+        if "cited_materials" not in payload:
+            return response
+        parents = {
+            f["source_fragment_id"]: unit["source_unit_id"]
+            for unit in payload["source_units"]
+            for f in unit["source_fragments"]
+        }
+        sections = {
+            unit["source_unit_id"]: unit["section"]
+            for unit in payload["report_structure"]
+        }
+        claims = {c["claim_id"]: c for c in payload["assertions"]}
+        value = json.loads(response.content)
+        for decision in value["decisions"]:
+            claim = claims[decision["claim_id"]]
+            section = sections[
+                claim.get(
+                    "source_unit_id", parents.get(claim.get("source_fragment_id"))
+                )
+            ]
+            # A model-level negative alongside the host semantic negative
+            # reproduces 062's mixed diagnosis without altering either guard.
+            if (
+                "Open Problems" in section
+                and case.semantic_wrong in claim["claim_text"]
+            ):
+                decision.update(
+                    status="unsupported",
+                    reason_code="insufficient_support",
+                    support_basis=[],
+                )
+                for aspect in decision["aspect_checks"]:
+                    aspect.update(supported=False, support_ids=[])
+        response.content = json.dumps(value)
+        return response
+
+    gateway.evaluator.chat = chat
+    gateway = separated_peer(gateway)
+    monkeypatch.setattr(scientific, "ScientificRepairGateway", lambda *_: gateway)
+    monkeypatch.setattr(
+        structured,
+        "FLAGS",
+        {
+            **profile_flags(PROFILE),
+            "evaluation_result_contract": CONTRACT,
+        },
+    )
+    structured.select_structured_policy(monkeypatch)
+    report, _ = await run_feedback_case(case, tmp_path, monkeypatch, failures)
+    initial = report["metadata"]["evaluation_history"]["initial_evaluation"]
+    details = initial["faithfulness"]["details"]
+    assert initial["faithfulness"]["score"] is None
+    assert details["unverified_count"] > 0
+    assert details["limitations_check"]["model_adequate"] is True
+    assert details["limitations_check"]["adequate"] is False
+    _, journal, ledger = products(tmp_path)
+    assert (
+        ledger["plan"]["envelope"]["assessment_decision_contract"]
+        == "reason-only-decision-v3"
+    )
+    assert not ledger["usage_uncertain"]
+    if fault:
+        assert gateway.repair_count == 0
+        assert not journal["candidates"]
+    else:
+        assert gateway.repair_count == (1 if failures == 0 else 2)
+        assert gateway.inventories == gateway.repair_count + 1
+        assert journal["candidates"][-1]["committed"] is (failures == 0)
+    assert report["delivery"]["publishable"] is (failures == 0 and fault is None)
+    if not report["delivery"]["publishable"]:
+        assert case.semantic_wrong in report["survey"]
+    else:
+        final = report["evaluation"]["faithfulness"]["details"]
+        assert final["coverage"]["complete"]
+        assert final["supported_count"] == final["factual_claim_count"]
+        assert final["unverified_count"] == final["unsupported_count"] == 0
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("family", list(SEMANTIC_CASES))
 async def test_legal_host_unverifiable_enters_repair_without_rewriting_old_score(
     case, tmp_path, monkeypatch, family

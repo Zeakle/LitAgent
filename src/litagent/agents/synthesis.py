@@ -217,9 +217,11 @@ class SynthesisWorker(Worker):
         native_writing_plan: str | None = None,
         frozen_writer_plan_provider: Callable | None = None,
         capacity_config=None,
+        output_tokens_provider: Callable | None = None,
     ):
         """Initialize the synthesis worker."""
         self._capacity_config = capacity_config
+        self._output_tokens_provider = output_tokens_provider
         self._methodology_provider = methodology_provider
         self._frozen_writer_plan_provider = frozen_writer_plan_provider
         self._received_native = copy.deepcopy(received_native)

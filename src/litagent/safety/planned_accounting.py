@@ -8,6 +8,11 @@ import json
 import re
 
 from litagent.capacity import resolve_capacity
+from litagent.output_capacity import (
+    envelope_context_limit,
+    envelope_context_tokens,
+    envelope_output_tokens,
+)
 
 _CONTEXT = 117964
 _CONTRACTS = {f"planned-budget-v{version}" for version in range(2, 8)}
@@ -82,6 +87,7 @@ def _envelope(value):
         "identity",
     }
     optional = {
+        "output_tokens",
         "capacity",
         "repair_mapping_contract",
         "source_map_identity",
@@ -112,6 +118,10 @@ def _envelope(value):
         "writer_source_view_identity",
         "evaluation_dimensions_contract",
         "evaluation_dimensions_identity",
+        "evaluation_result_contract",
+        "evaluation_result_identity",
+        "assessment_decision_contract",
+        "assessment_decision_identity",
         "closeout_profile",
         "closeout_profile_identity",
     }
@@ -120,6 +130,9 @@ def _envelope(value):
     if flat:
         required |= {"diagnostic_json_bytes", "claim_max_json_bytes"}
     _keys(value, required, optional)
+    if "output_tokens" in value:
+        _require(flat and "repair_mapping_contract" in value, "output_policy_invalid")
+        envelope_output_tokens(value)
     _require(
         value["contract"] in {"flat-writer-envelope-v1", "budgeted-writer-envelope-v1"},
         "envelope_invalid",
@@ -463,6 +476,32 @@ def _envelope(value):
             == "effective-summary-limits-v1",
             "envelope_evaluation_dimensions_invalid",
         )
+    if {"evaluation_result_contract", "evaluation_result_identity"}.intersection(value):
+        _require(
+            value.get("evaluation_result_contract") == "independent-evaluation-v1"
+            and _hashed(value.get("evaluation_result_identity"))
+            and flat
+            and bool(cap)
+            and value.get("support_validation_revision") == "host-support-receipts-v2"
+            and value.get("global_findings_contract") == "anchored-global-findings-v2",
+            "envelope_evaluation_results_invalid",
+        )
+    if {"assessment_decision_contract", "assessment_decision_identity"}.intersection(
+        value
+    ):
+        _require(
+            value.get("assessment_decision_contract")
+            in {
+                "reason-only-decision-v1",
+                "reason-only-decision-v2",
+                "reason-only-decision-v3",
+            }
+            and _hashed(value.get("assessment_decision_identity"))
+            and value.get("evaluation_result_contract") == "independent-evaluation-v1"
+            and value.get("evaluation_dimensions_contract")
+            == "separated-evaluation-dimensions-v1",
+            "envelope_assessment_decision_invalid",
+        )
     _require(
         task_view == ("repair_guidance_capacity_rule" in value)
         and (
@@ -573,6 +612,7 @@ def _plan(plan):
     _require(
         isinstance(plan, dict) and plan.get("contract") in _CONTRACTS, "plan_invalid"
     )
+    context_limit = envelope_context_limit(plan.get("envelope"))
     if "joint_round_escrow" in plan:
         _joint_plan(plan)
         return
@@ -616,7 +656,7 @@ def _plan(plan):
             and all(
                 _integer(spec[k], 1) for k in ("count", "request_cap", "output_tokens")
             )
-            and spec["output_tokens"] <= spec["request_cap"] <= _CONTEXT
+            and spec["output_tokens"] <= spec["request_cap"] <= context_limit
             and spec["bound"]
             in (
                 {"exact_wire", "context_upper_bound", "host_envelope_upper_bound"}
@@ -658,6 +698,14 @@ def _plan(plan):
     else:
         _require(envelope is None, "plan_invalid")
     if adaptive:
+        outputs = (
+            {
+                **envelope_output_tokens(envelope),
+                "body_initial": envelope_output_tokens(envelope)["body"],
+            }
+            if envelope and "output_tokens" in envelope
+            else _OUTPUTS
+        )
         counts = {key: item["count"] for key, item in projected.items()}
         body = counts.pop("body", 0), counts.pop("body_initial", 0)
         _require(
@@ -673,7 +721,7 @@ def _plan(plan):
                 **({"repair": repairs} if repairs else {}),
             }
             and all(
-                item["output_tokens"] == _OUTPUTS.get(key)
+                item["output_tokens"] == outputs.get(key)
                 for key, item in projected.items()
             ),
             "plan_complete_path_invalid",
@@ -721,8 +769,8 @@ def _plan(plan):
         "maximum_tokens": maximum,
         "planned_requests": requests,
         "maximum_requests": 64,
-        "context_tokens": 131072,
-        "context_reservation_limit": _CONTEXT,
+        "context_tokens": envelope_context_tokens(plan.get("envelope")),
+        "context_reservation_limit": context_limit,
         "context_margin": 0.1,
         "spent_tokens": spent,
         "spent_requests": calls,
@@ -937,15 +985,16 @@ def _allocation(plan, entries, arguments, previous, *, round_budget):
                 and _hashed(request["wire_sha256"])
                 and _integer(
                     request["reserved_tokens"],
-                    16384,
+                    plan["stages"]["assessment"]["output_tokens"],
                     (
                         plan["stages"][request["stage"]]["request_cap"]
                         if joint
-                        else _CONTEXT
+                        else plan["context_reservation_limit"]
                     ),
                 )
                 and type(request["output_tokens"]) is int
-                and request["output_tokens"] == 16384,
+                and request["output_tokens"]
+                == plan["stages"][request["stage"]]["output_tokens"],
                 "round_slot_invalid",
             )
         for name, spec in stages.items():

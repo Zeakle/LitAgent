@@ -27,6 +27,7 @@ from litagent.llm.routing import ModelBoundClient
 from litagent.quality import build_fact_cards, digest
 from litagent.safety.budget import strict_request_reservation
 from litagent.writer_source_view import (
+    GROUNDING_INSTRUCTION,
     selected_source_view,
     source_view_identity,
     validate_source_view_record,
@@ -106,7 +107,7 @@ def conform_evaluation_replies(gateway):
 
 
 async def run_scientific_case(
-    case, path, monkeypatch, *, failures=0, summary=False, view=VIEW
+    case, path, monkeypatch, *, failures=0, summary=False, view=VIEW, config=None
 ):
     """Replace HTTP responses while retaining synthesis, review and transactions."""
     path.mkdir(parents=True, exist_ok=True)
@@ -118,7 +119,13 @@ async def run_scientific_case(
     monkeypatch.setattr(scientific, "ScientificRepairGateway", lambda *_: gateway)
     monkeypatch.setattr(structured, "FLAGS", source_flags(view))
     structured.select_structured_policy(monkeypatch)
-    report, actual_gateway = await run_feedback_case(case, path, monkeypatch, failures)
+    report, actual_gateway = await run_feedback_case(
+        case,
+        path,
+        monkeypatch,
+        failures,
+        **({"config": config} if config is not None else {}),
+    )
     assert actual_gateway is gateway
     state, journal, ledger = products(path)
     return SimpleNamespace(
@@ -205,6 +212,10 @@ def assert_selected_requests(result, canonical_packet):
         else:
             assert "sources" not in payload and "body_units" in payload
         messages, native, identity = request_parts(entry)
+        if "targets" in payload:
+            assert payload["grounding_instruction"] == GROUNDING_INSTRUCTION
+        else:
+            assert messages[0]["content"].count(GROUNDING_INSTRUCTION) == 1
         matching = [
             call
             for call in journal["calls"].values()

@@ -1,0 +1,11 @@
+{
+  "run_id": "frozen-writer-three-domain-20261105-065-few-shot-metric",
+  "claim_id": "claim_106",
+  "scientific_gold_standard": false,
+  "response_sha256": "0d91d692865355e4b16501698c00ff65f9125e50bd10bdf592ea5c17ccb84a23",
+  "required_aspects": ["predicate", "conditions"],
+  "returned_aspects": ["predicate", "conditions", "conditions"],
+  "duplicate_values_identical": true,
+  "historical_host_error": "evaluation_assessment_support_selection_invalid",
+  "historical_subreason": "aspect_coverage"
+}

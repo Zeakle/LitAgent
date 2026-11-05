@@ -772,7 +772,7 @@ def recovery_wire_binding(owner, messages, output_tokens, response_format):
         or owner._owner()[0] != "repair"
         or feedback.get("contract")
         != owner.plan["envelope"]["inventory_recovery_contract"]
-        or output_tokens != 16384
+        or output_tokens != owner.plan["stages"]["inventory"]["output_tokens"]
         or not parent
         or parent["round"]["mode"] != "assess"
         or parent["round"]["report_sha256"] != feedback["source_report_sha256"]

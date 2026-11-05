@@ -1897,6 +1897,7 @@ class LitAgent:
         )
 
         from litagent.extraction_verification import ExtractionVerifier
+        from litagent.output_capacity import configured_output_tokens
 
         self._synthesis = SynthesisWorker(
             llm=self._stage_llm("generation"),
@@ -1915,6 +1916,7 @@ class LitAgent:
             ),
             evidence_selector=self._evidence_selector,
             capacity_config=cfg.capacity,
+            output_tokens_provider=lambda: configured_output_tokens(cfg),
             context_config=cfg.context,
             trace_hook=self._trace_hook,
             thinking_mode=cfg.adversarial.thinking_mode,
@@ -2441,6 +2443,42 @@ class LitAgent:
                     )
 
                 context["evaluation_checkpoint"] = save_progress
+            from litagent.eval.results import (
+                execute_evaluation,
+            )
+            from litagent.eval.results import result as metric_result
+            from litagent.eval.results import selected as independent_results
+            from litagent.safety.planned_budget import locked_writer_envelope
+
+            if independent_results(locked_writer_envelope(self._cost_budget)):
+                run = await execute_evaluation(
+                    llm=self._stage_llm("evaluation"),
+                    survey=survey,
+                    context=context,
+                    config=self._config.eval,
+                )
+                citation = next(
+                    ev
+                    for ev in self._evaluators
+                    if ev.metric_name == "citation_accuracy"
+                )
+                cited = await citation.evaluate(survey, context)
+                output = {
+                    "citation_accuracy": metric_result(
+                        (
+                            "unverified"
+                            if cited.skipped
+                            else "passed" if cited.passed else "failed"
+                        ),
+                        score=None if cited.skipped else cited.score,
+                        reasons=(
+                            [cited.details["skipped_reason"]] if cited.skipped else []
+                        ),
+                        **{**cited.details, "threshold": citation._threshold},
+                    ),
+                    **run.metrics(),
+                }
+                return output
             scoped = next(
                 (
                     ev
@@ -4269,6 +4307,16 @@ class LitAgent:
     @staticmethod
     def _derive_quality(evaluation: dict[str, dict]) -> dict[str, Any]:
         """Derive the aggregate quality decision from evaluation metrics."""
+        from litagent.eval.results import CONTRACT as RESULT_CONTRACT
+        from litagent.eval.results import derive_quality
+
+        if (
+            evaluation.get("faithfulness", {})
+            .get("details", {})
+            .get("evaluation_result_contract")
+            == RESULT_CONTRACT
+        ):
+            return derive_quality(evaluation)
         required = ["citation_accuracy", "faithfulness"]
         failed: list[str] = []
         unverified: list[str] = []

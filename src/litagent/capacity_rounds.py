@@ -13,6 +13,14 @@ from litagent.safety.planned_budget import (
 )
 
 
+class RoundRequestCapacityError(ValueError):
+    """Describe valid complete wires that cannot use the frozen request slots."""
+
+    def __init__(self, diagnostics):
+        super().__init__("capacity_round_request_exceeded")
+        self.diagnostics = copy.deepcopy(diagnostics)
+
+
 def request_proof(stage, messages, output_tokens, response_format):
     """Bind the complete wire measured by the transport, excluding credentials."""
     return {
@@ -92,18 +100,39 @@ def _allocate(
             or set(request)
             != {"stage", "wire_sha256", "reserved_tokens", "output_tokens"}
             or request["stage"] != stage
-            or request["output_tokens"] != 16384
+            or request["output_tokens"] != owner.plan["stages"][stage]["output_tokens"]
             or type(request["reserved_tokens"]) is not int
-            or not 16384 <= request["reserved_tokens"] <= CONTEXT_LIMIT
+            or request["reserved_tokens"] < request["output_tokens"]
             or not isinstance(request["wire_sha256"], str)
             or len(request["wire_sha256"]) != 64
             or any(c not in "0123456789abcdef" for c in request["wire_sha256"])
         ):
             raise ValueError("capacity_round_requests_invalid")
-        if owner.plan.get("joint_round_escrow") and (
-            request["reserved_tokens"] > owner.plan["stages"][stage]["request_cap"]
-        ):
-            raise ValueError("capacity_round_requests_invalid")
+    # Validate every proof before classifying capacity. An oversized earlier wire
+    # must not turn a later malformed identity into an authorized refinement.
+    overflows = []
+    for i, request in enumerate(requests):
+        stage = request["stage"]
+        context_limit = owner.plan["context_reservation_limit"]
+        stage_limit = owner.plan["stages"][stage]["request_cap"]
+        limit = (
+            min(context_limit, stage_limit)
+            if owner.plan.get("joint_round_escrow")
+            else context_limit
+        )
+        if request["reserved_tokens"] > limit:
+            overflows.append(
+                {
+                    "request_index": i,
+                    "stage": stage,
+                    "reserved_tokens": request["reserved_tokens"],
+                    "maximum_tokens": limit,
+                    "context_limit": context_limit,
+                    "stage_limit": stage_limit,
+                }
+            )
+    if overflows:
+        raise RoundRequestCapacityError(overflows)
     envelope = copy.deepcopy(owner.plan["envelope"])
     envelope["model_assertions"] = max(cap.initial_assertions, assertions)
     envelope["assessment_batches"] = max(envelope["assessment_batches"], batches)

@@ -134,7 +134,12 @@ def preflight_round(
     owner, plans, payload, config, progress, global_reservation, report_sha256
 ):
     """Choose one fully funded branch and publish an executable refinement goal."""
-    from litagent.capacity_rounds import choose_refinement, plan_round, request_proof
+    from litagent.capacity_rounds import (
+        RoundRequestCapacityError,
+        choose_refinement,
+        plan_round,
+        request_proof,
+    )
     from litagent.eval.batched import batch_prompt, build_global_payload, global_prompt
     from litagent.eval.scoped import build_evaluation_request
 
@@ -164,6 +169,7 @@ def preflight_round(
     ):
         raise ValueError("evaluation_capacity_stage_deadline_insufficient")
     failure = None
+    request_overflows = []
     try:
         allocation = plan_round(
             owner,
@@ -173,7 +179,9 @@ def preflight_round(
             report_sha256=report_sha256,
         )
     except ValueError as exc:
-        if str(exc) != "capacity_remaining_workflow_unaffordable":
+        if isinstance(exc, RoundRequestCapacityError):
+            request_overflows = exc.diagnostics
+        elif str(exc) != "capacity_remaining_workflow_unaffordable":
             raise
         failure = str(exc)
         try:
@@ -194,7 +202,10 @@ def preflight_round(
                 "status": "exhausted",
                 "source_report_sha256": report_sha256,
                 "assessment_reserved_tokens": current_total,
+                "global_reserved_tokens": global_reservation,
             }
+            if request_overflows:
+                progress["capacity_request_overflows"] = request_overflows
             raise ValueError("evaluation_capacity_exhausted") from resource
     progress["capacity"] = {
         "policy": POLICY,
@@ -208,6 +219,7 @@ def preflight_round(
         "actual_assertions": actual,
         "actual_batches": len(plans),
         "assessment_reserved_tokens": current_total,
+        "global_reserved_tokens": global_reservation,
         "allocation_identity": allocation["identity"],
         "round": allocation["round"],
         "reserved_with_margin": allocation["with_margin_tokens"],
@@ -220,6 +232,19 @@ def preflight_round(
         ),
     }
     if failure:
+        if request_overflows:
+            progress["capacity_request_overflows"] = request_overflows
+            progress["capacity"]["explanation"] = (
+                "Complete request reservations exceed frozen limits: "
+                + "; ".join(
+                    f"{row['stage']} {row['reserved_tokens']} > "
+                    f"{row['maximum_tokens']} tokens"
+                    for row in request_overflows
+                )
+                + ". Reduce redundant report content while preserving core "
+                "requirements and conditions. This is not a scientific verdict; "
+                "the complete candidate must pass request preflight and evaluation."
+            )
         progress["capacity"].update(
             capacity_diagnostic(progress, failure, batches=len(plans)),
             target_assertions=allocation["round"]["assertions"],

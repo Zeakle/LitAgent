@@ -1,0 +1,17 @@
+{
+  "scientific_gold_standard": false,
+  "source_run": "frozen-writer-three-domain-20261105-064-few-shot-metric",
+  "source_report_sha256": "3775b51a2bd55a2578d0b9ff92c25893296a0b75a8a824a718e0d5aab91740ef",
+  "source_global_response_sha256": "31418b4818f64d130839b8f0daf043706757f6e510cc8a074062f8b4138aea87",
+  "error": "evaluation_global_response_claim_alias_invalid",
+  "path": [
+    "coverage",
+    0,
+    "claim_ids",
+    1
+  ],
+  "actual_id": "2",
+  "declared_namespace": "aN",
+  "identity_only_control_id": "a2",
+  "meaning": "Control changes only an ID for validator tests; it does not repair or validate the historical scientific result."
+}

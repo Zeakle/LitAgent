@@ -18,6 +18,7 @@ from litagent.eval.ragas_eval import RagasFaithfulnessEvaluator
 from litagent.llm.client import BaseLLMClient
 from litagent.orchestrator.scheduler import Scheduler
 from litagent.orchestrator.task_graph import SubTask, TaskGraph
+from litagent.output_capacity import configured_output_tokens
 from litagent.quality import build_fact_cards, coverage_requirements, digest
 from litagent.safety.budget import CostBudget
 from litagent.workbench import RunOptions, VerificationOptions
@@ -170,7 +171,9 @@ def plan_frozen_budget(
     round_resource_contract=None,
     writer_source_view=None,
     evaluation_dimensions_contract=None,
+    evaluation_result_contract=None,
     closeout_profile=None,
+    output_tokens=None,
 ):
     """Use the same immutable source packet and first wire as ordinary synthesis."""
     from litagent.eval.scoped import SUPPORT_VALIDATION_REVISIONS
@@ -348,6 +351,7 @@ def plan_frozen_budget(
     plan = writer_budget_plan(
         packet,
         aliases,
+        **({"output_tokens": output_tokens} if output_tokens is not None else {}),
         budget_policy=budget_policy,
         methodology=methodology,
         capacity=capacity,
@@ -408,6 +412,11 @@ def plan_frozen_budget(
         **(
             {"evaluation_dimensions_contract": evaluation_dimensions_contract}
             if evaluation_dimensions_contract is not None
+            else {}
+        ),
+        **(
+            {"evaluation_result_contract": evaluation_result_contract}
+            if evaluation_result_contract is not None
             else {}
         ),
         **(
@@ -536,6 +545,7 @@ async def run_frozen(
     round_resource_contract=None,
     writer_source_view=None,
     evaluation_dimensions_contract=None,
+    evaluation_result_contract=None,
     closeout_profile=None,
 ):
     """Use real Synthesis, Reviewer, scheduler, assembly, Evaluation and acceptance."""
@@ -763,6 +773,15 @@ async def run_frozen(
                 plan_frozen_budget(
                     bundle,
                     budget_policy=budget_policy,
+                    **(
+                        {
+                            "output_tokens": expected_budget_plan.get(
+                                "envelope", {}
+                            ).get("output_tokens")
+                        }
+                        if budget_policy == "planned-budget-v7"
+                        else {}
+                    ),
                     capacity=agent._config.capacity,
                     inventory_recovery=inventory_recovery,
                     **(
@@ -823,6 +842,11 @@ async def run_frozen(
                         else {}
                     ),
                     **(
+                        {"evaluation_result_contract": evaluation_result_contract}
+                        if evaluation_result_contract is not None
+                        else {}
+                    ),
+                    **(
                         {"writer_source_view": writer_source_view}
                         if writer_source_view is not None
                         else {}
@@ -841,6 +865,14 @@ async def run_frozen(
                     ),
                 ),
             )
+            # Authenticate the frozen certificate before reading model settings.
+            # An opt-in output profile must then match the actual server config.
+            if budget_policy == "planned-budget-v7" and configured_output_tokens(
+                agent._config
+            ) != expected_budget_plan.get("envelope", {}).get("output_tokens"):
+                from litagent.writing_v2 import WriterError
+
+                raise WriterError("frozen_budget_plan_drift", "identity")
     if native_reviewer_thinking_mode not in (None, "disabled"):
         raise ValueError("native_reviewer_thinking_configuration_invalid")
     writing_plan_spec(native_writing_plan)
@@ -936,6 +968,7 @@ async def run_frozen(
             else None
         ),
         capacity_config=cfg.capacity,
+        output_tokens_provider=lambda: configured_output_tokens(cfg),
         thinking_mode=cfg.adversarial.thinking_mode,
         native_reasoning_effort=native_reasoning_effort,
         native_provider_api=native_provider_api,

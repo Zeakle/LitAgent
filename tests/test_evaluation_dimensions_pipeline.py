@@ -42,6 +42,18 @@ def separated_peer(gateway):
         if "cited_materials" not in payload:
             return response
         value = nested_reply(json.loads(response.content))
+        if payload.get("assessment_decision_contract") == "reason-only-decision-v3":
+            # The controlled provider must obey the actually selected wire, while
+            # preserving its original reason and every negative scientific flag.
+            for decision in value["decisions"]:
+                decision["evidence_check"].pop("status")
+                decision["evidence_check"].pop("support_basis")
+                decision["evidence_check"]["aspect_checks"] = {
+                    check["aspect"]: {
+                        key: val for key, val in check.items() if key != "aspect"
+                    }
+                    for check in decision["evidence_check"]["aspect_checks"]
+                }
         schema = options["response_format"]["json_schema"]["schema"]
         Draft202012Validator(schema).validate(value)
         response.content = json.dumps(value)

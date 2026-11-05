@@ -19,6 +19,7 @@ function renderAssessmentEffect(container, claim, L, currentReport) {
   node(container, "p", L("conflictHelp"));
 }
 const LABELS = {
+  error: ["执行错误", "Execution error"], not_applicable: ["不适用", "Not applicable"],
   passed: ["通过", "Passed"], failed: ["未通过", "Failed"], unverified: ["未核验", "Unverified"],
   disabled: ["未启用", "Disabled"],
   not_run: ["未运行", "Not run"],
@@ -111,6 +112,29 @@ function renderRunBudget(container, value, runId, en, plan) {
   }
   node(panel, "p", en ? "Run-scoped last recorded usage, not a score or cost for this report version. Unknown reservations are conservative holds, not known billed usage, refunds or authorization to replay. Reservations and allocation-time savings are shown separately." : "这是整个运行的最后记录，不是当前报告版本的评分或成本。未知占用是保守保留额，不是已知实际用量、退款或重发授权；规划预留及分配时差额另行显示。");
 }
+function renderIndependentChecks(container, details, options, onSelect, L) {
+  const en = options.locale === "en";
+  const panel = node(container, "section", null, "quality-section");
+  node(panel, "h3", en ? "Independent checks" : "独立检查与交付门禁");
+  node(panel, "p", en ? "Scores describe completed measurements; delivery requires every mandatory check. Unverified results have no score." : "评分描述已完成的测量；交付要求所有必要检查通过。未核验结果没有分数。");
+  const formulas = {citation_accuracy: ["有效去重引用 ID／全部去重引用 ID 与格式错误项", "Valid unique IDs / all unique IDs and malformed markers"], faithfulness: ["获支持科学断言／全部科学断言；严格交付要求 1.0", "Supported scientific assertions / all scientific assertions; delivery requires 1.0"], internal_consistency: ["max(0, 1 − 0.2 × 矛盾对数)；严格交付要求无矛盾", "max(0, 1 − 0.2 × conflict pairs); delivery requires no conflicts"]};
+  for (const [name, labels] of Object.entries(formulas)) node(panel, "p", `${L(name)}: ${labels[en ? 1 : 0]}`);
+  const titles = {execution: ["执行完整性", "Execution completeness"], inventory: ["清单有效性", "Inventory validity"], core_coverage: ["核心问题覆盖", "Core coverage"], structure: ["结构", "Structure"], method: ["方法披露", "Method disclosure"], language: ["语言", "Language"], analysis: ["章节分析", "Chapter analysis"], method_statements: ["运行方法陈述", "Runtime statements"], organization: ["组织陈述", "Organization"], global_report: ["全局正文问题", "Global report issues"], limitations: ["具体局限", "Concrete limitations"]};
+  const table = node(panel, "table", null, "quality-distribution quality-batches"), head = node(table, "thead"), header = node(head, "tr");
+  for (const label of (en ? ["Check", "Status", "Reason"] : ["检查", "状态", "原因"])) node(header, "th", label).setAttribute?.("scope", "col");
+  const body = node(table, "tbody");
+  for (const [name, item] of Object.entries(details.evaluation_checks || {})) {
+    const row = node(body, "tr");
+    node(row, "th", titles[name]?.[en ? 1 : 0] || name).setAttribute?.("scope", "row");
+    node(row, "td", L(item.status || "unverified"));
+    const cell = node(row, "td", (item.reason_codes || []).join(", ") || "—");
+    if (["inventory", "execution", "core_coverage"].includes(name)) {
+      const action = node(cell, "button", en ? "View evidence" : "查看依据"); action.type = "button"; action.setAttribute?.("style", "min-width:5.5rem");
+      action.addEventListener("click", () => onSelect({kind: "metric", id: name, value: item}, action));
+    }
+  }
+}
+
 export function renderQuality(container, evaluation, quality, delivery, onSelect, t = key => key, options = {}) {
   const L = key => LABELS[key]?.[options.locale === "en" ? 1 : 0] || key;
   const details = evaluation?.faithfulness?.details || {};
@@ -162,15 +186,16 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
   const metrics = node(container, "div", null, "metric-grid");
   for (const [name, result] of Object.entries(evaluation || {})) {
     const button = node(metrics, "button", null, "metric-row"); button.type = "button";
-    button.dataset.status = result?.skipped ? "unverified" : result?.passed === true ? "passed" : result?.passed === false ? "failed" : "unverified";
-    node(button, "span", L(name)); node(button, "strong", scoreText(result));
-    node(button, "small", result?.skipped ? t("metricSkipped") : L(button.dataset.status));
+    button.dataset.status = result?.status || (result?.skipped ? "unverified" : result?.passed === true ? "passed" : result?.passed === false ? "failed" : "unverified");
+    node(button, "span", name === "faithfulness" && details.evaluation_result_contract === "independent-evaluation-v1" ? (options.locale === "en" ? "LitAgent actual-citation support" : "LitAgent 实际引用支持率") : L(name)); node(button, "strong", scoreText(result));
+    node(button, "small", result?.status ? L(result.status) : result?.skipped ? t("metricSkipped") : L(button.dataset.status));
     const threshold = numeric(result?.details?.threshold);
     node(button, "small", `${L("threshold")}: ${threshold == null ? L("unavailable") : threshold}`);
     if (!result?.skipped) meter(button, numeric(result?.score), L(name), threshold);
     if (name === "citation_accuracy") node(button, "small", L("idHelp"), "metric-explanation");
     button.addEventListener("click", () => onSelect({ kind: "metric", id: name, value: result }, button));
   }
+  if (details.evaluation_result_contract === "independent-evaluation-v1") renderIndependentChecks(container, details, options, onSelect, L);
   const gate = node(container, "section", null, "quality-gate");
   node(gate, "h3", `${quality?.status || "unverified"} / ${delivery?.status || "pending"}`);
   node(gate, "p", `${L("gate")} · ${L("reasons")}: ${(delivery?.reason_codes || []).join(", ") || L("noReasons")}`);
@@ -244,7 +269,7 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
     const stages = details.stages || {};
     node(strict, "p", `${en ? "Assessed assertions" : "已处理断言"}: ${display(stages.processed_assertions)} / ${display(stages.expected_assertions)}`);
     const table = node(strict, "table", null, "quality-distribution quality-batches"); const body = node(table, "tbody");
-    for (const batch of stages.batches || []) { const row = node(body, "tr"); node(row, "th", `${en ? "Batch" : "批次"} ${batch.index + 1}`); node(row, "td", L(batch.status)); node(row, "td", `${batch.claim_ids?.length || 0} ${L("claims")}`); }
+    for (const batch of stages.batches || []) { const row = node(body, "tr"); node(row, "th", `${en ? "Batch" : "批次"} ${Number.isInteger(batch.index) ? batch.index + 1 : L("unavailable")}`); node(row, "td", L(batch.status)); node(row, "td", `${batch.claim_ids?.length || 0} ${L("claims")}`); }
     node(strict, "p", `${en ? "Global consistency" : "全局一致性"}: ${L(stages.global_check || "unverified")}`);
     if (details.global_findings_contract) {
       node(strict,"p",`${en ? "Inventory validity" : "抽取清单有效性"}: ${L(details.inventory_check?.status || "unverified")}`);
@@ -260,7 +285,7 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
       const verdict = (details.core_coverage || []).find(c => c.requirement_id === requirement.requirement_id);
       const supportedIds = new Set((details.assertions || []).filter(c => c.kind === "scientific" && c.status === "supported").map(c => c.claim_id));
       const verified = details.coverage?.complete === true && verdict?.answered === true && Array.isArray(verdict.claim_ids) && verdict.claim_ids.length > 0 && verdict.claim_ids.every(id => supportedIds.has(id));
-      node(strict, "p", `${requirement.text}: ${L(verified ? "passed" : "unverified")}`);
+      node(strict, "p", `${requirement.text || requirement.requirement_id || L("unavailable")}: ${L(verified ? "passed" : "unverified")}`);
     }
     const cards = node(strict, "details", null, "quality-diagnostic");
     node(cards, "summary", `${en ? "Fact card bindings" : "事实卡绑定"} · ${Object.keys(details.fact_card_map || {}).length}`);

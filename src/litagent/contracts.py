@@ -321,6 +321,7 @@ class SurveyResult(BaseModel):
     graph_data: dict[str, Any] = Field(default_factory=dict)
     partial: bool = False
     evaluation: dict[str, Any] = Field(default_factory=dict)
+    evaluation_checks: dict[str, Any] | None = None
     quality: dict[str, Any] = Field(
         default_factory=lambda: {
             "status": "unverified",
@@ -385,4 +386,19 @@ def normalize_survey_result(
             }
     value["schema_version"] = SURVEY_RESULT_SCHEMA_VERSION
     value["config_fingerprint"] = config_fingerprint
-    return SurveyResult.model_validate(value).model_dump()
+    from litagent.eval.results import CONTRACT as RESULT_CONTRACT
+
+    details = value.get("evaluation", {}).get("faithfulness", {}).get("details", {})
+    if details.get("evaluation_result_contract") == RESULT_CONTRACT:
+        from litagent.eval.results import EvaluationRunResult
+
+        run = EvaluationRunResult.from_details(
+            details, hashlib.sha256(value["survey"].encode()).hexdigest()
+        )
+        value["evaluation_checks"] = run.checks()
+    elif value.get("evaluation_checks") is not None:
+        raise ValueError("evaluation_checks_contract_missing")
+    serialized = SurveyResult.model_validate(value).model_dump()
+    if serialized.get("evaluation_checks") is None:
+        serialized.pop("evaluation_checks", None)
+    return serialized

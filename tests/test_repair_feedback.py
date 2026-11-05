@@ -596,28 +596,33 @@ def test_034_real_request_guard_counts_complete_feedback_and_native_schema(
     assert reservation > 110000
 
 
-async def run_feedback_case(case, tmp_path, monkeypatch, failing_candidates):
+async def run_feedback_case(
+    case, tmp_path, monkeypatch, failing_candidates, *, config=None
+):
     """Mock external HTTP only while retaining the full transactional consumer chain."""
     from test_native_responses import owner_for
     from test_scientific_repair_pipeline import ScientificRepairGateway
 
     from litagent.config import load_config
     from litagent.frozen_writing import frozen_options, plan_frozen_budget, run_frozen
+    from litagent.output_capacity import configured_output_tokens
     from litagent.review_structure import build_methodology
     from litagent.runner import LitAgent, RunPolicy
     from litagent.writing_v2 import EOF_CONTAINER_POLICY, RANGE_WRITING_PLAN
 
     gateway = ScientificRepairGateway(case, failing_candidates)
     owner, _, _ = await owner_for(gateway)
-    config = load_config()
+    legacy_output = config is None
+    config = load_config() if config is None else config.model_copy(deep=True)
     config.observability.enabled = False
     config.mcp_servers = {}
     config.llm.model = config.llm.extraction_model = config.llm.evaluation_model = (
         "lite"
     )
     config.llm.generation_model = "pro"
-    config.llm.max_tokens = 20000
-    config.adversarial.review_max_tokens = 4096
+    if legacy_output:
+        config.llm.max_tokens = 20000
+        config.adversarial.review_max_tokens = 4096
     agent = LitAgent(config, run_policy=RunPolicy.isolated_benchmark())
     agent._targeted_repair_state_path = tmp_path / "repair.json"
     agent._evaluation_progress_root = tmp_path / "evaluation"
@@ -669,7 +674,14 @@ async def run_feedback_case(case, tmp_path, monkeypatch, failing_candidates):
     }
     before = copy.deepcopy(bundle)
     plan = plan_frozen_budget(
-        bundle, budget_policy="planned-budget-v7", repair_feedback=True
+        bundle,
+        budget_policy="planned-budget-v7",
+        repair_feedback=True,
+        **(
+            {"output_tokens": configured_output_tokens(config)}
+            if not legacy_output
+            else {}
+        ),
     )
     try:
         report = await run_frozen(

@@ -32,6 +32,7 @@ from litagent.observability.recorder import (
     RunRecorder,
 )
 from litagent.observability.tracing import LangFuseTracer
+from litagent.output_capacity import configured_output_tokens, envelope_output_tokens
 from litagent.report_audit import atomic_json, digest
 from litagent.runner import LitAgent, RunPolicy
 from litagent.writing_v2 import (
@@ -426,6 +427,22 @@ def evaluation_dimensions_options(manifest):
     }
 
 
+def evaluation_results_options(manifest):
+    """Authenticate independent results only from a server-frozen manifest."""
+    from litagent.eval.results import CONTRACT, FIELDS, contract_identity
+
+    if not any(key in manifest for key in FIELDS):
+        return {}
+    if (
+        manifest.get(FIELDS[0]) != CONTRACT
+        or manifest.get(FIELDS[1]) != contract_identity()
+        or manifest.get("writing_profile") != ROUND_PROFILE
+        or manifest.get("support_validation_revision") != "host-support-receipts-v2"
+    ):
+        raise ValueError("frozen_evaluation_results_configuration_invalid")
+    return {FIELDS[0]: CONTRACT}
+
+
 def writer_source_view_options(manifest):
     """Select the private source view only with its complete frozen parent stack."""
     fields = {"writer_source_view", "writer_source_view_identity"}
@@ -509,6 +526,7 @@ def manifest_options(manifest):
     round_resource_options(manifest)
     writer_source_view_options(manifest)
     evaluation_dimensions_options(manifest)
+    evaluation_results_options(manifest)
     options = profile_options(manifest.get("writing_profile", DISABLED_PROFILE))
     changes = {
         **classification_review_options(manifest),
@@ -662,6 +680,14 @@ def check_profile(config, profile, *, writing_plan=None):
         raise ValueError("frozen_writing_profile_mode_conflict")
     if profile == DISABLED_PROFILE:
         check_models(config)
+        return
+    if profile == ROUND_PROFILE and configured_output_tokens(config) is not None:
+        baseline = config.model_copy(deep=True)
+        baseline.llm.max_tokens = 20000
+        baseline.adversarial.review_max_tokens = 4096
+        baseline.eval.max_tokens = 16384
+        baseline.adversarial.thinking_mode = "disabled"
+        check_models(baseline)
         return
     if config.adversarial.review_max_tokens != 4096 or config.eval.max_tokens != 16384:
         raise ValueError("frozen_writing_profile_output_conflict")
@@ -820,6 +846,7 @@ def source_paths():
         + list(Path("scripts").glob("*.py"))
         + list(Path("tests").rglob("*.py"))
         + list(Path("tests/fixtures").rglob("*.json"))
+        + list(Path("config").glob("*.yaml"))
     )
     return sorted({p for p in paths if p.is_file() and "__pycache__" not in str(p)})
 
@@ -852,7 +879,7 @@ def bound_native_receipt(start, end, journal, *, reservation_counter=None):
             not isinstance(rf, dict)
             or rf.get("type") != "json_schema"
             or type(cap) is not int
-            or not 0 < cap <= 20000
+            or not 0 < cap <= max(envelope_output_tokens(journal).values())
             or set(request)
             - (
                 ARK_NATIVE_FIELDS
@@ -1813,7 +1840,9 @@ def _historical_writer_envelope(start, envelope, *, call=None):
                         "maximum_request_reservation": envelope["request_caps"][
                             "repair"
                         ],
-                        "reserved_output_tokens": 20000,
+                        "reserved_output_tokens": envelope_output_tokens(envelope)[
+                            "repair"
+                        ],
                     }
                 ),
                 "writer_repair_guidance_admission_rule_invalid",
@@ -1916,7 +1945,9 @@ def conservative_rejection_receipt(root, manifest, state, row, archive, starts, 
     for start in starts:
         end = indexed[start["operation_id"]]
         cap = start.get("max_tokens")
-        if type(cap) is not int or not 0 < cap <= 20000:
+        if type(cap) is not int or not 0 < cap <= max(
+            envelope_output_tokens(journal).values()
+        ):
             raise ValueError("frozen_accounting_cap_invalid")
         reservation = reservation_counter(
             start.get("messages"), cap, start.get("response_format")
@@ -2820,7 +2851,7 @@ def authenticate_planned_evaluation_start(
     _mixed_require(
         phase in {"inventory", "assessment", "global"}
         and type(cap) is int
-        and cap == 16384
+        and cap == envelope_output_tokens(ledger["plan"].get("envelope"))[phase]
         and start.get("provider_api", "chat") == "chat"
         and start.get("output_limit_parameter") == "max_tokens"
         and start.get("max_tokens") == cap
@@ -3529,6 +3560,7 @@ def prepare(
     round_resource_contract=None,
     writer_source_view=None,
     evaluation_dimensions_contract=None,
+    evaluation_result_contract=None,
     closeout_profile=None,
 ):
     """Freeze all three materials and the same source before any paid request."""
@@ -3539,6 +3571,17 @@ def prepare(
     ):
         raise ValueError("frozen_accounting_policy_invalid")
     check_profile(config, writing_profile, writing_plan=writing_plan)
+    if evaluation_result_contract is not None:
+        from litagent.eval.results import contract_identity
+
+        evaluation_results_options(
+            {
+                "evaluation_result_contract": evaluation_result_contract,
+                "evaluation_result_identity": contract_identity(),
+                "writing_profile": writing_profile,
+                "support_validation_revision": support_validation_revision,
+            }
+        )
     if evaluation_dimensions_contract is not None:
         from litagent.eval.batched import response_contract_identity
         from litagent.eval.dimensions import dimensions_identity
@@ -4005,6 +4048,18 @@ def prepare(
                 for key in ("writer_source_view", "writer_source_view_identity")
             }
         )
+    if evaluation_result_contract is not None:
+        from litagent.eval.results import contract_identity
+
+        manifest["evaluation_result_contract"] = evaluation_result_contract
+        manifest["evaluation_result_identity"] = contract_identity()
+        evaluation_results_options(manifest)
+        manifest["writing_parameters"].update(
+            {
+                key: manifest[key]
+                for key in ("evaluation_result_contract", "evaluation_result_identity")
+            }
+        )
     if evaluation_dimensions_contract is not None:
         from litagent.eval.dimensions import dimensions_identity
 
@@ -4048,6 +4103,11 @@ def prepare(
         manifest["budget_plans"] = {
             row["case_id"]: plan_frozen_budget(
                 row["bundle"],
+                **(
+                    {"output_tokens": configured_output_tokens(config)}
+                    if writing_profile == ROUND_PROFILE
+                    else {}
+                ),
                 **inventory_recovery_options(manifest),
                 **mixed_inventory_recovery_options(manifest),
                 **classification_review_options(manifest),
@@ -4064,6 +4124,7 @@ def prepare(
                 **round_resource_options(manifest),
                 **writer_source_view_options(manifest),
                 **evaluation_dimensions_options(manifest),
+                **evaluation_results_options(manifest),
                 **closeout_options(manifest),
                 budget_policy=profile_parameters(
                     writing_profile, writing_plan=writing_plan
@@ -4129,6 +4190,15 @@ def expected_limits(manifest):
     expected = {
         r["case_id"]: plan_frozen_budget(
             r["bundle"],
+            **(
+                {
+                    "output_tokens": configured_output_tokens(
+                        manifest["config"]["effective"]
+                    )
+                }
+                if manifest["writing_profile"] == ROUND_PROFILE
+                else {}
+            ),
             **inventory_recovery_options(manifest),
             **mixed_inventory_recovery_options(manifest),
             **classification_review_options(manifest),
@@ -4145,6 +4215,7 @@ def expected_limits(manifest):
             **round_resource_options(manifest),
             **writer_source_view_options(manifest),
             **evaluation_dimensions_options(manifest),
+            **evaluation_results_options(manifest),
             **closeout_options(manifest),
             budget_policy=profile_parameters(
                 manifest["writing_profile"], writing_plan=manifest.get("writing_plan")
@@ -4250,7 +4321,13 @@ def validate(root, config):
         **round_resource_options(m),
         **writer_source_view_options(m),
         **evaluation_dimensions_options(m),
+        **evaluation_results_options(m),
         **closeout_options(m),
+        **(
+            {"evaluation_result_identity": m["evaluation_result_identity"]}
+            if "evaluation_result_identity" in m
+            else {}
+        ),
         **(
             {"evaluation_dimensions_identity": m["evaluation_dimensions_identity"]}
             if "evaluation_dimensions_identity" in m
@@ -4941,6 +5018,10 @@ def export(root, state, manifest):
             or hashlib.sha256(survey.encode()).hexdigest() != row["report_sha256"]
         ):
             continue
+        from litagent.eval.results import public_summary
+
+        if summary := public_summary(report):
+            row["evaluation_summary"] = summary
         diagnostic = evaluation_diagnostic(report)
         if diagnostic:
             row["evaluation_diagnostic"] = diagnostic
@@ -5332,6 +5413,8 @@ def export(root, state, manifest):
         )
     if manifest.get("inventory_recovery") is True:
         keys.append("evaluation_history")
+    if any("evaluation_summary" in row for row in rows):
+        keys.append("evaluation_summary")
     writer = csv.DictWriter(buf, fieldnames=keys, extrasaction="ignore")
     writer.writeheader()
 
@@ -5356,6 +5439,10 @@ def export(root, state, manifest):
             if manifest.get("inventory_recovery") is True
             else dict(row)
         )
+        if "evaluation_summary" in row:
+            projected["evaluation_summary"] = json.dumps(
+                row["evaluation_summary"], ensure_ascii=False
+            )
         if "cost_diagnostic" in row:
             projected["cost_diagnostic"] = json.dumps(
                 row["cost_diagnostic"], ensure_ascii=False
@@ -5508,6 +5595,10 @@ def export(root, state, manifest):
             f"|{r['case_id']}|{display(r.get('reasoning_tokens'))}|{display(r.get('reasoning_usage_complete'))}|{display(r.get('reasoning_usage_available_requests'))}/{display(r.get('requests', 0))}|\n"
             for r in rows
         )
+    from litagent.eval.results import summary_tables
+
+    independent_markdown, _ = summary_tables(rows)
+    md += independent_markdown
     (out / "benchmark.md").write_text(md)
     (out / "README.md").write_text(md)
     table = "".join(
@@ -5768,6 +5859,13 @@ def export(root, state, manifest):
         page = page.replace(
             '<section class="scroll">', progress_panel + '<section class="scroll">', 1
         )
+    from litagent.eval.results import summary_tables
+
+    _, independent_html = summary_tables(rows)
+    if independent_html:
+        page = page.replace(
+            '<script id="data"', independent_html + '<script id="data"', 1
+        )
     (out / "benchmark.html").write_text(page)
     return public
 
@@ -5933,6 +6031,7 @@ async def _execute(root, config):
                 **round_resource_options(m),
                 **writer_source_view_options(m),
                 **evaluation_dimensions_options(m),
+                **evaluation_results_options(m),
                 **closeout_options(m),
             )
         except BaseException as exc:
@@ -5979,11 +6078,16 @@ async def _execute(root, config):
             meta = report.get("metadata", {})
             faith = report.get("evaluation", {}).get("faithfulness", {})
             details = faith.get("details", {})
+            if details.get(
+                "evaluation_result_contract"
+            ) == "independent-evaluation-v1" and details.get("component_errors"):
+                failure = {"family": "protocol", "code": "evaluation_contract_invalid"}
             entry.update(
                 generated=bool(meta.get("writer_document")),
                 evaluation=(
                     "completed"
                     if not faith.get("skipped", True)
+                    and not details.get("component_errors")
                     and details.get("stages", {}).get("global_check") == "completed"
                     else "not_complete"
                 ),
@@ -6066,6 +6170,14 @@ async def _execute(root, config):
                     partial_unsupported=partial.get("unsupported_count"),
                     partial_unverified=partial.get("unverified_count"),
                 )
+            if details.get("evaluation_result_contract") == "independent-evaluation-v1":
+                from litagent.benchmark.quality_suite import (
+                    _candidate_evaluation_failures,
+                )
+
+                candidate_errors, _ = _candidate_evaluation_failures(meta)
+                if candidate_errors:
+                    failure = {"family": "protocol", "code": candidate_errors[0]}
             failure = meta.get("writer_failure") or failure
             journal = Path(
                 "artifacts/targeted-repairs", run_id + ".json.writer-v2.json"
@@ -6184,6 +6296,7 @@ async def _execute(root, config):
 def main():
     """Require explicit preparation or bounded live execution of the frozen suite."""
     p = argparse.ArgumentParser()
+    p.add_argument("--config", default=None, help="Server-owned config YAML")
     p.add_argument("--root", type=Path, required=True)
     p.add_argument("--accounting-parent", type=Path, action="append", default=[])
     p.add_argument("--inventory-recovery", action="store_true")
@@ -6277,10 +6390,17 @@ def main():
         ),
         default=None,
     )
+    p.add_argument(
+        "--evaluation-result-contract",
+        choices=("independent-evaluation-v1",),
+        default=None,
+    )
     g = p.add_mutually_exclusive_group(required=True)
     g.add_argument("--prepare", action="store_true")
     g.add_argument("--live", action="store_true")
     args = p.parse_args()
+    if args.live and args.evaluation_result_contract is not None:
+        p.error("--evaluation-result-contract is frozen during --prepare only")
     if args.live and args.closeout_profile is not None:
         p.error("--closeout-profile is frozen during --prepare only")
     if args.closeout_profile is not None:
@@ -6333,7 +6453,7 @@ def main():
         p.error("--accounting-policy is frozen during --prepare only")
     if args.accounting_policy is not None and args.writing_profile != ROUND_PROFILE:
         p.error("--accounting-policy requires the frozen round profile")
-    cfg = load_config()
+    cfg = load_config(args.config) if args.config is not None else load_config()
     profile = (
         (args.writing_profile or DISABLED_PROFILE)
         if args.prepare
@@ -6415,6 +6535,11 @@ def main():
             **(
                 {"evaluation_dimensions_contract": args.evaluation_dimensions_contract}
                 if args.evaluation_dimensions_contract is not None
+                else {}
+            ),
+            **(
+                {"evaluation_result_contract": args.evaluation_result_contract}
+                if args.evaluation_result_contract is not None
                 else {}
             ),
             **(

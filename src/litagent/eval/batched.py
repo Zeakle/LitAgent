@@ -593,14 +593,20 @@ def _flat_batch_tables(value: dict) -> None:
 
 def restore_batch_support_ids(result: Assessment, payload: dict) -> Assessment:
     """Decode only the chosen wire's exact passage names, preserving raw responses."""
+    from litagent.eval.decision_output import validate_selections
+
     if payload.get("assessment_input_contract") != ADAPTIVE_ASSESSMENT_INPUT_CONTRACT:
+        validate_selections(result, payload)
         return result
     messages, _ = build_evaluation_request(batch_prompt(payload), payload)
     if json.loads(messages[1]["content"]).get("assessment_input_contract") != (
         ADAPTIVE_ASSESSMENT_INPUT_CONTRACT
     ):
+        validate_selections(result, payload)
         return result
-    return _restore_batch_support_ids(result, batch_support_aliases(payload))
+    result = _restore_batch_support_ids(result, batch_support_aliases(payload))
+    validate_selections(result, payload)
+    return result
 
 
 def _restore_batch_support_ids(
@@ -1054,6 +1060,12 @@ def global_review_schema(payload):
     schema["$defs"]["LimitationsDecision"]["properties"]["claim_ids"] = claim_array(
         grouped["open_problems"]
     )
+    from litagent.eval.results import selected as independent_results
+
+    if independent_results(payload.get("writer_envelope")):
+        from litagent.eval.responsibilities import project_global_schema
+
+        schema = project_global_schema(schema)
     return schema
 
 
@@ -1082,6 +1094,18 @@ def valid_limitations(result, assertions, supported_ids, report_structure=()):
         and len(set(decision.claim_ids)) == len(decision.claim_ids)
         and set(decision.claim_ids).issubset(allowed)
     )
+
+
+def limitations_check(
+    result, assertions, supported_ids, report_structure=(), *, independent=False
+):
+    """Project the same model and host limitation verdict during execution and replay."""
+    value = result.limitations.model_dump()
+    if independent:
+        value["model_adequate"] = result.limitations.adequate
+    if not valid_limitations(result, assertions, supported_ids, report_structure):
+        value["adequate"] = False
+    return value
 
 
 def request_size(prompt: str, payload: dict, output: int) -> int:
@@ -1320,6 +1344,14 @@ def global_prompt(payload: dict, *, native_unit_ownership: bool = False) -> str:
 
     if type(native_unit_ownership) is not bool:
         raise ValueError("evaluation_native_ownership_configuration_invalid")
+    from litagent.eval.results import selected as independent_results
+
+    if independent_results(payload.get("writer_envelope")):
+        from litagent.eval.responsibilities import GLOBAL_INSTRUCTION
+
+        return GLOBAL_INSTRUCTION + (
+            "\n" + NATIVE_OWNERSHIP_INSTRUCTION if native_unit_ownership else ""
+        )
     definitions_v2 = (
         _support_revision(payload.get("writer_envelope"))
         == SUPPORT_VALIDATION_REVISION_V2
@@ -2107,10 +2139,23 @@ async def assess_batches(
         checkpoint(progress)
     try:
         response = await call(global_system, global_payload)
-        global_result = global_review_type(payload).model_validate_json(
-            response.content
-        )
-        if payload.get("evaluation_input_contract") == FLAT_EVALUATION_INPUT:
+        from litagent.eval.results import selected as independent_results
+
+        independent = independent_results(payload.get("writer_envelope"))
+        if independent:
+            from litagent.eval.responsibilities import parse_global_response
+
+            global_result = parse_global_response(
+                response.content, global_payload, progress
+            )
+        else:
+            global_result = global_review_type(payload).model_validate_json(
+                response.content
+            )
+        if (
+            not independent
+            and payload.get("evaluation_input_contract") == FLAT_EVALUATION_INPUT
+        ):
             from litagent.writing_flat import restore_global_identities
 
             global_result = restore_global_identities(global_result, global_payload)
@@ -2143,11 +2188,15 @@ async def assess_batches(
             expected,
             "evaluation_global_unit_coverage_invalid",
         )
-        _require_ids(
-            [c.requirement_id for c in global_result.coverage],
-            [c["requirement_id"] for c in payload.get("coverage_requirements", [])],
-            "evaluation_core_coverage_invalid",
-        )
+        if (
+            not independent
+            or progress["global_sections"]["coverage"]["status"] == "passed"
+        ):
+            _require_ids(
+                [c.requirement_id for c in global_result.coverage],
+                [c["requirement_id"] for c in payload.get("coverage_requirements", [])],
+                "evaluation_core_coverage_invalid",
+            )
         if any(issue.source_unit_id not in expected for issue in global_result.issues):
             raise ValueError("evaluation_global_issue_identity_invalid")
         validate_global_findings(global_result, payload)
@@ -2177,14 +2226,13 @@ async def assess_batches(
         if decision.status == "supported" and decision.claim_id not in effect_ids
     }
     if isinstance(global_result, ScopeGlobalReview):
-        progress["limitations_check"] = global_result.limitations.model_dump()
-        if not valid_limitations(
+        progress["limitations_check"] = limitations_check(
             global_result,
             payload["assertions"],
             supported_ids,
             payload["report_structure"],
-        ):
-            progress["limitations_check"]["adequate"] = False
+            independent=independent,
+        )
     if isinstance(global_result, AnalysisGlobalReview):
         from litagent.body_quality import validate_analysis_decisions
 
@@ -2513,3 +2561,20 @@ def _decode_assessment_dimensions(content: str, payload: dict) -> Assessment:
 
 
 decode_assessment_response = _decode_assessment_dimensions
+
+_DECODE_ASSESSMENT_WITH_DIMENSIONS = decode_assessment_response
+
+
+def _decode_reason_only_assessment(content: str, payload: dict) -> Assessment:
+    """Restore a declared single-code wire before unchanged canonical validation."""
+    from litagent.eval.decision_output import (
+        decode_response,
+        selected,
+    )
+
+    if isinstance(payload, dict) and selected(payload.get("writer_envelope")):
+        content = decode_response(content, payload)
+    return _DECODE_ASSESSMENT_WITH_DIMENSIONS(content, payload)
+
+
+decode_assessment_response = _decode_reason_only_assessment

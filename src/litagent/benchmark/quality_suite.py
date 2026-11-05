@@ -186,7 +186,13 @@ def _candidate_evaluation_failures(metadata: dict) -> tuple[list[str], list[dict
                 result.get("details"), dict
             ):
                 continue
-            for field in ("skipped_reason", "unverified_reason"):
+            fields = ("skipped_reason", "unverified_reason")
+            if (
+                result["details"].get("evaluation_result_contract")
+                == "independent-evaluation-v1"
+            ):
+                fields += ("error",)
+            for field in fields:
                 record(
                     result["details"].get(field),
                     f"{path}.candidate_evaluation.{metric}.details.{field}",
@@ -307,6 +313,18 @@ def evaluation_execution(faithfulness: dict) -> str:
     details = faithfulness.get("details") or {}
     if not isinstance(details, dict):
         return "unrecorded"
+    if details.get("evaluation_result_contract") == "independent-evaluation-v1":
+        from litagent.eval.results import EvaluationRunResult
+
+        run = EvaluationRunResult.from_details(details, details["source_report_sha256"])
+        return (
+            "completed"
+            if run.checks()["execution"]["status"] == "passed"
+            and details.get("stages", {}).get("global_check") == "completed"
+            else "incomplete"
+        )
+    if not isinstance(details, dict):
+        return "unrecorded"
     stages = details.get("stages") or {}
     if not isinstance(stages, dict):
         return "unrecorded"
@@ -419,6 +437,13 @@ def public_projection(result: dict) -> dict:
         }
         for row in result["observations"]
     ]
+    for source, target in zip(
+        result["observations"], output["observations"], strict=True
+    ):
+        from litagent.eval.results import sanitize_summary
+
+        if summary := sanitize_summary(source.get("evaluation_summary")):
+            target["evaluation_summary"] = summary
     for row in output["observations"]:
         if not isinstance(row.get("evaluation_execution"), str) or row[
             "evaluation_execution"
@@ -473,6 +498,11 @@ def export_bundle(root: Path, result: dict) -> None:
         "status",
         "evaluation",
         "evaluation_execution",
+        *(
+            ["evaluation_summary"]
+            if any("evaluation_summary" in row for row in data["observations"])
+            else []
+        ),
         "judge",
         "jev",
         "report_sha256",
@@ -575,6 +605,10 @@ def export_bundle(root: Path, result: dict) -> None:
                 csv_row[f"{service}_{field}"] = (
                     (item.get("costs") or {}).get(service, {}).get(field)
                 )
+        if "evaluation_summary" in csv_row:
+            csv_row["evaluation_summary"] = json.dumps(
+                csv_row["evaluation_summary"], ensure_ascii=False
+            )
         writer.writerow({key: csv_row.get(key) for key in columns})
         cells = [
             item["phase"],
@@ -612,17 +646,34 @@ def export_bundle(root: Path, result: dict) -> None:
             ],
         ]
     )
+    from litagent.eval.results import summary_tables
+
+    independent_markdown, independent_html = summary_tables(data["observations"])
+    if independent_markdown:
+        lines.append(independent_markdown)
     (root / "benchmark.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     encoded = json.dumps(data, ensure_ascii=False).replace("<", "\\u003c")
     formal = data["counts"]["formal"]
     pilot = data["counts"]["pilot"]
     stop_summary = html.escape(" · ".join(data["stop_reasons"]) or "无 / None")
     document = f"""<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Strict Automatic Benchmark</title><style>body{{font:16px system-ui;max-width:1100px;margin:2rem auto;padding:1rem;background:#f7f8fa;color:#192535}}h1{{font-size:1.8rem}}section{{background:white;border:1px solid #ccd4de;border-radius:12px;padding:1rem;margin:1rem 0}}.scroll{{overflow:auto}}table{{border-collapse:collapse;width:100%}}th,td{{padding:.7rem;text-align:left;border-bottom:1px solid #ddd}}svg{{width:100%;max-width:600px;height:auto}}pre{{white-space:pre-wrap;overflow-wrap:anywhere}}button{{padding:.6rem}}@media(max-width:420px){{body{{margin:0;padding:.6rem}}h1{{font-size:1.4rem}}}}</style><button id="locale">English / 中文</button><h1 id="title">严格自动验收 Benchmark</h1><p id="note">自动评测 · {judge_label} · 人工校准未验证；科学准确率、误放行率和误拒绝率不可用。</p>{context_html}<section><h2>运行状态 / Run status</h2><p id="pilot-summary">试点 / Pilot: {pilot['run']}/{pilot['planned']} 已运行 / run · {pilot['automatic_passed']}/{pilot['planned']} 自动交付 / passed · {pilot['not_run']} 未运行 / not run</p><p id="stop-summary">{stop_summary}</p></section><section><h2 id="overview">正式套件</h2><p id="formal-summary">{formal['automatic_passed']}/15 自动交付 · {formal['run']}/15 已运行 · {formal['not_run']} 未运行</p><svg viewBox="0 0 600 90" role="img" aria-label="Passed {formal['automatic_passed']} of 15 planned cases"><rect x="0" y="10" width="600" height="20" fill="#dce3ec"/><rect x="0" y="10" width="{formal['automatic_passed'] * 40}" height="20" fill="#287a60"/><text x="0" y="65">{formal['automatic_passed']} passed / 15 planned</text></svg></section><section class="scroll"><table><thead><tr><th>阶段 / Phase</th><th>题目 / Case</th><th>Evaluation</th><th>Judge</th><th>Jev</th><th>交付 / Delivery</th></tr></thead><tbody>{''.join(rows)}</tbody></table></section><section><h2>统计与服务预算 / Statistics and budgets</h2><p>用量不完整时，tokens 包含未知请求的保守预留；预算 charged 不是精确费用。 / Incomplete usage includes conservative reservations; charged budget is not exact cost.</p><pre id="stats"></pre></section><script id="data" type="application/json">{encoded}</script><script>const d=JSON.parse(document.getElementById('data').textContent);document.getElementById('stats').textContent=JSON.stringify({{counts:d.counts,service_usage:d.service_usage,budgets:d.budgets,stop_reasons:d.stop_reasons}},null,2);let en=false;document.getElementById('locale').onclick=()=>{{en=!en;document.documentElement.lang=en?'en':'zh-CN';document.getElementById('title').textContent=en?'Strict Automatic Benchmark':'严格自动验收 Benchmark';document.getElementById('overview').textContent=en?'Formal suite':'正式套件';const f=d.counts.formal;document.getElementById('formal-summary').textContent=en?(f.automatic_passed+'/15 automatically delivered · '+f.run+'/15 run · '+f.not_run+' not run'):(f.automatic_passed+'/15 自动交付 · '+f.run+'/15 已运行 · '+f.not_run+' 未运行');document.getElementById('note').textContent=en?'Automatic evaluation · {judge_label} · no human calibration. Accuracy, false acceptance and false rejection rates unavailable.':'自动评测 · {judge_label} · 人工校准未验证；科学准确率、误放行率和误拒绝率不可用。';}};</script></html>"""
+    if independent_html:
+        document = document.replace(
+            '<script id="data"', independent_html + '<script id="data"', 1
+        )
     (root / "benchmark.html").write_text(document, encoding="utf-8")
 
 
 class QualitySuiteRunner:
     """Own the fixed 3+15 sequence, cumulative reservations and terminal exports."""
+
+    @staticmethod
+    def _independent_summary(report):
+        """Add only an already sanitized optional evaluation projection."""
+        from litagent.eval.results import public_summary
+
+        summary = public_summary(report)
+        return {"evaluation_summary": summary} if summary else {}
 
     def __init__(
         self,
@@ -1180,8 +1231,15 @@ class QualitySuiteRunner:
                 ),
             },
         }
-        evaluation_reason = details.get("skipped_reason") or details.get(
-            "unverified_reason"
+        evaluation_reason = (
+            details.get("skipped_reason")
+            or (
+                details.get("error")
+                if details.get("evaluation_result_contract")
+                == "independent-evaluation-v1"
+                else None
+            )
+            or details.get("unverified_reason")
         )
         failures = (
             ([evaluation_reason] if evaluation_reason else [])
@@ -1207,6 +1265,7 @@ class QualitySuiteRunner:
             "status": "delivered" if acceptance.get("publishable") else "blocked",
             "acceptance": acceptance,
             "gates": acceptance.get("gates", {}),
+            **self._independent_summary(report),
             "evaluation_execution": evaluation_execution(
                 report.get("evaluation", {}).get("faithfulness", {})
             ),
