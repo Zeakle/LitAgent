@@ -84,18 +84,34 @@ Reranking improves ranking metrics but adds substantial latency; it is not the
 default. Full-text profiles change indexed material and are separate from pure
 ranking comparisons. [Full results and limitations](./benchmarks/rag/RESULTS.md).
 
-Latest fixed closeout trial **055** planned three cases and ran one: **1/3 body
+### Live frozen-evidence repair case
+
+**377 → 380** reused 31 frozen evidence items for a single few-shot survey.
+The rejected candidate had 330 of 339 scientific assertions supported and
+9 unsupported. An unresolved inventory finding left its formal Faithfulness
+score unavailable. One additional prose repair and a full re-evaluation
+produced a deliverable version with **398 of 398 supported, 0 unsupported,
+0 unverified**. The continuation settled **9 requests and 188,560 tokens**,
+with zero unknown hold. The report and its evaluation share the same SHA-256.
+
+Open the case from the workbench's **Benchmark** tab or the public presentation
+to trace each of the nine rejected assertions to its passage and cited papers.
+This single frozen-evidence result is tracked separately from normal Survey runs
+and the formal benchmark. The two versions have independently extracted assertion
+inventories. [Interactive case](http://127.0.0.1:8000/static/presentation/frozen-repair-377-380.html)
+· [Public data and receipt hashes](./src/litagent/static/presentation/frozen-repair-377-380.json).
+
+### Historical fixed closeout
+
+Fixed closeout trial **055** planned three cases and ran one: **1/3 body
 and summaries generated, 0/3 Reviewers completed, 0/3 valid complete Evaluations,
 0/3 strict deliveries**. The few-shot Reviewer exhausted its 4,096 output-token
 limit with thinking disabled. The suite stopped as specified; ViT and NeRF remain
 unrun in the denominator. **7 requests / 96,102 known tokens / no new unknown usage**.
 This is an output-capacity failure, not evidence of a scientific score of zero.
 
-The original, SHA-verified draft is available as **unreviewed and unevaluated**
-material in the presentation. It is not a deliverable report. The implementation
-allows at most one inventory recheck within two shared modifications; full
-re-evaluation is still mandatory. No extra paid suite was run to obtain a pass.
-[Current results and source bindings](./src/litagent/static/presentation/closeout.json)
+The historical, SHA-verified draft is available as **unreviewed and unevaluated**
+material in the presentation. [Historical results and source bindings](./src/litagent/static/presentation/closeout.json)
 · [Engineering status and limitations](./docs/closeout.md).
 
 Formal Survey cases remain **0/15**; no independently human-calibrated accuracy is
