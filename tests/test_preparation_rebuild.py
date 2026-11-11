@@ -4,10 +4,10 @@ import copy
 import json
 
 import pytest
+from model_config_helpers import load_previous_default_config as load_config
 from test_extraction_record_identity import real_case
 
 from litagent.agents.extraction_strategy import build_extraction_context
-from litagent.config import load_config
 from litagent.context.templates import wrap_xml
 from litagent.evidence import collect_ledger
 from litagent.orchestrator.task_graph import TaskGraph, TaskStatus

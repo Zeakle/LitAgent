@@ -22,9 +22,22 @@ Use supplied claim/unit identities exactly. Never invent text, citations or loca
 Analysis and limitations claim IDs must belong to the designated chapter, as specified
 by analysis_claim_ids_by_section. Existing findings may be reused across body and
 summary; repeated findings within a single summary section remain report issues.
+Single owners: coverage=core answers; analyses=chapter depth; limitations=concrete
+limitations; conflicts=contradiction pairs. issues lists ONLY negative
+missing_assertion/category_count/repetition findings ([] if none); never repeat
+positive judgments or another region's conclusions there.
 Return units, conflicts, issues, coverage, analyses and limitations under the schema.
 """
-FORBIDDEN_CODES = frozenset({"non_atomic", "classification", "source_fidelity"})
+FORBIDDEN_CODES = frozenset(
+    {
+        "non_atomic",
+        "classification",
+        "source_fidelity",
+        "core_coverage",
+        "analysis",
+        "contradiction",
+    }
+)
 
 
 def project_global_schema(schema):

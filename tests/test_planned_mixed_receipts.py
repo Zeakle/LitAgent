@@ -10,6 +10,7 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
+from model_config_helpers import load_previous_default_config as load_config
 from test_flat_writer_pipeline import FlatGateway
 from test_mixed_inventory_pipeline import MixedInventoryGateway
 from test_native_responses import owner_for
@@ -19,7 +20,6 @@ from test_writer_thinking_profile import configured  # noqa: F401
 from test_writer_v2 import case  # noqa: F401
 
 from litagent import frozen_writing as frozen
-from litagent.config import load_config
 from litagent.contracts import build_config_summary
 from litagent.observability.recorder import ArchiveRepository, RunRecorder
 from litagent.quality import digest

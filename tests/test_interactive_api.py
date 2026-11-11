@@ -106,8 +106,12 @@ def test_budget_default_is_advertised_without_changing_api_omission():
     response = client.get("/workbench/context")
     assert response.status_code == 200
     automatic = response.json()["automatic_acceptance"]
-    assert automatic["default_budget_policy"] == "planned-budget-v4"
-    assert automatic["maximum_survey_tokens"] == 1000000
+    assert automatic["default_budget_policy"] == "planned-budget-v7"
+    assert automatic["semantic_engine"] == "ragas-cited-faithfulness-v1"
+    assert automatic["default_generation_strategy"] == "body_summary_v3"
+    assert automatic["maximum_survey_tokens"] == 12000000
+    assert automatic["maximum_survey_requests"] == 77
+    assert automatic["maximum_shared_repairs"] == 3
     assert automatic["survey_tokens"] == 500000
     assert "budget_policy" not in RunOptions().model_dump()
 

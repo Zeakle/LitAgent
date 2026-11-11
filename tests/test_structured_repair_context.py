@@ -8,6 +8,7 @@ from test_writer_v2 import case  # noqa: F401
 from litagent.quality import digest
 from litagent.writing_v2 import (
     WriterError,
+    _split_summary_repair_guidance,
     bound_fragments,
     compile_document,
     current_repair_guidance_context,
@@ -112,6 +113,31 @@ def test_current_context_never_guesses_location_from_free_explanation(case, loca
             targets,
             [diagnostic],
             diagnostic_categories=["evaluation"],
+        )
+
+
+def test_mixed_summary_guidance_rejects_forged_locations(located):
+    """Exact range selection cannot authenticate a falsified summary citation."""
+    survey, bindings, _, science, document = located
+    row = next(unit for unit in bindings["units"] if unit["path"][0] == "abstract")
+    parent, fragment = next(
+        (uid, fragment)
+        for uid, group in bound_fragments(survey, bindings).items()
+        for fragment in group
+        if fragment["source_fragment_id"].endswith(":native:" + row["unit_id"])
+    )
+    summary = {
+        **science,
+        "source_unit_id": parent,
+        "source_fragment_id": fragment["source_fragment_id"],
+        "source_start": row["source_start"],
+        "source_end": row["source_end"],
+        "source_quote": row["source_quote"],
+        "evidence_ids": ["forged"],
+    }
+    with pytest.raises(WriterError, match="writer_guidance_unrepairable"):
+        _split_summary_repair_guidance(
+            survey, bindings, document, [science, summary], ["evaluation"] * 2
         )
 
 

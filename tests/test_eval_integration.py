@@ -1,8 +1,8 @@
 """Tests for evaluation aggregation and context construction."""
 
 import pytest
+from model_config_helpers import load_previous_default_config as load_config
 
-from litagent.config import load_config
 from litagent.eval.base import CTX_CLAIMS, CTX_PAPERS, EvalResult
 from litagent.runner import LitAgent
 

@@ -7,10 +7,10 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
+from model_config_helpers import load_previous_default_config as load_config
 from openai import AsyncOpenAI
 from test_writer_v2 import case  # noqa: F401
 
-from litagent.config import load_config
 from litagent.report_audit import atomic_json, digest
 from litagent.safety.budget import strict_request_reservation
 from litagent.writing_v2 import (

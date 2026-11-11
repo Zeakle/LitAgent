@@ -130,7 +130,9 @@ def test_collection_identity_changes_for_every_chunking_behavior_field():
 
 
 def test_config_summary_fingerprints_chunking_and_retrieval_profile():
-    from litagent.config import AppConfig, load_config
+    from model_config_helpers import load_previous_default_config as load_config
+
+    from litagent.config import AppConfig
     from litagent.contracts import build_config_summary
 
     config = load_config().model_copy(deep=True)
@@ -986,10 +988,11 @@ def test_cli_exposes_separate_ingestion_and_retrieval_benchmark_commands():
 
 @pytest.mark.asyncio
 async def test_rag_runner_persists_complete_failure_artifact(tmp_path, monkeypatch):
+    from model_config_helpers import load_previous_default_config as load_config
+
     from litagent.benchmark.artifacts import BenchmarkArtifactRepository
     from litagent.benchmark.datasets import load_profiles, load_retrieval_dataset
     from litagent.benchmark.rag_runner import RAGBenchmarkRunner
-    from litagent.config import load_config
     from litagent.rag.runtime import CorpusRuntime
 
     monkeypatch.setattr(

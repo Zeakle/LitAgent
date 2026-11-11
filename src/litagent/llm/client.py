@@ -6,13 +6,16 @@ import asyncio
 import json
 import math
 import os
+import re
 import time
 import uuid
 from abc import ABC, abstractmethod
 from contextvars import ContextVar
 from dataclasses import dataclass, field
+from threading import Lock
+from urllib.parse import urlsplit
 
-from openai import APITimeoutError, AsyncOpenAI
+from openai import APIStatusError, APITimeoutError, AsyncOpenAI
 
 from litagent.logging import get_logger
 from litagent.observability.context import get_task_id, remaining_deadline_seconds
@@ -26,6 +29,57 @@ _active_request_stage: ContextVar[str | None] = ContextVar(
 _active_request_deadline: ContextVar[asyncio.Timeout | None] = ContextVar(
     "request_deadline", default=None
 )
+
+
+class _ArkPacer:
+    """Space request starts across all Ark clients in this process."""
+
+    def __init__(self, interval=5.0, cooldown=60.0):
+        self._interval = interval
+        self._cooldown = cooldown
+        self._lock = Lock()
+        self._next_start = 0.0
+
+    async def wait_turn(self, check_deadline):
+        """Wait outside the lock so a new cooldown can extend queued waits."""
+        while True:
+            with self._lock:
+                now = time.monotonic()
+                delay = max(0.0, self._next_start - now)
+                check_deadline(delay)
+                if not delay:
+                    self._next_start = now + self._interval
+                    return
+            await asyncio.sleep(delay)
+
+    def defer_after_429(self):
+        """Delay future requests without retrying the rejected request."""
+        with self._lock:
+            self._next_start = max(self._next_start, time.monotonic() + self._cooldown)
+
+
+_ark_pacer = _ArkPacer()
+
+
+def _provider_rejection(response):
+    """Extract only bounded diagnostics from a provider's HTTP rejection."""
+    if response.status_code < 400:
+        return {}
+    fields = {"provider_http_status": response.status_code}
+    try:
+        body = response.json()
+        error = body.get("error") if isinstance(body, dict) else None
+        code = error.get("code") if isinstance(error, dict) else None
+    except ValueError:
+        code = None
+    if isinstance(code, str) and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.-]{0,95}", code):
+        fields["provider_error_code"] = code
+    request_id = response.headers.get("x-request-id")
+    if isinstance(request_id, str) and re.fullmatch(
+        r"[A-Za-z0-9_-]{1,128}", request_id
+    ):
+        fields["provider_request_id"] = request_id
+    return fields
 
 
 def _output_limit(kwargs: dict, default: int) -> tuple[str, int]:
@@ -240,12 +294,21 @@ class OpenAICompatibleClient(BaseLLMClient):
             }
         ):
             raise ValueError("invalid_request_timeout_policy")
+        from litagent.operational_limits import (
+            PROFILE,
+            budget_resource_profile,
+            increase,
+        )
+
+        timeout_ceiling = (
+            increase(600) if budget_resource_profile(cost_budget) == PROFILE else 600
+        )
         if (
             any(
                 isinstance(v, bool)
                 or not isinstance(v, (int, float))
                 or not math.isfinite(v)
-                or not 0 < v <= 600
+                or not 0 < v <= timeout_ceiling
                 for v in self._request_timeouts.values()
             )
             or isinstance(deadline_margin_seconds, bool)
@@ -255,6 +318,11 @@ class OpenAICompatibleClient(BaseLLMClient):
         ):
             raise ValueError("invalid_request_timeout_policy")
         self._deadline_margin_seconds = deadline_margin_seconds
+        self._pacer = (
+            _ark_pacer
+            if urlsplit(base_url).hostname == "ark.cn-beijing.volces.com"
+            else None
+        )
 
         # Retries are explicit so every HTTP attempt has its own trace and usage.
         self._client = AsyncOpenAI(
@@ -278,13 +346,13 @@ class OpenAICompatibleClient(BaseLLMClient):
             except Exception as e:
                 logger.debug(f"Trace hook failed for '{event}': {e}")
 
-    def _check_request_deadline(self, timeout: float) -> None:
+    def _check_request_deadline(self, timeout: float, wait_seconds: float = 0) -> None:
         """Refuse a new transport before reserving tokens or emitting a start."""
         if self._request_timeouts:
             remaining = remaining_deadline_seconds()
             if (
                 remaining is not None
-                and remaining < timeout + self._deadline_margin_seconds
+                and remaining < wait_seconds + timeout + self._deadline_margin_seconds
             ):
                 self._emit(
                     "llm.not_sent",
@@ -298,9 +366,22 @@ class OpenAICompatibleClient(BaseLLMClient):
                 )
                 raise RequestDeadlineExceeded("request_deadline_insufficient")
 
+    async def _wait_provider_turn(self, timeout):
+        """Take a send slot before opening or reserving the provider attempt."""
+        if self._pacer is not None:
+            await self._pacer.wait_turn(
+                lambda delay: self._check_request_deadline(timeout, delay)
+            )
+
+    def _observe_provider_rejection(self, response):
+        """Defer future Ark calls and project the independent HTTP outcome."""
+        if self._pacer is not None and response.status_code == 429:
+            self._pacer.defer_after_429()
+        return _provider_rejection(response)
+
     async def chat(self, messages: list[dict], **kwargs) -> LLMResponse:
         """Retry transient provider failures with one lifecycle per attempt."""
-        from openai import APIConnectionError, APIStatusError
+        from openai import APIConnectionError
 
         provider_api = kwargs.get("provider_api", "chat")
         if provider_api not in ("chat", "responses"):
@@ -363,7 +444,20 @@ class OpenAICompatibleClient(BaseLLMClient):
                 planned.check_wire(
                     messages, output_limit, kwargs.get("response_format")
                 )
-            if reservation > int(131072 * 0.9):
+            from litagent.operational_limits import (
+                PROFILE,
+                budget_resource_profile,
+                increase,
+            )
+
+            context_limit = int(131072 * 0.9)
+            if budget_resource_profile(self._cost_budget) == PROFILE:
+                context_limit = (
+                    planned.plan["context_reservation_limit"]
+                    if planned is not None
+                    else int(increase(131072) * 0.9)
+                )
+            if reservation > context_limit:
                 raise ValueError("strict_context_budget_exceeded")
             # Scoped evaluation and repair already own their exact reservation.
             if planned is not None:
@@ -374,6 +468,7 @@ class OpenAICompatibleClient(BaseLLMClient):
                 (get_task_id() or "").startswith("evaluation")
                 or get_task_id() == "evidence_rewrite"
             )
+            await self._wait_provider_turn(timeout)
             if not caller_owns:
                 self._cost_budget.reserve(reservation)
             try:
@@ -426,6 +521,7 @@ class OpenAICompatibleClient(BaseLLMClient):
             raise ValueError("invalid_transport_max_attempts")
         for attempt in range(attempts):
             self._check_request_deadline(timeout)
+            await self._wait_provider_turn(timeout)
             try:
                 if self._request_timeouts:
                     return await _await_request(
@@ -628,6 +724,11 @@ class OpenAICompatibleClient(BaseLLMClient):
                     "error_type": type(e).__name__,
                     "error": str(e)[:512],
                     "usage_available": False,
+                    **(
+                        self._observe_provider_rejection(e.response)
+                        if isinstance(e, APIStatusError)
+                        else {}
+                    ),
                     **_failure_timeout_metadata(e),
                 },
             )
@@ -635,8 +736,6 @@ class OpenAICompatibleClient(BaseLLMClient):
 
     async def _responses_attempt(self, messages: list[dict], **kwargs) -> LLMResponse:
         """Use one owned SDK request, retaining known charges on invalid output."""
-        from openai import APIStatusError
-
         from litagent.llm.responses import (
             build_responses_request,
             normalize_responses,
@@ -689,6 +788,7 @@ class OpenAICompatibleClient(BaseLLMClient):
                 http_response = exc.response
             receipt = private_receipt(http_response)
             fields = normalize_responses(http_response.content)
+            rejection = self._observe_provider_rejection(http_response)
             if (
                 fields["usage"]["usage_available"]
                 and fields["usage"]["completion_tokens"] > output_limit
@@ -724,6 +824,7 @@ class OpenAICompatibleClient(BaseLLMClient):
                     "request_id": response.request_id,
                     "provider_status": response.provider_status,
                     "provider_error": response.provider_error,
+                    **rejection,
                 },
             )
             return response

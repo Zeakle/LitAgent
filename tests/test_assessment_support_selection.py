@@ -215,7 +215,8 @@ def test_run063_original_conflicts_are_not_reclassified_as_success(reason_payloa
 
 def test_private_run063_costs_and_failed_scores_still_read_without_migration():
     """Keep original paid receipts and null science results as historical data."""
-    from litagent.eval.results import EvaluationRunResult
+    from litagent.eval.results import EvaluationRunResult, public_summary
+    from litagent.observability.recorder import ArchiveRepository
     from litagent.safety.planned_accounting import validate_accounting_snapshot
 
     root = Path("artifacts/acceptance/frozen-writer-three-domain-20261105-063")
@@ -234,9 +235,12 @@ def test_private_run063_costs_and_failed_scores_still_read_without_migration():
     assert sum(row["requests"] for row in state["cases"]) == 31
     assert sum(row["unknown_hold"] for row in state["cases"]) == 78765
     report = json.loads(raw[archive])["report"]
-    result = EvaluationRunResult.from_details(
-        report["evaluation"]["faithfulness"]["details"],
-        hashlib.sha256(report["survey"].encode()).hexdigest(),
-    )
-    assert result.metrics()["faithfulness"]["score"] is None
+    stored = ArchiveRepository(archive.parent).get(archive.stem)
+    assert stored["report"] == report
+    assert public_summary(report)["metrics"]["faithfulness"]["score"] is None
+    with pytest.raises(ValueError, match="evaluation_result_contract_identity_invalid"):
+        EvaluationRunResult.from_details(
+            report["evaluation"]["faithfulness"]["details"],
+            hashlib.sha256(report["survey"].encode()).hexdigest(),
+        )
     assert all(p.read_bytes() == content for p, content in raw.items())

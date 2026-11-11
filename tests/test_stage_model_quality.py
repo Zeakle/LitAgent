@@ -7,9 +7,9 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from model_config_helpers import load_previous_default_config as load_config
 
 from litagent.benchmark.quality_suite import public_projection
-from litagent.config import load_config
 from scripts import run_stage_model_quality as stage
 
 

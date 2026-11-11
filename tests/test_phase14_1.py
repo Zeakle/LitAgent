@@ -224,7 +224,7 @@ class _EmbedderFake:
 
 
 def test_rag_config_defaults_are_safe_and_match_default_yaml():
-    from litagent.config import load_config
+    from model_config_helpers import load_previous_default_config as load_config
 
     config = load_config()
 
@@ -1393,8 +1393,9 @@ async def test_writeback_is_best_effort_and_rejects_invalid_candidates():
 
 @pytest.mark.asyncio
 async def test_rebuild_recreates_collection_and_reingests_manifest(tmp_path):
+    from model_config_helpers import load_previous_default_config as load_config
+
     from litagent.cli import _cmd_corpus
-    from litagent.config import load_config
 
     manifest_path = tmp_path / "manifest.yaml"
     manifest_path.write_text("schema_version: 1\n", encoding="utf-8")
@@ -1491,7 +1492,8 @@ async def test_rebuild_recreates_collection_and_reingests_manifest(tmp_path):
 
 @pytest.mark.asyncio
 async def test_runner_reads_the_same_versioned_collection_written_by_corpus():
-    from litagent.config import load_config
+    from model_config_helpers import load_previous_default_config as load_config
+
     from litagent.rag.corpus import CollectionIdentity
     from litagent.runner import LitAgent
 
@@ -1535,7 +1537,8 @@ async def test_runner_reads_the_same_versioned_collection_written_by_corpus():
 
 @pytest.mark.asyncio
 async def test_corpus_runtime_closes_qdrant_when_postgres_connect_fails():
-    from litagent.config import load_config
+    from model_config_helpers import load_previous_default_config as load_config
+
     from litagent.rag.runtime import CorpusRuntime
 
     config = load_config()

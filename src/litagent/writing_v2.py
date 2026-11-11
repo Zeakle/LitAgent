@@ -38,6 +38,7 @@ from litagent.quality import (
 from litagent.report_audit import atomic_json
 from litagent.report_render import ReportSourceUnit, build_report_source_units
 from litagent.review_structure import assemble_methodology, structure_sections
+from litagent.run_limits import FORMAT_JSON_POLICY, LOSSLESS_JSON_POLICY
 from litagent.safety.budget import CostBudget, strict_request_reservation
 from litagent.writing_native import CONTRACT as NATIVE_WIRE_CONTRACT
 
@@ -52,6 +53,25 @@ LEGACY_INTACT_UNIT_REEMISSION_CONTRACT = "intact-unit-reemission-v1"
 INTACT_UNIT_REEMISSION_CONTRACT = "intact-unit-reemission-v2"
 EOF_CONTAINER_POLICY = "grounded-writer-eof-containers-v1"
 BOUNDED_EOF_FOOTPRINT_CONTRACT = "bounded-eof-footprint-v1"
+ORIGINAL_TARGET_RETRY_POLICY = "format-agent-original-target-retry-v1"
+CLASSIFICATION_GUIDANCE = (
+    "Name the grouping used by this review as its organizing choice. Do not turn "
+    "it into a universal taxonomy or attribute it to a paper that uses a different "
+    "grouping. Summarize comparison dimensions without claiming an exhaustive "
+    "category count. Preserve attribution when reporting a paper's taxonomy. "
+    "State a method's mechanism once within a chapter; give comparisons or new "
+    "supported findings in later units instead of repeating it."
+)
+EVIDENCE_SCOPE_GUIDANCE = (
+    "For evidence-bound revisions, describe the datasets, tasks, protocols, "
+    "metrics and mechanisms that the cited passages explicitly report. Limit "
+    "each conclusion to those reported settings. Do not replace an unsupported "
+    "claim with a list of unreported settings, metrics or comparisons, or infer "
+    "what the original paper did not test from silence in an excerpt. Ground a "
+    "comparison in both methods' reported conditions. Preserve actual "
+    "limitations, qualifications and every core question. Use only verified host "
+    "scope notices for report-level material gaps where the contract allows them."
+)
 FOCUSED_WRITING_PLAN = "grounded-writer-focused-v1"
 RANGE_WRITING_PLAN = "grounded-writer-focused-range-v1"
 _INHERIT_EFFORT = object()
@@ -404,6 +424,59 @@ def check_writing_scope(document, plan, envelope=None, *, stage):
     check_writing_plan(document, plan, envelope=envelope)
     if envelope is not None and not flat:
         check_writer_envelope(document, envelope, stage=stage)
+
+
+def body_byte_progress(body, section, writing_plan, envelope):
+    """Expose exact byte use and advisory space without changing legacy requests."""
+    from litagent.safety.planned_budget import nested_json_size
+    from litagent.writer_source_view import selected_source_view
+
+    if writing_plan != RANGE_WRITING_PLAN or not selected_source_view(envelope):
+        return None
+    spec = envelope_writing_spec(writing_plan, envelope)
+    minimum = copy.deepcopy(body)
+    minimum.setdefault("title", "?")
+    remaining = BODY[BODY.index(section) :]
+    for key in remaining:
+        minimum.setdefault(key, [{"sentences": [{"text": "?", "fact_card_refs": []}]}])
+    used = nested_json_size(body)
+    floor = nested_json_size(minimum)
+    available = max(0, envelope["body_json_bytes"] - floor)
+    weight = sum(spec["body_target_units"][key] for key in remaining)
+    return {
+        "used": used,
+        "maximum": envelope["body_json_bytes"],
+        "remaining": max(0, envelope["body_json_bytes"] - used),
+        "minimum_remaining_framing": floor - used,
+        "recommended_text_allowance": (
+            available * spec["body_target_units"][section] // weight
+        ),
+    }
+
+
+def body_byte_capacity_error(exc, body, writing_plan, envelope):
+    """Stage only a complete, otherwise checked body for bounded byte refinement."""
+    from litagent.safety.planned_budget import EnvelopeExceeded, nested_json_size
+    from litagent.writer_source_view import selected_source_view
+
+    if (
+        writing_plan != RANGE_WRITING_PLAN
+        or not selected_source_view(envelope)
+        or not isinstance(exc, EnvelopeExceeded)
+        or set(body) != {"title", *BODY}
+        or len(exc.diagnostics) != 1
+        or exc.diagnostics[0]["stage"] != "body"
+        or exc.diagnostics[0]["field"] != "nested_json_bytes"
+        or exc.diagnostics[0]["actual"] != nested_json_size(body)
+        or exc.diagnostics[0]["maximum"] != envelope["body_json_bytes"]
+        or exc.diagnostics[0]["actual"] <= exc.diagnostics[0]["maximum"]
+    ):
+        return None
+    error = WriterError(
+        "writer_body_byte_capacity_exceeded", "quality", copy.deepcopy(exc.diagnostics)
+    )
+    error.candidate = copy.deepcopy(body)
+    return error
 
 
 def capacity_repair_targets(document, plan, *, envelope=None):
@@ -862,6 +935,10 @@ def request_messages(system, payload, schema, *, wire_contract=None):
             if source_map_repair
             else FLAT_INSTRUCTION
         )
+        if plan["kind"] == "summary" and "body_sections" in payload:
+            # This producer has its own schema-validated value example below;
+            # chapter and patch instructions do not apply to summaries.
+            flat_instruction = ""
         repair_instruction = (
             SOURCE_MAP_TRANSPORT_INSTRUCTION
             if source_map_repair
@@ -888,7 +965,8 @@ def request_messages(system, payload, schema, *, wire_contract=None):
             payload.get("writing_envelope", {}).get("inventory_recovery_contract")
             == "bounded-inventory-recovery-v2"
         ):
-            layout_reminder = reply_layout_instruction(schema)
+            if plan["kind"] != "summary" or "body_sections" not in payload:
+                layout_reminder = reply_layout_instruction(schema)
         return request_messages(
             system
             + ("\n" + flat_instruction if plan["kind"] != "passthrough" else "")
@@ -925,7 +1003,10 @@ def request_messages(system, payload, schema, *, wire_contract=None):
         )
     else:
         Draft202012Validator.check_schema(schema)
-    return [
+        from litagent.writer_source_view import summary_json_guidance
+
+        guidance = summary_json_guidance(schema, payload)
+    messages = [
         {
             "role": "system",
             "content": system
@@ -953,6 +1034,10 @@ def request_messages(system, payload, schema, *, wire_contract=None):
             ),
         },
     ]
+
+    from litagent.writer_source_view import project_chapter_messages
+
+    return project_chapter_messages(messages, payload, schema)
 
 
 def _parse_json(raw):
@@ -1410,6 +1495,132 @@ def normalize_eof_response(raw, schema):
         "units": original["units"],
         "coverage_complete": True,
         "scientific_assessment": "not_verified",
+    }
+
+
+def planned_syntax_policy(envelope):
+    """Select recovery from the locked plan, preserving the historical default."""
+    return ((envelope or {}).get("run_limits") or {}).get(
+        "syntax_policy", EOF_CONTAINER_POLICY
+    )
+
+
+def lossless_receipt(parsed, entry):
+    """Bind a reconstructed syntax candidate to its original request."""
+    return {
+        **parsed["normalization"],
+        "policy": LOSSLESS_JSON_POLICY,
+        "schema_sha256": parsed["bindings"]["host_schema_sha256"],
+        "semantic_sha256": digest(parsed["canonical"]),
+        "units": parsed["bindings"]["units"],
+        "coverage_complete": True,
+        "writer_wire_contract": "flat-writer-v1",
+        "scientific_assessment": "not_verified",
+        "request_schema_sha256": entry["schema_sha256"],
+        "provider_schema_sha256": entry["provider_schema_sha256"],
+        "input_sha256": entry["input_sha256"],
+    }
+
+
+def check_lossless_receipt(parsed, entry):
+    """Require the persisted edit record to match deterministic reconstruction."""
+    try:
+        normalized = parsed["normalization"]
+        if (
+            entry.get("syntax_normalization")
+            != (lossless_receipt(parsed, entry) if normalized else None)
+            or entry.get("normalized_raw") != parsed.get("normalized_raw")
+            or (normalized and parsed["bindings"]["raw_sha256"] != entry["raw_sha256"])
+            or (normalized and digest(entry["syntax_schema"]) != entry["schema_sha256"])
+        ):
+            raise ValueError("syntax receipt drift")
+    except (KeyError, TypeError, ValueError) as exc:
+        raise WriterError("writer_syntax_receipt_conflict", "identity") from exc
+
+
+def writer_format_status(journal):
+    """Project public format outcomes without including prose or raw offsets."""
+    if journal.get("syntax_policy") == FORMAT_JSON_POLICY:
+        from litagent.format_repair import public_recovery_status
+
+        status = public_recovery_status(journal)
+        # Provider exception strings may contain private request details.
+        public_codes = {
+            "CancelledError",
+            "llm_request_timeout",
+            "strict_usage_incomplete",
+            "writer_flat_schema_invalid",
+            "writer_format_context_exceeded",
+            "writer_format_original_unprovable",
+            "writer_format_receipt_conflict",
+            "writer_format_response_incomplete",
+            "writer_format_usage_unknown",
+            "writer_json_invalid",
+            "writer_output_truncated",
+            "writer_reference_invalid",
+        }
+        for row in status["calls"]:
+            if row["reason"] is not None and row["reason"] not in public_codes:
+                row["reason"] = "writer_format_request_failed"
+        return status
+    if journal.get("syntax_policy") != LOSSLESS_JSON_POLICY:
+        return None
+    from litagent.writing_flat import normalize_lossless_json
+
+    rows = []
+    for name, entry in journal.get("calls", {}).items():
+        if not entry.get("original_syntax_failure"):
+            continue
+        reason = (entry.get("failure") or {}).get("code")
+        receipt = entry.get("syntax_normalization")
+        kinds = []
+        if receipt is not None:
+            try:
+                _, _, candidate, expected = normalize_lossless_json(entry["raw"])
+                if (
+                    receipt["policy"] != LOSSLESS_JSON_POLICY
+                    or any(receipt[key] != value for key, value in expected.items())
+                    or any(
+                        receipt[key] != entry[key]
+                        for key in (
+                            "raw_sha256",
+                            "input_sha256",
+                            "provider_schema_sha256",
+                        )
+                    )
+                    or receipt["request_schema_sha256"] != entry["schema_sha256"]
+                    or digest(entry["syntax_schema"]) != entry["schema_sha256"]
+                    or candidate != entry["normalized_raw"]
+                ):
+                    raise ValueError("syntax receipt drift")
+                kinds = sorted({edit["kind"] for edit in expected["edits"]})
+            except (KeyError, TypeError, ValueError):
+                reason = "writer_syntax_receipt_conflict"
+        rejection = entry.get("syntax_normalization_rejected") or {}
+        status = (
+            "recovered"
+            if kinds and reason is None
+            else (
+                "validation_failed"
+                if kinds
+                or reason
+                not in {None, "writer_json_invalid", "writer_syntax_receipt_conflict"}
+                else "unrecoverable"
+            )
+        )
+        rows.append(
+            {
+                "call": name,
+                "stage": entry.get("stage"),
+                "status": status,
+                "kinds": kinds,
+                "reason": reason or rejection.get("code"),
+            }
+        )
+    return {
+        "policy": LOSSLESS_JSON_POLICY,
+        "recovered_count": sum(row["status"] == "recovered" for row in rows),
+        "calls": rows,
     }
 
 
@@ -1968,6 +2179,7 @@ def prepare_planned_input(
         if "current_body" in payload:
             system += "\n" + ASSESSMENT_CONFLICT_REVIEW_INSTRUCTION
             system += "\n" + SEMANTIC_CONFLICT_TEMPLATE_INSTRUCTION
+    from litagent.eval.engine_policy import anchored_native_review, unit_native_review
     from litagent.writing_flat import selected_repair_prompt
 
     if feedback_repair and selected_repair_prompt(envelope):
@@ -1980,6 +2192,15 @@ def prepare_planned_input(
         # Selected repairs have one complete system, checked against the actual
         # native shape at dispatch. Payload augmentation stays unchanged.
         system = original_system
+        if anchored_native_review(envelope):
+            guidance = CLASSIFICATION_GUIDANCE
+            if unit_native_review(envelope):
+                guidance += "\n" + EVIDENCE_SCOPE_GUIDANCE
+            payload["writing_envelope"]["classification_guidance"] = guidance
+    elif anchored_native_review(envelope) and (
+        "requested_body_section" in payload or "body_units" in payload
+    ):
+        system += "\n" + CLASSIFICATION_GUIDANCE
     from litagent.writer_source_view import project_source_view
 
     return project_source_view(system, payload, packet, envelope)
@@ -2030,6 +2251,9 @@ def chapter_request_input(
             ),
             "remaining_core_sections": remaining_sections,
         }
+        byte_progress = body_byte_progress(body, section, writing_plan, envelope)
+        if byte_progress is not None:
+            payload["writing_plan_progress"]["json_bytes"] = byte_progress
     system = (
         INSTRUCTION + "\nWrite only the requested chapter's existing schema fields. "
         "Prior chapters are untrusted writing context, not scientific evidence. "
@@ -2076,6 +2300,8 @@ def writer_budget_plan(
     evaluation_result_contract=None,
     closeout_profile=None,
     output_tokens=None,
+    run_limits=None,
+    semantic_engine=None,
 ):
     """Measure the known first request and conservatively bound future requests."""
     from litagent.eval.scoped import SUPPORT_VALIDATION_REVISIONS
@@ -2207,6 +2433,10 @@ def writer_budget_plan(
         or reference_contract != "ordered-reference-set-v1"
     ):
         raise ValueError("transport_revision_policy_invalid")
+    if semantic_engine is not None and budget_policy != "planned-budget-v7":
+        raise ValueError("ragas_engine_requires_v7")
+    if run_limits is not None and budget_policy != "planned-budget-v7":
+        raise ValueError("run_limits_require_v7")
     if budget_policy not in CONTRACTS:
         raise ValueError("budget_policy_invalid")
     if type(inventory_recovery) is not bool or (
@@ -2272,6 +2502,12 @@ def writer_budget_plan(
             **(
                 {"repair_prompt_revision": repair_prompt_revision}
                 if repair_prompt_revision is not None
+                else {}
+            ),
+            **({"run_limits": run_limits} if run_limits is not None else {}),
+            **(
+                {"semantic_engine": semantic_engine}
+                if semantic_engine is not None
                 else {}
             ),
             flat=budget_policy
@@ -2368,6 +2604,8 @@ def budgeted_writer_plan(
     evaluation_result_contract=None,
     closeout_profile=None,
     output_tokens=None,
+    run_limits=None,
+    semantic_engine=None,
 ):
     """Choose content capacity before repairs under explicitly enforced limits."""
     from litagent.eval.scoped import SUPPORT_VALIDATION_REVISIONS
@@ -2379,7 +2617,14 @@ def budgeted_writer_plan(
     )
 
     if output_tokens is not None:
-        output_tokens = validate_output_tokens(output_tokens)
+        from litagent.run_limits import envelope_run_limits
+
+        output_tokens = validate_output_tokens(
+            output_tokens,
+            maximum=envelope_run_limits(
+                {"run_limits": run_limits} if run_limits else None
+            )["max_output_tokens"],
+        )
         if not (flat and adaptive and round_budget):
             raise ValueError("stage_output_capacity_policy_invalid")
 
@@ -2651,13 +2896,20 @@ def budgeted_writer_plan(
         )
     if semantic_conflict_policy is not None:
         from litagent.eval.semantic_conflict import semantic_conflict_identity
+        from litagent.run_limits import EXTENDED_CONTRACT, FORMAT_CONTRACT
         from litagent.writing_flat import semantic_conflict_guidance_identity
 
+        run_limits_contract = (run_limits or {}).get("contract")
+        guidance_identity = (
+            semantic_conflict_guidance_identity(extended=True)
+            if run_limits_contract in (EXTENDED_CONTRACT, FORMAT_CONTRACT)
+            else semantic_conflict_guidance_identity()
+        )
         builder_identity = digest(
             [
                 builder_identity,
                 semantic_conflict_identity(),
-                semantic_conflict_guidance_identity(),
+                guidance_identity,
             ]
         )
     if evaluation_response_contract is not None:
@@ -2696,6 +2948,22 @@ def budgeted_writer_plan(
                 repair_guidance_wire_identity(repair_guidance_wire_revision),
             ]
         )
+    if (run_limits or {}).get("syntax_policy") == FORMAT_JSON_POLICY:
+        from litagent.format_repair import policy_identity
+
+        builder_identity = digest(
+            [builder_identity, policy_identity(), ORIGINAL_TARGET_RETRY_POLICY]
+        )
+        from litagent.eval.engine_policy import (
+            anchored_native_review,
+            unit_native_review,
+        )
+
+        native_envelope = {"semantic_engine": semantic_engine or {}}
+        if anchored_native_review(native_envelope):
+            builder_identity = digest([builder_identity, CLASSIFICATION_GUIDANCE])
+        if unit_native_review(native_envelope):
+            builder_identity = digest([builder_identity, EVIDENCE_SCOPE_GUIDANCE])
     result = None
     capacities = (
         (
@@ -2775,6 +3043,10 @@ def budgeted_writer_plan(
             kwargs["closeout_profile"] = closeout_profile
         if output_tokens is not None:
             kwargs["output_tokens"] = output_tokens
+        if run_limits is not None:
+            kwargs["run_limits"] = run_limits
+        if semantic_engine is not None:
+            kwargs["semantic_engine"] = semantic_engine
         envelope = make_writer_envelope(**kwargs)
         body_output = envelope_output_tokens(envelope)["body"]
         preflight_summary_contract(packet, aliases, RANGE_WRITING_PLAN, envelope)
@@ -2809,7 +3081,15 @@ def budgeted_writer_plan(
             + 4
         )
         envelope = make_writer_envelope(**kwargs, body_cap=body_cap)
-        for repairs in ((2,) if flat else (2, 1, 0)):
+        from litagent.run_limits import envelope_run_limits, repair_allowances
+
+        maximum_repairs = envelope_run_limits(envelope)["max_repairs"]
+        choices = (
+            (maximum_repairs,)
+            if repair_allowances(envelope)
+            else tuple(range(maximum_repairs, 1, -1)) if flat else (2, 1, 0)
+        )
+        for repairs in choices:
             result = envelope_budget_plan(
                 envelope,
                 identity=source_identity,
@@ -2952,6 +3232,12 @@ def repair_request_input(
         INSTRUCTION
         + "\nRepair ONLY the authorized target units and their actual scientific premises. Preserve every unaffected unit and core requirement. Split compound claims if necessary; do not replace a diagnosis by unrelated facts. Explicitly decline when these sources cannot safely repair it."
     )
+    if cause == "evaluation" and (envelope or {}).get("semantic_engine"):
+        system += (
+            "\nCompare each RAGAS concern to the exact original unit and its frozen "
+            "evidence. A negative NLI result is a repair suggestion. Keep the original "
+            "if extraction misstates it. Explicitly decline if no authorized edit is justified."
+        )
     if wire_contract == "flat-writer-v1":
         if (envelope or {}).get("repair_guidance_contract") is not None:
             system += "\nHOST current_body is complete; edit only each exact target path/range. Each repair_guidance issue names its authorized target_ids; those targets supply exact paths/ranges. These are host-bound concerns, not scientific facts. Independently inspect their original evidence; preserve every other unit and all core requirements."
@@ -3366,9 +3652,12 @@ def check_guidance_wire_record(
     expected = guidance_wire_fields(envelope)
     if not expected and record is None:
         return
+    from litagent.run_limits import repair_allowances
     from litagent.writing_flat import restore_repair_guidance_wire
 
     try:
+        allowances = repair_allowances(envelope)
+        max_depth = allowances["prose"] - 1 if allowances else 1
         required = {
             "contract",
             "repair_guidance_wire_revision",
@@ -3390,7 +3679,7 @@ def check_guidance_wire_record(
         if (
             not expected
             or type(depth) is not int
-            or depth > 1
+            or not 0 <= depth <= max_depth
             or not isinstance(record, dict)
             or not required.issubset(record)
             or set(record)
@@ -3436,7 +3725,7 @@ def check_guidance_wire_record(
             raise ValueError("guidance canonical identity")
         witness = record.get("prior_replay_witness")
         if witness is not None:
-            if depth or set(witness) != {
+            if depth >= max_depth or set(witness) != {
                 "survey",
                 "document",
                 "bindings",
@@ -3445,7 +3734,9 @@ def check_guidance_wire_record(
             }:
                 raise ValueError("guidance witness depth")
             older = witness["prior"]["repair_receipt"].get("guidance_wire_record")
-            if older is None or older.get("prior_replay_witness") is not None:
+            if older is None or (
+                allowances is None and older.get("prior_replay_witness") is not None
+            ):
                 raise ValueError("guidance witness lineage")
             fresh = repair_feedback_directory(
                 authority["packet"],
@@ -3525,7 +3816,7 @@ def repair_feedback_directory(
     _guidance_depth=0,
 ):
     """Resolve prior findings through exact host bindings and replayed edits."""
-    from litagent.body_quality import bound_repair_diagnostics
+    from litagent.eval.ragas_repair import native_repair_diagnostics
 
     try:
 
@@ -3569,7 +3860,7 @@ def repair_feedback_directory(
             or document["packet"] != packet
             or prior_doc["aliases"] != document["aliases"]
             or previous_failure.get("diagnostics")
-            != bound_repair_diagnostics(prior["evaluation"]["faithfulness"]["details"])
+            != native_repair_diagnostics(prior["evaluation"]["faithfulness"]["details"])
         ):
             raise ValueError("report ownership")
         from litagent.writing_flat import parse as parse_flat
@@ -3633,6 +3924,16 @@ def repair_feedback_directory(
             ) != digest(original_unit_directory(previous["targets"])):
                 raise ValueError("transport receipt identity")
             replay_options["transport_revision"] = transport_revision
+        lossless = (
+            planned_syntax_policy(document.get("budget_envelope"))
+            == LOSSLESS_JSON_POLICY
+        )
+        if lossless:
+            replay_options["syntax_policy"] = LOSSLESS_JSON_POLICY
+        if planned_syntax_policy(document.get("budget_envelope")) == FORMAT_JSON_POLICY:
+            from litagent.format_repair import replay_provenance_options
+
+            replay_options.update(replay_provenance_options(receipt))
         parsed = parse_flat(receipt["raw"], receipt["schema"], **replay_options)
         response = parsed["canonical"]
         if reference_contract and (
@@ -4028,6 +4329,36 @@ def prior_repair_guidance_context(directory, bindings, diagnostics):
         raise WriterError("writer_guidance_unrepairable", "quality") from None
 
 
+def defer_disjoint_prior_feedback(envelope, directory, previous_failure, *, action):
+    """Keep authenticated candidate feedback local when it exceeds retry authority."""
+    if (
+        action not in ("prose", "combined")
+        or planned_syntax_policy(envelope) != FORMAT_JSON_POLICY
+    ):
+        return None
+    if (
+        directory["identity"]
+        != digest({k: v for k, v in directory.items() if k != "identity"})
+        or directory["prior_report_sha256"] != previous_failure["candidate_sha256"]
+        or directory["diagnostics_sha256"] != digest(previous_failure["diagnostics"])
+    ):
+        raise WriterError("writer_feedback_identity_invalid", "identity")
+    outside = [
+        fid
+        for fid, fragment in directory["fragments"].items()
+        if not fragment["current_target_ids"]
+    ]
+    if not outside:
+        return None
+    return {
+        "policy": ORIGINAL_TARGET_RETRY_POLICY,
+        "current_report_sha256": directory["current_report_sha256"],
+        "feedback_directory_sha256": directory["identity"],
+        "outside_target_fragment_ids": outside,
+        "previous_failure": copy.deepcopy(previous_failure),
+    }
+
+
 class WriterSession:
     """Own durable calls and the single shared repair ledger for one run."""
 
@@ -4065,14 +4396,17 @@ class WriterSession:
             raise WriterError("writer_reemission_configuration_invalid")
         self.shape_recovery = shape_recovery
         self.reemission_contract = reemission_contract
-        if syntax_policy not in (None, EOF_CONTAINER_POLICY) or (
-            syntax_policy is not None and (shape_recovery or reemission_contract)
-        ):
+        if syntax_policy not in (
+            None,
+            EOF_CONTAINER_POLICY,
+            LOSSLESS_JSON_POLICY,
+            FORMAT_JSON_POLICY,
+        ) or (syntax_policy is not None and (shape_recovery or reemission_contract)):
             raise WriterError("writer_syntax_policy_invalid")
         self.syntax_policy = syntax_policy
         self.writing_plan = writing_plan
         self.writing_plan_spec = writing_plan_spec(writing_plan)
-        if writing_plan is not None and syntax_policy != EOF_CONTAINER_POLICY:
+        if writing_plan is not None and syntax_policy is None:
             raise WriterError("writer_writing_plan_configuration_invalid")
         self.provider_api = provider_api
         self.thinking_mode = thinking_mode
@@ -4131,6 +4465,14 @@ class WriterSession:
                     ["bounded_eof_footprint", BOUNDED_EOF_FOOTPRINT_CONTRACT]
                 )
                 identity_parts.append(["writer_wire_contract", self.wire_contract])
+        selected = (
+            planned_syntax_policy(escrow.plan.get("envelope")) if escrow else None
+        )
+        new_policies = {LOSSLESS_JSON_POLICY, FORMAT_JSON_POLICY}
+        if (syntax_policy in new_policies or selected in new_policies) and (
+            syntax_policy != selected or self.wire_contract != "flat-writer-v1"
+        ):
+            raise WriterError("writer_syntax_policy_conflict", "identity")
         self.identity = digest(identity_parts)
         if self.journal_path.exists():
             self.journal = json.loads(self.journal_path.read_text())
@@ -4165,6 +4507,36 @@ class WriterSession:
                     raise WriterError(
                         "writer_checkpoint_evaluation_dimensions_conflict", "identity"
                     )
+            if selected == LOSSLESS_JSON_POLICY:
+                from litagent.writing_flat import parse
+
+                for call in recorded_calls.values():
+                    if not {
+                        "syntax_schema",
+                        "syntax_normalization",
+                        "normalized_raw",
+                    }.intersection(call):
+                        continue
+                    try:
+                        parsed = parse(
+                            call["raw"],
+                            call["syntax_schema"],
+                            syntax_policy=LOSSLESS_JSON_POLICY,
+                            reference_contract=call.get("reference_contract"),
+                            transport_revision=call.get("transport_revision"),
+                        )
+                        check_lossless_receipt(parsed, call)
+                        if parsed["bindings"] != call["wire_bindings"]:
+                            raise ValueError("syntax wire binding drift")
+                    except (KeyError, TypeError, ValueError) as exc:
+                        raise WriterError(
+                            "writer_syntax_receipt_conflict", "identity"
+                        ) from exc
+            if selected == FORMAT_JSON_POLICY:
+                from litagent.format_repair import validate_recovery_record
+
+                for call in recorded_calls.values():
+                    validate_recovery_record(call)
             source_fields = source_view_fields(self.envelope)
             actual_view_fields = {
                 key: self.journal[key]
@@ -4249,6 +4621,18 @@ class WriterSession:
             self.journal["reemission_contract"] = reemission_contract
         if syntax_policy:
             self.journal["syntax_policy"] = syntax_policy
+        if syntax_policy == FORMAT_JSON_POLICY:
+            specs = [
+                spec
+                for name, spec in escrow.plan["stages"].items()
+                if name.startswith("format_")
+            ]
+            allocation = {
+                "requests": sum(spec["count"] for spec in specs),
+                "tokens": sum(spec["reserved_tokens"] for spec in specs),
+            }
+            if self.journal.setdefault("format_allocation", allocation) != allocation:
+                raise WriterError("writer_format_receipt_conflict", "identity")
         if writing_plan is not None:
             self.journal["writing_plan"] = self.writing_plan_spec
         if escrow is not None and escrow.plan["contract"] in (
@@ -4261,7 +4645,11 @@ class WriterSession:
                 BOUNDED_EOF_FOOTPRINT_CONTRACT
             )
             self.journal["writer_wire_contract"] = self.wire_contract
-        self.state = load_targeted_repairs(self.path, run_id)
+        self.state = load_targeted_repairs(
+            self.path,
+            run_id,
+            limit=self.repair_limit if self.repair_limit > 2 else None,
+        )
 
     def save(self):
         """Persist calls and the shared repair ledger atomically per file."""
@@ -4297,7 +4685,9 @@ class WriterSession:
             system, payload, schema, wire_contract=self.wire_contract
         )
 
-    def parse_wire_response(self, raw, schema, entry, *, allow_eof=False):
+    def parse_wire_response(
+        self, raw, schema, entry, *, allow_eof=False, lossless=False, format_patch=None
+    ):
         """Preserve original token positions before exposing canonical values."""
         if self.wire_contract == "flat-writer-v1":
             from litagent.writing_flat import parse
@@ -4306,6 +4696,10 @@ class WriterSession:
 
         try:
             diagnostics = {}
+            if lossless:
+                diagnostics["syntax_policy"] = LOSSLESS_JSON_POLICY
+            if format_patch is not None:
+                diagnostics["format_patch"] = format_patch
             if self.reference_contract is not None:
                 diagnostics["reference_contract"] = self.reference_contract
             if self.transport_revision is not None:
@@ -4324,19 +4718,26 @@ class WriterSession:
         except WriterError as exc:
             limits = effective_summary_limits(self.envelope)
             if limits and exc.code == "writer_flat_schema_invalid":
-                value = _parse_json(raw)
+                value = {} if lossless or format_patch is not None else _parse_json(raw)
                 for diagnostic in exc.diagnostics:
                     path = diagnostic.get("path", [])
                     if (
                         diagnostic.get("reason") == "maxItems"
                         and len(path) == 1
                         and path[0] in ("abstract", "conclusion")
-                        and isinstance(value.get(path[0]), list)
+                        and (
+                            type(diagnostic.get("actual")) is int
+                            or isinstance(value.get(path[0]), list)
+                        )
                     ):
                         diagnostic.update(
                             stage="summary",
                             section=path[0],
-                            actual=len(value[path[0]]),
+                            actual=(
+                                diagnostic["actual"]
+                                if "actual" in diagnostic
+                                else len(value[path[0]])
+                            ),
                             maximum=limits["max_units"],
                             summary_constraints=limits,
                             summary_constraints_sha256=digest(limits),
@@ -4369,9 +4770,26 @@ class WriterSession:
             entry["source_relation_bindings"] = copy.deepcopy(
                 parsed["source_relation_bindings"]
             )
-        self.save()
         normalization = parsed["normalization"]
-        if normalization is not None:
+        if lossless and normalization is not None:
+            normalization = lossless_receipt(parsed, entry)
+            entry.update(
+                normalized_raw=parsed["normalized_raw"],
+                syntax_normalization=normalization,
+                syntax_schema=copy.deepcopy(schema),
+            )
+        elif format_patch is not None:
+            entry.update(
+                format_patch={
+                    **normalization,
+                    "input_sha256": entry["input_sha256"],
+                    "schema_sha256": digest(schema),
+                    "wire_bindings_sha256": digest(parsed["bindings"]),
+                    "candidate": parsed["normalized_raw"],
+                },
+                format_schema=copy.deepcopy(schema),
+            )
+        elif normalization is not None:
             normalization = {
                 **normalization,
                 "policy": self.syntax_policy,
@@ -4524,10 +4942,21 @@ class WriterSession:
                         != hashlib.sha256(call["raw"].encode()).hexdigest()
                     ):
                         raise ValueError("reference source ownership")
+                    lossless = self.syntax_policy == LOSSLESS_JSON_POLICY and (
+                        call["stage"] in {"synthesis", "summary", "repair", "revision"}
+                    )
                     parsed = parse(
                         call["raw"],
                         call["reference_schema"],
-                        allow_eof=bool(call.get("syntax_normalization")),
+                        allow_eof=not lossless
+                        and bool(call.get("syntax_normalization")),
+                        **({"syntax_policy": LOSSLESS_JSON_POLICY} if lossless else {}),
+                        **(
+                            {"format_patch": call["format_patch"]["edits"]}
+                            if self.syntax_policy == FORMAT_JSON_POLICY
+                            and "format_patch" in call
+                            else {}
+                        ),
                         reference_contract=self.reference_contract,
                         **(
                             {"transport_revision": self.transport_revision}
@@ -4535,6 +4964,12 @@ class WriterSession:
                             else {}
                         ),
                     )
+                    if lossless:
+                        check_lossless_receipt(parsed, call)
+                    if self.syntax_policy == FORMAT_JSON_POLICY:
+                        from litagent.format_repair import validate_recovery_record
+
+                        validate_recovery_record(call)
                     if (
                         parsed["bindings"] != call["wire_bindings"]
                         or parsed["canonical"] != call["reference_canonical"]
@@ -5036,14 +5471,43 @@ class WriterSession:
                 if planned_backend(budget) is not None:
                     from litagent.safety.planned_budget import check_response_bounds
 
-                    check_response_bounds(value)
+                    check_response_bounds(value, envelope=self.envelope)
                 self.check_response_plan(name, value, stage)
                 self.register_reference_response(name, value)
                 return value
             except WriterError as original:
-                eligible = (
-                    self.syntax_policy == EOF_CONTAINER_POLICY
+                if (
+                    self.syntax_policy == FORMAT_JSON_POLICY
                     and original.code == "writer_json_invalid"
+                    and stage in {"synthesis", "summary", "repair", "revision"}
+                    and (stage != "synthesis" or name in {f"body:{k}" for k in BODY})
+                    and getattr(response, "provider_status", None) == "completed"
+                ):
+                    from litagent.format_repair import recover_response
+
+                    return await recover_response(
+                        self,
+                        name,
+                        stage,
+                        schema,
+                        messages,
+                        rf,
+                        request_kwargs,
+                        max_tokens,
+                        original,
+                    )
+                lossless = (
+                    self.syntax_policy == LOSSLESS_JSON_POLICY
+                    and getattr(response, "provider_status", None)
+                    in (None, "completed")
+                    and (
+                        (stage == "synthesis" and name in {f"body:{k}" for k in BODY})
+                        or stage in {"summary", "repair", "revision"}
+                    )
+                )
+                eligible = original.code == "writer_json_invalid" and (
+                    lossless
+                    or self.syntax_policy == EOF_CONTAINER_POLICY
                     and (
                         (stage == "synthesis" and name in {f"body:{k}" for k in BODY})
                         or (stage == "summary" and name == "summary_initial")
@@ -5056,7 +5520,11 @@ class WriterSession:
                 try:
                     if self.wire_contract is not None:
                         value, normalization = self.parse_wire_response(
-                            response.content, schema, entry, allow_eof=True
+                            response.content,
+                            schema,
+                            entry,
+                            allow_eof=not lossless,
+                            lossless=lossless,
                         )
                     else:
                         value, normalization = normalize_eof_response(
@@ -5066,16 +5534,29 @@ class WriterSession:
                     # Keep the received JSON error as the terminal cause. Neither
                     # an enum-only candidate nor a partial unit authorizes repair.
                     entry["syntax_normalization_rejected"] = classify_failure(rejected)
+                    if lossless and rejected.code not in {
+                        "writer_json_invalid",
+                        "writer_flat_original_unit_incomplete",
+                        "writer_lossless_recovery_ineligible",
+                        "writer_lossless_root_invalid",
+                    }:
+                        raise
                     raise original from rejected
-                normalization.update(
-                    provider_schema_sha256=entry["provider_schema_sha256"],
-                    input_sha256=entry["input_sha256"],
-                )
-                entry.update(
-                    normalized_raw=response.content + normalization["suffix"],
-                    syntax_normalization=normalization,
-                )
-                self.save()
+                if not lossless:
+                    normalization.update(
+                        provider_schema_sha256=entry["provider_schema_sha256"],
+                        input_sha256=entry["input_sha256"],
+                    )
+                    entry.update(
+                        normalized_raw=response.content + normalization["suffix"],
+                        syntax_normalization=normalization,
+                    )
+                if planned_backend(budget) is not None:
+                    from litagent.safety.planned_budget import check_response_bounds
+
+                    check_response_bounds(value, envelope=self.envelope)
+                self.check_response_plan(name, value, stage)
+                self.register_reference_response(name, value)
                 if self.trace_hook:
                     self.trace_hook(
                         "writer.syntax_normalized",
@@ -5097,16 +5578,15 @@ class WriterSession:
                             },
                         },
                     )
-                if planned_backend(budget) is not None:
-                    from litagent.safety.planned_budget import check_response_bounds
-
-                    check_response_bounds(value)
-                self.check_response_plan(name, value, stage)
-                self.register_reference_response(name, value)
+                self.save()
                 return value
         except BaseException as exc:
             received = getattr(exc, "response", None)
-            if received is not None and hasattr(received, "provider_receipt"):
+            if (
+                "format_recovery" not in entry
+                and received is not None
+                and hasattr(received, "provider_receipt")
+            ):
                 self.record_response(entry, received)
             entry.update(
                 status=(
@@ -5546,6 +6026,11 @@ class WriterSession:
             )
             return body
         except BaseException as exc:
+            staged = body_byte_capacity_error(
+                exc, body, self.writing_plan, self.envelope
+            )
+            if staged is not None:
+                exc = staged
             if (
                 not isinstance(exc, WriterError)
                 or exc.code != "writer_reference_invalid"
@@ -5558,7 +6043,7 @@ class WriterSession:
                     "body_section": section,
                 }
             self.save()
-            raise
+            raise exc
 
     async def summaries(self, body, name):
         """Derive summaries from the frozen ordered scientific body."""
@@ -5738,7 +6223,15 @@ class WriterSession:
                     self.envelope["body_max_units"] if cause == "capacity" else 30
                 ),
             )
-            if len(self.state["attempts"]) >= self.repair_limit:
+            from litagent.quality import repair_attempts_remaining
+
+            if (
+                len(self.state["attempts"]) >= self.repair_limit
+                or repair_attempts_remaining(
+                    self.state, "prose" if cause == "evaluation" else "capacity"
+                )
+                <= 0
+            ):
                 raise WriterError("writer_repair_limit", "quality")
         except WriterError as exc:
             self.journal["failure"] = {
@@ -5839,6 +6332,37 @@ class WriterSession:
             rf = self.response_format("repair", schema)
             planned_system, planned_payload = self.planned_input(system, payload)
             messages = self.messages(planned_system, planned_payload, schema)
+            if (
+                cause == "capacity"
+                and (capacity_diagnostic or {}).get("code")
+                == "writer_body_byte_capacity_exceeded"
+            ):
+                from litagent.output_capacity import (
+                    envelope_context_limit,
+                    envelope_output_tokens,
+                )
+
+                required = strict_request_reservation(
+                    messages, envelope_output_tokens(self.envelope)["repair"], rf
+                )
+                maximum = min(
+                    self.envelope["request_caps"]["repair"],
+                    envelope_context_limit(self.envelope),
+                )
+                if required > maximum:
+                    # This input already violated the authored-body bound. A
+                    # refused recovery is output scope, not a promised-plan breach.
+                    raise WriterError(
+                        "writer_body_byte_refinement_unavailable",
+                        "output_scope",
+                        [
+                            {
+                                "field": "complete_wire_reservation",
+                                "actual": required,
+                                "maximum": maximum,
+                            }
+                        ],
+                    )
             report_size = len(json.dumps(body, ensure_ascii=False).encode())
             if self.writing_plan == RANGE_WRITING_PLAN and summary_body is not None:
                 report_size += len(
@@ -5983,6 +6507,19 @@ class WriterSession:
                     candidate[section] = [
                         p for p in candidate[section] if p["sentences"]
                     ]
+                if (capacity_diagnostic or {}).get(
+                    "code"
+                ) == "writer_body_byte_capacity_exceeded":
+                    self.journal.setdefault("byte_capacity_attempts", []).append(
+                        {
+                            "call": "repair_" + str(entry["index"]),
+                            "source_body_sha256": digest(body),
+                            "candidate_sha256": digest(candidate),
+                            "candidate": copy.deepcopy(candidate),
+                            "scientific_assessment": "not_verified",
+                        }
+                    )
+                    self.save()
             if self.reference_contract is not None:
                 received_candidate, candidate_origins = self.reference_patch_candidate(
                     body,
@@ -6108,6 +6645,12 @@ class WriterSession:
                     "input_sha256": call["input_sha256"],
                     **support_validation_fields(self.envelope),
                 }
+                # BEGIN format recovery provenance
+                if "format_patch" in call:
+                    entry["provenance_receipt"]["format_patch"] = copy.deepcopy(
+                        call["format_patch"]
+                    )
+                # END format recovery provenance
                 if wire_record is not None:
                     entry["provenance_receipt"].update(
                         guidance_wire_fields(self.envelope)
@@ -6181,19 +6724,77 @@ class WriterSession:
 
 
 async def repair_capacity_snapshot(
-    session, document, *, diagnostics=(), summary_body=None
+    session, document, *, diagnostics=(), summary_body=None, byte_capacity=None
 ):
     """Use the existing shared attempts to rewrite only authorized complete ranges."""
-    if len(session.state["attempts"]) >= session.repair_limit:
+    from litagent.quality import remaining_repair_allowances, repair_attempts_remaining
+
+    if (
+        len(session.state["attempts"]) >= session.repair_limit
+        or repair_attempts_remaining(session.state, "capacity") <= 0
+    ):
         raise WriterError("writer_repair_limit", "quality")
     if any(
         r.get("snapshot_sha256") == digest(document)
         for r in session.journal.get("capacity_candidates", [])
     ):
         raise WriterError("writer_capacity_snapshot_no_replay", "interrupted")
-    targets = capacity_repair_targets(
-        document, session.writing_plan, envelope=session.envelope
-    )
+    guidance_context = None
+    if byte_capacity is not None:
+        from litagent.capacity_repair import capacity_targets
+        from litagent.safety.planned_budget import (
+            EnvelopeExceeded,
+            check_writer_envelope,
+        )
+        from litagent.writing_flat import canonical_schema
+
+        if summary_body is not None:
+            raise WriterError("writer_capacity_snapshot_invalid", "quality")
+        parse_response(
+            json.dumps(document),
+            canonical_schema(
+                schema_for("body", session.aliases, envelope=session.envelope)
+            ),
+        )
+        try:
+            check_writer_envelope(document, session.envelope, stage="body")
+        except EnvelopeExceeded as exc:
+            staged = body_byte_capacity_error(
+                exc, document, session.writing_plan, session.envelope
+            )
+            if staged is None or staged.diagnostics != byte_capacity:
+                raise WriterError(
+                    "writer_capacity_snapshot_invalid", "quality"
+                ) from exc
+        else:
+            raise WriterError("writer_capacity_snapshot_invalid", "quality")
+        issue = byte_capacity[0]
+        capacity_issue = {
+            "code": "writer_body_byte_capacity_exceeded",
+            "source_body_sha256": digest(document),
+            **{key: issue[key] for key in ("field", "actual", "maximum")},
+        }
+        targets = capacity_targets(document, capacity_issue)
+        local = current_repair_guidance_context(
+            None,
+            None,
+            {
+                "packet": session.packet,
+                "aliases": session.aliases,
+                "body": document,
+                "summaries": {},
+                "budget_envelope": session.envelope,
+                "generation_writing_plan": session.writing_plan,
+            },
+            targets,
+            [capacity_issue],
+            diagnostic_categories=["capacity"],
+        )
+        guidance_context = {"current": local, "prior_candidate": None}
+    else:
+        targets = capacity_repair_targets(
+            document, session.writing_plan, envelope=session.envelope
+        )
     for diagnostic in diagnostics:
         section, pi, _, si, _, _ = diagnostic["path"]
         if any(
@@ -6228,9 +6829,17 @@ async def repair_capacity_snapshot(
             candidate = await session.patch(
                 document,
                 targets,
-                cause="local",
+                cause="capacity" if byte_capacity is not None else "local",
                 claim_count=128,
                 summary_body=summary_body,
+                **(
+                    {
+                        "capacity_diagnostic": capacity_issue,
+                        "guidance_context": guidance_context,
+                    }
+                    if byte_capacity is not None
+                    else {}
+                ),
             )
             record.update(
                 candidate=copy.deepcopy(candidate),
@@ -6268,17 +6877,41 @@ async def repair_capacity_snapshot(
         except BaseException as exc:
             record.update(status="rejected", failure=classify_failure(exc))
             session.save()
+            from litagent.safety.planned_budget import EnvelopeExceeded
+
+            issues = getattr(exc, "diagnostics", [])
+            # This overflow describes the rejected candidate. The preserved
+            # original intentionally has a different measured byte count.
+            retryable_bytes = (
+                byte_capacity is not None
+                and isinstance(exc, EnvelopeExceeded)
+                and len(issues) == 1
+                and issues[0]["stage"] == "body"
+                and issues[0]["field"] == "nested_json_bytes"
+                and issues[0]["maximum"] == session.envelope["body_json_bytes"]
+                and issues[0]["actual"] > issues[0]["maximum"]
+            )
             if not (
-                isinstance(exc, WriterError)
-                and exc.family == "quality"
-                and exc.code
-                in {
-                    "writer_writing_plan_capacity_exceeded",
-                    "writer_patch_capacity_exceeded",
-                    "writer_repair_duplicate",
-                    "writer_repair_no_progress",
-                }
-                and before < len(session.state["attempts"]) < 2
+                (
+                    retryable_bytes
+                    or (
+                        isinstance(exc, WriterError)
+                        and exc.family == "quality"
+                        and exc.code
+                        in {
+                            "writer_writing_plan_capacity_exceeded",
+                            "writer_patch_capacity_exceeded",
+                            "writer_repair_duplicate",
+                            "writer_repair_no_progress",
+                        }
+                    )
+                )
+                and before < len(session.state["attempts"])
+                and (
+                    repair_attempts_remaining(session.state, "capacity") > 0
+                    if remaining_repair_allowances(session.state) is not None
+                    else len(session.state["attempts"]) < 2
+                )
             ):
                 raise
 
@@ -6417,9 +7050,39 @@ async def synthesize(worker, task, cards, selection, methodology, requirements):
         mixed_recovery = task.input_data.get("mixed_inventory_recovery", False)
         if type(mixed_recovery) is not bool:
             raise WriterError("mixed_inventory_recovery_policy_invalid")
-        plan = writer_budget_plan(
+        plan_builder = writer_budget_plan
+        if (
+            frozen_envelope is None
+            and task.input_data.get("budget_policy") == "planned-budget-v7"
+            and callable(getattr(worker, "_semantic_engine_provider", None))
+            and worker._semantic_engine_provider() is not None
+        ):
+            from litagent.eval.engine_policy import native_writer_budget_plan
+
+            plan_builder = native_writer_budget_plan
+        plan = plan_builder(
             packet,
             aliases,
+            semantic_engine=(
+                frozen_envelope.get("semantic_engine")
+                if frozen_envelope is not None
+                else (
+                    worker._semantic_engine_provider()
+                    if callable(getattr(worker, "_semantic_engine_provider", None))
+                    and task.input_data.get("budget_policy") == "planned-budget-v7"
+                    else None
+                )
+            ),
+            **(
+                {"run_limits": frozen_envelope.get("run_limits")}
+                if frozen_envelope is not None
+                else (
+                    {"run_limits": worker._run_limits_provider()}
+                    if callable(getattr(worker, "_run_limits_provider", None))
+                    and task.input_data.get("budget_policy") == "planned-budget-v7"
+                    else {}
+                )
+            ),
             **(
                 {"output_tokens": frozen_envelope["output_tokens"]}
                 if frozen_envelope and "output_tokens" in frozen_envelope
@@ -6578,7 +7241,7 @@ async def synthesize(worker, task, cards, selection, methodology, requirements):
             None if planned else getattr(worker, "_native_reemission_contract", None)
         ),
         syntax_policy=(
-            EOF_CONTAINER_POLICY
+            planned_syntax_policy(plan.get("envelope"))
             if planned
             else getattr(worker, "_native_syntax_policy", None)
         ),
@@ -6594,12 +7257,18 @@ async def synthesize(worker, task, cards, selection, methodology, requirements):
         if session.writing_plan == RANGE_WRITING_PLAN and exc.code in {
             "writer_reference_invalid",
             "writer_writing_plan_capacity_exceeded",
+            "writer_body_byte_capacity_exceeded",
         }:
             body = await repair_capacity_snapshot(
                 session,
                 exc.candidate,
                 diagnostics=(
                     exc.diagnostics if exc.code == "writer_reference_invalid" else ()
+                ),
+                **(
+                    {"byte_capacity": exc.diagnostics}
+                    if exc.code == "writer_body_byte_capacity_exceeded"
+                    else {}
                 ),
             )
         else:
@@ -6934,18 +7603,23 @@ async def review(worker, task):
     }
 
 
+def _matches_repair_diagnostic(unit, diagnostic):
+    """Match a diagnostic to a native unit by range or explicit unit ID."""
+    start, end = diagnostic.get("source_start"), diagnostic.get("source_end")
+    return (
+        type(start) is int
+        and type(end) is int
+        and start < unit["source_end"]
+        and end > unit["source_start"]
+    ) or diagnostic.get("unit_id") == unit["unit_id"]
+
+
 def repair_targets(bindings, diagnostics, body, summaries, *, merge=False):
     """Authorize native units by exact current-report offsets, never fuzzy matching."""
     targets = {}
     for diagnostic in diagnostics:
-        start, end = diagnostic.get("source_start"), diagnostic.get("source_end")
         for unit in bindings["units"]:
-            if (
-                type(start) is int
-                and type(end) is int
-                and start < unit["source_end"]
-                and end > unit["source_start"]
-            ) or diagnostic.get("unit_id") == unit["unit_id"]:
+            if _matches_repair_diagnostic(unit, diagnostic):
                 section, pi, si = unit["path"]
                 doc = summaries if section in summaries else body
                 explanation = diagnostic.get("explanation") or diagnostic.get(
@@ -6961,6 +7635,47 @@ def repair_targets(bindings, diagnostics, body, summaries, *, merge=False):
                 }
     body_targets = {k: v for k, v in targets.items() if v["path"][0] in BODY}
     return body_targets or targets
+
+
+def _split_summary_repair_guidance(survey, bindings, document, diagnostics, categories):
+    """Authenticate summary-only findings for the existing regeneration stage."""
+    body_diagnostics, body_categories = [], []
+    summary_diagnostics, summary_categories = [], []
+    summary_units = [
+        unit for unit in bindings["units"] if unit["path"][0] in document["summaries"]
+    ]
+    for diagnostic, category in zip(diagnostics, categories, strict=True):
+        matches = [
+            unit
+            for unit in bindings["units"]
+            if _matches_repair_diagnostic(unit, diagnostic)
+        ]
+        if matches and all(
+            unit["path"][0] in document["summaries"] for unit in matches
+        ):
+            summary_diagnostics.append(diagnostic)
+            summary_categories.append(category)
+        else:
+            body_diagnostics.append(diagnostic)
+            body_categories.append(category)
+    summary_context = None
+    if summary_diagnostics:
+        targets = repair_targets(
+            {"units": summary_units},
+            summary_diagnostics,
+            document["body"],
+            document["summaries"],
+            merge=True,
+        )
+        summary_context = current_repair_guidance_context(
+            survey,
+            bindings,
+            document,
+            targets,
+            summary_diagnostics,
+            diagnostic_categories=summary_categories,
+        )
+    return body_diagnostics, body_categories, summary_context
 
 
 _HOST_SEMANTIC_REPAIR_REASONS = frozenset(
@@ -7797,9 +8512,10 @@ async def _repair_report(
     initial_evaluation,
     initial_quality,
     report_language,
+    recovery=None,
 ):
     """Stage a complete candidate and commit only after independent full evaluation."""
-    from litagent.body_quality import bound_repair_diagnostics
+    from litagent.eval.ragas_repair import native_repair_diagnostics
     from litagent.runner import RewriteOutcome
 
     meta = report_data["metadata"]
@@ -7824,6 +8540,33 @@ async def _repair_report(
         writing_plan=document.get("generation_writing_plan"),
     )
     details = initial_evaluation.get("faithfulness", {}).get("details", {})
+    repetition_base = meta.get("repetition_retry_base_sha256")
+    if repetition_base:
+        matching = [
+            row
+            for row in session.journal["candidates"]
+            if row["report_sha256"] == repetition_base
+        ]
+        if (
+            repetition_base != hashlib.sha256(original.encode()).hexdigest()
+            or (session.journal.get("failure") or {}).get("candidate_sha256")
+            != repetition_base
+            or len(matching) != 1
+            or matching[0].get("committed") is not False
+            or matching[0]["survey"] != original
+            or matching[0]["evaluation"] != initial_evaluation
+            or matching[0]["bindings"] != meta["writing_bindings"]
+        ):
+            raise WriterError("writer_repetition_retry_identity_invalid", "identity")
+    combined = recovery is not None and recovery["action"] == "combined"
+    if recovery is not None and (
+        recovery["source_report_sha256"]
+        != hashlib.sha256(original.encode()).hexdigest()
+        or recovery["evaluation_sha256"] != digest(initial_evaluation)
+        or recovery["action"] not in {"prose", "combined"}
+        or recovery["budget"]["status"] != "admitted"
+    ):
+        raise WriterError("writer_recovery_decision_invalid", "identity")
     if document.get("budget_envelope") != session.envelope:
         from litagent.safety.planned_budget import planned_backend
 
@@ -7853,6 +8596,7 @@ async def _repair_report(
     )
     if (
         not capacity_repair
+        and not combined
         and (
             stages.get("global_check") != "completed"
             or not details.get("coverage", {}).get("complete")
@@ -7878,11 +8622,16 @@ async def _repair_report(
         return RewriteOutcome(
             False, False, None, None, None, None, "writer_assessment_incomplete"
         )
-    diagnostics = list(bound_repair_diagnostics(details))
+    diagnostics = list(
+        details["unsupported_claims"]
+        if combined
+        else native_repair_diagnostics(details)
+    )
     diagnostic_categories = ["evaluation"] * len(diagnostics)
     review = meta.get("reviewer_diagnostics") or {}
     if (
-        review.get("source_report_sha256")
+        not combined
+        and review.get("source_report_sha256")
         == hashlib.sha256(original.encode()).hexdigest()
     ):
         diagnostics.extend(review.get("issues", []))
@@ -7911,10 +8660,16 @@ async def _repair_report(
     before_count = len(session.state["attempts"])
     candidate = None
     try:
+        if recovery is not None and list(targets) != recovery["targets"]:
+            raise WriterError("writer_recovery_target_mismatch", "identity")
         if (session.envelope or {}).get("repair_guidance_contract") is not None and (
             not targets
-            or any(
-                not issue.get("claim_ids") for issue in details.get("global_issues", [])
+            or (
+                recovery is None
+                and any(
+                    not issue.get("claim_ids")
+                    for issue in details.get("global_issues", [])
+                )
             )
         ):
             raise WriterError(
@@ -7931,7 +8686,18 @@ async def _repair_report(
         if not targets:
             raise WriterError("writer_no_editable_targets", "quality")
         feedback_context = None
+        deferred_feedback = None
         previous_failure = session.journal.get("failure") or {}
+        if repetition_base:
+            # The exact evaluated candidate now owns current guidance. Keep its
+            # previous diagnostics locally without creating a second origin.
+            session.journal["repetition_retry"] = copy.deepcopy(previous_failure)
+            session.journal["failure"] = {
+                "code": "writer_repetition_retry",
+                "family": "quality",
+            }
+            previous_failure = session.journal["failure"]
+            session.save()
         if "repair_feedback_contract" in (
             session.envelope or {}
         ) and previous_failure.get("candidate_sha256"):
@@ -7951,6 +8717,14 @@ async def _repair_report(
                 previous_failure,
                 targets,
             )
+            deferred_feedback = defer_disjoint_prior_feedback(
+                session.envelope,
+                feedback_context,
+                previous_failure,
+                action=(recovery or {}).get("action"),
+            )
+            if deferred_feedback is not None:
+                feedback_context = None
         current_capacity_instruction = None
         if capacity_repair and session.envelope.get("repair_mapping_contract") in (
             "capacity-source-map-v3",
@@ -7985,6 +8759,7 @@ async def _repair_report(
                     maximum=limiting["maximum_tokens"],
                 )
         guidance_context = None
+        summary_regeneration_guidance = None
         if (session.envelope or {}).get("repair_guidance_contract") is not None:
             guidance_diagnostics = list(diagnostics)
             guidance_categories = list(diagnostic_categories)
@@ -8023,6 +8798,22 @@ async def _repair_report(
                     capacity_guidance["explanation"] = capacity_issue["explanation"]
                 guidance_diagnostics.append(capacity_guidance)
                 guidance_categories.append("capacity")
+            elif (
+                recovery is not None
+                and session.wire_contract == "flat-writer-v1"
+                and all(target["path"][0] in BODY for target in targets.values())
+            ):
+                (
+                    guidance_diagnostics,
+                    guidance_categories,
+                    summary_regeneration_guidance,
+                ) = _split_summary_repair_guidance(
+                    original,
+                    meta["writing_bindings"],
+                    document,
+                    guidance_diagnostics,
+                    guidance_categories,
+                )
             current_context = current_repair_guidance_context(
                 original,
                 meta["writing_bindings"],
@@ -8042,10 +8833,21 @@ async def _repair_report(
                 "current": current_context,
                 "prior_candidate": prior_context,
             }
+            if deferred_feedback is not None:
+                # The failed candidate remains in the journal. The provider
+                # receives only the original report's authorized diagnoses.
+                session.journal.setdefault("deferred_prior_feedback", []).append(
+                    deferred_feedback
+                )
+                session.journal["failure"] = {
+                    "code": "writer_prior_feedback_outside_targets",
+                    "family": "quality",
+                }
+                session.save()
         wire_replay_options = {}
         if guidance_wire_fields(session.envelope) and feedback_context is not None:
-            # Only the second shared edit may carry the first failed candidate.
-            # Keep its exact raw/provenance witness local, never in provider input.
+            # Replay only the bounded predecessor chain. Keep full witnesses
+            # local; the provider receives only the projected feedback.
             wire_replay_options["guidance_replay_witness"] = {
                 "survey": original,
                 "document": copy.deepcopy(document),
@@ -8130,6 +8932,14 @@ async def _repair_report(
                 ),
                 **wire_replay_options,
             )
+            if summary_regeneration_guidance is not None:
+                # The reserved summary call replaces both sections from the
+                # revised body. Keep the authenticated old findings local.
+                name = f"summary_repair_{len(session.state['attempts'])}"
+                session.journal.setdefault("summary_regeneration_guidance", {})[
+                    name
+                ] = summary_regeneration_guidance
+                session.save()
             summaries = await refresh_summaries(
                 session, document["body"], body, document["summaries"], targets
             )
@@ -8180,13 +8990,28 @@ async def _repair_report(
             phase="post_rewrite",
         )
         quality = runner._derive_quality(evaluated)
+        candidate_details = evaluated.get("faithfulness", {}).get("details", {})
+        technical_failure = recovery is not None and (
+            candidate_details.get("execution_error")
+            or candidate_details.get("component_errors")
+            or candidate_details.get("stages", {}).get("global_check") != "completed"
+        )
         regressed = runner._passed_metric_regressed(
             initial_evaluation,
             evaluated,
             original_survey=original,
             candidate_survey=candidate,
         )
-        accepted = quality["status"] == "passed" and not regressed
+        if repetition_base:
+            from litagent.eval.ragas_repair import preserves_repetition_findings
+
+            if not technical_failure and quality["status"] == "passed":
+                regressed = regressed or not preserves_repetition_findings(
+                    initial_evaluation, evaluated
+                )
+        accepted = (
+            quality["status"] == "passed" and not regressed and not technical_failure
+        )
         improved = True
         if capacity_repair and "repair_mapping_contract" in session.envelope:
             candidate_capacity = (
@@ -8227,7 +9052,7 @@ async def _repair_report(
             )
         session.journal["candidates"].append(record)
         if not accepted and session.wire_contract == "flat-writer-v1":
-            failures = bound_repair_diagnostics(
+            failures = native_repair_diagnostics(
                 evaluated.get("faithfulness", {}).get("details", {})
             )
             session.journal["failure"] = {
@@ -8270,12 +9095,16 @@ async def _repair_report(
             "committed"
             if accepted
             else (
-                "writer_repair_no_progress"
-                if not improved
+                "ragas_recovery_candidate_execution_failed"
+                if technical_failure
                 else (
-                    "writer_candidate_regressed"
-                    if regressed
-                    else "writer_candidate_failed"
+                    "writer_repair_no_progress"
+                    if not improved
+                    else (
+                        "writer_candidate_regressed"
+                        if regressed
+                        else "writer_candidate_failed"
+                    )
                 )
             )
         )

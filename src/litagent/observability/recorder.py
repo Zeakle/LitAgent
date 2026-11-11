@@ -426,6 +426,25 @@ class RunRecorder:
         self._repository.save(self._artifact)
         return self.snapshot()
 
+    def provider_failures(self) -> list[dict[str, Any]]:
+        """Report HTTP failures separately from settled and unknown usage."""
+        failures = []
+        for node in self._artifact["nodes"].values():
+            metadata = node["metadata"]
+            if node["kind"] != "llm" or "provider_http_status" not in metadata:
+                continue
+            failures.append(
+                {
+                    "task_id": node["task_id"],
+                    **{
+                        key: metadata[key]
+                        for key in _PROVIDER_FAILURE_FIELDS
+                        if key in metadata
+                    },
+                }
+            )
+        return failures
+
     def snapshot(self) -> dict[str, Any]:
         """Return the current run snapshot."""
         return _snapshot(self._artifact)
@@ -623,6 +642,14 @@ def _event_output(event: str, data: dict[str, Any]) -> Any:
     return payload or None
 
 
+_PROVIDER_FAILURE_FIELDS = (
+    "provider_http_status",
+    "provider_error_code",
+    "provider_request_id",
+    "usage_available",
+)
+
+
 def _event_metadata(event: str, data: dict[str, Any]) -> dict[str, Any]:
     """Extract normalized metadata from a lifecycle event."""
     if event in {"llm.failed", "worker.failed"}:
@@ -639,11 +666,19 @@ def _event_metadata(event: str, data: dict[str, Any]) -> dict[str, Any]:
                 "output_limit_parameter",
                 "usage_available",
                 "diagnostics",
+                *_PROVIDER_FAILURE_FIELDS,
             )
             if key in data
         }
     if event == "llm.complete":
-        return {"tool_calls": data.get("tool_calls", [])}
+        return {
+            "tool_calls": data.get("tool_calls", []),
+            **(
+                {key: data[key] for key in _PROVIDER_FAILURE_FIELDS if key in data}
+                if "provider_http_status" in data
+                else {}
+            ),
+        }
     if "output" in data:
         ignored = {
             "operation_id",

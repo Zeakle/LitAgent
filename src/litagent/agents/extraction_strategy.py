@@ -8,13 +8,17 @@ import hashlib
 import json
 import re
 from abc import ABC, abstractmethod
+from contextlib import nullcontext
 from typing import Any, Mapping
 
 from litagent.body_quality import (
+    EVIDENCE_PREPARATION_POLICY,
     EXTRACTION_CLAIM_CONTRACT,
     EXTRACTION_FIELD_SPAN_CONTRACT,
     EXTRACTION_SOURCE_LAYOUT_CONTRACT,
     PAPER_BATCH_CONTRACT,
+    check_preparation_policy,
+    checked_preparation_chunks,
 )
 from litagent.context.templates import wrap_xml
 from litagent.evidence import SOURCE_FIELDS_IDENTITY, source_field_record_identity
@@ -26,6 +30,198 @@ from litagent.tools.executor import ToolExecutor
 from litagent.workbench import is_strict_policy
 
 logger = get_logger("agents.extraction_strategy")
+
+_CONTEXT_STOP_WORDS = frozenset(
+    (
+        "a",
+        "an",
+        "the",
+        "and",
+        "or",
+        "for",
+        "of",
+        "in",
+        "on",
+        "with",
+        "to",
+        "by",
+        "explain",
+        "survey",
+        "compare",
+        "approaches",
+        "methods",
+    )
+)
+
+
+def _context_words(text):
+    """Match lexical priorities without treating a match as scientific evidence."""
+    return (
+        set(re.findall(r"[a-z][a-z0-9]*|[\u3400-\u9fff]", text.casefold()))
+        - _CONTEXT_STOP_WORDS
+    )
+
+
+def focused_extraction_context(paper, question, requirements):
+    """Select whole, paper-owned reading intervals with explicit omission records."""
+    from litagent.body_quality import PREPARATION_MAX_CHARS, PREPARATION_MAX_CHUNKS
+
+    if (
+        not isinstance(question, str)
+        or not question.strip()
+        or not isinstance(requirements, list)
+        or any(
+            not isinstance(row, dict) or not isinstance(row.get("text"), str)
+            for row in requirements
+        )
+    ):
+        raise ValueError("evidence_preparation_question_invalid")
+    chunks = checked_preparation_chunks(paper)
+    groups = {}
+    excluded = []
+    for chunk in chunks:
+        label = re.sub(r"^\d+(?:_\d+)*_", "", chunk["section"])
+        if label in {
+            "title",
+            "authors",
+            "author",
+            "affiliation",
+            "affiliations",
+            "references",
+            "bibliography",
+            "acknowledgments",
+            "acknowledgements",
+        }:
+            excluded.append(
+                {"chunk_key": chunk["chunk_key"], "reason": "non_scientific_section"}
+            )
+            continue
+        groups.setdefault(chunk["section"], []).append(chunk)
+    priorities = _context_words(
+        question + " " + " ".join(row["text"] for row in requirements)
+    )
+    ranked = sorted(
+        groups,
+        key=lambda section: (
+            -3 * len(priorities & _context_words(section.replace("_", " ")))
+            - len(
+                priorities
+                & _context_words(" ".join(c["text"] for c in groups[section]))
+            ),
+            min(c.get("page") or 0 for c in groups[section]),
+        ),
+    )
+    ordered = groups.get("abstract", []) + [
+        c for section in ranked if section != "abstract" for c in groups[section]
+    ]
+    title = str(paper.get("title") or "")[:500]
+    lines, keys, decisions = [f"Title: {title}"], [], list(excluded)
+    for chunk in ordered:
+        key = chunk["chunk_key"]
+        line = f"[CHUNK:{key}] section={chunk['section']}\n{chunk['text']}"
+        candidate = "\n\n".join([*lines, line])
+        reason = "selected"
+        if len(keys) >= PREPARATION_MAX_CHUNKS:
+            reason = "chunk_limit"
+        elif len(candidate) > PREPARATION_MAX_CHARS:
+            reason = "context_limit"
+        if reason == "selected":
+            keys.append(key)
+            lines.append(line)
+        decisions.append(
+            {
+                "chunk_key": key,
+                "page": chunk.get("page"),
+                "section": chunk["section"],
+                "reason": reason,
+            }
+        )
+    context = "\n\n".join(lines)
+    if not keys:
+        raise ValueError("evidence_preparation_no_source_context")
+    receipt = {
+        "policy": EVIDENCE_PREPARATION_POLICY,
+        "question_sha256": hashlib.sha256(
+            json.dumps([question, requirements], ensure_ascii=False).encode()
+        ).hexdigest(),
+        "context_sha256": hashlib.sha256(context.encode()).hexdigest(),
+        "selected_chunk_keys": keys,
+        "context_chars": len(context),
+        "max_chunks": PREPARATION_MAX_CHUNKS,
+        "max_context_chars": PREPARATION_MAX_CHARS,
+        "decisions": decisions,
+        "scientific_verification": "not_run",
+    }
+    return context, keys, receipt
+
+
+def _strategy_context(paper):
+    """Use only the host-selected preparation contract; preserve omitted old wires."""
+    prep = paper.get("_evidence_preparation")
+    if prep is None:
+        return build_extraction_context(
+            paper, **({"max_chunks": 6} if paper.get("_extraction_question") else {})
+        )
+    if (
+        not isinstance(prep, dict)
+        or set(prep) != {"policy", "question", "requirements"}
+        or check_preparation_policy(prep["policy"]) != EVIDENCE_PREPARATION_POLICY
+        or paper.get("quality_policy") != "strict_auto_v2"
+    ):
+        raise ValueError("evidence_preparation_context_invalid")
+    context, keys, _ = focused_extraction_context(
+        paper, prep["question"], prep["requirements"]
+    )
+    return context, keys
+
+
+def _preparation_request_identity(stage, messages, kwargs, llm):
+    """Bind the actual requested wire and its host-owned queue position."""
+    return hashlib.sha256(
+        json.dumps(
+            [stage, messages, kwargs, getattr(llm, "_model", None)],
+            sort_keys=True,
+            ensure_ascii=False,
+        ).encode()
+    ).hexdigest()
+
+
+def _preparation_request_scope(papers, messages, kwargs, llm):
+    """Reuse durable request ownership without granting paper-supplied authority."""
+    from litagent.safety.planned_budget import (
+        PREPARATION_CONTRACTS,
+        planned_backend,
+        request_scope,
+    )
+
+    if not any(p.get("_evidence_preparation") is not None for p in papers):
+        return nullcontext()
+    scopes = [p.get("_preparation_request_scope") for p in papers]
+    if any(
+        not isinstance(s, dict)
+        or set(s) != {"stage", "request_id", "plan_identity"}
+        or s != scopes[0]
+        for s in scopes
+    ):
+        raise ValueError("evidence_preparation_budget_not_checked")
+    scope = scopes[0]
+    backend = planned_backend(getattr(llm, "_cost_budget", None))
+    if (
+        backend is None
+        or backend.plan.get("contract") not in PREPARATION_CONTRACTS
+        or backend.path is None
+        or scope["plan_identity"] != backend.plan["identity"]
+        or not isinstance(scope["stage"], str)
+        or scope["stage"] not in backend.plan["stages"]
+        or backend.plan["stages"][scope["stage"]]["request_cap"]
+        != papers[0].get("_preparation_request_bound")
+        or scope["request_id"]
+        != _preparation_request_identity(scope["stage"], messages, kwargs, llm)
+    ):
+        raise ValueError("evidence_preparation_budget_identity_invalid")
+    if scope["request_id"] in backend.entries:
+        raise ValueError("planned_request_no_replay")
+    return request_scope(scope["stage"], scope["request_id"])
 
 
 def build_extraction_context(
@@ -95,6 +291,39 @@ def build_extraction_context(
         for _, chunk in (ranked if strict else ranked[:max_chunks])
         if chunk.get("text")
     ]
+    question = paper.get("_extraction_question")
+    if strict and isinstance(question, str) and question.strip():
+        words = _context_words(question)
+        method_groups = {}
+        for chunk in selected:
+            section = str(chunk.get("section") or "").casefold()
+            if (
+                chunk.get("content_scope") == "selected_fulltext"
+                and len(chunk["text"]) >= 100
+                and re.search(
+                    r"method|approach|representation|render|encoding|sampling|"
+                    r"optimization|optimizing|architecture|formulation",
+                    section,
+                )
+            ):
+                method_groups.setdefault(section, []).append(chunk)
+
+        def match(text):
+            return len(words & _context_words(text))
+
+        # Take one substantive block from each relevant mechanism before filling
+        # the remaining slots with other eligible material from the same paper.
+        representatives = [
+            group[0]
+            for _, group in sorted(
+                method_groups.items(),
+                key=lambda pair: -match(pair[0].replace("_", " ")),
+            )
+        ]
+        if representatives:
+            leading = [c for c in selected if priority(c) == 0][:1] + representatives
+            keys = {c["chunk_key"] for c in leading}
+            selected = leading + [c for c in selected if c["chunk_key"] not in keys]
     title = str(paper.get("title") or "")[:500]
     lines = [f"Title: {title}"[:max_chars]]
     keys: list[str] = []
@@ -331,9 +560,14 @@ Return every member once, including empty claim_records when no evidence exists.
 
 def _field_source_chunks(paper: dict, keys: list[str]) -> dict[str, str]:
     """Keep source text owned by one member and the chunks actually supplied."""
+    chunks = (
+        checked_preparation_chunks(paper)
+        if paper.get("_evidence_preparation") is not None
+        else paper.get("chunks", [])
+    )
     sources = {
         str(chunk.get("chunk_key")): str(chunk.get("text") or "")
-        for chunk in paper.get("chunks", [])
+        for chunk in chunks
         if isinstance(chunk, dict) and chunk.get("chunk_key") in keys
     }
     if "abstract" in keys and "abstract" not in sources:
@@ -776,9 +1010,22 @@ class LLMStrategy(ExtractionStrategy):
             raise ValueError("unsupported extraction record_identity")
         self._record_identity = record_identity
 
+    def _strict_resources(self, papers=1):
+        """Resolve strict transport limits from the host-owned resource revision."""
+        from litagent.operational_limits import (
+            PROFILE,
+            budget_resource_profile,
+            increase,
+        )
+
+        budget = getattr(self._llm, "_cost_budget", None)
+        uplifted = budget_resource_profile(budget) == PROFILE
+        scale = increase if uplifted else lambda value: value
+        return scale(STRICT_EXTRACTION_OUTPUT_TOKENS * papers), int(scale(131072) * 0.9)
+
     async def extract(self, paper: dict) -> dict:
         """Return normalized structured fields from an LLM JSON response."""
-        context, selected_keys = build_extraction_context(paper)
+        context, selected_keys = _strategy_context(paper)
         automatic = paper.get("quality_policy") in {"strict_auto_v1", "strict_auto_v2"}
         field_identity = automatic and self._record_identity == SOURCE_FIELDS_IDENTITY
         strict = is_strict_policy(paper.get("quality_policy"))
@@ -818,9 +1065,7 @@ class LLMStrategy(ExtractionStrategy):
 
         kwargs: dict[str, Any] = {
             "response_format": {"type": "json_object"},
-            "max_tokens": (
-                STRICT_EXTRACTION_OUTPUT_TOKENS if strict else self._max_tokens
-            ),
+            "max_tokens": (self._strict_resources()[0] if strict else self._max_tokens),
         }
         if self._thinking_mode != "provider_default":
             kwargs["extra_body"] = {"thinking": {"type": self._thinking_mode}}
@@ -833,7 +1078,7 @@ class LLMStrategy(ExtractionStrategy):
             from litagent.eval.scoped import check_request_budget
 
             check_request_budget(
-                self._llm, messages, kwargs["max_tokens"], int(131072 * 0.9)
+                self._llm, messages, kwargs["max_tokens"], self._strict_resources()[1]
             )
             kwargs["transport_max_attempts"] = 1
         resp = await self._llm.chat(messages, **kwargs)
@@ -846,12 +1091,12 @@ class LLMStrategy(ExtractionStrategy):
         )
 
     def _prepare_grounded_batch(
-        self, papers: list[dict]
+        self, papers: list[dict], *, metadata: str | None = None
     ) -> tuple[list[dict], dict, dict]:
         """Send complete original contexts, with no model-generated location task."""
         payload, allowed = {}, {}
         for index, paper in enumerate(papers):
-            context, keys = build_extraction_context(paper)
+            context, keys = _strategy_context(paper)
             if len(keys) != len(set(keys)):
                 raise ValueError("extraction_batch_source_identity_invalid")
             member = f"p{index}"
@@ -880,8 +1125,12 @@ class LLMStrategy(ExtractionStrategy):
             "generate authors, years, bibliography, or independent metrics/methods/datasets "
             "summaries. Missing evidence is explicit claim_records=[], not an omitted "
             "member. Confidence is null or a number in [0,1], not proof of correctness.\n"
-            + self._skill_manager.to_metadata_text_for(
-                "extracting structured fields from a paper", top_k=2
+            + (
+                self._skill_manager.to_metadata_text_for(
+                    "extracting structured fields from a paper", top_k=2
+                )
+                if metadata is None
+                else metadata
             )
         )
         messages = [
@@ -894,9 +1143,26 @@ class LLMStrategy(ExtractionStrategy):
                 ),
             },
         ]
+        preparations = [p.get("_evidence_preparation") for p in papers]
+        if any(prep is not None for prep in preparations):
+            if any(prep != preparations[0] for prep in preparations):
+                raise ValueError("extraction_preparation_batch_identity_invalid")
+            prep = preparations[0]
+            host = {
+                "research_question": prep["question"],
+                "coverage_requirements": prep["requirements"],
+            }
+            value = json.loads(messages[1]["content"])
+            value["host_context"] = host
+            messages[1]["content"] = json.dumps(value, ensure_ascii=False)
+            messages[0]["content"] += (
+                "\nThe host_context sets extraction priorities, never paper evidence. "
+                "Extract the relevant explicit mechanisms, results and necessary "
+                "conditions from the supplied originals; missing material stays missing."
+            )
         kwargs = {
             "response_format": _grounded_claim_response_format(allowed),
-            "max_tokens": STRICT_EXTRACTION_OUTPUT_TOKENS * len(papers),
+            "max_tokens": self._strict_resources(len(papers))[0],
             "transport_max_attempts": 1,
         }
         if self._thinking_mode != "provider_default":
@@ -919,6 +1185,10 @@ class LLMStrategy(ExtractionStrategy):
         ) != len(identities):
             raise ValueError("extraction_batch_paper_identity_invalid")
         claim_modes = [p.get("_claim_contract") for p in papers]
+        if any(p.get("_evidence_preparation") is not None for p in papers) and not all(
+            mode == EXTRACTION_CLAIM_CONTRACT for mode in claim_modes
+        ):
+            raise ValueError("evidence_preparation_requires_grounded_extraction")
         if not (
             all(mode is None for mode in claim_modes)
             or all(mode == EXTRACTION_CLAIM_CONTRACT for mode in claim_modes)
@@ -934,7 +1204,7 @@ class LLMStrategy(ExtractionStrategy):
             raise ValueError("extraction_field_span_mode_invalid")
         field_spans = span_modes == {EXTRACTION_FIELD_SPAN_CONTRACT}
         for index, paper in enumerate(papers):
-            context, keys = build_extraction_context(paper)
+            context, keys = _strategy_context(paper)
             if len(keys) != len(set(keys)):
                 raise ValueError("extraction_batch_source_identity_invalid")
             member = f"p{index}"
@@ -1001,30 +1271,121 @@ class LLMStrategy(ExtractionStrategy):
                 if field_spans
                 else {"type": "json_object"}
             ),
-            "max_tokens": STRICT_EXTRACTION_OUTPUT_TOKENS * len(papers),
+            "max_tokens": self._strict_resources(len(papers))[0],
             "transport_max_attempts": 1,
         }
         if self._thinking_mode != "provider_default":
             kwargs["extra_body"] = {"thinking": {"type": self._thinking_mode}}
         return messages, kwargs, allowed
 
+    def preflight_batches(
+        self, groups: list[list[dict]], *, budget_path=None
+    ) -> list[int]:
+        """Admit the entire focused preparation queue before its first paid call."""
+        from litagent.body_quality import evidence_preparation_identity
+        from litagent.safety.budget import CostBudget, strict_request_reservation
+        from litagent.safety.planned_budget import preparation_budget_plan
+
+        budget = getattr(self._llm, "_cost_budget", None)
+        if not isinstance(groups, list) or any(
+            not isinstance(group, list)
+            or not 1 <= len(group) <= 2
+            or any(p.get("_evidence_preparation") is None for p in group)
+            for group in groups
+        ):
+            raise ValueError("evidence_preparation_budget_identity_invalid")
+        if not isinstance(budget, CostBudget):
+            raise ValueError("evidence_preparation_budget_owner_unavailable")
+        if budget.stop_reason:
+            raise ValueError(budget.stop_reason)
+        full_metadata = getattr(self._skill_manager, "to_metadata_text", lambda: None)()
+        bounds, requests = [], []
+        for index, papers in enumerate(groups):
+            messages, kwargs, _ = self.prepare_batch(papers)
+            stage = f"preparation_{index}"
+            request_id = _preparation_request_identity(
+                stage, messages, kwargs, self._llm
+            )
+            bound = strict_request_reservation(
+                messages, kwargs["max_tokens"], kwargs["response_format"]
+            )
+            if isinstance(full_metadata, str):
+                messages, kwargs, _ = self._prepare_grounded_batch(
+                    papers, metadata=full_metadata
+                )
+                bound = max(
+                    bound,
+                    strict_request_reservation(
+                        messages, kwargs["max_tokens"], kwargs["response_format"]
+                    ),
+                )
+            bounds.append(bound)
+            requests.append(
+                {
+                    "stage": stage,
+                    "request_id": request_id,
+                    "reservation": bound,
+                    "output_tokens": kwargs["max_tokens"],
+                }
+            )
+        snapshot = budget.snapshot()
+        plan = preparation_budget_plan(
+            requests,
+            identity=hashlib.sha256(
+                json.dumps([evidence_preparation_identity(), requests]).encode()
+            ).hexdigest(),
+            spent_tokens=snapshot["used_tokens"],
+            spent_requests=snapshot.get("requests_sent", 0),
+            resource_profile=budget.resource_profile,
+        )
+        if (
+            plan["status"] != "admitted"
+            or plan["planned_tokens"] > snapshot["max_tokens"]
+        ):
+            raise ValueError(
+                "evidence_preparation_budget_rejected:"
+                + (plan["reason"] or "preparation_owner_limit")
+            )
+        budget.activate_plan(plan, path=budget_path)
+        for group, row in zip(groups, requests):
+            for paper in group:
+                paper["_preparation_request_bound"] = row["reservation"]
+                paper["_preparation_request_scope"] = {
+                    "stage": row["stage"],
+                    "request_id": row["request_id"],
+                    "plan_identity": plan["identity"],
+                }
+        return bounds
+
     async def extract_batch(self, papers: list[dict]) -> list[dict]:
         """Use one bounded request and reject the entire malformed member set."""
         messages, kwargs, allowed = self.prepare_batch(papers)
         from litagent.eval.scoped import check_request_budget
 
-        check_request_budget(
-            self._llm,
-            messages,
-            kwargs["max_tokens"],
-            int(131072 * 0.9),
-            response_format=(
-                kwargs["response_format"]
-                if kwargs["response_format"]["type"] == "json_schema"
-                else None
-            ),
-        )
-        response = await self._llm.chat(messages, **kwargs)
+        if any(p.get("_evidence_preparation") is not None for p in papers):
+            from litagent.safety.budget import strict_request_reservation
+
+            reservation = strict_request_reservation(
+                messages, kwargs["max_tokens"], kwargs["response_format"]
+            )
+            bounds = [p.get("_preparation_request_bound") for p in papers]
+            if any(type(bound) is not int or bound != bounds[0] for bound in bounds):
+                raise ValueError("evidence_preparation_budget_not_checked")
+            if reservation > bounds[0]:
+                raise ValueError("evidence_preparation_budget_plan_violation")
+        with _preparation_request_scope(papers, messages, kwargs, self._llm):
+            check_request_budget(
+                self._llm,
+                messages,
+                kwargs["max_tokens"],
+                self._strict_resources()[1],
+                response_format=(
+                    kwargs["response_format"]
+                    if kwargs["response_format"]["type"] == "json_schema"
+                    else None
+                ),
+            )
+            response = await self._llm.chat(messages, **kwargs)
         data = _parse_extraction_response(
             response,
             max_tokens=kwargs["max_tokens"],
@@ -1077,7 +1438,7 @@ class LLMStrategy(ExtractionStrategy):
             if bindings is not None:
                 item["field_span_contract"] = EXTRACTION_FIELD_SPAN_CONTRACT
                 item["field_span_bindings"] = bindings
-            context, _ = build_extraction_context(paper)
+            context, _ = _strategy_context(paper)
             for record in item["claim_records"]:
                 source = sources.get(record["source_chunk_key"], "")
                 if grounded:
@@ -1249,6 +1610,12 @@ class ResilientExtractionStrategy(ExtractionStrategy):
             return await self._fallback(
                 paper, paper_id, "llm_error", type(exc).__name__
             )
+
+    def preflight_batches(
+        self, groups: list[list[dict]], *, budget_path=None
+    ) -> list[int]:
+        """Use the same LLM request builder for focused queue admission."""
+        return self._llm.preflight_batches(groups, budget_path=budget_path)
 
     async def extract_batch(self, papers: list[dict]) -> list[dict]:
         """Preserve the bounded strict transport and never fall back per member."""

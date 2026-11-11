@@ -138,12 +138,33 @@ function renderIndependentChecks(container, details, options, onSelect, L) {
 export function renderQuality(container, evaluation, quality, delivery, onSelect, t = key => key, options = {}) {
   const L = key => LABELS[key]?.[options.locale === "en" ? 1 : 0] || key;
   const details = evaluation?.faithfulness?.details || {};
-  const v2 = ["survey-evaluation-v2", "survey-evaluation-v3"].includes(details.evaluation_version);
+  const v2 = ["survey-evaluation-v2", "survey-evaluation-v3", "survey-evaluation-ragas-v1"].includes(details.evaluation_version);
   const noFinalReport = details.skipped_reason === "final_report_unavailable";
   const hasPipeline = options.pipelineVerification && Object.keys(options.pipelineVerification).length > 0;
   container.replaceChildren();
   renderRunBudget(container, options.budgetState, options.runId, options.locale === "en", options.budgetPlan);
+  if (options.providerFailures?.length) {
+    const en = options.locale === "en";
+    const panel = node(container, "section", null, "quality-section");
+    node(panel, "h3", en ? "Provider rejections" : "供应商拒绝记录");
+    const list = node(panel, "ul");
+    for (const failure of options.providerFailures) {
+      node(list, "li", [
+        failure.task_id,
+        `HTTP ${failure.provider_http_status}`,
+        failure.provider_error_code,
+        failure.usage_available === false ? (en ? "Usage unknown" : "用量未知") : null,
+        failure.provider_request_id,
+      ].filter(Boolean).join(" · "));
+    }
+  }
   const budgetPlan = options.budgetPlan;
+  const allowances = budgetPlan?.scope_bounds?.repair_allowances;
+  const repairLabels = options.locale === "en"
+    ? { capacity: "Draft refinement", inventory: "Inventory recovery", prose: "Prose revision" }
+    : { capacity: "初稿精简", inventory: "清单恢复", prose: "正文修订" };
+  const byCategory = values => Object.entries(repairLabels)
+    .map(([kind, label]) => `${label} ${display(values[kind])}`).join(" · ");
   if (["planned-budget-v2", "planned-budget-v3", "planned-budget-v4", "planned-budget-v5", "planned-budget-v6", "planned-budget-v7"].includes(budgetPlan?.contract)) {
     const en = options.locale === "en", panel = node(container, "section", null, "quality-section");
     node(panel,"h3",en ? "Workflow budget admission" : "完整流程预算准入");
@@ -157,7 +178,9 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
       ? (en ? "Initial batch reservations are a planning baseline. Each evaluation round checks its complete requests; future candidates require another resource check. The initial batch count is not a guaranteed upper bound." : "初始批次预留是规划基线。每轮核验会检查完整请求，未来候选仍须重新检查资源；初始批数不是保证上界。")
       : (en ? "Unknown future input uses an enforced upper bound." : "未知后续输入使用可执行的上界。"));
     if (joint) node(panel,"p",`${en ? "Locked assessment domain per round: maximum requests / per-request cap / round total" : "每轮锁定核验资源域：最多请求数／单请求上限／整轮总预留"}: ${joint.assessment.max_requests} / ${joint.assessment.request_cap} / ${joint.assessment.reserved_tokens} · ${en ? "Future repair rounds retain the same domain; every complete candidate is checked before sending." : "后续修复轮保留同一资源域；每份完整候选仍在发送前检查。"}`);
-    if (["planned-budget-v3", "planned-budget-v4", "planned-budget-v5", "planned-budget-v6", "planned-budget-v7"].includes(budgetPlan.contract)) node(panel,"p",`${budgetPlan.status === "admitted" ? (en ? "Locked shared repair attempts / maximum" : "写作前锁定的共享修复次数／最高") : (en ? "Rejected repair path / no allocation" : "未准入修复路径／尚未分配")}: ${budgetPlan.repair_limit} / 2 · ${en ? "Complete initial Evaluation included" : "已计入首次完整 Evaluation"}`);
+    if (allowances) {
+      node(panel,"p",`${budgetPlan.status === "admitted" ? (en ? "Locked independent attempts" : "已锁定独立修复次数") : (en ? "Requested attempts · budget rejected" : "申请次数 · 预算未准入")}: ${byCategory(allowances)}`);
+    } else if (["planned-budget-v3", "planned-budget-v4", "planned-budget-v5", "planned-budget-v6", "planned-budget-v7"].includes(budgetPlan.contract)) node(panel,"p",`${budgetPlan.status === "admitted" ? (en ? "Locked shared repair attempts / maximum" : "写作前锁定的共享修复次数／最高") : (en ? "Rejected repair path / no allocation" : "未准入修复路径／尚未分配")}: ${budgetPlan.repair_limit} / ${budgetPlan.envelope?.run_limits?.max_repairs ?? 2} · ${en ? "Complete initial Evaluation included" : "已计入首次完整 Evaluation"}`);
     if (["planned-budget-v4", "planned-budget-v5", "planned-budget-v6", "planned-budget-v7"].includes(budgetPlan.contract) && budgetPlan.envelope) {
       const scope=budgetPlan.envelope;
       node(panel,"p",`${budgetPlan.status === "admitted" ? (en ? "Locked content capacity" : "写作前锁定的整体容量") : (en ? "Candidate capacity · unallocated" : "候选容量 · 尚未分配")}: ${en ? "body units / summary units per section / model assertions / assessment batches" : "正文单元／每节摘要结论单元／模型断言／支持批次"} ≤ ${scope.body_max_units} / ${scope.summary_max_units_per_section} / ${scope.model_assertions} / ${scope.assessment_batches}`);
@@ -183,11 +206,20 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
     if (capacity.known_tokens_at_allocation != null) node(panel,"p",`${en ? "Known usage / future locks at allocation / settled reservation savings" : "分配时已知用量／后续锁定／已结算预留差额"}: ${capacity.known_tokens_at_allocation} / ${capacity.future_locked_tokens} / ${capacity.settled_reservation_savings} tokens`);
     node(panel,"p",en ? "Every retained scientific assertion requires assessment. Refinement does not itself establish factual support." : "最终保留的每项科学断言均须核验；精简正文并不代表事实已获支持。");
   }
+  if (details.implementation === "ragas-cited-faithfulness-v1") {
+    const en = options.locale === "en", panel = node(container,"section",null,"quality-section");
+    node(panel,"h3",en ? "Native RAGAS Faithfulness" : "原生 RAGAS Faithfulness");
+    node(panel,"p",en ? "Official statement generation and NLI. Each authored unit receives only its actual cited originals, in full. Statement-weighted aggregation; global report checks remain independent." : "官方断言分解与 NLI；每个正文单元仅使用实际引用的完整原文。按断言数量加权汇总，全局正文检查独立执行。");
+    node(panel,"p",`${en ? "Version" : "版本"}: ${details.ragas_version || "—"} · ${details.evaluation_version}`);
+    const requests=details.stages?.requests || [];
+    node(panel,"p",`${en ? "Completed generator / NLI requests" : "已完成的分解／NLI请求"}: ${requests.filter(r=>r.phase === "inventory" && r.status === "completed").length} / ${requests.filter(r=>r.phase === "assessment" && r.status === "completed").length}`);
+    node(panel,"p",en ? "Model judgments are not a human gold standard. Missing results or failed independent checks still block delivery." : "模型判断不是人工金标准；核验缺失或独立检查失败仍会阻止交付。");
+  }
   const metrics = node(container, "div", null, "metric-grid");
   for (const [name, result] of Object.entries(evaluation || {})) {
     const button = node(metrics, "button", null, "metric-row"); button.type = "button";
     button.dataset.status = result?.status || (result?.skipped ? "unverified" : result?.passed === true ? "passed" : result?.passed === false ? "failed" : "unverified");
-    node(button, "span", name === "faithfulness" && details.evaluation_result_contract === "independent-evaluation-v1" ? (options.locale === "en" ? "LitAgent actual-citation support" : "LitAgent 实际引用支持率") : L(name)); node(button, "strong", scoreText(result));
+    node(button, "span", name === "faithfulness" && details.implementation === "ragas-cited-faithfulness-v1" ? (options.locale === "en" ? "RAGAS cited-context Faithfulness" : "RAGAS 实际引用 Faithfulness") : name === "faithfulness" && details.evaluation_result_contract === "independent-evaluation-v1" ? (options.locale === "en" ? "LitAgent actual-citation support" : "LitAgent 实际引用支持率") : L(name)); node(button, "strong", scoreText(result));
     node(button, "small", result?.status ? L(result.status) : result?.skipped ? t("metricSkipped") : L(button.dataset.status));
     const threshold = numeric(result?.details?.threshold);
     node(button, "small", `${L("threshold")}: ${threshold == null ? L("unavailable") : threshold}`);
@@ -216,7 +248,7 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
     }
     node(gate,"p",en ? "A rejected repair is not a scientific verdict; incomplete assessment remains unverified." : "修复候选被拒不等于科学事实不支持；未完成核验仍显示未核验。");
   }
-  node(gate, "p", noFinalReport ? (options.locale === "en" ? "Writing validation failed; Evaluation was not run." : "写作校验失败；Evaluation 未运行。") : details.evaluation_version === "survey-evaluation-v3" ? `${options.locale === "en" ? "Evaluation v3 · complete batched assessment" : "评估 v3 · 完整分批核验"}` : v2 ? `${L(details.support_contract === "host-support-passages-v2" ? "current" : details.support_contract === "cited-support-spans-v1" ? "previousSupport" : "historicalV2")} · ${details.evaluation_version}` : hasPipeline && !Object.keys(evaluation || {}).length ? (options.locale === "en" ? "Evaluation was not run; no report scores were produced." : "Evaluation 未运行；尚未产生正文评分。") : L("historical"));
+  node(gate, "p", noFinalReport ? (options.locale === "en" ? "Writing validation failed; Evaluation was not run." : "写作校验失败；Evaluation 未运行。") : details.evaluation_version === "survey-evaluation-ragas-v1" ? (options.locale === "en" ? "Native RAGAS · cited-context Faithfulness and independent global review" : "原生 RAGAS · 实际引用 Faithfulness 与独立全局检查") : details.evaluation_version === "survey-evaluation-v3" ? `${options.locale === "en" ? "Evaluation v3 · complete batched assessment" : "评估 v3 · 完整分批核验"}` : v2 ? `${L(details.support_contract === "host-support-passages-v2" ? "current" : details.support_contract === "cited-support-spans-v1" ? "previousSupport" : "historicalV2")} · ${details.evaluation_version}` : hasPipeline && !Object.keys(evaluation || {}).length ? (options.locale === "en" ? "Evaluation was not run; no report scores were produced." : "Evaluation 未运行；尚未产生正文评分。") : L("historical"));
   if (options.revision) node(gate, "p", `r${options.revision}${options.sha ? ` · SHA ${options.sha}` : ""}`, "audit-binding");
   if (v2) node(gate,"p",`${L("support")}: ${details.support_contract || L("unavailable")}`);
   if (!noFinalReport && (options.bodyDiagnostics || details.body_analysis_contract)) {
@@ -249,18 +281,24 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
   }
   const acceptance = options.automaticAcceptance;
   const verification = acceptance?.verification || options.verification;
-  const optionalHelp = options.locale === "en" ? "Complete Evaluation is required. Only enabled Judge/Jev reviews affect delivery; disabled reviews make no calls." : "完整 Evaluation 为必需门禁；仅启用的 Judge/Jev 参与交付判定，关闭时不调用。";
+  const internalDelivery = options.reportJudgeRetired && verification && !verification.judge;
+  const optionalHelp = internalDelivery
+    ? (options.locale === "en" ? "The agent requires complete Evaluation and applies bounded repairs. Extraction Jev checks evidence before ledger entry." : "Agent 执行完整 Evaluation 和有限修订。前置 Jev 检查证据入账。")
+    : (options.locale === "en" ? "Complete Evaluation is required. Only enabled Judge/Jev reviews affect delivery; disabled reviews make no calls." : "完整 Evaluation 为必需门禁；仅启用的 Judge/Jev 参与交付判定，关闭时不调用。");
   if (acceptance) {
     const panel = node(container, "section", null, "quality-section");
     node(panel, "h3", options.locale === "en" ? "Automatic acceptance · system" : "严格自动验收 · 系统判定");
     node(panel, "p", `${L(acceptance.status)} · SHA ${acceptance.report_sha256}`);
-    for (const [name, status] of Object.entries(acceptance.gates || {})) node(panel, "p", `${name}: ${L(status)}`);
+    for (const [name, status] of Object.entries(acceptance.gates || {})) {
+      if (internalDelivery && name === "judge" && status === "disabled") continue;
+      node(panel, "p", `${name}: ${L(status)}`);
+    }
     if (acceptance.version === "automatic-acceptance-v1") node(panel, "p", options.locale === "en" ? "Historical v1 record: unrun audits may have been recorded as failures. Consult the request records; this view does not re-evaluate the report." : "历史 v1 判定记录：未启动核验可能被记录为失败。请以调用记录为准；本页不重新评估报告。", "metric-unavailable");
     if (acceptance.policy === "strict_auto_v2" && acceptance.version === "automatic-acceptance-v3" && !acceptance.extraction_ledger_contract) node(panel, "p", options.locale === "en" ? "Historical extraction gate: accepted-source freezing was not recorded. Preflight may have recorded extraction as failed; consult the original extraction receipt. This view does not re-evaluate the report." : "历史提取门禁：未记录已接受证据集合冻结契约；前置检查可能将提取记录为失败。请核对原始提取收据，本页不重新评估报告。", "metric-unavailable");
     node(panel, "p", (acceptance.failure_codes || []).join(", "));
-    node(panel, "p", options.locale === "en" ? "No human calibration. self_judged is not an independent gold standard." : "未经真人校准；self_judged 不代表独立金标准。");
+    if (!internalDelivery) node(panel, "p", options.locale === "en" ? "No human calibration. self_judged is not an independent gold standard." : "未经真人校准；self_judged 不代表独立金标准。");
   }
-  if (details.evaluation_version === "survey-evaluation-v3") {
+  if (["survey-evaluation-v3", "survey-evaluation-ragas-v1"].includes(details.evaluation_version)) {
     const en = options.locale === "en";
     const strict = node(container, "section", null, "quality-section");
     node(strict, "h3", en ? "Strict acceptance · scientific support required: 100%" : "严格交付门禁 · 科学支持率要求 100%");
@@ -351,19 +389,68 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
     button.addEventListener("click",()=>onSelect({kind:"quality-diagnostic",id:issue.statement_id || issue.claim_id || "diagnostic",value:issue},button));
   }
   const automaticPolicy = ["strict_auto_v1", "strict_auto_v2"].includes(acceptance?.policy || details.quality_policy || options.qualityPolicy);
-  const independent = node(container,"section",null,"quality-section");
-  node(independent,"h3",verification ? (options.locale === "en" ? "Judge · optional final report review" : "Judge · 可选终稿复核") : (acceptance?.policy || details.quality_policy || options.qualityPolicy) === "strict_auto_v2" ? (options.locale === "en" ? "Judge · report delivery gate" : "Judge · 正文交付门禁") : L(automaticPolicy ? "autoAudits" : "audits"));
-  node(independent,"p",verification ? optionalHelp : (acceptance?.policy || details.quality_policy || options.qualityPolicy) === "strict_auto_v2" ? (options.locale === "en" ? "Report gate: complete Evaluation and Judge. Jev was run before writing." : "正文门禁：完整 Evaluation 与 Judge；Jev 在写作前核验提取。") : L(automaticPolicy ? "autoAuditHelp" : "diagnosticOnly"));
-  if (verification && !verification.judge) node(independent,"p",`Judge · ${L("disabled")}`);
+  const snapshot=options.audits;
+  const attempts=snapshot?.data?.audits || [];
+  const showHistorical = !options.reportJudgeRetired || attempts.length || snapshot?.data?.automatic ||
+    (automaticPolicy && !internalDelivery);
+  const independent = showHistorical ? node(container,"section",null,"quality-section") : null;
+  if (independent) {
+    node(independent,"h3",options.reportJudgeRetired ? (options.locale === "en" ? "Historical independent audits" : "历史独立核验") : verification ? (options.locale === "en" ? "Judge · optional final report review" : "Judge · 可选终稿复核") : (acceptance?.policy || details.quality_policy || options.qualityPolicy) === "strict_auto_v2" ? (options.locale === "en" ? "Judge · report delivery gate" : "Judge · 正文交付门禁") : L(automaticPolicy ? "autoAudits" : "audits"));
+    node(independent,"p",verification ? optionalHelp : (acceptance?.policy || details.quality_policy || options.qualityPolicy) === "strict_auto_v2" ? (options.locale === "en" ? "Report gate: complete Evaluation and Judge. Jev was run before writing." : "正文门禁：完整 Evaluation 与 Judge；Jev 在写作前核验提取。") : L(automaticPolicy ? "autoAuditHelp" : "diagnosticOnly"));
+    if (!options.reportJudgeRetired && verification && !verification.judge) node(independent,"p",`Judge · ${L("disabled")}`);
+  }
   if (verification && !verification.jev) {
     const disabledJev = node(container,"section",null,"quality-section");
     node(disabledJev,"h3",`Jev · ${L("disabled")}`);
   }
   const extraction = options.extractionVerification;
-  if (options.writerContract || options.writerFailure) {
+  const format = options.writerFormat;
+  if (options.writerContract || options.writerFailure || format?.calls?.length) {
     const writer = node(container,"section",null,"quality-section");
     node(writer,"h3", options.locale === "en" ? "Writing protocol and outcome" : "正文协议与执行结果");
     if (options.writerContract) node(writer,"p", options.writerContract);
+    if (format?.calls?.length) {
+      const english = options.locale === "en";
+      const labels = english ? {
+        recovered: "Format recovered automatically",
+        regenerated: "Stage regenerated",
+        validation_failed: "Structure or reference validation failed",
+        unrecoverable: "Format could not be recovered without loss",
+        extra_root_close: "Extra closing brace",
+        outer_eof_close: "Missing closing delimiters",
+        trailing_comma: "Trailing comma",
+        markdown_fence: "Markdown code fence",
+      } : {
+        recovered: "格式已自动恢复",
+        regenerated: "已重新生成当前阶段",
+        validation_failed: "结构或引用校验失败",
+        unrecoverable: "无法无损恢复",
+        extra_root_close: "多余闭合符",
+        outer_eof_close: "缺少闭合符",
+        trailing_comma: "尾逗号",
+        markdown_fence: "Markdown 代码围栏",
+      };
+      node(writer,"p",english ? `Format recoveries: ${format.recovered_count}` : `格式恢复 ${format.recovered_count} 次`);
+      if (format.policy === "agent-format-recovery-v1") {
+        node(writer,"p",english
+          ? `Regenerated: ${format.regenerated_count} · Requests: ${format.requests_used} used, ${format.requests_remaining} reserved unused`
+          : `阶段重生成 ${format.regenerated_count} 次 · 已用请求 ${format.requests_used} 次，预留未用 ${format.requests_remaining} 次`);
+        node(writer,"p",english
+          ? `Tokens: ${format.actual_tokens} actual, ${format.unknown_tokens} unknown, ${format.reserved_tokens} reserved`
+          : `Tokens：实际 ${format.actual_tokens}，未知占用 ${format.unknown_tokens}，预留 ${format.reserved_tokens}`);
+      }
+      const list = node(writer,"ul");
+      for (const call of format.calls) {
+        const steps = english
+          ? {lite:"Lite repair",pro:"Pro fallback",regeneration:"Stage regeneration",accepted:"accepted",declined:"declined",rejected:"rejected",stopped:"stopped"}
+          : {lite:"Lite 修复",pro:"Pro 兜底",regeneration:"阶段重生成",accepted:"接受",declined:"放弃",rejected:"拒绝",stopped:"停止"};
+        const kinds = call.attempts?.length
+          ? call.attempts.map(({kind,status}) => [steps[kind] || kind, steps[status] || status].join(" · "))
+          : (call.kinds || []).map(kind => labels[kind] || kind);
+        const details = [...kinds, call.reason].filter(Boolean);
+        node(list,"li",[`${call.call} · ${call.stage}`, labels[call.status] || call.status, ...details].join(" · "));
+      }
+    }
     if (options.writerFailure) {
       if (options.sha && options.writerFailure.source_report_sha256 && options.writerFailure.source_report_sha256 !== options.sha) node(writer,"p",options.locale === "en" ? "This run-level failure is not bound to the selected report version." : "此运行失败不绑定当前选择的报告版本。");
       else node(writer,"p",`${options.writerFailure.family} · ${options.writerFailure.code}`);
@@ -393,6 +480,26 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
       for(const issue of d.global_issues || d.stages?.global_issues || [])node(box,"p",issue.explanation);
     };
     const earlier = editorialBound ? history.prior_history : history;
+    if (earlier.recovery) {
+      const recovery = earlier.recovery;
+      const labels = {
+        stop: en ? "Repair stopped before sending" : "修复未发送",
+        prose: en ? "Targeted prose repair" : "正文定向修复",
+        combined: en ? "Prose repair and full inventory reassessment" : "正文修复与清单完整复评",
+        inventory: en ? "Inventory recovery · prose unchanged" : "清单恢复 · 正文未修改",
+      };
+      node(section,"p",labels[recovery.action]);
+      if (recovery.budget_status === "admitted")
+        node(section,"p",en ? "Repair preparation and full reassessment budget admitted" : "准备修复与完整复评的预算已准入");
+      node(section,"p",recovery.remaining_by_category
+        ? `${en ? "Remaining independent attempts" : "各类剩余次数"}: ${byCategory(recovery.remaining_by_category)} · ${recovery.outcome_reason || recovery.decision_reason}`
+        : `${en ? "Remaining shared attempts" : "剩余共享次数"}: ${display(recovery.remaining_attempts)} · ${recovery.outcome_reason || recovery.decision_reason}`);
+      if (recovery.attempted) node(section,"p", recovery.reassessment === "completed"
+        ? (en ? "Full reassessment completed" : "完整复评已执行")
+        : (en ? "Full reassessment unverified" : "完整复评未核验"));
+      if (recovery.attempted && !recovery.committed && ["prose", "combined"].includes(recovery.action))
+        node(section,"p",en ? "Candidate not committed" : "候选未提交");
+    }
     show(editorialBound ? (en ? "Source-version initial Evaluation" : "来源版本首次 Evaluation") : (en ? "Initial Evaluation" : "首次 Evaluation"),earlier.initial_evaluation,"",false);
     let candidateNumber = 0;
     for(const attempt of earlier.attempts || []) {
@@ -411,17 +518,24 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
   if (repairs) {
     const section=node(container,"section",null,"quality-section");const en=options.locale === "en";
     node(section,"h3",en ? "Bounded targeted repairs" : "有限定向修复");
-    if(repairs.version !== "shared-targeted-repair-limit-v1" || repairs.limit !== 2 || !Array.isArray(repairs.attempts))node(section,"p",L("unavailable"));
+    const independent = repairs.version === "independent-targeted-repair-v1";
+    if(!((repairs.version === "shared-targeted-repair-limit-v1" && repairs.limit === 2) || (repairs.version === "shared-targeted-repair-limit-v2" && repairs.limit === 3) || (independent && repairs.limit === 11)) || !Array.isArray(repairs.attempts))node(section,"p",L("unavailable"));
     else {
-      node(section,"p",`${en ? "Attempts consumed" : "已消耗次数"}: ${repairs.attempts.length} / 2`);
-      if(budgetPlan?.envelope?.closeout_profile === "engineering-closeout-v1") {
-        const inventory=repairs.attempts.filter(a=>["bounded-inventory-recovery-v1","bounded-inventory-recovery-v2"].includes(a.purpose)).length;
-        node(section,"p",`${en ? "Inventory rechecks" : "清单独立复核"}: ${inventory} / 1 · ${en ? "Prose repairs" : "正文修复"}: ${repairs.attempts.length-inventory} / 2`);
+      const consumed = independent ? byCategory(Object.fromEntries(
+        Object.keys(repairLabels).map(kind => [kind, repairs.attempts.filter(a => a.category === kind).length])
+      )) : `${repairs.attempts.length} / ${repairs.limit}`;
+      node(section,"p",`${en ? "Attempts consumed" : "已消耗次数"}: ${consumed}`);
+      if(!independent && budgetPlan?.envelope?.closeout_profile === "engineering-closeout-v1") {
+        const inventory=repairs.attempts.filter(a=>["bounded-inventory-recovery-v1","bounded-inventory-recovery-v2","ragas-recovery-v1"].includes(a.purpose)).length;
+        const other = history?.recovery
+          ? `${en ? "Other shared attempts" : "其他共享修复"}: ${repairs.attempts.length-inventory}`
+          : `${en ? "Prose repairs" : "正文修复"}: ${repairs.attempts.length-inventory} / ${repairs.limit}`;
+        node(section,"p",`${en ? "Inventory rechecks" : "清单独立复核"}: ${inventory} / 1 · ${other}`);
         node(section,"p",en ? "Rechecking unchanged content does not prove it was split. Current full Evaluation determines acceptance." : "同一清单重新核验不代表已完成拆分；最终以当轮完整 Evaluation 为准。");
       }
 
       node(section,"p",verification ? (en ? "A completed repair call does not establish scientific support; complete Evaluation and any enabled reviews must still pass." : "修复调用完成不代表科学支持；仍需完整 Evaluation 及已启用的复核通过。") : (en ? "A completed repair call does not establish scientific support; full Evaluation and Judge are still required." : "修复调用完成不代表科学支持；仍需完整 Evaluation 和 Judge。"));
-      for(const attempt of repairs.attempts)node(section,"p",`${["bounded-inventory-recovery-v1", "bounded-inventory-recovery-v2"].includes(attempt.purpose) ? (en ? "Inventory re-extraction" : "断言清单重抽取") : attempt.cause === "capacity" ? (en ? "Body capacity refinement" : "正文容量精简") : attempt.stage === "native_initial" ? (en ? "Initial native unit" : "初稿单元") : (en ? "Evaluation repair" : "正文定向修复")}: ${L(attempt.status)}`);
+      for(const attempt of repairs.attempts)node(section,"p",`${["bounded-inventory-recovery-v1", "bounded-inventory-recovery-v2","ragas-recovery-v1"].includes(attempt.purpose) ? (en ? "Inventory re-extraction" : "断言清单重抽取") : attempt.cause === "capacity" ? (en ? "Body capacity refinement" : "正文容量精简") : attempt.stage === "native_initial" ? (en ? "Initial native unit" : "初稿单元") : (en ? "Evaluation repair" : "正文定向修复")}: ${L(attempt.status)}`);
     }
   }
   if (hasPipeline) {
@@ -444,8 +558,22 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
     const section=node(container,"section",null,"quality-section");
     const en=options.locale === "en";
     node(section,"h3",en ? "Jev · extraction verification" : "Jev · 提取核验");
-    node(section,"p",en ? "Verifies extracted claims against original sources; this is not report support or accuracy." : "检查提取 claim 与原文的支持关系；不代表正文支持率或准确率。");
+    const dual = extraction.version === "jev-extraction-admission-v2";
+    const threshold = extraction.confidence_threshold ?? 0.9;
+    if (extraction.resource_limits) {
+      const limits=extraction.resource_limits;
+      node(section,"p",en ? `Input budget ${limits.max_input_tokens} tokens · HTTP limit ${limits.max_requests} · up to ${limits.max_questions_per_batch} questions per batch · concurrency ${limits.concurrency}. These are limits, not actual usage.` : `输入预算 ${limits.max_input_tokens} tokens · HTTP上限 ${limits.max_requests} · 每批最多 ${limits.max_questions_per_batch} 题 · 并发 ${limits.concurrency}。以上为上限，不是实际用量。`);
+    }
+    node(section,"p",dual ? (en ? `Before ledger entry, claim validity and format must both be OK with confidence ≥ ${threshold}. This is not report support or accuracy.` : `入账前分别检查 claim 合法性与格式，两项均须 OK 且置信度 ≥ ${threshold}；不代表正文支持率或准确率。`) : (en ? "Verifies extracted claims against original sources; this is not report support or accuracy." : "检查提取 claim 与原文的支持关系；不代表正文支持率或准确率。"));
+    if(dual) for(const [kind,label] of [["claim_validity",en ? "Claim validity" : "Claim 合法性"],["claim_format",en ? "Claim format" : "Claim 格式"]]) {
+      const decisions=(extraction.jev?.decisions || []).filter(d=>d.kind===kind);
+      node(section,"p",`${label}: ${decisions.filter(d=>d.choice==="ok" && !d.uncertain && d.confidence>=threshold).length} / ${Object.keys(extraction.candidate_ledger || {}).length} ${en ? "passed" : "通过"}`);
+    }
     node(section,"p",`${extraction.status} · ${en ? "accepted" : "通过"} ${(extraction.accepted_evidence_ids || []).length} / ${Object.keys(extraction.candidate_ledger || {}).length} · ${en ? "rejected" : "拒绝"} ${Object.keys(extraction.rejected || {}).length}`);
+    if (extraction.fallback?.active) {
+      node(section,"p",en ? "Degraded: only fully verified claims remain available. Failed and unrequested candidates are quarantined; report Evaluation is still required." : "已降级：仅保留双项完整通过的 claim；失败和未请求候选已隔离，正文仍须完整 Evaluation。","notice-error");
+      node(section,"p",`${en ? "Unverified / quarantined" : "未核验／隔离"}: ${extraction.fallback.unverified_evidence_ids?.length || 0} · ${(extraction.fallback.reason_codes || []).join(", ")}`);
+    }
     for (const [eid, reasons] of Object.entries(extraction.rejected || {})) {
       const candidate=extraction.candidate_ledger?.[eid];
       const button=node(section,"button",`${eid}: ${reasons.join(", ")}`);button.type="button";
@@ -455,9 +583,8 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
     for (const batch of extraction.jev?.batches || []) if (batch.reason_codes?.length) node(section,"p",`${batch.batch_id}: ${batch.reason_codes.join(", ")}`,"notice-error");
     if(extraction.reason_code)node(section,"p",extraction.reason_code,"notice-error");
   }
-  const snapshot=options.audits;
+  if (!independent) return;
   if (snapshot?.error) node(independent,"p",snapshot.error,"notice-error");
-  const attempts=snapshot?.data?.audits || [];
   if (!attempts.length) {node(independent,"p",L("auditNone"));return;}
   const select=node(independent,"select");select.setAttribute?.("aria-label",L("attempts"));
   for (const audit of attempts) {const option=node(select,"option",`${L(audit.status)} · ${audit.audit_id.slice(-8)}`);option.value=audit.audit_id;}

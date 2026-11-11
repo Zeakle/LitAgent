@@ -378,7 +378,7 @@ def test_dimensions_do_not_require_writer_or_repair_view_selectors():
 
 def test_prepare_and_validate_keep_the_same_private_pair(case, tmp_path, monkeypatch):
     """Exercise real preparation and recomputation without starting a run."""
-    from litagent.config import load_config
+    from model_config_helpers import load_previous_default_config as load_config
 
     monkeypatch.chdir(tmp_path)
     archives = tmp_path / "artifacts/runs"

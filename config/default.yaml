@@ -20,7 +20,7 @@ context:
   # ── Phase 13.8 evidence-grounded synthesis ──
   synthesis_evidence_max_tokens: 16000   # evidence plan + selected ledger
   synthesis_papers_max_tokens: 8000      # structural paper catalog
-  evidence_top_k_per_section: 12        # per-section rerank top-k
+  evidence_top_k_per_section: 20        # per-section rerank top-k
   evidence_max_items: 60                # global selected items cap
   evidence_per_paper_cap: 4             # max evidence items per paper
   review_evidence_max_tokens: 16000      # complete shared original supports; total context unchanged
@@ -29,6 +29,7 @@ context:
 
 extractor:
   record_identity: source_fields_v1
+  evidence_preparation_policy: null
   max_concurrent: 5
   enable_llm: true
   max_papers: 50
@@ -133,6 +134,9 @@ adversarial:
 mcp_servers: {} 
 
 safety:
+  planned_run_limits:
+    max_tokens: 10000000
+    max_requests: 200
   max_cost_tokens: 500000
   cost_warn_ratio: 0.8
   tool_policy:
@@ -161,6 +165,7 @@ observability:
   payload_mode: "full_redacted"  # 上传完整非密钥 I/O；密钥和认证值递归剔除
 
 eval:
+  semantic_engine: ragas-cited-faithfulness-v1
   context_tokens: 131072
   max_tokens: 16384       # output cap; citation/faithfulness reasoning needs more than 8K
   thinking_mode: "disabled"  # keep evaluator JSON bounded on reasoning providers
@@ -187,7 +192,8 @@ planner:
   use_procedural_profiles: false      # 13.7.1：开关开启后 planner 用画像重排 source
   procedural_min_samples: 3           # 样本数不足不排
 
-# Independent, manual report-version audits; credentials remain in environment.
+# Historical report audit and standalone benchmark settings. The workbench
+# uses jev_enabled for pre-ledger verification.
 report_audit:
   enabled: true
   judge_base_url: null  # Inherit llm.base_url.
@@ -197,7 +203,7 @@ report_audit:
   judge_thinking_mode: disabled
   judge_context_tokens: 131072
   judge_input_tokens: 200000
-  jev_enabled: true     # Requires TYPESAFE_API_KEY; never runs automatically.
+  jev_enabled: true     # New strict Surveys default to extraction Jev.
 
 # Optional adaptive-capacity-v1 server profile; inactive for historical policies.
 # capacity:

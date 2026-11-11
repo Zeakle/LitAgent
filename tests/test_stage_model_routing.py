@@ -9,9 +9,10 @@ from unittest.mock import AsyncMock
 
 import pytest
 from model_config_helpers import load_legacy_mini_config
+from model_config_helpers import load_previous_default_config as load_config
 from test_bound_body_repair import RepairTransport, real_case
 
-from litagent.config import LLMConfig, load_config
+from litagent.config import LLMConfig
 from litagent.contracts import build_config_summary
 from litagent.llm.client import OpenAICompatibleClient
 from litagent.llm.routing import ModelBoundClient

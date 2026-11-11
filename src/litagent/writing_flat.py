@@ -8,9 +8,12 @@ import hashlib
 import json
 import math
 import re
+from bisect import bisect_right
 
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError
+
+from litagent.run_limits import LOSSLESS_JSON_POLICY
 
 CONTRACT = "flat-writer-v1"
 STRATEGY = "body_summary_v3"
@@ -687,11 +690,11 @@ def _assessment_conflict_guidance(effect):
     return copy.deepcopy(effect)
 
 
-def semantic_conflict_guidance_identity():
+def semantic_conflict_guidance_identity(*, extended=False):
     """Bind selected projections without changing any legacy guidance identity."""
     import inspect
 
-    return _writer().digest(
+    identity = _writer().digest(
         [
             "host-assessment-conflict-guidance-v1",
             ASSESSMENT_CONFLICT_REVIEW_INSTRUCTION,
@@ -708,7 +711,7 @@ def semantic_conflict_guidance_identity():
                     _semantic_conflict_template_tables,
                     _restore_semantic_conflict_template_tables,
                     _assessment_conflict_guidance,
-                    project_structured_repair_guidance,
+                    _legacy_project_structured_repair_guidance,
                     project_repair_feedback,
                     _repair_task_view_build,
                     _writer().guidance_wire_fields,
@@ -717,6 +720,12 @@ def semantic_conflict_guidance_identity():
             ],
         ]
     )
+    # The expanded receipt-depth validator leaves legacy behavior intact.
+    # Alias only that known revision so all later rule changes still rotate IDs.
+    known_extended = "b41b058fe7a42f84eddc7e45ec6da1cf4c6af4ef395635ed7de86daa39e95ffa"
+    if not extended and identity == known_extended:
+        return "b73653511a9fb84d9a643f5728185ebf413432e80485354fb616e2f7a32e1bc1"
+    return identity
 
 
 def structured_repair_guidance_identity():
@@ -4257,7 +4266,13 @@ def _check_guidance_wire_capacity(wire, payload):
     maximum = payload.get("writing_envelope", {}).get(
         "repair_guidance_json_bytes", 12288
     )
-    if type(maximum) is not int or not 1 <= maximum <= 12288:
+    capacity = payload.get("writing_envelope", {}).get("capacity", {})
+    ceiling = (
+        capacity.get("diagnostic_json_bytes", 12288)
+        if capacity.get("revision")
+        else 12288
+    )
+    if type(maximum) is not int or not 1 <= maximum <= ceiling:
         _guidance_wire_failure("wire_capacity_invalid")
     if actual > maximum:
         raise _writer().WriterError(
@@ -5046,7 +5061,7 @@ def encode(value, schema):
     return result
 
 
-def _tokens(raw):
+def _tokens(raw, *, allow_extra_root_close=False):
     """Bound lexical work before decoding; retain booleans and original offsets."""
     w = _writer()
     if not isinstance(raw, str) or not raw or len(raw) > 1000000:
@@ -5068,7 +5083,17 @@ def _tokens(raw):
                 if len(stack) > 32:
                     raise w.WriterError("writer_flat_depth_limit")
             elif char in "}]":
-                if not stack or stack.pop() != ("{" if char == "}" else "["):
+                if (
+                    not stack
+                    and allow_extra_root_close
+                    and char == "}"
+                    and tokens
+                    and tokens[0]["kind"] == "{"
+                    and tokens[-1]["kind"] == "}"
+                    and not raw[pos + 1 :].strip(" \t\r\n")
+                ):
+                    char = "extra_root_close"
+                elif not stack or stack.pop() != ("{" if char == "}" else "["):
                     raise w.WriterError(
                         "writer_json_invalid", diagnostics=[{"offset": pos}]
                     )
@@ -5093,6 +5118,94 @@ def _tokens(raw):
         if len(tokens) > 65536:
             raise w.WriterError("writer_flat_token_limit")
     return tokens, stack
+
+
+def normalize_lossless_json(raw):
+    """Derive one candidate and map its unchanged tokens to the received string."""
+    w = _writer()
+    if not isinstance(raw, str) or not raw or len(raw) > 1000000:
+        raise w.WriterError("writer_flat_raw_limit")
+    edits = []
+    start, end = 0, len(raw)
+    fenced = re.fullmatch(
+        r"[ \t\r\n]*```(?:json)?[ \t]*\r?\n([\s\S]*?)\r?\n```[ \t\r\n]*",
+        raw,
+        re.IGNORECASE,
+    )
+    if fenced:
+        start, end = fenced.span(1)
+        # The bounded scan below must find a complete object inside the fence.
+        # No closing tokens are synthesized for fenced responses.
+        edits.append(("markdown_fence", 0, start, ""))
+        edits.append(("markdown_fence", end, len(raw), ""))
+        stack = []
+    else:
+        tokens, stack = _tokens(raw, allow_extra_root_close=True)
+        if not tokens or tokens[0]["kind"] != "{":
+            raise w.WriterError("writer_lossless_root_invalid")
+        for i, token in enumerate(tokens):
+            if token["kind"] == "extra_root_close":
+                edits.append(("extra_root_close", token["start"], token["end"], ""))
+            if (
+                token["kind"] == ","
+                and tokens[i - 1]["kind"] not in ("{", "[", ":", ",")
+                and i + 1 < len(tokens)
+                and tokens[i + 1]["kind"] in ("}", "]")
+            ):
+                edits.append(("trailing_comma", token["start"], token["end"], ""))
+    suffix = "".join("}" if kind == "{" else "]" for kind in reversed(stack))
+    if suffix:
+        edits.append(("outer_eof_close", end, end, suffix))
+    if not edits:
+        raise w.WriterError("writer_lossless_recovery_ineligible")
+    parts, boundaries, offsets = [], [], []
+    raw_pos = candidate_pos = 0
+    for _, first, last, inserted in (*edits, ("end", len(raw), len(raw), "")):
+        if first > raw_pos:
+            boundaries.append(candidate_pos)
+            offsets.append(raw_pos - candidate_pos)
+            parts.append(raw[raw_pos:first])
+            candidate_pos += first - raw_pos
+        if inserted:
+            parts.append(inserted)
+            candidate_pos += len(inserted)
+        raw_pos = last
+    candidate = "".join(parts)
+    candidate_tokens, _ = _tokens(candidate)
+    value = w._parse_json(candidate)
+    if not isinstance(value, dict):
+        raise w.WriterError("writer_lossless_root_invalid")
+    if suffix:
+        boundary = len(candidate) - len(suffix)
+        nodes = _index(candidate, candidate_tokens)
+        if any(
+            node["end"] > boundary and path and (len(path) > 1 or node["kind"] != "[")
+            for path, node in nodes.items()
+        ):
+            raise w.WriterError("writer_flat_original_unit_incomplete")
+    # Map endpoints independently. A removed comma can occur within a raw
+    # object span, while scalar tokens are always verbatim and contiguous.
+    received_tokens = []
+    for token in candidate_tokens:
+        first, last = token["start"], token["end"]
+        if suffix and first >= len(candidate) - len(suffix):
+            received_tokens.append({**token, "start": end, "end": end})
+            continue
+        original_first = first + offsets[bisect_right(boundaries, first) - 1]
+        original_last = last + offsets[bisect_right(boundaries, last - 1) - 1]
+        if raw[original_first:original_last] != candidate[first:last]:
+            raise w.WriterError("writer_lossless_token_conflict")
+        received_tokens.append({**token, "start": original_first, "end": original_last})
+    receipt = {
+        "edits": [
+            {"kind": kind, "start": first, "end": last, "replacement": replacement}
+            for kind, first, last, replacement in edits
+        ],
+        "raw_sha256": hashlib.sha256(raw.encode()).hexdigest(),
+        "candidate_sha256": hashlib.sha256(candidate.encode()).hexdigest(),
+        "original_units_complete": True,
+    }
+    return value, received_tokens, candidate, receipt
 
 
 def _index(raw, tokens):
@@ -5542,6 +5655,8 @@ def parse(
     schema,
     *,
     allow_eof=False,
+    syntax_policy=None,
+    format_patch=None,
     diagnostic_stage=None,
     reference_contract=None,
     transport_revision=None,
@@ -5563,6 +5678,12 @@ def parse(
     }
     if type(allow_eof) is not bool:
         raise w.WriterError("writer_flat_eof_flag_invalid")
+    if syntax_policy is not None and (
+        syntax_policy != LOSSLESS_JSON_POLICY
+        or allow_eof
+        or plan["kind"] not in {"chapter", "summary", "repair"}
+    ):
+        raise w.WriterError("writer_flat_syntax_policy_invalid")
     if type(locate_text_errors) is not bool:
         raise w.WriterError("writer_flat_text_diagnostic_flag_invalid")
     if diagnostic_stage is not None and (
@@ -5571,22 +5692,32 @@ def parse(
         or len(diagnostic_stage) > 128
     ):
         raise w.WriterError("writer_flat_diagnostic_stage_invalid")
-    tokens, stack = _tokens(raw)
     suffix = ""
+    stack = []
+    normalization = None
+    candidate = raw
     try:
-        value = w._parse_json(raw)
+        if format_patch is None:
+            tokens, stack = _tokens(raw)
+            value = w._parse_json(raw)
+        else:
+            from litagent.format_repair import FormatRepairAgent
+
+            value, tokens, candidate, normalization = FormatRepairAgent(raw).apply(
+                format_patch
+            )
     except w.WriterError as exc:
-        if (
-            not allow_eof
-            or exc.code != "writer_json_invalid"
-            or plan["kind"] not in {"chapter", "summary"}
-            or not stack
-        ):
+        if exc.code != "writer_json_invalid":
             raise
-        suffix = "".join("}" if k == "{" else "]" for k in reversed(stack))
-        value = w._parse_json(raw + suffix)
-    candidate = raw + suffix
-    tokens, _ = _tokens(candidate)
+        if syntax_policy:
+            value, tokens, candidate, normalization = normalize_lossless_json(raw)
+        elif allow_eof and plan["kind"] in {"chapter", "summary"} and stack:
+            suffix = "".join("}" if k == "{" else "]" for k in reversed(stack))
+            candidate = raw + suffix
+            value = w._parse_json(candidate)
+            tokens, _ = _tokens(candidate)
+        else:
+            raise
     received_schema = (
         _reference_schema(plan["wire_schema"])
         if reference_mode
@@ -5597,6 +5728,10 @@ def parse(
         diagnostics = [
             {"path": list(e.absolute_path), "reason": e.validator} for e in errors
         ]
+        if normalization is not None:
+            for error, diagnostic in zip(errors, diagnostics, strict=True):
+                if error.validator == "maxItems":
+                    diagnostic["actual"] = len(error.instance)
         if diagnostic_stage is not None:
             for error, diagnostic in zip(errors, diagnostics, strict=True):
                 diagnostic.update(
@@ -5618,7 +5753,7 @@ def parse(
             "writer_flat_schema_invalid",
             diagnostics=diagnostics,
         )
-    nodes = _index(candidate, tokens)
+    nodes = _index(raw if normalization is not None else candidate, tokens)
     records, canonical, source_ordinals, source_relations = [], {}, [], []
     source_map = "repair_mapping_contract" in plan
     owner_directory = plan.get("source_owner_directory")
@@ -5837,6 +5972,8 @@ def parse(
         "coverage_complete": True,
         "scientific_assessment": "not_verified",
     }
+    if normalization is not None:
+        bindings["syntax_edits_sha256"] = w.digest(normalization)
     if reference_contract is not None:
         bindings.update(
             reference_contract=reference_contract,
@@ -5873,7 +6010,9 @@ def parse(
             if source_map
             else {}
         ),
-        "normalization": (
+        **({"normalized_raw": candidate} if normalization is not None else {}),
+        "normalization": normalization
+        or (
             {
                 "suffix": suffix,
                 "raw_sha256": sha(raw),
@@ -5934,3 +6073,21 @@ fact_card_refs used in cards. citation_projection reverses these tokens to origi
 evidence IDs. Local host bindings keep original positions and report SHA. Return
 only actual host unit IDs; do not invent positions or inherit another unit's refs.
 """
+
+
+_legacy_project_structured_repair_guidance = project_structured_repair_guidance
+
+
+def project_structured_repair_guidance(diagnostics, **kwargs):
+    """Keep legacy codec identities while adapting explicitly native diagnostics."""
+    if isinstance(diagnostics, list) and any(
+        isinstance(row, dict)
+        and row.get("diagnostic_source") == "survey-evaluation-ragas-v1"
+        for row in diagnostics
+    ):
+        from litagent.eval.ragas_repair import project_guidance
+
+        return project_guidance(
+            diagnostics, delegate=_legacy_project_structured_repair_guidance, **kwargs
+        )
+    return _legacy_project_structured_repair_guidance(diagnostics, **kwargs)

@@ -218,10 +218,14 @@ class SynthesisWorker(Worker):
         frozen_writer_plan_provider: Callable | None = None,
         capacity_config=None,
         output_tokens_provider: Callable | None = None,
+        run_limits_provider: Callable | None = None,
+        semantic_engine_provider: Callable | None = None,
     ):
         """Initialize the synthesis worker."""
         self._capacity_config = capacity_config
         self._output_tokens_provider = output_tokens_provider
+        self._run_limits_provider = run_limits_provider
+        self._semantic_engine_provider = semantic_engine_provider
         self._methodology_provider = methodology_provider
         self._frozen_writer_plan_provider = frozen_writer_plan_provider
         self._received_native = copy.deepcopy(received_native)
@@ -352,6 +356,34 @@ class SynthesisWorker(Worker):
         degradation_reasons: list[str] = []
 
         ledger = collect_ledger(extractions)
+        extraction_verification = None
+        from litagent.workbench import extraction_admission_enabled
+
+        if extraction_admission_enabled(task.input_data):
+            from litagent.extraction_verification import (
+                ADMISSION_VERSION,
+                require_admission_policy,
+                verified_extraction_ledger,
+            )
+
+            receipts = [
+                item["extraction_verification"]
+                for item in extractions
+                if item.get("extraction_verification")
+            ]
+            if len(receipts) != 1 or self._run_id_provider is None:
+                raise ValueError("extraction_admission_receipt_missing")
+            extraction_verification = receipts[0]
+            if extraction_verification.get("version") != ADMISSION_VERSION:
+                raise ValueError("extraction_admission_receipt_version_invalid")
+            require_admission_policy(
+                extraction_verification, task.input_data["verification"]
+            )
+            accepted = verified_extraction_ledger(
+                extraction_verification, ledger, run_id=self._run_id_provider()
+            )
+            if accepted != ledger:
+                raise ValueError("extraction_admission_ledger_changed")
         selection_error: str | None = None
 
         if self._evidence_selector is not None:
@@ -403,15 +435,23 @@ class SynthesisWorker(Worker):
             )
             degradation_reasons.append("evidence_selector_unavailable")
 
-        extraction_verification = None
         if task.input_data.get(
             "quality_policy"
         ) == "strict_auto_v2" and verification_enabled(task.input_data, "jev"):
-            if self._extraction_verifier is None or self._run_id_provider is None:
-                raise ValueError("extraction_verifier_unavailable")
-            selection, extraction_verification = await self._extraction_verifier.verify(
-                selection, run_id=self._run_id_provider()
-            )
+            if extraction_admission_enabled(task.input_data):
+                if any(
+                    eid not in ledger or item != ledger[eid]
+                    for eid, item in selection.selected_items.items()
+                ):
+                    raise ValueError("extraction_admission_ledger_changed")
+            else:
+                if self._extraction_verifier is None or self._run_id_provider is None:
+                    raise ValueError("extraction_verifier_unavailable")
+                selection, extraction_verification = (
+                    await self._extraction_verifier.verify(
+                        selection, run_id=self._run_id_provider()
+                    )
+                )
             if not selection.selected_items:
                 raise ValueError("extraction_no_supported_candidates")
 
@@ -506,9 +546,13 @@ class SynthesisWorker(Worker):
             ):
                 from litagent.writing_v2 import synthesize
 
-                return await synthesize(
+                result = await synthesize(
                     self, task, cards, selection, review_methodology, requirements
                 )
+                if extraction_verification is not None:
+                    # The receipt is host provenance, not model-generated prose.
+                    result["extraction_verification"] = extraction_verification
+                return result
             # Received-native v1 preserves the original formatting contract;
             # fresh runs opt into the version-bound citation-scope preflight.
             messages = grounded_messages(

@@ -5,11 +5,11 @@ import hashlib
 import json
 
 import pytest
+from model_config_helpers import load_previous_default_config as load_config
 from test_chapter_scope_contract import materials, unit
 from test_native_writing_schema import section_definition
 from test_strict_quality import to_native
 
-from litagent.config import load_config
 from litagent.contracts import build_config_summary
 from litagent.quality import (
     GroundedWritingError,

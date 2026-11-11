@@ -6,13 +6,13 @@ import sys
 from types import SimpleNamespace
 
 import pytest
+from model_config_helpers import load_previous_default_config as load_config
 from test_concise_repair_prompt import FLAGS as PARENT_FLAGS
 from test_frozen_writer_plan import frozen_bundle  # noqa: F401
 from test_reference_set_identity import envelope as parent_envelope
 from test_writer_v2 import case  # noqa: F401
 
 from litagent.capacity import CapacityConfig
-from litagent.config import load_config
 from litagent.context.evidence_selector import EvidenceSelection
 from litagent.frozen_writing import frozen_options, plan_frozen_budget, run_frozen
 from litagent.quality import build_fact_cards, digest

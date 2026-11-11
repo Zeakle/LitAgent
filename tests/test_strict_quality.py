@@ -5,8 +5,8 @@ import hashlib
 import json
 
 import pytest
+from model_config_helpers import load_previous_default_config as load_config
 
-from litagent.config import load_config
 from litagent.contracts import build_config_summary
 from litagent.interaction_store import SqliteReviewRepository
 from litagent.llm.client import LLMResponse, OpenAICompatibleClient

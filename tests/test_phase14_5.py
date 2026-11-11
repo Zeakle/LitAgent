@@ -869,7 +869,8 @@ async def test_independent_judge_skips_empty_report_and_times_out(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_run_policy_prevents_memory_finalize_write():
-    from litagent.config import load_config
+    from model_config_helpers import load_previous_default_config as load_config
+
     from litagent.runner import LitAgent, RunPolicy
 
     agent = LitAgent(load_config(), run_policy=RunPolicy.isolated_benchmark())
@@ -1141,9 +1142,10 @@ async def test_planner_replay_uses_frozen_decomposition_without_llm():
 async def test_survey_matrix_reuses_complete_verified_checkpoint(tmp_path, monkeypatch):
     import hashlib
 
+    from model_config_helpers import load_previous_default_config as load_config
+
     from litagent.benchmark.artifacts import BenchmarkArtifactRepository
     from litagent.benchmark.survey_runner import SurveyBenchmarkRunner
-    from litagent.config import load_config
     from litagent.observability.recorder import ArchiveRepository
 
     dataset = load_survey_dataset(Path("benchmarks/survey/dataset.yaml"))
@@ -1220,9 +1222,10 @@ async def test_survey_matrix_reuses_complete_verified_checkpoint(tmp_path, monke
 
 @pytest.mark.asyncio
 async def test_survey_runner_executes_39_case_runs_with_case_first_baseline(tmp_path):
+    from model_config_helpers import load_previous_default_config as load_config
+
     from litagent.benchmark.artifacts import BenchmarkArtifactRepository
     from litagent.benchmark.survey_runner import SurveyBenchmarkRunner
-    from litagent.config import load_config
     from litagent.observability.recorder import ArchiveRepository
 
     dataset = load_survey_dataset(Path("benchmarks/survey/dataset.yaml")).model_copy(
@@ -1309,9 +1312,10 @@ async def test_survey_runner_executes_39_case_runs_with_case_first_baseline(tmp_
 async def test_ablation_stops_before_retest_when_external_inputs_are_not_comparable(
     tmp_path,
 ):
+    from model_config_helpers import load_previous_default_config as load_config
+
     from litagent.benchmark.artifacts import BenchmarkArtifactRepository
     from litagent.benchmark.survey_runner import SurveyBenchmarkRunner
-    from litagent.config import load_config
     from litagent.observability.recorder import ArchiveRepository
 
     dataset = load_survey_dataset(Path("benchmarks/survey/dataset.yaml"))
@@ -1368,9 +1372,10 @@ async def test_ablation_stops_before_retest_when_external_inputs_are_not_compara
 
 @pytest.mark.asyncio
 async def test_survey_pilot_runs_explicit_balanced_six_observation_matrix(tmp_path):
+    from model_config_helpers import load_previous_default_config as load_config
+
     from litagent.benchmark.artifacts import BenchmarkArtifactRepository
     from litagent.benchmark.survey_runner import SurveyBenchmarkRunner
-    from litagent.config import load_config
     from litagent.observability.recorder import ArchiveRepository
 
     dataset = load_survey_dataset(Path("benchmarks/survey/dataset.yaml"))
@@ -1447,9 +1452,10 @@ async def test_survey_pilot_runs_explicit_balanced_six_observation_matrix(tmp_pa
 
 @pytest.mark.asyncio
 async def test_survey_budget_stops_before_starting_next_observation(tmp_path):
+    from model_config_helpers import load_previous_default_config as load_config
+
     from litagent.benchmark.artifacts import BenchmarkArtifactRepository
     from litagent.benchmark.survey_runner import SurveyBenchmarkRunner
-    from litagent.config import load_config
     from litagent.observability.recorder import ArchiveRepository
 
     dataset = load_survey_dataset(Path("benchmarks/survey/dataset.yaml"))
@@ -1509,10 +1515,11 @@ async def test_survey_budget_stops_before_starting_next_observation(tmp_path):
 def test_partial_observation_makes_benchmark_partial_and_clears_recommendation(
     tmp_path,
 ):
+    from model_config_helpers import load_previous_default_config as load_config
+
     from litagent.benchmark.artifacts import BenchmarkArtifactRepository
     from litagent.benchmark.survey_metrics import aggregate_profiles
     from litagent.benchmark.survey_runner import SurveyBenchmarkRunner
-    from litagent.config import load_config
     from litagent.observability.recorder import ArchiveRepository
 
     dataset = load_survey_dataset(Path("benchmarks/survey/dataset.yaml"))
@@ -1572,10 +1579,11 @@ def test_partial_observation_makes_benchmark_partial_and_clears_recommendation(
 
 
 def test_self_judged_completed_ablation_can_be_formal_eligible(tmp_path):
+    from model_config_helpers import load_previous_default_config as load_config
+
     from litagent.benchmark.artifacts import BenchmarkArtifactRepository
     from litagent.benchmark.survey_metrics import aggregate_profiles
     from litagent.benchmark.survey_runner import SurveyBenchmarkRunner
-    from litagent.config import load_config
     from litagent.observability.recorder import ArchiveRepository
 
     config = load_config()
@@ -1926,9 +1934,10 @@ def test_manifest_bundle_filters_to_declared_survey_corpus(tmp_path):
 
 @pytest.mark.asyncio
 async def test_formal_baseline_rejects_source_reviewed_dataset(tmp_path):
+    from model_config_helpers import load_previous_default_config as load_config
+
     from litagent.benchmark.artifacts import BenchmarkArtifactRepository
     from litagent.benchmark.survey_runner import SurveyBenchmarkRunner
-    from litagent.config import load_config
     from litagent.observability.recorder import ArchiveRepository
 
     dataset = load_survey_dataset(Path("benchmarks/survey/dataset.yaml")).model_copy(
@@ -2082,9 +2091,10 @@ def test_langfuse_trace_seed_exposes_stable_trace_identity():
 
 
 def test_survey_benchmark_finalization_persists_trace_reference(tmp_path):
+    from model_config_helpers import load_previous_default_config as load_config
+
     from litagent.benchmark.artifacts import BenchmarkArtifactRepository
     from litagent.benchmark.survey_runner import SurveyBenchmarkRunner
-    from litagent.config import load_config
     from litagent.observability.recorder import ArchiveRepository, RunRecorder
 
     repository = ArchiveRepository(tmp_path / "runs")

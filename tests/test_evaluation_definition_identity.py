@@ -5,6 +5,7 @@ import json
 from types import SimpleNamespace
 
 import pytest
+from model_config_helpers import load_previous_default_config as load_config
 from pydantic import ValidationError
 from test_frozen_writer_plan import frozen_bundle  # noqa: F401
 from test_guidance_wire_identity import build_input
@@ -14,7 +15,6 @@ from test_structured_repair_identity import SELECTION, guidance_envelope, rehash
 from test_writer_v2 import case  # noqa: F401
 
 import litagent.eval.scoped as scoped
-from litagent.config import load_config
 from litagent.frozen_writing import (
     plan_frozen_budget,
     validate_frozen_writer_plan,

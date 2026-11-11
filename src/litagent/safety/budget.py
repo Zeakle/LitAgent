@@ -22,8 +22,24 @@ def strict_request_reservation(messages, max_tokens, response_format=None) -> in
 class CostBudget:
     """Track token consumption and emit a single threshold warning."""
 
-    def __init__(self, max_tokens: int = 500_000, warn_ratio: float = 0.8):
+    def __init__(
+        self,
+        max_tokens: int = 500_000,
+        warn_ratio: float = 0.8,
+        *,
+        resource_profile=None,
+    ):
         """Initialize the cost budget."""
+        from litagent.operational_limits import PROFILE
+        from litagent.run_limits import EXTENDED_PROFILE, FORMAT_PROFILE
+
+        if resource_profile in (EXTENDED_PROFILE, FORMAT_PROFILE):
+            # Preparation and per-request transport use the same expanded
+            # bounds. The writer plan authenticates the larger run allowance.
+            resource_profile = PROFILE
+        if resource_profile not in (None, PROFILE):
+            raise ValueError("budget_resource_profile_invalid")
+        self.resource_profile = resource_profile
         self._max_tokens = max_tokens
         self._warn_ratio = warn_ratio
         self._used_tokens = 0
@@ -45,18 +61,79 @@ class CostBudget:
             return self._planned_backend.configure_strict(
                 halt_on_unknown_usage=halt_on_unknown_usage
             )
-        if self._max_tokens > 500000:
+        if self._max_tokens > (600000 if self.resource_profile else 500000):
             raise ValueError("strict_total_budget_limit")
         self.strict = True
         self._halt_on_unknown_usage |= halt_on_unknown_usage
 
     def activate_plan(self, plan: dict, *, path=None) -> None:
         """Install v2 accounting while preserving all existing client references."""
-        from litagent.safety.planned_budget import PlannedBudget
+        from litagent.safety.planned_budget import (
+            PREPARATION_CONTRACTS,
+            ROUND_BUDGET_CONTRACT,
+            PlannedBudget,
+            settled_preparation_budget,
+        )
 
         if self._planned_backend is not None:
-            if self._planned_backend.plan != plan:
+            current = self._planned_backend
+            if current.plan == plan:
+                if plan.get("contract") in PREPARATION_CONTRACTS and (
+                    (str(current.path) if current.path is not None else None)
+                    != (str(path) if path is not None else None)
+                ):
+                    raise ValueError("preparation_budget_path_conflict")
+                return
+            if (
+                current.plan.get("contract") not in PREPARATION_CONTRACTS
+                or plan.get("contract") != ROUND_BUDGET_CONTRACT
+            ):
                 raise ValueError("planned_budget_identity_conflict")
+            settled_preparation_budget(current)
+            if (
+                plan.get("spent_tokens") != current.used
+                or plan.get("spent_requests") != current.snapshot()["requests_sent"]
+                or plan.get("scope_bounds", {}).get("shared_repairs") not in (2, 3, 11)
+            ):
+                raise ValueError("planned_budget_spend_conflict")
+            # Replace only after the complete writer ledger validates successfully.
+            self._planned_backend = PlannedBudget(plan, path=path)
+            return
+        if plan.get("contract") in PREPARATION_CONTRACTS:
+            from pathlib import Path
+
+            if (
+                not self.strict
+                or self._strict_phase != 0
+                or self._phase() != 0
+                or self.stop_reason
+                or self._requests_sent != self._call_count
+                or self._reserved_tokens
+                or self._usage_uncertain
+            ):
+                raise ValueError("preparation_budget_activation_unsafe")
+            if (
+                plan.get("planned_tokens", self._max_tokens + 1) > self._max_tokens
+                or plan.get("spent_tokens") != self._used_tokens
+                or plan.get("spent_requests") != self._requests_sent
+            ):
+                raise ValueError("planned_budget_spend_conflict")
+            prepared = PlannedBudget(plan)
+            if path is not None:
+                target = Path(path)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                if target.exists():
+                    raise ValueError("preparation_budget_restart_no_replay")
+                try:
+                    # Keep the exclusive marker after a crash; its presence is
+                    # uncertainty, never permission to recreate a fresh ledger.
+                    with Path(str(target) + ".owner").open("x") as owner:
+                        owner.write(plan["identity"])
+                except FileExistsError as exc:
+                    raise ValueError("preparation_budget_restart_no_replay") from exc
+                prepared.path = target
+                prepared._persist()
+            self._planned_backend = prepared
             return
         if self._reserved_tokens or self._usage_uncertain:
             raise ValueError("planned_budget_activation_unsafe")
@@ -93,7 +170,7 @@ class CostBudget:
         if self.strict:
             if self.stop_reason:
                 raise ValueError(self.stop_reason)
-            if self._requests_sent >= 64:
+            if self._requests_sent >= (77 if self.resource_profile else 64):
                 raise ValueError("strict_request_budget_exceeded")
             self._requests_sent += 1
 
@@ -150,6 +227,11 @@ class CostBudget:
             return self._planned_backend.snapshot()
         return {
             "schema_version": 1,
+            **(
+                {"resource_profile": self.resource_profile}
+                if self.resource_profile
+                else {}
+            ),
             "max_tokens": self._max_tokens,
             "warn_ratio": self._warn_ratio,
             "used_tokens": self._used_tokens,
@@ -197,7 +279,15 @@ class CostBudget:
         warn_ratio = data.get("warn_ratio")
         if not isinstance(warn_ratio, (int, float)) or not 0 < warn_ratio <= 1:
             raise ValueError("invalid_cost_budget_warn_ratio")
-        budget = cls(max_tokens=values["max_tokens"], warn_ratio=float(warn_ratio))
+        budget = cls(
+            max_tokens=values["max_tokens"],
+            warn_ratio=float(warn_ratio),
+            **(
+                {"resource_profile": data["resource_profile"]}
+                if data.get("resource_profile") is not None
+                else {}
+            ),
+        )
         budget._used_tokens = values["used_tokens"]
         budget._call_count = values["call_count"]
         budget._warned = bool(data.get("warned", False))
@@ -205,7 +295,9 @@ class CostBudget:
             if (
                 data["strict_policy"] != "staged-budget-v1"
                 or type(data.get("requests_sent")) is not int
-                or not 0 <= data["requests_sent"] <= 64
+                or not 0
+                <= data["requests_sent"]
+                <= (77 if budget.resource_profile else 64)
                 or type(data.get("strict_phase")) is not int
                 or not 0 <= data["strict_phase"] <= 2
             ):
@@ -255,7 +347,10 @@ class CostBudget:
                 raise ValueError("planned_budget_spend_conflict")
             self._planned_backend = restored
             return
-        if restored._max_tokens != self._max_tokens:
+        if (
+            restored._max_tokens != self._max_tokens
+            or restored.resource_profile != self.resource_profile
+        ):
             raise ValueError("cost_budget_limit_mismatch")
         if self.strict != restored.strict:
             raise ValueError("strict_budget_identity_mismatch")

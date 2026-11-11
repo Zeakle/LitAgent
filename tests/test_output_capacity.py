@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 import test_structured_repair_pipeline as structured
 import test_writer_source_view_pipeline as writer_view
+from model_config_helpers import load_previous_default_config as load_config
 from test_adaptive_capacity import settle_initial
 from test_closeout_pipeline import RecheckGateway, select
 from test_frozen_writer_plan import frozen_bundle  # noqa: F401
@@ -15,7 +16,6 @@ from test_writer_v2 import case  # noqa: F401
 
 from litagent.capacity_rounds import plan_round, request_proof
 from litagent.closeout import PROFILE, profile_flags
-from litagent.config import load_config
 from litagent.frozen_writing import (
     plan_frozen_budget,
     run_frozen,

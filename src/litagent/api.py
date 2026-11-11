@@ -17,7 +17,14 @@ from typing import Any, Literal
 from fastapi import FastAPI, Header, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PrivateAttr,
+    field_validator,
+    model_validator,
+)
 
 from litagent.benchmark.survey_archive import SurveyBenchmarkArchive
 from litagent.capacity import resolve_capacity
@@ -33,6 +40,7 @@ from litagent.demo import (
     load_bundled_samples,
     project_flow_demo_view,
 )
+from litagent.extraction_verification import extraction_config, resource_limits
 from litagent.interaction_store import SqliteReviewRepository
 from litagent.interactive_service import InteractiveRunService
 from litagent.logging import get_logger
@@ -58,6 +66,7 @@ from litagent.report_render import (
     paper_catalog_from_nodes,
     reader_report_projection,
 )
+from litagent.run_limits import configured_run_limits, repair_allowances
 from litagent.runner import LitAgent, derive_delivery
 from litagent.workbench import (
     AutoAuditMode,
@@ -68,6 +77,7 @@ from litagent.workbench import (
     ReviewStructure,
     RunOptions,
     VerificationOptions,
+    default_verification_options,
     verification_enabled,
 )
 
@@ -87,6 +97,7 @@ FLOW_DEMO_QUERY = "few-shot learning in computer vision"
 _TASK_TTL_SECONDS = 3600
 _CLEANUP_INTERVAL = 600
 _TERMINAL_STATUSES = {"completed", "failed", "cancelled"}
+_REPORT_AUDIT_RETIRED = "report_audit_retired"
 
 
 class SurveyRequest(BaseModel):
@@ -128,9 +139,14 @@ class SurveyRequest(BaseModel):
             raise ValueError("query must not be blank")
         return value
 
+    _verification_defaulted: bool = PrivateAttr(default=False)
+
     @model_validator(mode="after")
     def automatic_defaults(self):
         """Apply new automatic defaults without changing legacy request defaults."""
+        if self.quality_policy == "strict_auto_v2" and self.verification is None:
+            self.verification = default_verification_options()
+            self._verification_defaulted = True
         if (self.capacity_policy == "adaptive-capacity-v1") != (
             self.budget_policy in ("planned-budget-v6", "planned-budget-v7")
         ):
@@ -149,7 +165,10 @@ class SurveyRequest(BaseModel):
             )
             or self.verification is None
             or self.verification.judge
-            or self.verification.jev
+            or (
+                self.verification.jev
+                and self.verification.version != "optional-verification-v2"
+            )
         ):
             raise ValueError(
                 "planned_budget_requires_writer_v2_without_optional_audits"
@@ -260,12 +279,19 @@ async def _shutdown_owned_tasks(application: FastAPI) -> None:
         await asyncio.gather(*done, return_exceptions=True)
 
 
+def _load_runtime_config() -> AppConfig:
+    """Keep startup and API capability discovery on the same server profile."""
+    if presentation_enabled():
+        return presentation_config()
+    return load_config(
+        live_workbench=os.getenv("LITAGENT_DEMO_MODE", "live").lower() == "live"
+    )
+
+
 @asynccontextmanager
 async def lifespan(application: FastAPI):
     """Initialize stable runtime state and close every owned task on shutdown."""
-    application.state.config = (
-        presentation_config() if presentation_enabled() else load_config()
-    )
+    application.state.config = _load_runtime_config()
     if presentation_enabled():
         application.state.flow_repository = PresentationRepository()
         application.state.flow_archive_index = {
@@ -278,16 +304,12 @@ async def lifespan(application: FastAPI):
     application.state.survey_semaphore = asyncio.Semaphore(
         application.state.config.api.max_concurrent_surveys
     )
-    application.state.report_audit_service = ReportAuditService(
-        application.state.config
-    )
-    await application.state.report_audit_service.initialize()
+    application.state.report_audit_service = None
     application.state.interactive_service = InteractiveRunService(
         application.state.config,
         application.state.interactive_repository,
         semaphore=application.state.survey_semaphore,
         archive_repository=application.state.flow_repository,
-        auto_audit_submitter=_submit_automatic_audit,
     )
     await application.state.interactive_service.initialize()
     application.state.flow_archive_index = {
@@ -301,7 +323,8 @@ async def lifespan(application: FastAPI):
     finally:
         await application.state.interactive_service.shutdown()
         await _shutdown_owned_tasks(application)
-        await application.state.report_audit_service.shutdown()
+        if application.state.report_audit_service is not None:
+            await application.state.report_audit_service.shutdown()
         cleanup_task.cancel()
         await asyncio.gather(cleanup_task, return_exceptions=True)
         logger.info("LitAgent API shut down")
@@ -349,7 +372,7 @@ app.mount(
 def _runtime_config() -> AppConfig:
     """Return lifespan configuration, with a narrow fallback for direct tests."""
     if app.state.config is None:
-        app.state.config = load_config()
+        app.state.config = _load_runtime_config()
     return app.state.config
 
 
@@ -362,6 +385,17 @@ def _runtime_semaphore() -> asyncio.Semaphore:
     return app.state.survey_semaphore
 
 
+def _extraction_jev_reason(config: AppConfig) -> str | None:
+    """Check the pre-ledger verifier without resolving a report Judge."""
+    if os.getenv("LITAGENT_DEMO_MODE", "live").lower() != "live":
+        return "audit_offline_or_disabled"
+    if not config.report_audit.jev_enabled:
+        return "jev_disabled"
+    if not os.getenv("TYPESAFE_API_KEY"):
+        return "missing_key:TYPESAFE_API_KEY"
+    return None
+
+
 async def _interactive_service() -> InteractiveRunService:
     """Return the durable service, initializing it for direct ASGI tests."""
     if presentation_enabled():
@@ -372,7 +406,6 @@ async def _interactive_service() -> InteractiveRunService:
             app.state.interactive_repository,
             semaphore=_runtime_semaphore(),
             archive_repository=app.state.flow_repository,
-            auto_audit_submitter=_submit_automatic_audit,
         )
         await app.state.interactive_service.initialize()
     return app.state.interactive_service
@@ -495,7 +528,6 @@ async def _run_survey(entry: SurveyTaskEntry) -> None:
                 async with LitAgent(
                     config,
                     trace_hook=trace_hook,
-                    audit_service=await _report_audit_service(),
                 ) as agent:
                     if entry.options.quality_policy in {
                         "strict_auto_v1",
@@ -519,6 +551,11 @@ async def _run_survey(entry: SurveyTaskEntry) -> None:
                 )
             )
             terminal_status = "cancelled" if cancelled else "completed"
+            provider_failures = entry.recorder.provider_failures()
+            if provider_failures:
+                result.setdefault("metadata", {})[
+                    "provider_failures"
+                ] = provider_failures
             artifact = entry.recorder.finalize(
                 report=result, terminal_status=terminal_status
             )
@@ -553,23 +590,6 @@ async def _run_survey(entry: SurveyTaskEntry) -> None:
         except Exception:
             logger.exception("Failed to finalize survey %s", entry.task_id)
         logger.exception("Survey %s failed", entry.task_id)
-    if (
-        entry.status == "completed"
-        and entry.options.auto_audit_mode != "off"
-        and entry.options.quality_policy not in {"strict_auto_v1", "strict_auto_v2"}
-    ):
-        # Keep audit submission outside the Survey failure handler: cancellation
-        # after finalization must not rewrite the successfully saved artifact.
-        try:
-            await _submit_automatic_artifact(artifact, entry.options)
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:
-            logger.warning(
-                "Automatic audit submission failed for %s: %s",
-                entry.task_id,
-                type(exc).__name__,
-            )
 
 
 def _status(entry: SurveyTaskEntry | dict[str, Any]) -> SurveyStatus:
@@ -603,6 +623,20 @@ async def create_survey(
     x_litagent_operation_token: str | None = Header(default=None),
 ):
     """Submit a survey and return its API-owned queued task."""
+    if (
+        req.quality_policy == "strict_auto_v1"
+        or req.auto_audit_mode != "off"
+        or (req.verification is not None and req.verification.judge)
+    ):
+        raise HTTPException(422, detail=_REPORT_AUDIT_RETIRED)
+    if req._verification_defaulted:
+        req.verification = default_verification_options(_runtime_config())
+    if (
+        req.verification is not None
+        and req.verification.jev
+        and req.verification.version != "optional-verification-v2"
+    ):
+        raise HTTPException(422, detail="extraction_admission_v2_required")
     options = RunOptions(
         report_language=req.report_language,
         human_review=req.human_review,
@@ -616,18 +650,12 @@ async def create_survey(
         auto_audit_mode=req.auto_audit_mode,
         auto_audit_max_versions=req.auto_audit_max_versions,
     )
-    judge_enabled = options.auto_audit_mode != "off"
-    jev_enabled = options.auto_audit_mode == "judge_jev" or (
-        options.quality_policy == "strict_auto_v2"
-        and verification_enabled(options.model_dump(), "jev")
-    )
-    if judge_enabled or jev_enabled:
+    if options.quality_policy == "strict_auto_v2" and verification_enabled(
+        options.model_dump(), "jev"
+    ):
         _require_operation_token(request, x_litagent_operation_token)
-        capabilities = (await _report_audit_service()).capabilities()
-        if judge_enabled and not capabilities["judge_available"]:
-            raise HTTPException(409, capabilities["judge_reason"])
-        if jev_enabled and not capabilities["jev_available"]:
-            raise HTTPException(409, capabilities["jev_reason"])
+        if reason := _extraction_jev_reason(_runtime_config()):
+            raise HTTPException(409, reason)
     if options.human_review:
         _require_operation_token(request, x_litagent_operation_token)
         service = await _interactive_service()
@@ -813,13 +841,12 @@ async def get_workbench_context():
     """Return local UI capabilities and the same-origin mutation token."""
     mode = os.getenv("LITAGENT_DEMO_MODE", "live").lower()
     live_enabled = mode == "live"
-    config = app.state.config or (
-        presentation_config() if presentation_enabled() else load_config()
-    )
-    audit_service = (
-        None
-        if presentation_enabled()
-        else app.state.report_audit_service or ReportAuditService(config)
+    config = _runtime_config()
+    jev_reason = _extraction_jev_reason(config)
+    verification = default_verification_options(config)
+    limits = configured_run_limits(config) or {}
+    independent_repairs = repair_allowances(
+        {"run_limits": limits, "semantic_engine": config.eval.semantic_engine}
     )
     return {
         "schema_version": 1,
@@ -848,42 +875,91 @@ async def get_workbench_context():
             "available_budget_policies": ["planned-budget-v6", "planned-budget-v7"],
             "limits": resolve_capacity(config.capacity).model_dump(),
             "maximum_tokens": 4500000,
-            "maximum_requests": 64,
+            "v7_run_limits": configured_run_limits(config),
+            "maximum_tokens_by_policy": {
+                "planned-budget-v6": 4500000,
+                "planned-budget-v7": (configured_run_limits(config) or {}).get(
+                    "max_tokens", 4500000
+                ),
+            },
+            "maximum_requests": (configured_run_limits(config) or {}).get(
+                "max_requests", 64
+            ),
         },
         "review_structures": ["academic_v2", "academic_v1", "method_transparent_v1"],
         "human_review_stages": ["paper_selection", "final_report"],
-        "quality_policies": ["strict_auto_v2", "strict_auto_v1", "strict_v1", "legacy"],
+        "quality_policies": ["strict_auto_v2", "strict_v1", "legacy"],
         "default_quality_policy": "strict_auto_v2",
         "automatic_acceptance": {
             "actor": "system",
-            "gates": ["extraction_jev", "evaluation", "judge"],
+            "gates": ["extraction_jev", "evaluation"],
             "required_gates": ["evaluation"],
             "default_body_quality": "analysis_v1",
-            "default_generation_strategy": "body_summary_v2",
-            "default_budget_policy": "planned-budget-v4",
-            "maximum_survey_tokens": 1000000,
-            "optional_gates": ["judge", "extraction_jev"],
-            "default_verification": VerificationOptions().model_dump(mode="json"),
+            "default_generation_strategy": (
+                "body_summary_v3" if config.eval.semantic_engine else "body_summary_v2"
+            ),
+            "default_budget_policy": (
+                "planned-budget-v7"
+                if config.eval.semantic_engine
+                else "planned-budget-v4"
+            ),
+            "semantic_engine": config.eval.semantic_engine,
+            "maximum_survey_requests": (configured_run_limits(config) or {}).get(
+                "max_requests", 64
+            ),
+            "maximum_shared_repairs": (
+                None if independent_repairs else limits.get("max_repairs", 2)
+            ),
+            **(
+                {"maximum_repair_attempts_by_category": independent_repairs}
+                if independent_repairs
+                else {}
+            ),
+            "maximum_survey_tokens": (
+                (configured_run_limits(config) or {}).get("max_tokens", 4500000)
+                if config.eval.semantic_engine
+                else 1000000
+            ),
+            "optional_gates": ["extraction_jev"],
+            "default_verification": verification.model_dump(mode="json"),
+            "extraction_checks": ["claim_validity", "claim_format"],
+            "extraction_confidence_threshold": (
+                verification.extraction_confidence_threshold
+            ),
+            "extraction_resources": {
+                "policy": verification.extraction_resource_policy,
+                **resource_limits(
+                    extraction_config(
+                        resource_policy=verification.extraction_resource_policy
+                    )
+                ),
+            },
+            "extraction_failure_policy": {
+                "name": "verified_subset_v1",
+                "admit_unverified": False,
+                "automatic_retries": 0,
+                "eligible_http_statuses": [429, 500, 502, 503, 504],
+                "requires_complete_usage": True,
+            },
             "omitted_verification": "historical_mandatory_gates",
             "jev_stage": "extraction",
             "survey_tokens": 500000,
-            "survey_requests": 64,
-            "judge_tokens": 100000,
-            "judge_requests": 2,
-            "jev_input_tokens": 200000,
-            "jev_requests": 20,
+            "survey_requests": (configured_run_limits(config) or {}).get(
+                "max_requests", 64
+            ),
+            "jev_input_tokens": extraction_config(
+                resource_policy=verification.extraction_resource_policy
+            ).max_input_tokens,
+            "jev_requests": extraction_config(
+                resource_policy=verification.extraction_resource_policy
+            ).max_requests,
         },
-        "auto_audit_capabilities": (
-            audit_service.capabilities()
-            if audit_service
-            else {
-                "judge_available": False,
-                "jev_available": False,
-                "judge_model": "—",
-                "jev_model": "—",
-                "reason": "presentation_read_only",
-            }
-        ),
+        "auto_audit_capabilities": {
+            "judge_available": False,
+            "judge_reason": _REPORT_AUDIT_RETIRED,
+            "jev_available": jev_reason is None,
+            "jev_reason": jev_reason,
+        },
     }
 
 
@@ -1103,21 +1179,10 @@ async def _resolve_formatting_source(task_id: str, revision: int):
     )
 
 
-class ReportAuditRequest(BaseModel):
-    """Accept only an immutable target and bounded server-owned audit choices."""
-
-    model_config = ConfigDict(extra="forbid")
-    report_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
-    include_jev: bool = False
-    new_attempt: bool = False
-
-
 async def _report_audit_service() -> ReportAuditService:
     """Reuse one application-owned executor and its shutdown lifecycle."""
     if app.state.report_audit_service is None:
-        app.state.report_audit_service = ReportAuditService(
-            app.state.config or load_config()
-        )
+        app.state.report_audit_service = ReportAuditService(_runtime_config())
         await app.state.report_audit_service.initialize()
     return app.state.report_audit_service
 
@@ -1195,46 +1260,6 @@ def _audit_snapshot_from_source(
     }
 
 
-async def _submit_automatic_audit(
-    task_id: str, revision: int, options: RunOptions
-) -> None:
-    """Submit only a newly persisted interactive version with stored consent."""
-    if options.auto_audit_mode == "off":
-        return
-    snapshot = await _report_audit_snapshot(task_id, revision)
-    await (await _report_audit_service()).submit_automatic(
-        snapshot,
-        mode=options.auto_audit_mode,
-        max_versions=options.auto_audit_max_versions,
-    )
-
-
-async def _submit_automatic_artifact(artifact: dict, options: RunOptions) -> None:
-    """Submit a finalized ordinary API run without archive lookup or replay."""
-    if options.auto_audit_mode == "off":
-        return
-    report = artifact.get("report") or {}
-    if not report.get("survey"):
-        return
-    metadata = report.get("metadata") or {}
-    version = ReportVersion(
-        run_id=artifact["run_id"],
-        revision=metadata.get("report_revision", 1),
-        report_language=metadata.get("report_language", options.report_language),
-        survey=report["survey"],
-    )
-    ledger = {
-        item["evidence_id"]: item
-        for item in extract_report_evidence(artifact.get("nodes") or {}, report=report)
-    }
-    snapshot = _audit_snapshot_from_source(version, report, ledger, artifact)
-    await (await _report_audit_service()).submit_automatic(
-        snapshot,
-        mode=options.auto_audit_mode,
-        max_versions=options.auto_audit_max_versions,
-    )
-
-
 @app.get("/survey/{task_id}/versions/{revision}/audits")
 async def list_report_audits(task_id: str, revision: int):
     """Expose capabilities and attempts for exactly one available report version."""
@@ -1249,8 +1274,6 @@ async def list_report_audits(task_id: str, revision: int):
             "capabilities": {
                 "judge_available": False,
                 "jev_available": False,
-                "judge_model": "—",
-                "jev_model": "—",
             },
         }
     snapshot = await _report_audit_snapshot(task_id, revision)
@@ -1258,50 +1281,23 @@ async def list_report_audits(task_id: str, revision: int):
     quality_audit = _benchmark_archive().automatic_audit(task_id, revision)
     if quality_audit:
         result["audits"] = [quality_audit, *result["audits"]]
-    result["capabilities"].update(
-        (await _report_audit_service()).model_comparison(snapshot)
-    )
+    result["capabilities"] = {
+        "judge_available": False,
+        "judge_reason": _REPORT_AUDIT_RETIRED,
+        "jev_available": False,
+    }
     return {**result, "source_report_sha256": snapshot["source_report_sha256"]}
 
 
-@app.get("/survey/{task_id}/versions/{revision}/audits/dry-run")
-async def dry_run_report_audit(task_id: str, revision: int, include_jev: bool = False):
-    """Report credential and input gates without creating tasks or provider calls."""
+@app.get(
+    "/survey/{task_id}/versions/{revision}/audits/dry-run", include_in_schema=False
+)
+@app.post("/survey/{task_id}/versions/{revision}/audits", include_in_schema=False)
+async def retired_report_audit(task_id: str, revision: int):
+    """Keep historical URLs recognizable while preventing new audit attempts."""
     if presentation_enabled():
         raise HTTPException(403, "presentation_read_only")
-    snapshot = await _report_audit_snapshot(task_id, revision)
-    return (await _report_audit_service()).dry_run(snapshot, include_jev=include_jev)
-
-
-@app.post("/survey/{task_id}/versions/{revision}/audits", status_code=202)
-async def start_report_audit(
-    task_id: str,
-    revision: int,
-    body: ReportAuditRequest,
-    request: Request,
-    x_litagent_operation_token: str | None = Header(default=None),
-):
-    """Queue a manually authorized independent audit after exact SHA comparison."""
-    _require_operation_token(request, x_litagent_operation_token)
-    snapshot = await _report_audit_snapshot(task_id, revision)
-    if snapshot["source_report_sha256"] != body.report_sha256:
-        raise HTTPException(status_code=409, detail="report_sha_mismatch")
-    if snapshot.get("report", {}).get("metadata", {}).get("quality_policy") in {
-        "strict_auto_v1",
-        "strict_auto_v2",
-    }:
-        existing = await list_report_audits(task_id, revision)
-        if existing["audits"] and not body.new_attempt:
-            return {**existing["audits"][0], "reused": True}
-        raise HTTPException(
-            status_code=409, detail="strict_automatic_no_additional_attempts"
-        )
-    try:
-        return await (await _report_audit_service()).submit(
-            snapshot, include_jev=body.include_jev, new_attempt=body.new_attempt
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    raise HTTPException(410, _REPORT_AUDIT_RETIRED)
 
 
 @app.get("/survey/{task_id}/versions/{revision}/audits/{audit_id}")

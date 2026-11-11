@@ -320,9 +320,9 @@ async def test_live_lifespan_still_indexes_history_once(monkeypatch):
     from unittest.mock import AsyncMock
 
     from fastapi import FastAPI
+    from model_config_helpers import load_previous_default_config as load_config
 
     from litagent import api
-    from litagent.config import load_config
 
     listed = []
 

@@ -16,6 +16,7 @@ from litagent.eval import batched
 from litagent.eval import decision_output as decisions
 from litagent.eval import global_permissions as permissions
 from litagent.eval import scoped
+from litagent.eval.responsibilities import FORBIDDEN_CODES
 from litagent.eval.results import CONTRACT, EvaluationRunResult
 from litagent.quality import digest
 from litagent.safety.budget import strict_request_reservation
@@ -62,7 +63,9 @@ def historical_parent(payload):
     return value
 
 
-@pytest.mark.parametrize("code", list(permissions.ANCHOR_PERMISSIONS))
+@pytest.mark.parametrize(
+    "code", [c for c in permissions.ANCHOR_PERMISSIONS if c not in FORBIDDEN_CODES]
+)
 @pytest.mark.parametrize("anchors", [["v1"], ["a1"], ["v1", "a1"], [], ["v999"]])
 def test_native_permissions_agree_with_unchanged_host(global_payload, code, anchors):
     _, _, schema = actual_schema(global_payload)
@@ -222,10 +225,14 @@ def test_060_results_and_usage_remain_readable_but_not_live_resumable():
     raw, budget_raw = path.read_bytes(), ledger.read_bytes()
     report = json.loads(raw)["report"]
     details = report["evaluation"]["faithfulness"]["details"]
-    run = EvaluationRunResult.from_details(
-        details, hashlib.sha256(report["survey"].encode()).hexdigest()
-    )
-    assert run is not None
+    from litagent.observability.recorder import ArchiveRepository
+
+    stored = ArchiveRepository(path.parent).get(path.stem)
+    assert stored["report"] == report
+    with pytest.raises(ValueError, match="evaluation_result_contract_identity_invalid"):
+        EvaluationRunResult.from_details(
+            details, hashlib.sha256(report["survey"].encode()).hexdigest()
+        )
     assert report["evaluation"]["faithfulness"]["score"] is None
     owner = json.loads(budget_raw)["plan"]["envelope"]
     historical_envelope(owner)

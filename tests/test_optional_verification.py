@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
+from model_config_helpers import load_previous_default_config as load_config
 from pydantic import ValidationError
 from test_automatic_audit_integration import audit_api  # noqa: F401
 from test_extraction_verification import selection
@@ -16,7 +17,6 @@ from test_verified_extraction_freeze import ready
 from litagent import api
 from litagent.agents.synthesis import SynthesisWorker
 from litagent.api import SurveyRequest
-from litagent.config import load_config
 from litagent.contracts import normalize_survey_result
 from litagent.eval.automatic import automatic_acceptance, freeze_automatic_inputs
 from litagent.eval.base import CTX_EVIDENCE
@@ -188,6 +188,26 @@ def test_enabled_judge_failure_still_blocks_and_option_changes_invalidate():
 
 
 @pytest.mark.asyncio
+async def test_agent_does_not_create_an_external_judge_for_old_policy(
+    tmp_path, monkeypatch
+):
+    """Only an explicitly supplied historical benchmark owner can run Judge."""
+    report, ledger = optional_report(True, False)
+    agent = LitAgent(load_config())
+    agent._session_id = "test-auto"
+    agent._build_eval_context = lambda **kwargs: {CTX_EVIDENCE: ledger}
+    monkeypatch.chdir(tmp_path)
+    with patch(
+        "litagent.report_audit.ReportAuditService",
+        side_effect=AssertionError("Agent constructed an external Judge"),
+    ):
+        await agent._automatic_review(report, "EViT", {}, None)
+    acceptance = report["metadata"]["automatic_acceptance"]
+    assert "automatic_report_audit_retired" in acceptance["failure_codes"]
+    assert acceptance["publishable"] is False
+
+
+@pytest.mark.asyncio
 async def test_enabled_jev_without_receipt_blocks_even_when_judge_off():
     report, ledger = optional_report(False, True)
     with pytest.raises(ValueError, match="automatic_extraction_not_passed"):
@@ -236,13 +256,11 @@ async def test_synthesis_with_jev_off_preserves_cards_without_verifier_or_key():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "judge,jev", [(False, False), (True, False), (False, True), (True, True)]
-)
-async def test_api_requires_only_enabled_capabilities(audit_api, judge, jev):
-    caps, create, _ = audit_api
-    caps.update(judge_available=judge, jev_available=jev)
-    headers = {"X-LitAgent-Operation-Token": api.app.state.operation_token}
+@pytest.mark.parametrize("jev", [False, True])
+async def test_api_accepts_explicit_extraction_jev_switch(audit_api, jev):
+    """The Jev switch affects evidence admission without enabling a report audit."""
+    _, create, _ = audit_api
+    verification = {**switches(jev=jev), "version": "optional-verification-v2"}
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=api.app), base_url="http://test"
     ) as client:
@@ -251,33 +269,53 @@ async def test_api_requires_only_enabled_capabilities(audit_api, judge, jev):
             json={
                 "query": "question",
                 "quality_policy": "strict_auto_v2",
-                "verification": switches(judge, jev),
-            },
-            headers=headers,
-        )
-    assert response.status_code == 202, response.text
-    assert create.call_args.kwargs["options"].verification.model_dump() == switches(
-        judge, jev
-    )
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("service", ["judge", "jev"])
-async def test_enabled_missing_capability_rejects_before_generation(audit_api, service):
-    caps, create, _ = audit_api
-    caps[f"{service}_available"] = False
-    caps[f"{service}_reason"] = f"missing_key:{service}"
-    async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=api.app), base_url="http://test"
-    ) as client:
-        response = await client.post(
-            "/survey",
-            json={
-                "query": "question",
-                "quality_policy": "strict_auto_v2",
-                "verification": switches(service == "judge", service == "jev"),
+                "verification": verification,
             },
             headers={"X-LitAgent-Operation-Token": api.app.state.operation_token},
         )
-    assert response.status_code == 409
+    assert response.status_code == 202, response.text
+    options = create.call_args.kwargs["options"]
+    assert options.verification.jev is jev
+    assert options.auto_audit_mode == "off"
+
+
+@pytest.mark.asyncio
+async def test_missing_jev_key_rejects_default_before_generation(
+    audit_api, monkeypatch
+):
+    """The default cannot silently proceed with unverified evidence."""
+    _, create, _ = audit_api
+    monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=api.app), base_url="http://test"
+    ) as client:
+        body = {"query": "question", "quality_policy": "strict_auto_v2"}
+        headers = {"X-LitAgent-Operation-Token": api.app.state.operation_token}
+        response = await client.post("/survey", json=body, headers=headers)
+        assert response.status_code == 409
+        assert response.json()["detail"] == "missing_key:TYPESAFE_API_KEY"
+        create.assert_not_called()
+        off = await client.post(
+            "/survey", json={**body, "verification": {"jev": False}}
+        )
+        assert off.status_code == 202
+
+
+@pytest.mark.asyncio
+async def test_retired_post_selection_jev_version_rejects_new_run(audit_api):
+    """New Jev requests must check claims before ledger admission."""
+    _, create, _ = audit_api
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=api.app), base_url="http://test"
+    ) as client:
+        response = await client.post(
+            "/survey",
+            json={
+                "query": "question",
+                "quality_policy": "strict_auto_v2",
+                "verification": switches(jev=True),
+            },
+        )
+    assert response.status_code == 422
+    assert response.json()["detail"] == "extraction_admission_v2_required"
     create.assert_not_called()

@@ -7,9 +7,9 @@ import json
 
 import pytest
 import test_located_evaluation as located
+from model_config_helpers import load_previous_default_config as load_config
 from test_writer_v2 import case  # noqa: F401
 
-from litagent.config import load_config
 from litagent.contracts import build_config_summary
 from litagent.eval.batched import ANCHORED_FINDINGS_CONTRACT, GLOBAL_FINDINGS_CONTRACT
 from litagent.safety.planned_budget import PlannedBudget

@@ -19,6 +19,7 @@ from pydantic import (
 )
 
 from litagent.capacity import CapacityConfig
+from litagent.run_limits import PlannedRunLimits
 from litagent.tools.base import ToolCategory
 
 load_dotenv()
@@ -58,7 +59,7 @@ class ContextConfig(BaseModel):
     )
     synthesis_evidence_max_tokens: int = Field(default=16000, ge=1000, le=64000)
     synthesis_papers_max_tokens: int = Field(default=8000, ge=500, le=32000)
-    evidence_top_k_per_section: int = Field(default=12, ge=1, le=30)
+    evidence_top_k_per_section: int = Field(default=20, ge=1, le=30)
     evidence_max_items: int = Field(default=60, ge=5, le=150)
     evidence_per_paper_cap: int = Field(default=4, ge=1, le=10)
     review_evidence_max_tokens: int = Field(default=16000, ge=1000, le=64000)
@@ -111,6 +112,16 @@ class OrchestratorConfig(BaseModel):
 class LLMConfig(BaseModel):
     """Configure the LLM provider and generation defaults."""
 
+    resource_revision: Literal["operational-plus20-v1"] | None = None
+
+    @model_serializer(mode="wrap")
+    def preserve_historical_resources(self, handler):
+        """Keep absent resource revisions out of historical configuration hashes."""
+        value = handler(self)
+        if self.resource_revision is None:
+            value.pop("resource_revision", None)
+        return value
+
     base_url: str = "https://api.deepseek.com"
     model: str = "deepseek-v4-flash"
     extraction_model: str | None = Field(default=None, min_length=1)
@@ -131,7 +142,7 @@ class LLMConfig(BaseModel):
             "repair",
             "evaluation",
         ],
-        Annotated[float, Field(strict=True, gt=0, le=600, allow_inf_nan=False)],
+        Annotated[float, Field(strict=True, gt=0, le=720, allow_inf_nan=False)],
     ] = Field(default_factory=dict)
     request_deadline_margin_seconds: float = Field(
         default=5, strict=True, gt=0, le=60, allow_inf_nan=False
@@ -140,6 +151,10 @@ class LLMConfig(BaseModel):
     @model_validator(mode="after")
     def _validate_stage_models(self):
         """Reject whitespace-only overrides instead of silently inheriting a model."""
+        if self.resource_revision is None and any(
+            v > 600 for v in self.request_timeouts_seconds.values()
+        ):
+            raise ValueError("request timeout requires an explicit resource revision")
         for stage in ("extraction", "generation", "evaluation"):
             value = getattr(self, f"{stage}_model")
             if value is not None and value != value.strip():
@@ -174,7 +189,7 @@ class PlannerConfig(BaseModel):
     """Configure planner settings."""
 
     decompose_enabled: bool = True
-    max_sub_queries: int = Field(default=3, ge=1, le=3)
+    max_sub_queries: int = Field(default=3, ge=1, le=4)
     max_tokens: int = Field(default=8192, gt=0)
     temperature: float = Field(default=0.3, ge=0.0, le=2.0)
     thinking_mode: Literal["provider_default", "enabled", "disabled"] | None = None
@@ -227,8 +242,17 @@ class SafetyConfig(BaseModel):
     """Configure safety settings."""
 
     max_cost_tokens: int = Field(default=500_000, gt=0)
+    planned_run_limits: PlannedRunLimits | None = None
     cost_warn_ratio: float = Field(default=0.8, gt=0, le=1.0)
     tool_policy: ToolPolicyConfig = Field(default_factory=ToolPolicyConfig)
+
+    @model_serializer(mode="wrap")
+    def serialize_limits(self, handler):
+        """Keep omitted settings out of historical configuration identities."""
+        value = handler(self)
+        if self.planned_run_limits is None:
+            value.pop("planned_run_limits", None)
+        return value
 
 
 class APIConfig(BaseModel):
@@ -251,14 +275,23 @@ class ExtractorConfig(BaseModel):
     max_concurrent: int = Field(default=5, gt=0)
     enable_llm: bool = True
     max_papers: int = Field(default=50, gt=0, le=200)
-    max_tokens: int = Field(default=2048, gt=0, le=8192)
+    max_tokens: int = Field(default=2048, gt=0, le=9831)
     thinking_mode: Literal["provider_default", "enabled", "disabled"] = "disabled"
     record_identity: Literal["source_fields_v1"] | None = None
-    per_paper_timeout_ms: int = Field(default=60000, ge=1000, le=120000)
+    evidence_preparation_policy: Literal["question_focused_v1"] | None = None
+    per_paper_timeout_ms: int = Field(default=60000, ge=1000, le=144000)
     task_timeout_ms: int | None = Field(default=None, strict=True, gt=0, le=7200000)
     automatic_timeout_seconds: float | None = Field(
         default=None, gt=0, le=660, allow_inf_nan=False
     )
+
+    @model_serializer(mode="wrap")
+    def preserve_legacy_preparation_identity(self, handler):
+        """Keep the absent policy out of historical serialized model profiles."""
+        value = handler(self)
+        if self.evidence_preparation_policy is None:
+            value.pop("evidence_preparation_policy", None)
+        return value
 
 
 class ObservabilityConfig(BaseModel):
@@ -338,6 +371,16 @@ class CorpusQualityConfig(BaseModel):
 class RAGConfig(BaseModel):
     """Configure versioned paper-corpus ingestion and retrieval."""
 
+    resource_revision: Literal["operational-plus20-v1"] | None = None
+
+    @model_serializer(mode="wrap")
+    def preserve_historical_resources(self, handler):
+        """Omit the absent profile from historical configuration identities."""
+        value = handler(self)
+        if self.resource_revision is None:
+            value.pop("resource_revision", None)
+        return value
+
     enabled: bool = True
     paper_collection: str = Field(default="papers", min_length=1)
     parsed_root: str = "artifacts/corpus/parsed"
@@ -410,20 +453,43 @@ class RAGConfig(BaseModel):
 class EvalConfig(BaseModel):
     """Configure evaluator and evidence-rewrite limits."""
 
+    semantic_engine: Literal["ragas-cited-faithfulness-v1"] | None = None
+    native_global_input: Literal["ragas-global-unit-input-v2"] | None = None
+    native_global_unit_response: (
+        Literal[
+            "ragas-global-unit-keys-v1",
+            "ragas-global-unit-keys-v2",
+            "ragas-global-unit-keys-v3",
+        ]
+        | None
+    ) = None
+
+    @model_serializer(mode="wrap")
+    def preserve_historical_engine(self, handler):
+        """Leave old configuration identities unchanged when the new engine is absent."""
+        value = handler(self)
+        if self.semantic_engine is None:
+            value.pop("semantic_engine", None)
+        if self.native_global_input is None:
+            value.pop("native_global_input", None)
+        if self.native_global_unit_response is None:
+            value.pop("native_global_unit_response", None)
+        return value
+
     context_tokens: int = Field(default=131072, ge=32768)
 
     max_tokens: int = Field(default=16384, gt=0)
     thinking_mode: Literal["provider_default", "enabled", "disabled"] = "disabled"
     timeout_seconds: float = Field(default=180.0, gt=0, le=600)
     total_timeout_seconds: float | None = Field(
-        default=None, gt=0, le=7200, allow_inf_nan=False
+        default=None, gt=0, le=8640, allow_inf_nan=False
     )
     faithfulness_max_evidence_items: int = Field(default=120, ge=1, le=500)
-    faithfulness_max_context_chars: int = Field(default=80000, ge=1000, le=80000)
+    faithfulness_max_context_chars: int = Field(default=80000, ge=1000, le=96000)
     rewrite: EvidenceRewriteConfig = Field(default_factory=EvidenceRewriteConfig)
-    strict_batch_size: int = Field(default=16, ge=1, le=16)
-    strict_max_batches: int = Field(default=8, ge=1, le=8)
-    strict_max_claims: int = Field(default=128, ge=1, le=128)
+    strict_batch_size: int = Field(default=16, ge=1, le=20)
+    strict_max_batches: int = Field(default=8, ge=1, le=10)
+    strict_max_claims: int = Field(default=128, ge=1, le=154)
     strict_context_margin: float = Field(default=0.1, ge=0.1, lt=0.5)
 
 
@@ -475,6 +541,54 @@ class AppConfig(BaseModel):
     @model_validator(mode="after")
     def _validate_cross_component_limits(self):
         """Validate limits shared across configuration components."""
+        from litagent.run_limits import (
+            FORMAT_JSON_POLICY,
+            FORMAT_MODELS,
+            configured_run_limits,
+            repair_allowances,
+        )
+
+        run_limits = configured_run_limits(self)
+        if (run_limits or {}).get("syntax_policy") == FORMAT_JSON_POLICY:
+            if (
+                self.llm.model_for("evaluation"),
+                self.llm.model_for("generation"),
+            ) != FORMAT_MODELS:
+                raise ValueError("format_recovery_model_identity_invalid")
+            timeouts = self.llm.request_timeouts_seconds
+            margin = self.llm.request_deadline_margin_seconds
+            minimum = sum(
+                count * (timeouts.get(stage, timeouts.get("default", 180)) + margin)
+                for stage, count in (
+                    ("synthesis", 20),
+                    ("repair", 12),
+                    ("summary", 4),
+                    ("reviewer", 1),
+                )
+            )
+            if self.adversarial.task_timeout_ms <= minimum * 1000:
+                raise ValueError("format_recovery_writer_deadline_insufficient")
+
+        repair_allowances(
+            {
+                "run_limits": run_limits,
+                "semantic_engine": self.eval.semantic_engine,
+            }
+        )
+        if self.extractor.evidence_preparation_policy is not None:
+            if (
+                not self.extractor.enable_llm
+                or self.extractor.record_identity != "source_fields_v1"
+                or self.rag.chunk_strategy is not ChunkStrategy.SECTION_AWARE
+            ):
+                raise ValueError(
+                    "question_focused preparation requires grounded extraction "
+                    "and section_aware chunks"
+                )
+            if self.observability.payload_mode != "metadata_only":
+                raise ValueError(
+                    "question_focused preparation requires metadata_only tracing"
+                )
         timeouts = self.llm.request_timeouts_seconds
         if timeouts:
             fallback = timeouts.get("default", 180)
@@ -542,14 +656,21 @@ def _find_project_root() -> Path:
     raise FileNotFoundError("Cannot find project root (no pyproject.toml found)")
 
 
-def _find_config_file(config_path: str | None = None) -> Path:
+def _find_config_file(
+    config_path: str | None = None, *, live_workbench: bool = False
+) -> Path:
     """Resolve the explicit, environment, or default configuration path."""
     if config_path:
         path = Path(config_path)
     elif os.environ.get("LITAGENT_CONFIG"):
         path = Path(os.environ["LITAGENT_CONFIG"])
     else:
-        path = _find_project_root() / "config" / "default.yaml"
+        directory = _find_project_root() / "config"
+        if live_workbench:
+            path = directory / "agent-format-repair.yaml"
+        else:
+            expanded = directory / "operational-plus20.yaml"
+            path = expanded if expanded.exists() else directory / "default.yaml"
 
     if not path.exists():
         raise FileNotFoundError(f"Config file not found: {path}")
@@ -592,10 +713,12 @@ def _apply_env_overrides(data: dict, prefix: str = "LITAGENT_") -> dict:
     return data
 
 
-def load_config(config_path: str | None = None) -> AppConfig:
+def load_config(
+    config_path: str | None = None, *, live_workbench: bool = False
+) -> AppConfig:
     """Load, override, and validate the application configuration."""
 
-    config_file = _find_config_file(config_path)
+    config_file = _find_config_file(config_path, live_workbench=live_workbench)
 
     with open(config_file, "r", encoding="utf-8") as f:
         raw = yaml.safe_load(f)

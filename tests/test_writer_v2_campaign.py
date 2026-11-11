@@ -73,7 +73,8 @@ def test_campaign_rejects_limits_runtime_and_case_drift_before_transport(
     tmp_path, monkeypatch
 ):
     """Recomputing a manifest digest does not authorize a wider campaign."""
-    from litagent.config import load_config
+    from model_config_helpers import load_previous_default_config as load_config
+
     from litagent.contracts import build_config_summary
 
     cfg = load_config()

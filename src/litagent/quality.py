@@ -408,26 +408,36 @@ def _unique_native_fields(pairs):
     return result
 
 
-def targeted_repair_state(value, run_id: str, *, allow_inflight: bool = False) -> dict:
+def targeted_repair_state(
+    value, run_id: str, *, allow_inflight: bool = False, limit: int | None = None
+) -> dict:
     """Validate the shared two-attempt ledger without refunding failed attempts."""
     if not isinstance(run_id, str) or not run_id:
         raise ValueError("strict_targeted_repair_state_invalid")
-    if value is None:
-        return {
-            "version": TARGETED_REPAIR_CONTRACT,
-            "run_id": run_id,
-            "limit": 2,
-            "attempts": [],
+    if limit is None:
+        versions = {
+            "shared-targeted-repair-limit-v2": 3,
+            "independent-targeted-repair-v1": 11,
         }
+        limit = versions.get(value.get("version"), 2) if isinstance(value, dict) else 2
+    if type(limit) is not int or limit not in (2, 3, 11):
+        raise ValueError("strict_targeted_repair_state_invalid")
+    version = {
+        2: TARGETED_REPAIR_CONTRACT,
+        3: "shared-targeted-repair-limit-v2",
+        11: "independent-targeted-repair-v1",
+    }[limit]
+    if value is None:
+        return {"version": version, "run_id": run_id, "limit": limit, "attempts": []}
     if (
         not isinstance(value, dict)
         or set(value) != {"version", "run_id", "limit", "attempts"}
-        or value["version"] != TARGETED_REPAIR_CONTRACT
+        or value["version"] != version
         or value["run_id"] != run_id
         or type(value["limit"]) is not int
-        or value["limit"] != 2
+        or value["limit"] != limit
         or not isinstance(value["attempts"], list)
-        or len(value["attempts"]) > 2
+        or len(value["attempts"]) > limit
     ):
         raise ValueError("strict_targeted_repair_state_invalid")
     for index, attempt in enumerate(value["attempts"]):
@@ -443,7 +453,44 @@ def targeted_repair_state(value, run_id: str, *, allow_inflight: bool = False) -
             raise ValueError("strict_targeted_repair_state_invalid")
         if attempt["status"] == "started_no_replay" and not allow_inflight:
             raise ValueError("strict_targeted_repair_restart_no_replay")
+        if limit == 11 and (
+            attempt.get("category")
+            != (
+                "capacity"
+                if attempt["stage"] == "native_initial"
+                else (
+                    "inventory"
+                    if attempt.get("purpose") == "ragas-recovery-v1"
+                    else "prose"
+                )
+            )
+        ):
+            raise ValueError("strict_targeted_repair_category_invalid")
+    if limit == 11 and any(n < 0 for n in remaining_repair_allowances(value).values()):
+        raise ValueError("strict_targeted_repair_category_exhausted")
     return value
+
+
+def remaining_repair_allowances(state):
+    """Count the durable category reservations, including failed and cancelled sends."""
+    if state.get("version") != "independent-targeted-repair-v1":
+        return None
+    from litagent.run_limits import REPAIR_ALLOWANCES
+
+    return {
+        kind: limit - sum(row.get("category") == kind for row in state["attempts"])
+        for kind, limit in REPAIR_ALLOWANCES.items()
+    }
+
+
+def repair_attempts_remaining(state, category):
+    """Read the category balance or the historical shared balance."""
+    balances = remaining_repair_allowances(state)
+    return (
+        balances[category]
+        if balances is not None
+        else state["limit"] - len(state["attempts"])
+    )
 
 
 def native_task_identity(value: Mapping) -> str:
@@ -526,12 +573,12 @@ def validate_received_native(value, task_input: Mapping, run_id: str) -> dict:
     return state
 
 
-def load_targeted_repairs(path, run_id: str) -> dict:
+def load_targeted_repairs(path, run_id: str, *, limit: int | None = None) -> dict:
     """Read a durable counter, rejecting an unknown in-flight response."""
     if not path.exists():
-        return targeted_repair_state(None, run_id)
+        return targeted_repair_state(None, run_id, limit=limit)
     payload = json.loads(path.read_text(encoding="utf-8"))
-    return targeted_repair_state(payload["state"], run_id)
+    return targeted_repair_state(payload["state"], run_id, limit=limit)
 
 
 def save_targeted_repairs(path, state: dict, **local_artifacts) -> None:
@@ -552,26 +599,40 @@ def save_targeted_repairs(path, state: dict, **local_artifacts) -> None:
                     raise ValueError("strict_targeted_repair_checkpoint_conflict")
             elif any(
                 current.get(k) != previous.get(k)
-                for k in ("index", "stage", "input_sha256")
+                for k in ("index", "stage", "input_sha256", "category", "purpose")
             ):
                 raise ValueError("strict_targeted_repair_checkpoint_conflict")
     atomic_json(path, {**payload, **local_artifacts, "state": copy.deepcopy(state)})
 
 
-def begin_targeted_repair(state: dict, stage: str, input_sha256: str) -> dict:
+def begin_targeted_repair(
+    state: dict, stage: str, input_sha256: str, *, category: str | None = None
+) -> dict:
     """Consume an attempt immediately before dispatch, never on a failed preflight."""
     targeted_repair_state(state, state["run_id"])
     if stage not in {"native_initial", "evaluation"} or not re.fullmatch(
         r"[0-9a-f]{64}", input_sha256
     ):
         raise ValueError("strict_targeted_repair_state_invalid")
-    if len(state["attempts"]) >= 2:
+    if len(state["attempts"]) >= state["limit"]:
         raise ValueError("strict_targeted_repair_limit_exceeded")
+    extended = remaining_repair_allowances(state)
+    if extended is not None:
+        category = category or ("capacity" if stage == "native_initial" else "prose")
+        if (
+            category
+            not in (
+                {"capacity"} if stage == "native_initial" else {"inventory", "prose"}
+            )
+            or extended[category] <= 0
+        ):
+            raise ValueError("strict_targeted_repair_category_exhausted")
     entry = {
         "index": len(state["attempts"]),
         "stage": stage,
         "input_sha256": input_sha256,
         "status": "started_no_replay",
+        **({"category": category} if extended is not None else {}),
     }
     state["attempts"].append(entry)
     return entry
@@ -590,7 +651,7 @@ def emit_targeted_repair(hook, state: dict, task_id: str) -> None:
                 "phase": attempt["stage"],
                 "count": len(state["attempts"]),
                 "status": attempt["status"],
-                "contract_version": TARGETED_REPAIR_CONTRACT,
+                "contract_version": state["version"],
                 "input_sha256": attempt["input_sha256"],
                 "state": copy.deepcopy(state),
             },

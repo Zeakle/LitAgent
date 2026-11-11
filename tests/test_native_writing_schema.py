@@ -7,11 +7,11 @@ from unittest.mock import AsyncMock
 
 import pytest
 from jsonschema import Draft202012Validator
+from model_config_helpers import load_previous_default_config as load_config
 from test_chapter_scope_contract import materials, unit
 from test_strict_quality import to_native
 
 from litagent.agents.synthesis import SynthesisWorker
-from litagent.config import load_config
 from litagent.eval.base import CTX_EVIDENCE, CTX_SELECTED_EVIDENCE
 from litagent.eval.scoped import check_request_budget
 from litagent.llm.client import LLMResponse, OpenAICompatibleClient

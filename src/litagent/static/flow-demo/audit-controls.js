@@ -1,79 +1,61 @@
-/* Audits bind raw report versions, independently of citation-style projections. */
-export function bindAutomaticAuditPreferences({ capabilities, t }) {
+/* Configure extraction verification and render version-bound historical audits. */
+export function bindSurveyVerification({ capabilities, t }) {
   const $ = selector => document.querySelector(selector);
-  const mode = $("#auto-audit-mode");
-  const budget = $("#auto-audit-max-versions");
-  const judge = $("#verification-judge");
   const jev = $("#verification-jev");
-  const optional = () => $("#quality-policy").value === "strict_auto_v2";
-  const budgeted = caps => optional() && caps.default_generation_strategy === "body_summary_v2"
-    && caps.default_budget_policy === "planned-budget-v4" && !judge?.checked && !jev?.checked;
+  let defaultsApplied = false;
+  const strict = () => $("#quality-policy").value === "strict_auto_v2";
+  const budgeted = caps => ["body_summary_v2", "body_summary_v3"].includes(caps.default_generation_strategy)
+    && ["planned-budget-v4", "planned-budget-v7"].includes(caps.default_budget_policy)
+    && (!jev.checked || caps.default_verification?.version === "optional-verification-v2");
+
   function render() {
     const caps = capabilities() || {};
-    const current = $("#quality-policy").value;
-    const automatic = ["strict_auto_v1", "strict_auto_v2"].includes(current);
-    if ($("#body-analysis-help")) $("#body-analysis-help").hidden = !optional();
-    if ($("#optional-verification")) $("#optional-verification").hidden = !optional();
-    if ($("#legacy-audit-preferences")) $("#legacy-audit-preferences").hidden = optional();
-    if (judge) judge.disabled = !caps.judge_available;
-    if (jev) jev.disabled = !caps.jev_available;
-    mode.disabled = automatic;
-    if (automatic) {
-      mode.value = optional() ? (judge?.checked ? "judge" : "off") : "judge_jev";
-      budget.value = "1";
+    if (!defaultsApplied && caps.default_verification) {
+      jev.checked = caps.default_verification.jev;
+      defaultsApplied = true;
     }
-    for (const option of mode.options) {
-      option.disabled = option.value === "judge" ? !caps.judge_available
-        : option.value === "judge_jev" ? !(caps.judge_available && caps.jev_available) : false;
-    }
-    if (!automatic && [...mode.options].find(option => option.value === mode.value)?.disabled) mode.value = "off";
-    budget.disabled = automatic || mode.value === "off";
-    const limits = caps.limits || {};
-    const surveyLimit = budgeted(caps) ? "1,000,000" : "500,000";
-    const capacity = budgeted(caps) ? t("budgetedWriterScopeHelp") : "";
-    $("#auto-audit-budget-note").textContent = automatic
-      ? `${t(optional() ? "optionalVerificationHelp" : "strictAutoQuality")} · Survey ≤ ${surveyLimit} tokens / 64 calls${capacity ? ` · ${capacity}` : ""}${!optional() || judge?.checked ? " · Judge 100,000 tokens / 2 calls" : ""}${!optional() || jev?.checked ? " · Jev 200,000 input tokens / 20 calls" : ""}`
-      : mode.value === "off" ? t("autoAuditOffHelp") : `${t("autoAuditBudgetHelp")} ${budget.value} · ${t("autoAuditPerVersion")} Judge ${limits.judge_calls ?? 2} × ${limits.judge_max_output_tokens_per_call ?? 16384} output tokens / ${limits.judge_timeout_seconds ?? 180}s${mode.value === "judge_jev" ? ` · Jev ${limits.jev?.max_requests ?? 20} requests / ${limits.jev?.max_input_tokens ?? 200000} input tokens` : ""}`;
-    const reasons = [];
-    if (!caps.judge_available) reasons.push(`${t("autoAuditJudgeUnavailable")}: ${caps.judge_reason || t("autoAuditNotConfigured")}`);
-    if (!caps.jev_available) reasons.push(`${t("autoAuditJevUnavailable")}: ${caps.jev_reason || t("autoAuditNotConfigured")}`);
-    $("#auto-audit-capabilities").textContent = reasons.join(" · ");
-    $("#auto-audit-capabilities").hidden = !reasons.length;
-    if ($("#auto-audit-rules")) $("#auto-audit-rules").hidden = optional();
+    const selected = strict();
+    $("#optional-verification").hidden = !selected;
+    $("#body-analysis-help").hidden = !selected;
+    jev.disabled = !caps.jev_available && !jev.checked;
+    const surveyLimit = budgeted(caps) ? caps.maximum_survey_tokens : 500000;
+    $("#auto-audit-budget-note").hidden = !selected;
+    $("#auto-audit-budget-note").textContent = `${t("optionalVerificationHelp")} · Survey ≤ ${Number(surveyLimit ?? 500000).toLocaleString("en-US")} tokens / ${caps.maximum_survey_requests ?? 64} requests`;
+    const unavailable = selected && jev.checked && !caps.jev_available;
+    const notice = $("#auto-audit-capabilities");
+    notice.hidden = !unavailable;
+    notice.textContent = unavailable ? `${t("autoAuditJevUnavailable")} · ${caps.jev_reason || t("autoAuditNotConfigured")}` : "";
   }
+
   function options() {
+    if (!strict()) return {};
     const caps = capabilities() || {};
-    if (optional()) {
-      if ((judge?.checked && !caps.judge_available) || (jev?.checked && !caps.jev_available)) throw new Error(t("autoAuditUnavailableSelection"));
-      return {
-        body_quality: "analysis_v1",
-        ...(budgeted(caps) ? {budget_policy:"planned-budget-v4"} : {}),
-        ...(["body_summary_v1", "body_summary_v2"].includes(caps.default_generation_strategy) ? {generation_strategy:caps.default_generation_strategy} : {}),
-        verification: { version: "optional-verification-v1", judge: !!judge?.checked, jev: !!jev?.checked },
-        auto_audit_mode: judge?.checked ? "judge" : "off", auto_audit_max_versions: 1,
-      };
-    }
-    const selected = mode.value;
-    if (!["off", "judge", "judge_jev"].includes(selected)) throw new Error(t("autoAuditInvalidSelection"));
-    if (selected !== "off" && (!caps.judge_available || (selected === "judge_jev" && !caps.jev_available))) throw new Error(t("autoAuditUnavailableSelection"));
-    const maxVersions = selected === "off" ? 1 : Number(budget.value);
-    if (!Number.isInteger(maxVersions) || maxVersions < 1 || maxVersions > 3) throw new Error(t("autoAuditInvalidBudget"));
-    return { auto_audit_mode: selected, auto_audit_max_versions: maxVersions };
+    if (jev.checked && !caps.jev_available) throw new Error(t("autoAuditUnavailableSelection"));
+    const planned = budgeted(caps);
+    const { judge, ...verification } = caps.default_verification || {version: "optional-verification-v1"};
+    return {
+      body_quality: "analysis_v1",
+      ...(planned ? {
+        budget_policy: caps.default_budget_policy,
+        ...(caps.default_budget_policy === "planned-budget-v7" ? {capacity_policy: "adaptive-capacity-v1"} : {}),
+      } : {}),
+      ...(["body_summary_v1", "body_summary_v2", "body_summary_v3"].includes(caps.default_generation_strategy)
+        ? {generation_strategy: planned ? caps.default_generation_strategy : "body_summary_v1"} : {}),
+      verification: {...verification, jev: jev.checked},
+    };
   }
-  mode.addEventListener("change", render); budget.addEventListener("change", render);
-  judge?.addEventListener("change", render); jev?.addEventListener("change", render);
+
+  jev.addEventListener("change", () => { defaultsApplied = true; render(); });
   render();
   return { render, options };
 }
 
-export function bindAuditControls({ store, api, setNotice, onEvidence, onSource, onSnapshot = () => {} }) {
+export function bindAuditControls({ store, api, onEvidence, onSource, onSnapshot = () => {} }) {
   const $ = selector => document.querySelector(selector);
   const labels = {
-    title: ["独立核验", "Independent audit"], start: ["核验当前版本", "Audit this version"],
+    title: ["历史独立核验", "Historical independent audits"],
     empty: ["此版本尚无独立核验结果。", "No independent audit for this version."],
-    scope: ["Judge 核验事实、矛盾、结构和方法；Jev 核验引用支持关系。结果不改变评分或批准。", "Judge checks facts, contradictions, structure and methodology; Jev checks citation support. Results preserve scores and approval."],
-    begin: ["开始核验", "Start audit"], cancel: ["取消核验", "Cancel audit"], close: ["关闭", "Close"],
-    jev: ["同时执行 Jev 引用核验", "Include Jev citation audit"], retry: ["创建新的付费尝试（不复用结果）", "Create a new paid attempt (do not reuse results)"],
+    scope: ["显示已归档的终稿核验记录。", "Shows archived report audit records."],
     topics: ["未提供人工主题标准", "No human topic standard provided"], methods: ["检索方法核验", "Runtime-method audit"],
     structure: ["结构检查", "Structure check"], facts: ["科学断言支持", "Scientific claim support"],
     costs: ["调用与 tokens", "Calls and tokens"], usage: ["usage 不完整，无法确定费用", "Incomplete usage; cost is unknown"],
@@ -99,7 +81,7 @@ export function bindAuditControls({ store, api, setNotice, onEvidence, onSource,
     autoFailed: ["自动核验调用失败；不是报告质量判定", "Automatic audit failed; this is not a report-quality verdict"],
     autoBudget: ["自动核验版本预算", "Automatic version budget"],
     autoPending: ["已预留预算，等待提交", "Budget reserved; awaiting submission"],
-    autoNoRetry: ["失败或重启中断不会自动重发；可使用手动入口创建新尝试。", "Failure or restart interruption does not retry automatically; a new attempt can be created manually."],
+    autoNoRetry: ["失败或重启中断后，历史请求不会重发。", "Historical requests are preserved after failure or interruption."],
     automatic_quality_not_passed: ["Evaluation 尚未通过", "Evaluation has not passed"],
     automatic_report_partial: ["报告仅部分完成", "The report is partially complete"],
     automatic_report_rejected: ["报告已被拒绝", "The report was rejected"],
@@ -120,10 +102,12 @@ export function bindAuditControls({ store, api, setNotice, onEvidence, onSource,
     const [code, ...details] = value.split(":");
     return `${L(code)}${details.length ? `: ${details.join(":")}` : ""}`;
   };
-  let key = ""; let epoch = 0; let timer = null; let data = null; let selected = null; let target = null; let modalTarget = null;
+  let key = ""; let epoch = 0; let timer = null; let data = null; let selected = null; let target = null;
   function currentTarget() {
     const view = store.get().view;
     if (!view?.report?.survey) return null;
+    const metadata = view.report.metadata;
+    if (metadata?.quality_policy === "strict_auto_v2" && metadata.verification?.judge === false) return null;
     return { runId: view.identity.runId, revision: Number(view.displayRevision || view.versions?.[0]?.revision || 1), source: view.identity.source, sha: view.reportSha || null };
   }
   const identity = value => value ? `${value.runId}:${value.revision}` : "";
@@ -157,12 +141,9 @@ export function bindAuditControls({ store, api, setNotice, onEvidence, onSource,
   function render() {
     if (data?.audits?.length && !data.audits.some(item => item.audit_id === selected)) selected = data.audits[0].audit_id;
     onSnapshot({ target, data, selected, select: id => { if (data?.audits?.some(item => item.audit_id === id)) {selected = id; render();} } });
-    const panel = $("#audit-panel"); panel.hidden = !target;
-    $("#audit-title").textContent = L("title"); $("#audit-start").textContent = L("start");
+    $("#audit-panel").hidden = !(data?.automatic || data?.audits?.length);
+    $("#audit-title").textContent = L("title");
     $("#audit-scope").textContent = L("scope");
-    const caps = data?.capabilities;
-    $("#audit-start").disabled = !caps?.judge_available || target?.source === "sample" || ["strict_auto_v1", "strict_auto_v2"].includes(store.get().view?.report?.metadata?.quality_policy);
-    $("#audit-capabilities").textContent = caps ? `Judge: ${caps.judge_model}${caps.self_judged ? " · self_judged" : caps.self_judged == null ? ` · ${L("noComparison")}` : ""} · ${caps.judge_reason || ""} · Jev: ${caps.jev_model} ${caps.jev_reason || ""}` : "";
     const results = $("#audit-results"); results.replaceChildren();
     if (data?.automatic) {
       const automatic = data.automatic;
@@ -181,14 +162,6 @@ export function bindAuditControls({ store, api, setNotice, onEvidence, onSource,
     select.value = selected; select.addEventListener("change", () => { selected = select.value; render(); }); results.append(select);
     const audit = data.audits.find(item => item.audit_id === selected);
     text(results, "p", `r${audit.source_report_revision} · SHA ${audit.source_report_sha256} · ${audit.judge_model}${audit.self_judged ? " · self_judged" : ""}`, "audit-binding");
-    if (["queued", "running"].includes(audit.status)) {
-      const cancel = text(results, "button", L("cancel")); cancel.type = "button";
-      cancel.addEventListener("click", async () => {
-        const captured = { ...target }; cancel.disabled = true;
-        try { await api.json(`${path(captured)}/${audit.audit_id}/cancel`, { method: "POST", mutate: true }); if (identity(captured) === key) await load(); }
-        catch (error) { if (identity(captured) === key) setNotice(error.message, "error"); }
-      });
-    }
     text(results, "h3", `Judge · ${L(audit.judge?.status || audit.status)} · ${(audit.judge_actual_models || []).join(", ")}`);
     text(results, "p", audit.judge?.topic_coverage == null ? L("topics") : `Topic coverage: ${audit.judge.topic_coverage}`);
     text(results, "p", `${L("facts")}: ${audit.judge?.faithfulness ?? "—"} · ${L("unsupportedRate")}: ${audit.judge?.unsupported_claim_rate ?? "—"} · ${L("contradictionRate")}: ${audit.judge?.contradiction_rate ?? "—"}`);
@@ -227,35 +200,15 @@ export function bindAuditControls({ store, api, setNotice, onEvidence, onSource,
       if ((response.audits || []).some(item => item.source_report_revision !== captured.revision || item.source_report_sha256 !== response.source_report_sha256)) throw new Error("audit_input_binding_mismatch");
       data = response; render();
       if (response.audits.some(item => ["queued", "running"].includes(item.status)) || response.automatic?.status === "reserved") timer = setTimeout(load, 3000);
-    } catch (error) { if (generation === epoch && identity(captured) === key) { data = null; selected = null; render(); onSnapshot({target, data: null, error: error.message}); $("#audit-capabilities").textContent = error.message; } }
+    } catch (error) { if (generation === epoch && identity(captured) === key) { data = null; selected = null; render(); onSnapshot({target, data: null, error: error.message}); } }
   }
   function sync() {
     const next = currentTarget(); const nextKey = identity(next);
     if (nextKey !== key || next?.sha !== target?.sha) {
       epoch += 1; clearTimeout(timer); key = nextKey; target = next; data = null; selected = null;
-      $("#audit-dialog").close(); modalTarget = null; render(); if (next) load();
+      render(); if (next) load();
     } else { target = next; render(); }
   }
-  $("#audit-start").addEventListener("click", () => {
-    if (!target || !data?.capabilities?.judge_available) return;
-    modalTarget = { ...target, sha: data.source_report_sha256 };
-    $("#audit-dialog-title").textContent = L("title"); $("#audit-dialog-target").textContent = `r${target.revision} · SHA ${modalTarget.sha} · Judge ${data.capabilities.judge_model}${data.capabilities.self_judged ? " · self_judged" : ""} · ${L("limits")}: Judge 2 × 16384 tokens / 180s · Jev 20 × requests / 200000 tokens`;
-    $("#audit-jev").checked = false; $("#audit-jev").disabled = !data.capabilities.jev_available;
-    $("#audit-jev-label").textContent = L("jev"); $("#audit-jev-reason").textContent = data.capabilities.jev_reason || "";
-    $("#audit-new-attempt").checked = false; $("#audit-new-label").textContent = L("retry");
-    $("#audit-submit").textContent = L("begin"); $("#audit-close").textContent = L("close"); $("#audit-submit").disabled = false;
-    $("#audit-dialog").showModal();
-  });
-  $("#audit-close").addEventListener("click", () => $("#audit-dialog").close());
-  $("#audit-submit").addEventListener("click", async () => {
-    const captured = modalTarget; if (!captured || identity(captured) !== key) return;
-    $("#audit-submit").disabled = true;
-    try {
-      const response = await api.json(path(captured), { method: "POST", mutate: true, body: { report_sha256: captured.sha, include_jev: $("#audit-jev").checked, new_attempt: $("#audit-new-attempt").checked } });
-      if (identity(captured) !== key) return;
-      selected = response.audit_id; $("#audit-dialog").close(); await load();
-    } catch (error) { if (identity(captured) === key) { setNotice(error.message, "error"); $("#audit-submit").disabled = false; } }
-  });
   store.subscribe(sync); sync();
   return { refresh: load };
 }

@@ -6,10 +6,10 @@ import json
 
 import httpx
 import pytest
+from model_config_helpers import load_previous_default_config as load_config
 from test_native_responses import envelope, owner_for, session_for
 from test_writer_v2 import BODY, Provider, case  # noqa: F401
 
-from litagent.config import load_config
 from litagent.observability.context import reset_task_id, set_task_id
 from litagent.quality import begin_targeted_repair, load_targeted_repairs
 from litagent.writing_v2 import (

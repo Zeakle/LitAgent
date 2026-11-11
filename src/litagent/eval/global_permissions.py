@@ -37,6 +37,7 @@ def permission_identity() -> str:
                 project_format,
                 project_prompt,
                 _reference_catalogs,
+                effective_permissions,
                 _invalid_schema,
                 normalize_global_findings,
                 global_identity_maps,
@@ -46,6 +47,18 @@ def permission_identity() -> str:
     return hashlib.sha256(
         json.dumps(value, ensure_ascii=False, sort_keys=True).encode()
     ).hexdigest()
+
+
+def effective_permissions(payload):
+    """Keep the historical catalog while selecting one owner for new global checks."""
+    from litagent.eval.responsibilities import FORBIDDEN_CODES
+    from litagent.eval.results import selected
+
+    return {
+        code: scopes
+        for code, scopes in ANCHOR_PERMISSIONS.items()
+        if not selected(payload.get("writer_envelope")) or code not in FORBIDDEN_CODES
+    }
 
 
 def _invalid_schema():
@@ -168,6 +181,7 @@ def project_format(response_format, payload) -> dict:
     ):
         _invalid_schema()
     codes = properties["code"].get("enum")
+    permissions = effective_permissions(payload)
     anchors = properties["anchor_ids"]
     expected = {"code", "anchor_ids", "explanation"}
     if (
@@ -179,7 +193,7 @@ def project_format(response_format, payload) -> dict:
         or type(codes) is not list
         or any(type(code) is not str for code in codes)
         or len(codes) != len(set(codes))
-        or set(codes) != set(ANCHOR_PERMISSIONS)
+        or set(codes) != set(permissions)
         or anchors.get("type") != "array"
         or anchors.get("items") != {"type": "string"}
         or type(anchors.get("minItems", 0)) is not int
@@ -267,7 +281,7 @@ def project_format(response_format, payload) -> dict:
 
     grouped = {}
     for code in codes:
-        grouped.setdefault(ANCHOR_PERMISSIONS[code], []).append(code)
+        grouped.setdefault(permissions[code], []).append(code)
     branches = []
     for scopes, allowed_codes in grouped.items():
         branch = copy.deepcopy(issue)

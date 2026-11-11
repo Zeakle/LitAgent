@@ -5,7 +5,7 @@ import subprocess
 from pathlib import Path
 
 
-def test_audit_controls_bind_sha_mutation_token_and_ignore_stale_versions():
+def test_historical_audits_ignore_stale_versions_and_never_mutate():
     """Exercise the actual module with controlled DOM and asynchronous API replies."""
     module = Path("src/litagent/static/flow-demo/audit-controls.js").resolve()
     script = r"""
@@ -20,36 +20,26 @@ const fs=require('node:fs');
   const elements=new Map();
   global.document={querySelector(id){if(!elements.has(id))elements.set(id,new Element());return elements.get(id);},createElement:tag=>new Element(tag)};
   const $=id=>document.querySelector(id);
-  let view={identity:{runId:'run',source:'interactive'},displayRevision:1,report:{survey:'raw [E:ev-1]'},quality:{status:'passed'}};
+  let view={identity:{runId:'run',source:'interactive'},displayRevision:1,reportSha:'sha1',report:{survey:'raw [E:ev-1]'},quality:{status:'passed'}};
   let subscriber; const store={get:()=>({view,locale:'zh-CN'}),subscribe:fn=>subscriber=fn};
-  let release;const calls=[];const notices=[];
+  let release;const calls=[];
   const caps={judge_available:true,judge_model:'fixture',self_judged:true,jev_available:false,jev_reason:'missing_key:TYPESAFE_API_KEY',jev_model:'jev-1.13.0'};
-  const result={audit_id:'audit-1',source_report_revision:2,source_report_sha256:'sha2',status:'running',judge_model:'fixture',method_status:'unverifiable',structure:{status:'not_applicable'},jev:{status:'not_requested'},reason_codes:[]};
+  const result={audit_id:'audit-1',source_report_revision:2,source_report_sha256:'sha2',status:'completed',judge_model:'fixture',method_status:'unverifiable',structure:{status:'not_applicable'},jev:{status:'not_requested'},reason_codes:[]};
   const api={json:async(path,options)=>{
     calls.push({path,options});
-    if(options?.method==='POST'){
-      if(options.mutate!==true)throw Error('operation token omitted');
-      if(path.endsWith('/cancel'))return {...result,status:'cancelled'};
-      if(options.body.report_sha256!=='sha2'||options.body.include_jev!==false)throw Error('wrong audit target/default');
-      return result;
-    }
+    if(options?.method==='POST')throw Error('historical audits must be read only');
     if(path.includes('/versions/1/'))return new Promise(resolve=>release=resolve);
-    return {capabilities:caps,source_report_sha256:'sha2',audits:[]};
+    return {capabilities:caps,source_report_sha256:'sha2',audits:[result]};
   }};
   const {bindAuditControls}=await import('data:text/javascript;base64,'+fs.readFileSync(process.argv[1]).toString('base64'));
-  bindAuditControls({store,api,setNotice:(...args)=>notices.push(args),onEvidence(){}});
-  view={...view,displayRevision:2};subscriber(); await new Promise(resolve=>setImmediate(resolve));
+  let current;
+  bindAuditControls({store,api,onEvidence(){},onSnapshot:s=>current=s});
+  view={...view,displayRevision:2,reportSha:'sha2'};subscriber(); await new Promise(resolve=>setImmediate(resolve));
   release({capabilities:caps,source_report_sha256:'sha1',audits:[{...result,source_report_revision:1}]});await new Promise(resolve=>setImmediate(resolve));
-  $('#audit-start').events.click();
-  if(!$('#audit-dialog-target').textContent.includes('sha2'))throw Error('stale response replaced target');
-  if($('#audit-jev').checked||!$('#audit-jev').disabled)throw Error('Jev default/key gate broken');
-  await $('#audit-submit').events.click();
-  if(!calls.find(call=>call.options?.body?.report_sha256==='sha2'&&call.path.includes('/versions/2/')))throw Error('version binding broken');
+  if(current.data.source_report_sha256!=='sha2'||current.target.revision!==2)throw Error('stale response replaced historical result');
+  if($('#audit-panel').hidden||$('#audit-title').textContent!=='历史独立核验')throw Error('archived attempts not visible');
   if(view.report.survey!=='raw [E:ev-1]'||view.quality.status!=='passed')throw Error('audit mutated report/quality');
-  $('#audit-start').events.click();view={...view,displayRevision:3};subscriber();await new Promise(resolve=>setImmediate(resolve));
-  await $('#audit-submit').events.click();
-  if(calls.filter(call=>call.options?.method==='POST').length!==1)throw Error('stale modal submitted new version');
-  if(calls.some(call=>call.path==='/survey'))throw Error('unexpected Survey call');
+  if(calls.some(call=>call.options?.method==='POST'))throw Error('historical audit sent a mutation');
 })().catch(error=>{console.error(error);process.exit(1)});
 """
     result = subprocess.run(
@@ -107,6 +97,8 @@ const fs=require('node:fs');
  const before=JSON.stringify(result);sync();if(JSON.stringify(result)!==before||calls.length!==2)throw Error('snapshot modified results or created duplicate polling');
  state={...state,view:{...state.view,reportSha:'c'.repeat(64)}};sync();
  resolves[2](result);await new Promise(r=>setImmediate(r));if(last.data!==null||last.error!=='audit_input_binding_mismatch')throw Error('wrong SHA was shown for current version');
+ state={...state,view:{...state.view,report:{...state.view.report,metadata:{quality_policy:'strict_auto_v2',verification:{judge:false,jev:true}}}}};sync();
+ if(calls.length!==3||last.target!==null)throw Error('agent-owned report requested a historical audit');
 })().catch(e=>{console.error(e);process.exit(1)});
 """
     result = subprocess.run(

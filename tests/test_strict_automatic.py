@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
+from model_config_helpers import load_previous_default_config as load_config
 from test_batched_evaluation import BatchLLM
 from test_strict_quality import valid_details
 
@@ -16,7 +17,6 @@ from litagent.benchmark.datasets import load_survey_dataset, load_survey_profile
 from litagent.benchmark.quality_suite import QualitySuiteRunner, public_projection
 from litagent.benchmark.survey_judge import SurveyBenchmarkJudge
 from litagent.benchmark.survey_models import SurveyJudgeConfig
-from litagent.config import load_config
 from litagent.contracts import build_config_summary, normalize_survey_result
 from litagent.eval.automatic import automatic_acceptance, freeze_automatic_inputs
 from litagent.observability.recorder import ArchiveRepository

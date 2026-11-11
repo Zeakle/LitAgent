@@ -9,6 +9,7 @@ from pathlib import Path
 import httpx
 import pytest
 import pytest_asyncio
+from model_config_helpers import load_previous_default_config as load_config
 from openai import AsyncOpenAI
 from test_body_analysis import analysis_document
 from test_complete_native_repair import source_selection
@@ -21,7 +22,6 @@ from test_staged_native_generation import (
 from test_writing_passages import facts
 
 from litagent import staged_generation
-from litagent.config import load_config
 from litagent.llm import client as client_module
 from litagent.quality import (
     build_fact_cards,

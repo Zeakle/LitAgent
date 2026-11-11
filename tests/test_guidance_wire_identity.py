@@ -5,6 +5,7 @@ import json
 from types import SimpleNamespace
 
 import pytest
+from model_config_helpers import load_previous_default_config as load_config
 from test_frozen_writer_plan import frozen_bundle  # noqa: F401
 from test_structured_repair_guidance import context_for, guidance_case, rebind
 from test_structured_repair_identity import (
@@ -16,7 +17,6 @@ from test_structured_repair_identity import (
 from test_writer_v2 import case  # noqa: F401
 
 import litagent.writing_flat as flat
-from litagent.config import load_config
 from litagent.frozen_writing import (
     plan_frozen_budget,
     run_frozen,

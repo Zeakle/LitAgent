@@ -143,7 +143,8 @@ def test_present_incomplete_or_mismatched_audit_is_still_a_binding_failure():
 async def test_submitted_audit_without_result_is_never_reported_as_unrun(
     tmp_path, monkeypatch, failed_wait
 ):
-    from litagent.config import load_config
+    from model_config_helpers import load_previous_default_config as load_config
+
     from litagent.eval.base import CTX_EVIDENCE
     from litagent.runner import LitAgent
 

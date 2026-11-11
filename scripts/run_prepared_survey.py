@@ -61,8 +61,10 @@ def runtime_identity():
 
 
 def effective_config():
-    """Use the same fulltext product profile as the parent quality trial."""
-    config = load_config()
+    """Keep the received-preparation-v1 profile bound to its historical allowance."""
+    config = load_config(
+        str(Path(__file__).resolve().parents[1] / "config/default.yaml")
+    )
     dataset = load_survey_dataset(Path("benchmarks/survey/dataset.yaml"))
     profile = next(
         p

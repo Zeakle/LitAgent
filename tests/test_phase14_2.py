@@ -205,7 +205,7 @@ def test_ingestion_outcome_is_separate_from_storage_state():
 
 
 def test_phase14_2_config_defaults_are_loaded_from_yaml():
-    from litagent.config import load_config
+    from model_config_helpers import load_previous_default_config as load_config
 
     config = load_config()
 
@@ -945,9 +945,9 @@ def test_manifest_wraps_unexpected_asset_conversion_error(tmp_path, monkeypatch)
 @pytest.mark.asyncio
 async def test_runner_bootstraps_configured_claims_collection(monkeypatch):
     import asyncpg
+    from model_config_helpers import load_previous_default_config as load_config
 
     import litagent.rag.claims_index as claims_module
-    from litagent.config import load_config
     from litagent.runner import LitAgent
 
     config = load_config().model_copy(deep=True)

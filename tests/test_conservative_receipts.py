@@ -10,10 +10,10 @@ from types import SimpleNamespace
 
 import pytest
 import pytest_asyncio
+from model_config_helpers import load_previous_default_config as load_config
 from test_native_responses import owner_for, session_for
 from test_writer_v2 import case  # noqa: F401
 
-from litagent.config import load_config
 from litagent.contracts import build_config_summary
 from litagent.llm import responses as provider
 from litagent.observability.context import reset_task_id, set_task_id

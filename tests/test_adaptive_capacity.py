@@ -3,12 +3,12 @@
 import copy
 
 import pytest
+from model_config_helpers import load_previous_default_config as load_config
 from pydantic import ValidationError
 from test_evaluation_wire_projection import canonical  # noqa: F401
 from test_writer_v2 import case  # noqa: F401
 
 from litagent.capacity import CapacityConfig
-from litagent.config import load_config
 from litagent.safety.budget import CostBudget
 from litagent.safety.planned_budget import PlannedBudget, request_scope
 from litagent.workbench import RunOptions

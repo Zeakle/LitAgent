@@ -99,7 +99,9 @@ async def corpus_runtime(monkeypatch, tmp_path):
     if not qdrant_url or not pg_url:
         pytest.skip("TEST_QDRANT_URL and TEST_PG_URL are required")
 
-    from litagent.config import MemoryConfig, load_config
+    from model_config_helpers import load_previous_default_config as load_config
+
+    from litagent.config import MemoryConfig
     from litagent.rag import runtime as runtime_module
     from litagent.rag.runtime import CorpusRuntime
 

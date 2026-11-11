@@ -488,7 +488,8 @@ async def test_actual_frozen_runtime_sdk_evaluation_and_shared_repair(
     reviewer_disabled,
 ):
     """Only HTTP is replaced across writing, review, assembly, v3 and acceptance."""
-    from litagent.config import load_config
+    from model_config_helpers import load_previous_default_config as load_config
+
     from litagent.frozen_writing import frozen_options, run_frozen
     from litagent.review_structure import build_methodology
     from litagent.runner import LitAgent, RunPolicy

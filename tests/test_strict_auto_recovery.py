@@ -289,7 +289,7 @@ async def test_historical_source_key_prompt_and_filter_are_unchanged(policy):
 
 
 def test_host_marker_protocol_changes_only_automatic_config_identity():
-    from litagent.config import load_config
+    from model_config_helpers import load_previous_default_config as load_config
 
     config = load_config()
     for policy in ("legacy", "strict_v1"):

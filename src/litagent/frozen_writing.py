@@ -14,12 +14,14 @@ from litagent.context.evidence_selector import EvidenceSelection
 from litagent.contracts import build_config_summary
 from litagent.eval.citation import CitationEvaluator
 from litagent.eval.consistency import ConsistencyEvaluator
+from litagent.eval.engine_policy import configured_engine
 from litagent.eval.ragas_eval import RagasFaithfulnessEvaluator
 from litagent.llm.client import BaseLLMClient
 from litagent.orchestrator.scheduler import Scheduler
 from litagent.orchestrator.task_graph import SubTask, TaskGraph
 from litagent.output_capacity import configured_output_tokens
 from litagent.quality import build_fact_cards, coverage_requirements, digest
+from litagent.run_limits import configured_run_limits
 from litagent.safety.budget import CostBudget
 from litagent.workbench import RunOptions, VerificationOptions
 from litagent.writing_v2 import (
@@ -48,6 +50,51 @@ def frozen_options():
         review_structure="academic_v2",
         verification=VerificationOptions(judge=False, jev=False),
     )
+
+
+def _checked_preparation_budget(snapshot):
+    """Accept only a settled preparation-stage ledger supplied by the server."""
+    if snapshot is None:
+        return None
+    if isinstance(snapshot, dict) and snapshot.get("schema_version") == 2:
+        from litagent.safety.planned_budget import settled_preparation_budget
+
+        budget = CostBudget.from_snapshot(copy.deepcopy(snapshot))
+        settled_preparation_budget(budget)
+        if budget.snapshot() != snapshot:
+            raise ValueError("frozen_preparation_budget_invalid")
+        return budget
+    if (
+        not isinstance(snapshot, dict)
+        or snapshot.get("schema_version") != 1
+        or snapshot.get("strict_policy") != "staged-budget-v1"
+        or snapshot.get("strict_phase") != 0
+        or snapshot.get("usage_uncertain") is not False
+        or snapshot.get("stop_reason") is not None
+        or snapshot.get("halt_on_unknown_usage") is not True
+        or snapshot.get("requests_sent") != snapshot.get("call_count")
+        or any(
+            type(snapshot.get(key)) is not int
+            for key in (
+                "schema_version",
+                "strict_phase",
+                "used_tokens",
+                "call_count",
+                "requests_sent",
+                "max_tokens",
+            )
+        )
+    ):
+        raise ValueError("frozen_preparation_budget_invalid")
+    budget = CostBudget.from_snapshot(copy.deepcopy(snapshot))
+    if (
+        budget.snapshot() != snapshot
+        or budget.used > int(snapshot["max_tokens"] * 0.4)
+        or budget.used > 0
+        and snapshot["requests_sent"] == 0
+    ):
+        raise ValueError("frozen_preparation_budget_invalid")
+    return budget
 
 
 def read_bundle(path):
@@ -174,14 +221,22 @@ def plan_frozen_budget(
     evaluation_result_contract=None,
     closeout_profile=None,
     output_tokens=None,
+    preparation_budget_snapshot=None,
+    run_limits=None,
+    semantic_engine=None,
 ):
     """Use the same immutable source packet and first wire as ordinary synthesis."""
     from litagent.eval.scoped import SUPPORT_VALIDATION_REVISIONS
     from litagent.writing_v2 import writer_budget_plan
 
+    preparation = _checked_preparation_budget(preparation_budget_snapshot)
+    if preparation is not None and budget_policy != "planned-budget-v7":
+        raise ValueError("frozen_preparation_budget_requires_v7")
+
     if (
         closeout_profile is not None
         and round_resource_contract != "joint-round-escrow-v1"
+        and semantic_engine is None
     ):
         raise ValueError("closeout_joint_budget_required")
 
@@ -351,7 +406,17 @@ def plan_frozen_budget(
     plan = writer_budget_plan(
         packet,
         aliases,
+        **(
+            {
+                "spent_tokens": preparation.used,
+                "spent_requests": preparation.snapshot()["requests_sent"],
+            }
+            if preparation is not None
+            else {}
+        ),
         **({"output_tokens": output_tokens} if output_tokens is not None else {}),
+        **({"run_limits": run_limits} if run_limits is not None else {}),
+        **({"semantic_engine": semantic_engine} if semantic_engine is not None else {}),
         budget_policy=budget_policy,
         methodology=methodology,
         capacity=capacity,
@@ -425,7 +490,7 @@ def plan_frozen_budget(
             else {}
         ),
     )
-    if round_resource_contract is not None:
+    if round_resource_contract is not None and semantic_engine is None:
         from litagent.safety.planned_budget import with_joint_round_escrow
 
         plan = with_joint_round_escrow(plan)
@@ -466,6 +531,18 @@ class FrozenGuardedClient(BaseLLMClient):
     def __getattr__(self, name):
         """Expose the existing reservation and timeout policies without copying."""
         return getattr(self._base, name)
+
+    def for_model(self, model, stage):
+        """Keep the frozen-input guard around recovery calls on another role."""
+        from litagent.llm.routing import ModelBoundClient
+
+        rebind = getattr(self._base, "for_model", None)
+        client = (
+            rebind(model, stage)
+            if rebind is not None
+            else ModelBoundClient(self._base, model, stage)
+        )
+        return FrozenGuardedClient(client, self._guard)
 
     async def chat(self, messages, **kwargs):
         """Reject drift before sending and preserve a paid response on late drift."""
@@ -547,6 +624,8 @@ async def run_frozen(
     evaluation_dimensions_contract=None,
     evaluation_result_contract=None,
     closeout_profile=None,
+    verification=None,
+    preparation_budget_snapshot=None,
 ):
     """Use real Synthesis, Reviewer, scheduler, assembly, Evaluation and acceptance."""
     from litagent.closeout import profile_fields
@@ -554,6 +633,12 @@ async def run_frozen(
     from litagent.eval.scoped import SUPPORT_VALIDATION_REVISIONS
     from litagent.safety.planned_budget import JOINT_ROUND_ESCROW_CONTRACT
     from litagent.writer_source_view import selected_source_view
+
+    preparation = _checked_preparation_budget(preparation_budget_snapshot)
+    if preparation is not None and (
+        budget_policy != "planned-budget-v7" or expected_budget_plan is None
+    ):
+        raise ValueError("frozen_preparation_budget_requires_plan")
 
     view_envelope = (expected_budget_plan or {}).get("envelope")
     closeout = profile_fields(view_envelope)
@@ -579,6 +664,8 @@ async def run_frozen(
     ):
         raise ValueError("writer_source_view_frozen_plan_required")
 
+    if (expected_budget_plan or {}).get("envelope", {}).get("semantic_engine"):
+        round_resource_contract = None
     resource_descriptor = (expected_budget_plan or {}).get("joint_round_escrow")
     if round_resource_contract is not None or resource_descriptor is not None:
         if (
@@ -774,6 +861,11 @@ async def run_frozen(
                     bundle,
                     budget_policy=budget_policy,
                     **(
+                        {"preparation_budget_snapshot": preparation.snapshot()}
+                        if preparation is not None
+                        else {}
+                    ),
+                    **(
                         {
                             "output_tokens": expected_budget_plan.get(
                                 "envelope", {}
@@ -781,6 +873,12 @@ async def run_frozen(
                         }
                         if budget_policy == "planned-budget-v7"
                         else {}
+                    ),
+                    semantic_engine=expected_budget_plan.get("envelope", {}).get(
+                        "semantic_engine"
+                    ),
+                    run_limits=expected_budget_plan.get("envelope", {}).get(
+                        "run_limits"
                     ),
                     capacity=agent._config.capacity,
                     inventory_recovery=inventory_recovery,
@@ -873,6 +971,19 @@ async def run_frozen(
                 from litagent.writing_v2 import WriterError
 
                 raise WriterError("frozen_budget_plan_drift", "identity")
+    frozen_engine = (
+        (expected_budget_plan or {}).get("envelope", {}).get("semantic_engine")
+    )
+    if frozen_engine is not None and configured_engine(agent._config) != frozen_engine:
+        raise ValueError("ragas_engine_configuration_drift")
+    frozen_limits = (expected_budget_plan or {}).get("envelope", {}).get("run_limits")
+    if (
+        frozen_limits is not None
+        and configured_run_limits(agent._config) != frozen_limits
+    ):
+        from litagent.writing_v2 import WriterError
+
+        raise WriterError("frozen_budget_plan_drift", "identity")
     if native_reviewer_thinking_mode not in (None, "disabled"):
         raise ValueError("native_reviewer_thinking_configuration_invalid")
     writing_plan_spec(native_writing_plan)
@@ -902,6 +1013,10 @@ async def run_frozen(
         raise ValueError("frozen_writing_fact_card_identity_conflict")
     cfg = agent._config
     options = frozen_options()
+    if verification is not None:
+        options = RunOptions.model_validate(
+            {**options.model_dump(), "verification": verification}
+        )
     if budget_policy != "legacy":
         options = RunOptions(
             **{
@@ -943,8 +1058,17 @@ async def run_frozen(
             }
         )
     agent._session_id = run_id
-    agent._cost_budget = CostBudget(max_tokens=cfg.safety.max_cost_tokens)
+    agent._cost_budget = CostBudget(
+        max_tokens=cfg.safety.max_cost_tokens,
+        **(
+            {"resource_profile": cfg.safety.planned_run_limits.profile}
+            if getattr(cfg.safety.planned_run_limits, "profile", None)
+            else {}
+        ),
+    )
     agent._cost_budget.configure_strict(halt_on_unknown_usage=True)
+    if preparation is not None:
+        agent._cost_budget.restore(preparation.snapshot())
     agent._config_summary = build_config_summary(cfg, "strict_auto_v2")
     if transport is None:
         agent._wire_llms()
@@ -969,6 +1093,8 @@ async def run_frozen(
         ),
         capacity_config=cfg.capacity,
         output_tokens_provider=lambda: configured_output_tokens(cfg),
+        run_limits_provider=lambda: configured_run_limits(cfg),
+        semantic_engine_provider=lambda: configured_engine(cfg),
         thinking_mode=cfg.adversarial.thinking_mode,
         native_reasoning_effort=native_reasoning_effort,
         native_provider_api=native_provider_api,
@@ -1166,6 +1292,12 @@ async def run_frozen(
         cancellation=None,
     )
     await agent._automatic_review(report, bundle["query"], results, None)
+    if preparation is not None:
+        report.setdefault("metadata", {})["preparation_usage"] = {
+            "used_tokens": preparation.used,
+            "requests_sent": preparation.snapshot()["requests_sent"],
+            "snapshot_sha256": digest(preparation.snapshot()),
+        }
     if frozen_input_guard is not None:
         frozen_input_guard()
     return await agent._finalize_report(

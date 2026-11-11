@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 
 import httpx
 import pytest
+from model_config_helpers import load_previous_default_config as load_config
 from openai import AsyncOpenAI
 from test_body_analysis import analysis_document
 from test_native_array_integration import request
@@ -13,7 +14,7 @@ from test_staged_native_generation import provider_body, provider_summaries, spl
 from test_writing_passages import facts
 
 from litagent.agents.planner import SurveyPlanner
-from litagent.config import AppConfig, LLMConfig, OrchestratorConfig, load_config
+from litagent.config import AppConfig, LLMConfig, OrchestratorConfig
 from litagent.contracts import build_config_summary
 from litagent.llm.client import (
     OpenAICompatibleClient,

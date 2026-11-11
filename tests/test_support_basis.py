@@ -4,9 +4,10 @@ import json
 from pathlib import Path
 
 import pytest
+from model_config_helpers import load_previous_default_config as load_config
 from test_scoped_evaluation import ScriptedLLM, ctx
 
-from litagent.config import EvalConfig, load_config
+from litagent.config import EvalConfig
 from litagent.eval.ragas_eval import RagasFaithfulnessEvaluator
 from litagent.eval.scoped import (
     CLASSIFICATION_CONTRACT,

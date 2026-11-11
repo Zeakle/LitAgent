@@ -365,7 +365,7 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
   localStorage:{getItem:()=>null,setItem(){}},location:{search:'?run=archive%3Afrozen-038-vit&view=quality'},history:{replaceState(){}},
   matchMedia:()=>({matches:false,addEventListener(){}}),URLSearchParams,Option:function(label,value){this.textContent=label;this.value=String(value);},console,setTimeout,clearTimeout});
  const mocks={createApiClient:()=>api,openEventStream(){throw Error('Unexpected event stream');},createExecutionWorkspace:()=>({render(){},bind(){}}),
-  bindAuditControls(){},bindAutomaticAuditPreferences:()=>({render(){},options:()=>({})}),bindFormatControls(){},
+  bindAuditControls(){},bindSurveyVerification:()=>({render(){},options:()=>({})}),bindFormatControls(){},
   createBenchmarkController:()=>({load(){},select(){},selectObservation(){}}),renderBenchmarkDetail(){},renderBenchmarkList(){},renderBenchmarkObservation(){},
   evidenceMap:()=>new Map(),renderEvidenceList(){},renderExecutionInspector(){},renderHistory(){},renderReview(){},
   renderOutline(){},navigateReportHeading(){},renderReportDocument:()=>({headings:[]}),renderSearchRecords(){}};

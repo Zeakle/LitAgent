@@ -7,11 +7,11 @@ import re
 from pathlib import Path
 
 import pytest
+from model_config_helpers import load_previous_default_config as load_config
 from test_planned_mixed_receipts import frozen_bundle
 from test_writer_v2 import case  # noqa: F401
 
 from litagent import frozen_writing as frozen
-from litagent.config import load_config
 from litagent.contracts import build_config_summary
 from litagent.runner import LitAgent, RunPolicy
 from litagent.safety.planned_budget import PlannedBudget, request_scope

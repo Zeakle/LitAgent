@@ -5,7 +5,7 @@ import subprocess
 from pathlib import Path
 
 
-def test_new_survey_actions_submit_automatic_modes_budget_and_operation_token():
+def test_new_survey_submits_default_jev_and_operation_token():
     """Run the app module against mock DOM and fetch without creating a Survey."""
     script = r"""
 const fs = require('node:fs'); const vm = require('node:vm'); const path = require('node:path');
@@ -16,11 +16,12 @@ const fs = require('node:fs'); const vm = require('node:vm'); const path = requi
   append(...children) { this.children.push(...children); } setAttribute(){} querySelectorAll(){return [];} close() { this.open=false; } showModal(){this.open=true;} add(option){this.options.push(option);} focus(){focused=this;}
  }
  const elements=new Map(); const $=id=>{if(!elements.has(id))elements.set(id,new Element());return elements.get(id);};
- $('#auto-audit-mode').options=['off','judge','judge_jev'].map(value=>({value,disabled:false})); $('#auto-audit-mode').value='off'; $('#auto-audit-max-versions').value='1';
+ $('#quality-policy').value='strict_auto_v2';
  $('#query-input').value='offline fixture'; $('#report-language').value='en'; $('#review-structure').value='academic_v1'; $('#new-citation-style').value='ieee'; $('#human-review').checked=true;
  const documentEvents={}; let focused=null; let activeDialog=null;
- const calls=[]; const caps={judge_available:true,jev_available:true,judge_model:'offline',jev_model:'jev-1.13.0',limits:{judge_calls:2,judge_max_output_tokens_per_call:16384,judge_timeout_seconds:180,jev:{max_requests:20,max_input_tokens:200000}}};
- const context={mode:'live',live_enabled:true,operation_token:'offline-operation-token',auto_audit_capabilities:caps};
+ const calls=[]; const caps={judge_available:false,jev_available:true};
+ const automatic_acceptance={default_generation_strategy:'body_summary_v3',default_budget_policy:'planned-budget-v7',maximum_survey_tokens:10000000,default_verification:{version:'optional-verification-v2',judge:false,jev:true}};
+ const context={mode:'live',live_enabled:true,operation_token:'offline-operation-token',auto_audit_capabilities:caps,automatic_acceptance};
  const sandbox=vm.createContext({
    document:{documentElement:{lang:''},addEventListener:(name,fn)=>{documentEvents[name]=fn;},querySelector:selector=>selector==='dialog[open]'?activeDialog:$(selector),querySelectorAll:()=>[],createElement:()=>new Element(),getElementById:()=>null}, localStorage:{getItem:()=>null,setItem(){}},
    location:{search:'',href:''},history:{replaceState(){}},URLSearchParams,AbortController,Option:function(label,value){this.textContent=label;this.value=String(value);},
@@ -38,7 +39,7 @@ const fs = require('node:fs'); const vm = require('node:vm'); const path = requi
  }
  await (await load('app.js')).evaluate(); await new Promise(resolve=>setImmediate(resolve));
  if(sandbox.document.documentElement.lang!=='zh-CN')throw Error('initial document language must match UI');
- if(!$('#auto-audit-max-versions').disabled)throw Error('default-off budget must be disabled');
+ if(!$('#verification-jev').checked)throw Error('default Jev must be on');
  $('#sidebar-toggle').events.click(); activeDialog={};
  documentEvents.keydown({key:'Escape',preventDefault(){throw Error('dialog Escape intercepted');}});
  if($('#run-sidebar').dataset.open!=='true')throw Error('dialog dismissal closed sidebar');
@@ -48,25 +49,17 @@ const fs = require('node:fs'); const vm = require('node:vm'); const path = requi
  if($('#new-run-dialog').open||calls.some(call=>call.url==='/survey'))throw Error('closing new Survey must not submit a paid run');
  async function submit(){await $('#new-run-form').events.submit({preventDefault(){}});return calls.filter(call=>call.url==='/survey').at(-1);}
  let request=await submit(); let body=JSON.parse(request.options.body);
- if(body.auto_audit_mode!=='off'||body.auto_audit_max_versions!==1)throw Error('default automatic authorization must be off/1');
+ if(body.verification.jev!==true||'judge' in body.verification||'auto_audit_mode' in body)throw Error('incorrect Jev-only payload');
+ if(body.generation_strategy!=='body_summary_v3'||body.budget_policy!=='planned-budget-v7')throw Error('native planned writer lost');
  if(request.options.headers['X-LitAgent-Operation-Token']!=='offline-operation-token')throw Error('missing mutation token');
- $('#auto-audit-mode').value='judge'; $('#auto-audit-mode').events.change(); $('#auto-audit-max-versions').value='2'; $('#auto-audit-max-versions').events.change();
- if($('#auto-audit-max-versions').disabled||!$('#auto-audit-budget-note').textContent.includes('16384'))throw Error('Judge budget disclosure missing');
- body=JSON.parse((await submit()).options.body);if(body.auto_audit_mode!=='judge'||body.auto_audit_max_versions!==2)throw Error('Judge authorization lost');
- $('#auto-audit-mode').value='judge_jev'; $('#auto-audit-mode').events.change(); $('#auto-audit-max-versions').value='3';
- if(!$('#auto-audit-budget-note').textContent.includes('200000'))throw Error('Jev input budget disclosure missing');
- body=JSON.parse((await submit()).options.body);if(body.auto_audit_mode!=='judge_jev'||body.auto_audit_max_versions!==3)throw Error('Judge/Jev authorization lost');
- caps.jev_available=false;caps.jev_reason='missing_key:TYPESAFE_API_KEY';$('#auto-audit-mode').events.change();
- if($('#auto-audit-mode').value!=='off'||!$('#auto-audit-mode').options[2].disabled||!$('#auto-audit-capabilities').textContent.includes('TYPESAFE_API_KEY'))throw Error('missing TypeSafe key gate broken');
- body=JSON.parse((await submit()).options.body);if(body.auto_audit_max_versions!==1)throw Error('disabled budget must serialize default');
+ caps.jev_available=false;caps.jev_reason='missing_key:TYPESAFE_API_KEY';$('#quality-policy').events.change();
  const before=calls.filter(call=>call.url==='/survey').length;
- $('#auto-audit-mode').value='judge_jev';await submit();
- if(calls.filter(call=>call.url==='/survey').length!==before)throw Error('programmatic unsupported selection reached backend');
- caps.judge_available=false;caps.judge_reason='audit_offline_or_disabled';$('#auto-audit-mode').events.change();
- if(!$('#auto-audit-mode').options[1].disabled||$('#auto-audit-mode').options[0].disabled||$('#open-new-run').disabled)throw Error('missing Judge must preserve normal Survey creation');
- caps.judge_available=true;$('#auto-audit-mode').value='judge';$('#auto-audit-mode').events.change();$('#auto-audit-max-versions').value='4';await submit();
- if(calls.filter(call=>call.url==='/survey').length!==before)throw Error('invalid budget reached backend');
- if(calls.some(call=>call.url.includes('/audits')&&call.options?.method==='POST'))throw Error('Survey preferences must not directly call audit');
+ await submit();
+ if(calls.filter(call=>call.url==='/survey').length!==before)throw Error('enabled Jev without key reached server');
+ $('#verification-jev').checked=false;$('#verification-jev').events.change();
+ body=JSON.parse((await submit()).options.body);
+ if(body.verification.jev!==false||'judge' in body.verification)throw Error('explicit Jev opt-out lost');
+ if(calls.some(call=>call.url.includes('/audits')&&call.options?.method==='POST'))throw Error('Survey preferences must not call report audits');
 })().catch(error=>{console.error(error);process.exit(1)});
 """
     _run_node(script, "src/litagent/static/flow-demo", modules=True)
@@ -95,18 +88,19 @@ const fs=require('node:fs');
     _run_node(script, "src/litagent/static/flow-demo/audit-controls.js")
 
 
-def test_automatic_labels_have_distinct_chinese_and_english_translations():
+def test_extraction_labels_have_distinct_chinese_and_english_translations():
     """Validate the real dictionaries used by the new Survey controls."""
     script = r"""
 const fs=require('node:fs');
 (async()=>{
  const {translator}=await import('data:text/javascript;base64,'+fs.readFileSync(process.argv[1]).toString('base64'));
- const keys=['autoAuditMode','autoAuditOff','autoAuditJudge','autoAuditJudgeJev','autoAuditMaxVersions','autoAuditOffHelp','autoAuditBudgetHelp','autoAuditPerVersion','autoAuditRules','autoAuditJudgeUnavailable','autoAuditJevUnavailable','autoAuditInvalidBudget'];
+ const keys=['optionalVerification','optionalJev','optionalVerificationHelp','autoAuditJevUnavailable','autoAuditUnavailableSelection'];
  for(const locale of ['zh-CN','en'])for(const key of keys)if(translator(locale)(key)===key)throw Error(`missing ${locale}:${key}`);
- if(translator('zh-CN')('autoAuditOff')!=='关闭'||translator('en')('autoAuditOff')!=='Off')throw Error('wrong locale dictionary');
+ if(!translator('zh-CN')('optionalVerificationHelp').includes('默认开启')||!translator('en')('optionalVerificationHelp').includes('defaults to on'))throw Error('wrong locale dictionary');
  if(translator('zh-CN')('cancelDialog')!=='取消'||translator('en')('cancelDialog')!=='Cancel')throw Error('dialog dismissal is not localized');
  const markup=fs.readFileSync(require('node:path').join(require('node:path').dirname(process.argv[1]),'index.html'),'utf8');
  if(!markup.includes('id="close-new-run" data-i18n="cancelDialog"'))throw Error('dialog dismissal translation is not wired');
+ if(/id="(verification-judge|auto-audit-mode|audit-start|audit-dialog)"/.test(markup))throw Error('a report Judge control remains exposed');
 })().catch(error=>{console.error(error);process.exit(1)});
 """
     _run_node(script, "src/litagent/static/flow-demo/i18n.js")
@@ -122,56 +116,23 @@ def _run_node(script: str, target: str, *, modules: bool = False) -> None:
     assert result.returncode == 0, result.stderr
 
 
-def test_optional_switches_submit_all_four_combinations_and_preserve_legacy():
-    """The real preference module sends independent choices without paid requests."""
-    script = r"""
-const fs = require('node:fs');
-(async()=>{
- class E {constructor(){this.events={};this.value='';this.checked=false;this.options=[];}addEventListener(k,fn){this.events[k]=fn;}}
- const elements=new Map();const $=id=>{if(!elements.has(id))elements.set(id,new E());return elements.get(id);};
- global.document={querySelector:$};
- $('#quality-policy').value='strict_auto_v2';$('#auto-audit-mode').options=['off','judge','judge_jev'].map(value=>({value}));
- let caps={judge_available:false,jev_available:false};
- const {bindAutomaticAuditPreferences}=await import('data:text/javascript;base64,'+fs.readFileSync(process.argv[1]).toString('base64'));
- const prefs=bindAutomaticAuditPreferences({capabilities:()=>caps,t:x=>x});
- const off=prefs.options();if(off.verification.judge||off.verification.jev||off.auto_audit_mode!=='off')throw Error('default requires a reviewer');
- if(!$('#verification-judge').disabled||!$('#verification-jev').disabled)throw Error('unavailable reviewer selectable');
- for(const judge of [false,true])for(const jev of [false,true]){
-  caps={judge_available:judge,jev_available:jev};$('#verification-judge').checked=judge;$('#verification-jev').checked=jev;prefs.render();
-  const selected=prefs.options();if(selected.verification.judge!==judge||selected.verification.jev!==jev)throw Error('coupled switches');
-  if(selected.verification.version!=='optional-verification-v1'||selected.auto_audit_mode!==(judge?'judge':'off'))throw Error('wrong contract');
-  if($('#optional-verification').hidden||!$('#legacy-audit-preferences').hidden)throw Error('wrong controls');
- }
- caps={judge_available:false,jev_available:true};$('#verification-judge').checked=true;
- let rejected=false;try{prefs.options();}catch{rejected=true;}if(!rejected)throw Error('missing enabled capability ignored');
- $('#quality-policy').value='strict_auto_v1';caps={judge_available:true,jev_available:true};prefs.render();
- const old=prefs.options();if(old.verification||old.auto_audit_mode!=='judge_jev')throw Error('old policy reinterpreted');
- $('#quality-policy').value='legacy';$('#auto-audit-mode').value='off';prefs.render();if(prefs.options().verification)throw Error('old request changed');
-})().catch(error=>{console.error(error);process.exit(1)});
-"""
-    _run_node(script, "src/litagent/static/flow-demo/audit-controls.js")
-
-
-def test_new_budget_default_tracks_optional_switches_without_changing_old_requests():
-    """Submit v4 only for the supported writer with both optional audits off."""
+def test_native_ragas_default_uses_server_v7_capacity_and_budget():
+    """Keep the new workbench request aligned with its server-owned RAGAS plan."""
     script = r"""
 const fs=require('node:fs');
 (async()=>{
  class E{constructor(){this.value='';this.checked=false;this.options=[];}addEventListener(){}}
  const elements=new Map(),$=id=>{if(!elements.has(id))elements.set(id,new E());return elements.get(id)};
  global.document={querySelector:$};
- $('#quality-policy').value='strict_auto_v2';$('#auto-audit-mode').options=['off','judge','judge_jev'].map(value=>({value}));
- const caps={judge_available:true,jev_available:true,default_generation_strategy:'body_summary_v2',default_budget_policy:'planned-budget-v4',maximum_survey_tokens:1000000};
- const {bindAutomaticAuditPreferences}=await import('data:text/javascript;base64,'+fs.readFileSync(process.argv[1]).toString('base64'));
- const prefs=bindAutomaticAuditPreferences({capabilities:()=>caps,t:x=>x});
- if(prefs.options().budget_policy!=='planned-budget-v4'||!$('#auto-audit-budget-note').textContent.includes('1,000,000'))throw Error('v4 default missing');
- for(const judge of [false,true])for(const jev of [false,true]){
-  $('#verification-judge').checked=judge;$('#verification-jev').checked=jev;prefs.render();
-  const v=prefs.options();
-  if((v.budget_policy==='planned-budget-v4')!==(!judge&&!jev))throw Error('unsupported planned audit combination');
-  if(!$('#auto-audit-budget-note').textContent.includes(judge||jev?'500,000':'1,000,000'))throw Error('budget note disagrees with request');
- }
- $('#quality-policy').value='legacy';prefs.render();if(prefs.options().budget_policy)throw Error('legacy changed');
+ $('#quality-policy').value='strict_auto_v2';
+ const caps={judge_available:true,jev_available:true,default_generation_strategy:'body_summary_v3',default_budget_policy:'planned-budget-v7',maximum_survey_tokens:10000000,default_verification:{version:'optional-verification-v2',judge:false,jev:true}};
+ const {bindSurveyVerification}=await import('data:text/javascript;base64,'+fs.readFileSync(process.argv[1]).toString('base64'));
+ const prefs=bindSurveyVerification({capabilities:()=>caps,t:x=>x});
+ const options=prefs.options();
+ if(options.generation_strategy!=='body_summary_v3'||options.budget_policy!=='planned-budget-v7'||options.capacity_policy!=='adaptive-capacity-v1')throw Error('native writer defaults lost');
+ if(!$('#auto-audit-budget-note').textContent.includes('10,000,000'))throw Error('server limit not displayed');
+ if(options.semantic_engine||options.endpoint||'judge' in options.verification)throw Error('client selected an internal engine, endpoint or Judge');
+ $('#quality-policy').value='legacy'; prefs.render(); if(Object.keys(prefs.options()).length)throw Error('legacy request changed');
 })().catch(e=>{console.error(e);process.exit(1)});
 """
     _run_node(script, "src/litagent/static/flow-demo/audit-controls.js")

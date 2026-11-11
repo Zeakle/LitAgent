@@ -283,10 +283,14 @@ def test_native_definitions_are_local_acyclic_and_deduplicate_exact_directories(
     ]
     assert len(definitions) == len(set(definitions))
     assert strict_request_reservation(messages, 32768, native) < 120000
-    # This is the exact pre-change result identity: only request permissions change.
+    from litagent.eval.results import HISTORICAL_RESULT_IDENTITIES
+
+    old = "a4273caa2f6f848615de3ea2a7dcff7ce6244f6e31408ceab84f82d4a1c65b2f"
+    assert old in HISTORICAL_RESULT_IDENTITIES
+    assert contract_identity() != old
     assert (
-        contract_identity()
-        == "a4273caa2f6f848615de3ea2a7dcff7ce6244f6e31408ceab84f82d4a1c65b2f"
+        reference_case["writer_envelope"]["evaluation_result_identity"]
+        == contract_identity()
     )
 
 
@@ -438,14 +442,20 @@ def test_real_064_old_owner_remains_readable_and_scientifically_unverified():
     assert hashlib.sha256(raw).hexdigest() == sha
     report = json.loads(raw)["report"]
     details = report["evaluation"]["faithfulness"]["details"]
-    model = EvaluationRunResult.from_details(
-        details, hashlib.sha256(report["survey"].encode()).hexdigest()
-    )
-    assert model is not None
-    assert model.metrics()["faithfulness"]["score"] is None
-    assert model.metrics()["internal_consistency"]["score"] is None
+    from litagent.observability.recorder import ArchiveRepository
+
+    stored = ArchiveRepository(archive.parent).get(archive.stem)
+    assert stored["report"] == report
+    assert stored["report"]["evaluation"]["faithfulness"]["score"] is None
+    assert stored["report"]["evaluation"]["internal_consistency"]["score"] is None
+    with pytest.raises(ValueError, match="evaluation_result_contract_identity_invalid"):
+        EvaluationRunResult.from_details(
+            details, hashlib.sha256(report["survey"].encode()).hexdigest()
+        )
     owner = details["stages"]["writer_envelope"]
     _envelope(owner)
-    with pytest.raises(ValueError, match="assessment_decision"):
+    # The new summary source-view identity rejects this historical live owner
+    # before the older assessment-decision guard. Read-only scores stay absent.
+    with pytest.raises(ValueError, match="writer_source_view_policy_invalid"):
         validate_writer_envelope(owner)
     assert archive.read_bytes() == raw

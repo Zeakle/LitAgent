@@ -171,7 +171,8 @@ def test_explicit_cross_result_guard_checks_separate_owned_passages():
 
 
 def test_strict_identity_binds_numeric_contract_without_changing_legacy():
-    from litagent.config import load_config
+    from model_config_helpers import load_previous_default_config as load_config
+
     from litagent.contracts import build_config_summary
 
     config = load_config()

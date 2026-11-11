@@ -50,6 +50,16 @@ def frozen_judge_fingerprint() -> str:
 
 def _funded_automatic_capacity(report: dict, budget) -> dict:
     """Authorize growth only from an entirely settled host-owned evaluation round."""
+    if (
+        report.get("evaluation", {})
+        .get("faithfulness", {})
+        .get("details", {})
+        .get("implementation")
+        == "ragas-cited-faithfulness-v1"
+    ):
+        from litagent.eval.ragas_native import funded_capacity
+
+        return funded_capacity(report, budget)
     from litagent.capacity import POLICY
     from litagent.safety.planned_accounting import validate_accounting_snapshot
     from litagent.safety.planned_budget import (
@@ -225,13 +235,23 @@ def freeze_automatic_inputs(
         if details.get("scope_notice_contract") != SCOPE_NOTICE_CONTRACT:
             raise ValueError("automatic_scope_notice_contract_mismatch")
     if policy == "strict_auto_v2":
-        from litagent.extraction_verification import verified_extraction_ledger
+        from litagent.extraction_verification import (
+            admitted_writing_ledger,
+            require_admission_policy,
+            verified_extraction_ledger,
+        )
         from litagent.quality import build_fact_cards
+        from litagent.workbench import extraction_admission_enabled
 
         try:
             if verification_enabled(metadata, "jev"):
-                ledger = verified_extraction_ledger(
-                    metadata.get("extraction_verification") or {}, ledger, run_id=run_id
+                receipt = metadata.get("extraction_verification") or {}
+                if extraction_admission_enabled(metadata):
+                    require_admission_policy(receipt, metadata["verification"])
+                ledger = (
+                    admitted_writing_ledger(receipt, ledger, cards, run_id=run_id)
+                    if extraction_admission_enabled(metadata)
+                    else verified_extraction_ledger(receipt, ledger, run_id=run_id)
                 )
             else:
                 # Keep the selected original evidence, including uncited cards.
@@ -844,16 +864,35 @@ def automatic_acceptance(
     if upfront:
         from litagent.extraction_verification import (
             LEDGER_CONTRACT,
+            admitted_writing_ledger,
+            require_admission_policy,
             verified_extraction_ledger,
         )
         from litagent.quality import build_fact_cards
+        from litagent.workbench import extraction_admission_enabled
 
         if jev_required:
             try:
-                accepted_ledger = verified_extraction_ledger(
-                    receipt,
-                    snapshot.get("ledger", {}),
-                    run_id=snapshot.get("source_run_id"),
+                if extraction_admission_enabled(metadata):
+                    require_admission_policy(receipt, metadata["verification"])
+                cards = (
+                    snapshot.get("report", {}).get("metadata", {}).get("fact_cards", {})
+                )
+                accepted_ledger = (
+                    admitted_writing_ledger(
+                        receipt,
+                        snapshot.get("ledger", {}),
+                        cards,
+                        run_id=snapshot.get("source_run_id"),
+                    )
+                    if extraction_admission_enabled(
+                        snapshot.get("report", {}).get("metadata", {})
+                    )
+                    else verified_extraction_ledger(
+                        receipt,
+                        snapshot.get("ledger", {}),
+                        run_id=snapshot.get("source_run_id"),
+                    )
                 )
                 if snapshot.get("report", {}).get("metadata", {}).get(
                     "fact_cards"

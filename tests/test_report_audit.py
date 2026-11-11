@@ -492,7 +492,9 @@ async def test_jev_blocked_by_unfaithful_judge(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_api_exact_sha_auth_version_and_no_paid_calls(tmp_path, monkeypatch):
+async def test_api_preserves_historical_audit_reads_and_retires_new_attempts(
+    tmp_path, monkeypatch
+):
     from litagent import api as module
 
     monkeypatch.setenv("LLM_API_KEY", "offline-key")
@@ -510,34 +512,38 @@ async def test_api_exact_sha_auth_version_and_no_paid_calls(tmp_path, monkeypatc
         return snapshot()
 
     monkeypatch.setattr(module, "_report_audit_snapshot", bound)
+    historical = await wait_result(
+        service, await service.submit(snapshot(), include_jev=False)
+    )
+    submit = AsyncMock(
+        side_effect=AssertionError("Retired HTTP route submitted an audit")
+    )
+    monkeypatch.setattr(service, "submit", submit)
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=module.app), base_url="http://test"
     ) as client:
         prefix = "/survey/report-1/versions/1/audits"
         dry = await client.get(prefix + "/dry-run?include_jev=true")
-        assert dry.json()["paid_calls"] == 0 and not service._tasks
+        assert dry.status_code == 410 and dry.json()["detail"] == "report_audit_retired"
         body = {"report_sha256": snapshot()["source_report_sha256"]}
-        assert (await client.post(prefix, json=body)).status_code == 403
         headers = {"X-LitAgent-Operation-Token": module.app.state.operation_token}
-        bad = await client.post(
-            prefix, json={"report_sha256": "0" * 64}, headers=headers
-        )
-        assert bad.status_code == 409
+        assert (
+            await client.post(prefix, json=body, headers=headers)
+        ).status_code == 410
         missing = await client.get("/survey/report-1/versions/2/audits")
         assert missing.status_code == 404
-        invalid = await client.post(
-            prefix, json={**body, "model": "evil"}, headers=headers
-        )
-        assert invalid.status_code == 422
-        started = await client.post(prefix, json=body, headers=headers)
-        assert started.status_code == 202
-        result = await wait_result(service, started.json())
-        assert (await client.get(prefix + "/" + result["audit_id"])).json()[
+        listing = (await client.get(prefix)).json()
+        assert listing["capabilities"]["judge_available"] is False
+        assert listing["audits"][0]["audit_id"] == historical["audit_id"]
+        assert (await client.get(prefix + "/" + historical["audit_id"])).json()[
             "status"
         ] == "completed"
         assert (
-            await client.get("/survey/report-1/versions/2/audits/" + result["audit_id"])
+            await client.get(
+                "/survey/report-1/versions/2/audits/" + historical["audit_id"]
+            )
         ).status_code == 404
+    submit.assert_not_awaited()
     await service.shutdown()
 
 

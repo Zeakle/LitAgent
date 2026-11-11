@@ -32,7 +32,11 @@ from litagent.agents.relevance_gate import RelevanceGateWorker
 from litagent.agents.reviewer import ReviewerWorker
 from litagent.agents.search import SearchWorker
 from litagent.agents.synthesis import SynthesisWorker
-from litagent.body_quality import analysis_repair_diagnostics, bound_repair_diagnostics
+from litagent.body_quality import (
+    analysis_repair_diagnostics,
+    bound_repair_diagnostics,
+    report_repair_diagnostics,
+)
 from litagent.config import AppConfig
 from litagent.context.budget import BudgetManager
 from litagent.context.evidence_selector import EvidenceSelection, EvidenceSelector
@@ -433,6 +437,21 @@ class LitAgent:
                 task.input_data["verification"] = options.verification.model_dump(
                     mode="json"
                 )
+            if task.agent_type == "extractor":
+                from litagent.extraction_verification import admission_timeout_ms
+                from litagent.workbench import extraction_admission_enabled
+
+                previous = task.input_data.pop("extraction_admission_timeout_ms", 0)
+                extra = (
+                    admission_timeout_ms(
+                        options.verification.extraction_resource_policy
+                    )
+                    if extraction_admission_enabled(options.model_dump())
+                    else 0
+                )
+                task.timeout_ms += extra - previous
+                if extra:
+                    task.input_data["extraction_admission_timeout_ms"] = extra
             if is_strict_policy(options.quality_policy):
                 task.input_data["quality_policy"] = options.quality_policy
                 task.max_retries = 0
@@ -1065,11 +1084,14 @@ class LitAgent:
         from litagent.safety.planned_budget import locked_writer_envelope
         from litagent.writing_v2 import _host_unverified_repair_selected
 
+        envelope = locked_writer_envelope(self._cost_budget) or {}
+        native_recovery = bool(envelope.get("semantic_engine"))
         inventory_recovery_enabled = (
-            locked_writer_envelope(self._cost_budget) or {}
-        ).get("inventory_recovery_contract") in RECOVERY_CONTRACTS
+            envelope.get("inventory_recovery_contract") in RECOVERY_CONTRACTS
+        )
         if (
             initial_quality["status"] == "failed"
+            or (native_recovery and initial_quality["status"] != "passed")
             or (
                 options.capacity_policy == "adaptive-capacity-v1"
                 and initial_evaluation.get("faithfulness", {})
@@ -1109,6 +1131,7 @@ class LitAgent:
             strict = is_strict_policy(options.quality_policy)
             working = {**report_data, "metadata": dict(metadata)}
             attempts = []
+            repetition_retried = False
             seen = {report_data["survey"]}
             from litagent.safety.planned_budget import (
                 repair_limit as planned_repair_limit,
@@ -1123,12 +1146,39 @@ class LitAgent:
                 }
             if options.quality_policy == "strict_auto_v2":
                 repair_limit -= len(metadata["targeted_repair_state"]["attempts"])
+            if native_recovery and repair_limit <= 0:
+                from litagent.eval.ragas_repair import recovery_decision
+
+                decision = recovery_decision(
+                    report_data,
+                    self._build_eval_context(
+                        query=query, survey=report_data["survey"], results=results
+                    ),
+                    self._cost_budget,
+                )
+                metadata["recovery_decision"] = decision
+                metadata["evidence_rewrite"] = {
+                    "attempted": False,
+                    "committed": False,
+                    "reason_code": decision["reason_code"],
+                }
             for attempt in range(repair_limit):
+                attempt_results = results
+                if working["metadata"].get("repetition_retry_base_sha256"):
+                    attempt_results = {
+                        **results,
+                        "adversarial_review": {
+                            **results["adversarial_review"],
+                            "writing_bindings": working["metadata"]["writing_bindings"],
+                            "writer_document": working["metadata"]["writer_document"],
+                            "final_draft": working["survey"],
+                        },
+                    }
                 rewrite = await _await_with_cancellation(
                     self._attempt_evidence_rewrite(
                         query=query,
                         report_data=working,
-                        results=results,
+                        results=attempt_results,
                         initial_evaluation=working["evaluation"],
                         initial_quality=working["quality"],
                         report_language=options.report_language,
@@ -1162,6 +1212,10 @@ class LitAgent:
                     ),
                     "candidate_quality": rewrite.candidate_quality,
                 }
+                if native_recovery:
+                    decision = working["metadata"]["recovery_decision"]
+                    metadata["recovery_decision"] = decision
+                    outcome["recovery_decision"] = decision
                 if strict:
                     outcome.update(
                         candidate=rewrite.candidate,
@@ -1197,6 +1251,10 @@ class LitAgent:
                         continue
                     break
                 if rewrite.committed:
+                    if attempt_results is not results:
+                        results["adversarial_review"].update(
+                            attempt_results["adversarial_review"]
+                        )
                     report_data.update(
                         {k: working[k] for k in ("survey", "evaluation", "quality")}
                     )
@@ -1209,6 +1267,9 @@ class LitAgent:
                     "body_summary_v2",
                     "body_summary_v3",
                 ):
+                    if working["metadata"].pop("repetition_retry_base_sha256", None):
+                        # Keep one temporary retry separate from the published report.
+                        working = {**report_data, "metadata": dict(metadata)}
                     from litagent.capacity_repair import retryable_map_failure
 
                     if retryable_map_failure(
@@ -1224,7 +1285,33 @@ class LitAgent:
                         continue
                     if rewrite.reason_code == "writer_candidate_failed":
                         if options.generation_strategy == "body_summary_v3":
-                            # Retry the immutable original, never a failed candidate.
+                            from litagent.eval.ragas_repair import repetition_followup
+
+                            if (
+                                not repetition_retried
+                                and attempt + 1 < repair_limit
+                                and repetition_followup(
+                                    report_data["survey"],
+                                    report_data["evaluation"],
+                                    rewrite,
+                                    envelope,
+                                )
+                            ):
+                                working.update(
+                                    survey=rewrite.candidate,
+                                    evaluation=rewrite.candidate_evaluation,
+                                    quality=rewrite.candidate_quality,
+                                )
+                                working["metadata"].update(rewrite.candidate_metadata)
+                                working["metadata"]["repetition_retry_base_sha256"] = (
+                                    hashlib.sha256(
+                                        rewrite.candidate.encode()
+                                    ).hexdigest()
+                                )
+                                outcome["next_repair_base_sha256"] = working[
+                                    "metadata"
+                                ]["repetition_retry_base_sha256"]
+                                repetition_retried = True
                             continue
                         if rewrite.candidate and rewrite.candidate_evaluation:
                             working.update(
@@ -1297,6 +1384,15 @@ class LitAgent:
                 "attempts": metadata.get("evidence_rewrite_attempts", []),
                 "final_evaluation": report_data["evaluation"],
             }
+            if native_recovery:
+                from litagent.eval.ragas_repair import (
+                    recovery_summary,
+                    sanitize_recovery,
+                )
+
+                recovery = sanitize_recovery(recovery_summary(metadata))
+                if recovery:
+                    metadata["evaluation_history"]["recovery"] = recovery
         report_data["delivery"] = derive_delivery(
             report_data["partial"], report_data["quality"], degradation_codes
         )
@@ -1305,12 +1401,12 @@ class LitAgent:
     async def _automatic_review(
         self, report: dict, query: str, results: Mapping, cancellation
     ) -> None:
-        """Freeze a final version and enforce Evaluation plus enabled audit gates."""
+        """Bind the final version and enforce the active acceptance contract."""
         from litagent.eval.automatic import (
             automatic_acceptance,
             freeze_automatic_inputs,
         )
-        from litagent.report_audit import ReportAuditService, atomic_json
+        from litagent.report_audit import atomic_json
 
         report.setdefault("metadata", {})["query"] = query
         report["delivery"] = {
@@ -1318,8 +1414,6 @@ class LitAgent:
             "publishable": False,
             "reason_codes": ["automatic_review_pending"],
         }
-        owned = False
-        service = None
         snapshot = {
             "source_run_id": self._session_id,
             "source_report_revision": 1,
@@ -1361,8 +1455,10 @@ class LitAgent:
                 "origin": self._config.llm.base_url,
             }
             if verification_enabled(report["metadata"], "judge"):
-                owned = self._audit_service is None
-                service = self._audit_service or ReportAuditService(self._config)
+                # Only the standalone benchmark may explicitly supply its old audit owner.
+                service = self._audit_service
+                if service is None:
+                    raise ValueError("automatic_report_audit_retired")
                 submitted = await service.submit(
                     snapshot,
                     include_jev=report["metadata"].get("quality_policy")
@@ -1401,9 +1497,6 @@ class LitAgent:
             )
             acceptance["failure_codes"].append(reason)
             acceptance.update(status="failed", publishable=False)
-        finally:
-            if owned and service is not None:
-                await service.shutdown()
         if report["metadata"].get("body_quality") == "analysis_v1":
             from litagent.body_quality import body_diagnostics
 
@@ -1466,6 +1559,14 @@ class LitAgent:
                 "skipped", 0, 0, 0, "claims_index_unavailable"
             )
         metadata = report_data.setdefault("metadata", {})
+        if metadata.get("generation_strategy") == "body_summary_v3":
+            journal_path = Path(str(self._targeted_repair_path()) + ".writer-v2.json")
+            if journal_path.is_file():
+                from litagent.writing_v2 import writer_format_status
+
+                status = writer_format_status(json.loads(journal_path.read_text()))
+                if status is not None:
+                    metadata["writer_format"] = status
         metadata["claims_promotion"] = promotion.to_dict()
         if allow_trusted_writes:
             metadata["memory"] = await _await_with_cancellation(
@@ -1751,7 +1852,13 @@ class LitAgent:
             )
 
         self._cost_budget = CostBudget(
-            max_tokens=cfg.safety.max_cost_tokens, warn_ratio=cfg.safety.cost_warn_ratio
+            max_tokens=cfg.safety.max_cost_tokens,
+            warn_ratio=cfg.safety.cost_warn_ratio,
+            **(
+                {"resource_profile": cfg.safety.planned_run_limits.profile}
+                if getattr(cfg.safety.planned_run_limits, "profile", None)
+                else {}
+            ),
         )
 
         try:
@@ -1871,17 +1978,37 @@ class LitAgent:
         )
         workers.append(self._relevance_gate)
 
+        from litagent.eval.engine_policy import KEYED_GLOBAL_QUOTED_OMISSIONS
+        from litagent.extraction_verification import (
+            ADMISSION_VERSION,
+            ExtractionVerifier,
+        )
         from litagent.rag.targeted_fulltext import TargetedFulltext
 
+        prefer_method_sections = (
+            cfg.eval.native_global_unit_response == KEYED_GLOBAL_QUOTED_OMISSIONS
+        )
         self._extractor = ExtractorWorker(
             strategy=self._extraction_strategy,
             max_concurrent=cfg.extractor.max_concurrent,
             detector=InjectionDetector(),
             max_papers=cfg.extractor.max_papers,
-            fulltext_loader=TargetedFulltext(cfg.rag),
+            fulltext_loader=TargetedFulltext(
+                cfg.rag,
+                preparation_policy=cfg.extractor.evidence_preparation_policy,
+                prefer_method_sections=prefer_method_sections,
+            ),
             failure_callback=self._cost_budget.stop_after_worker_failure,
             strict_paper_batch_size=2,
             strict_grounded_claims=True,
+            evidence_preparation_policy=cfg.extractor.evidence_preparation_policy,
+            preparation_budget_path_provider=lambda: Path(
+                str(self._targeted_repair_path()) + ".preparation-ledger.json"
+            ),
+            extraction_verifier=ExtractionVerifier(
+                protocol=ADMISSION_VERSION, trace_hook=self._trace_hook
+            ),
+            run_id_provider=lambda: self._session_id,
         )
         workers.append(self._extractor)
 
@@ -1893,11 +2020,13 @@ class LitAgent:
             top_k_per_section=cfg.context.evidence_top_k_per_section,
             max_items=cfg.context.evidence_max_items,
             per_paper_cap=cfg.context.evidence_per_paper_cap,
+            prefer_method_sections=prefer_method_sections,
             trace_hook=self._trace_hook,
         )
 
-        from litagent.extraction_verification import ExtractionVerifier
+        from litagent.eval.engine_policy import configured_engine
         from litagent.output_capacity import configured_output_tokens
+        from litagent.run_limits import configured_run_limits
 
         self._synthesis = SynthesisWorker(
             llm=self._stage_llm("generation"),
@@ -1917,6 +2046,8 @@ class LitAgent:
             evidence_selector=self._evidence_selector,
             capacity_config=cfg.capacity,
             output_tokens_provider=lambda: configured_output_tokens(cfg),
+            run_limits_provider=lambda: configured_run_limits(cfg),
+            semantic_engine_provider=lambda: configured_engine(cfg),
             context_config=cfg.context,
             trace_hook=self._trace_hook,
             thinking_mode=cfg.adversarial.thinking_mode,
@@ -2355,6 +2486,9 @@ class LitAgent:
                 survey=survey,
                 results=results,
             )
+            from litagent.safety.planned_budget import locked_writer_envelope
+
+            frozen_eval_envelope = locked_writer_envelope(self._cost_budget)
             if inventory_recovery is not None:
                 context["inventory_recovery"] = inventory_recovery
                 context["recovery_on_send"] = recovery_on_send
@@ -2365,6 +2499,11 @@ class LitAgent:
                 identity = digest([self._session_id, survey, phase])
                 if inventory_recovery is not None:
                     identity = digest([identity, inventory_recovery])
+                if (frozen_eval_envelope or {}).get("semantic_engine"):
+                    identity = digest(
+                        [identity, frozen_eval_envelope["semantic_engine"]["identity"]]
+                    )
+                    context["native_evaluation_identity"] = identity
                 progress_root = self._evaluation_progress_root or Path(
                     "artifacts/evaluations"
                 )
@@ -2388,7 +2527,13 @@ class LitAgent:
                                     survey.encode()
                                 ).hexdigest(),
                                 "phase": phase,
-                                "evaluation_version": "survey-evaluation-v3",
+                                "evaluation_version": (
+                                    "survey-evaluation-ragas-v1"
+                                    if (
+                                        locked_writer_envelope(self._cost_budget) or {}
+                                    ).get("semantic_engine")
+                                    else "survey-evaluation-v3"
+                                ),
                                 **(
                                     {
                                         "body_analysis_contract": "body-analysis-v1",
@@ -2448,9 +2593,10 @@ class LitAgent:
             )
             from litagent.eval.results import result as metric_result
             from litagent.eval.results import selected as independent_results
-            from litagent.safety.planned_budget import locked_writer_envelope
 
-            if independent_results(locked_writer_envelope(self._cost_budget)):
+            if independent_results(frozen_eval_envelope) or (
+                frozen_eval_envelope or {}
+            ).get("semantic_engine"):
                 run = await execute_evaluation(
                     llm=self._stage_llm("evaluation"),
                     survey=survey,
@@ -2704,6 +2850,25 @@ class LitAgent:
         """Reject rewrites that degrade previously passing metrics."""
         old = initial.get("faithfulness", {}).get("details", {})
         new = candidate.get("faithfulness", {}).get("details", {})
+        if old.get("implementation") == "ragas-cited-faithfulness-v1":
+            return any(
+                item.get("passed") is True
+                and not item.get("skipped")
+                and (
+                    candidate.get(name, {}).get("passed") is not True
+                    or candidate.get(name, {}).get("skipped")
+                )
+                for name, item in initial.items()
+            ) or any(
+                row.get("answered")
+                and not any(
+                    newer.get("requirement_id") == row.get("requirement_id")
+                    and newer.get("answered")
+                    for newer in new.get("core_coverage", [])
+                )
+                for row in old.get("core_coverage", [])
+            )
+
         if old.get("evaluation_version") == "survey-evaluation-v3":
             preserved = {
                 (c.get("claim_text"), tuple(c.get("evidence_ids", [])))
@@ -2979,6 +3144,10 @@ class LitAgent:
         from litagent.report_render import build_report_source_units
 
         details = evaluation.get("faithfulness", {}).get("details", {})
+        if details.get("implementation") == "ragas-cited-faithfulness-v1":
+            from litagent.eval.ragas_native import completed_repair
+
+            return completed_repair(details, survey)
         stages = details.get("stages", {})
         assertions = details.get("assertions", [])
         diagnostics = bound_repair_diagnostics(details)
@@ -3067,6 +3236,7 @@ class LitAgent:
                 or (
                     claim.get("status") == "supported"
                     and diagnostic not in analysis_repair_diagnostics(details)
+                    and diagnostic not in report_repair_diagnostics(details)
                 )
                 or diagnostic.get("diagnostic_source") != "survey-evaluation-v3"
                 or diagnostic.get("alignment_status") != "exact"
@@ -3202,8 +3372,44 @@ class LitAgent:
         from litagent.safety.planned_budget import locked_writer_envelope
 
         inventory_envelope = locked_writer_envelope(self._cost_budget) or {}
+        if inventory_envelope.get("semantic_engine"):
+            from litagent.eval.ragas_repair import recover_inventory, recovery_decision
+            from litagent.writing_v2 import repair_report
+
+            decision = recovery_decision(
+                report_data,
+                self._build_eval_context(
+                    query=query, survey=report_data["survey"], results=results
+                ),
+                self._cost_budget,
+            )
+            report_data["metadata"]["recovery_decision"] = decision
+            if decision["action"] == "stop":
+                return RewriteOutcome(
+                    False, False, None, None, None, None, decision["reason_code"]
+                )
+            if decision["action"] == "inventory":
+                return await recover_inventory(
+                    self,
+                    query=query,
+                    report=report_data,
+                    results=results,
+                    decision=decision,
+                )
+            return await repair_report(
+                self,
+                query=query,
+                report_data=report_data,
+                results=results,
+                initial_evaluation=initial_evaluation,
+                initial_quality=initial_quality,
+                report_language=report_language,
+                recovery=decision,
+            )
         inventory_contract = inventory_envelope.get("inventory_recovery_contract")
-        if inventory_contract in RECOVERY_CONTRACTS:
+        if inventory_contract in RECOVERY_CONTRACTS and not inventory_envelope.get(
+            "semantic_engine"
+        ):
             feedback = inventory_recovery_feedback(
                 report_data["survey"],
                 initial_evaluation.get("faithfulness", {}).get("details", {}),

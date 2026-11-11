@@ -192,7 +192,6 @@ def test_schema_removes_duplicate_responsibilities_only():
     updated = project_global_schema(schema)
     assert updated["properties"]["code"]["enum"] == [
         "missing_assertion",
-        "contradiction",
     ]
     assert schema["properties"]["code"]["enum"][0] == "non_atomic"
     with pytest.raises(Exception):

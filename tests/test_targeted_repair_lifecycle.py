@@ -8,13 +8,13 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from model_config_helpers import load_previous_default_config as load_config
 from test_extraction_verification import verify
 from test_scope_notice_contract import notice_document as full_document
 from test_strict_quality import valid_details
 
 from litagent.agents.adversarial import AdversarialReviewWorker
 from litagent.agents.synthesis import SynthesisWorker
-from litagent.config import load_config
 from litagent.llm.client import LLMResponse
 from litagent.orchestrator.task_graph import SubTask, TaskGraph
 from litagent.quality import (

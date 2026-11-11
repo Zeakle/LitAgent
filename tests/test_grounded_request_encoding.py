@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from model_config_helpers import load_previous_default_config as load_config
 from test_native_writing_schema import (
     assert_projected_sources,
     packet,
@@ -13,7 +14,6 @@ from test_native_writing_schema import (
 )
 
 from litagent.agents.synthesis import SynthesisWorker
-from litagent.config import load_config
 from litagent.contracts import build_config_summary
 from litagent.observability.recorder import RedactingTraceHook
 from litagent.orchestrator.task_graph import SubTask

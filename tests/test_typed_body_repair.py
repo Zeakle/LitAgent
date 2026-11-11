@@ -541,8 +541,9 @@ async def test_synthesis_repair_reviewer_and_actual_v3_evaluator_share_frozen_so
     )
     token = set_task_id("synthesis")
     try:
+        from model_config_helpers import load_previous_default_config as load_config
+
         from litagent.agents.adversarial import AdversarialReviewWorker
-        from litagent.config import load_config
         from litagent.runner import LitAgent
 
         worker = AdversarialReviewWorker(

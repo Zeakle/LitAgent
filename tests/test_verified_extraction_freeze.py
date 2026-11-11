@@ -4,10 +4,10 @@ import copy
 from unittest.mock import AsyncMock
 
 import pytest
+from model_config_helpers import load_previous_default_config as load_config
 from test_extraction_verification import selection, verify
 from test_strict_automatic import frozen, passing_audit
 
-from litagent.config import load_config
 from litagent.eval.automatic import automatic_acceptance, freeze_automatic_inputs
 from litagent.eval.base import CTX_EVIDENCE
 from litagent.extraction_verification import verified_extraction_ledger

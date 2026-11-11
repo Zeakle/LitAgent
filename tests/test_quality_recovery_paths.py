@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from model_config_helpers import load_previous_default_config as load_config
 from test_chapter_scope_contract import materials
 from test_quantitative_attribution import evaluate_claim
 from test_strict_quality import draft, to_native, valid_details
@@ -15,7 +16,6 @@ from test_support_passages import selected
 
 from litagent.agents.adversarial import AdversarialReviewWorker
 from litagent.agents.synthesis import SynthesisWorker
-from litagent.config import load_config
 from litagent.eval.scoped import (
     build_source_fragments,
     build_support_passages,

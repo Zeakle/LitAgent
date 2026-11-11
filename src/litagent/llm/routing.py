@@ -32,6 +32,10 @@ class ModelBoundClient(BaseLLMClient):
         """Borrow the transport owner's timeout policy without copying budgets."""
         return getattr(self._base, "_request_timeouts", {})
 
+    def for_model(self, model: str, stage: str):
+        """Bind a new role on the same provider and accounting owner."""
+        return ModelBoundClient(self._base, model, stage)
+
     async def chat(self, messages, **kwargs):
         """Reject model substitution and preserve accounting on identity failures."""
         if kwargs.get("model", self._model) != self._model:

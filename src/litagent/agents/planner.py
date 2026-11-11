@@ -313,7 +313,17 @@ class SurveyPlanner:
             resp = await chat_with_timeout(
                 self._llm,
                 [
-                    {"role": "system", "content": _DECOMPOSE_SYSTEM},
+                    {
+                        "role": "system",
+                        "content": (
+                            _DECOMPOSE_SYSTEM.replace(
+                                "2-3 focused",
+                                f"2-{self._config.max_sub_queries} focused",
+                            )
+                            if self._config.max_sub_queries > 3
+                            else _DECOMPOSE_SYSTEM
+                        ),
+                    },
                     {"role": "user", "content": wrap_xml("topic", query)},
                 ],
                 response_format={"type": "json_object"},

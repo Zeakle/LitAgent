@@ -171,8 +171,8 @@ def test_final_native_permissions_cannot_disagree_with_host_claim(reason_payload
         codec.project_format(native, reason_payload)
 
 
-def test_wire_revision_does_not_change_scientific_result_identity():
-    assert (
-        result_identity()
-        == "a4273caa2f6f848615de3ea2a7dcff7ce6244f6e31408ceab84f82d4a1c65b2f"
-    )
+def test_wire_revision_does_not_change_scientific_result_identity(monkeypatch):
+    baseline = result_identity()
+    monkeypatch.setattr(codec, "INSTRUCTION", codec.INSTRUCTION + "\nWire-only test.")
+    result_identity.cache_clear()
+    assert result_identity() == baseline

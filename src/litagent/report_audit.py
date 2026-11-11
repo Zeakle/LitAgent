@@ -25,6 +25,7 @@ from litagent.config import AppConfig
 from litagent.llm.client import OpenAICompatibleClient
 from litagent.observability.recorder import RedactingTraceHook
 from litagent.observability.tracing import LangFuseTracer
+from litagent.operational_limits import configured_ceiling, is_uplifted
 
 TERMINAL = {"completed", "partial", "failed", "cancelled", "interrupted"}
 
@@ -72,7 +73,7 @@ class ReportAuditService:
         self.trace_factory = trace_factory
         self._tasks: dict[str, asyncio.Task] = {}
         self._lock = asyncio.Lock()
-        self._semaphore = asyncio.Semaphore(1)
+        self._semaphore = asyncio.Semaphore(configured_ceiling(config, 1))
         self._initialized = False
 
     def _db(self):
@@ -159,11 +160,29 @@ class ReportAuditService:
                 if os.getenv("LLM_API_KEY") or not os.getenv("OPENAI_API_KEY")
                 else "OPENAI_API_KEY"
             ),
-            max_tokens=16384,
-            timeout_seconds=180,
+            max_tokens=configured_ceiling(self.config, 16384),
+            timeout_seconds=configured_ceiling(self.config, 180),
             max_retries=0,
             response_format_mode=cfg.judge_response_format,
             thinking_mode=cfg.judge_thinking_mode,
+        )
+
+    def jev_config(self, *, enabled=False):
+        """Resolve one server-owned Jev profile for both display and actual requests."""
+        if not is_uplifted(self.config):
+            return JevAuditConfig(enabled=enabled)
+        base = JevAuditConfig().model_dump()
+        for key in (
+            "timeout_seconds",
+            "max_questions_per_batch",
+            "concurrency",
+            "max_requests",
+            "max_input_tokens",
+            "max_request_bytes",
+        ):
+            base[key] = configured_ceiling(self.config, base[key])
+        return JevAuditConfig(
+            **{**base, "enabled": enabled, "resource_revision": "operational-plus20-v1"}
         )
 
     def capabilities(self) -> dict:
@@ -201,13 +220,14 @@ class ReportAuditService:
             ),
             "jev_model": "jev-1.13.0",
             "limits": {
-                "concurrency": 1,
+                "concurrency": configured_ceiling(self.config, 1),
                 "judge_calls": 2,
-                "judge_max_output_tokens_per_call": 16384,
-                "judge_timeout_seconds": 180,
+                "judge_total_tokens": configured_ceiling(self.config, 100000),
+                "judge_max_output_tokens_per_call": judge.max_tokens,
+                "judge_timeout_seconds": judge.timeout_seconds,
                 "judge_input_budget_tokens": cfg.judge_input_tokens,
                 "judge_context_tokens": cfg.judge_context_tokens,
-                "jev": JevAuditConfig().model_dump(
+                "jev": self.jev_config().model_dump(
                     exclude={"base_url", "api_key_env", "enabled"}
                 ),
             },
@@ -497,7 +517,7 @@ class ReportAuditService:
         judge = self.judge_config()
         context = SurveyAuditContext.model_validate(snapshot["context"])
         snapshot["context"] = context.model_dump(mode="json")
-        jev = JevAuditConfig(enabled=include_jev)
+        jev = self.jev_config(enabled=include_jev)
         if snapshot.get("frozen_inventory"):
             from litagent.eval.automatic import frozen_judge_fingerprint
 
@@ -731,7 +751,7 @@ class ReportAuditService:
                     context_max_tokens=self.config.report_audit.judge_context_tokens,
                     input_budget_tokens=self.config.report_audit.judge_input_tokens,
                     frozen_inventory=snapshot.get("frozen_inventory"),
-                    total_budget_tokens=100000,
+                    total_budget_tokens=configured_ceiling(self.config, 100000),
                 )
                 result.update(
                     judge=judge.model_dump(mode="json"),

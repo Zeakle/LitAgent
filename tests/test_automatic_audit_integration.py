@@ -152,6 +152,8 @@ def test_automatic_policy_rejects_unbounded_or_untrusted_request_fields(model, e
 @pytest.fixture
 def audit_api(monkeypatch, tmp_path):
     """Stub submission ownership while keeping actual HTTP authorization checks."""
+    monkeypatch.setenv("LITAGENT_DEMO_MODE", "live")
+    monkeypatch.setenv("TYPESAFE_API_KEY", "offline-jev-key")
     capabilities = {
         "enabled": True,
         "judge_available": True,
@@ -183,27 +185,31 @@ def audit_api(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_automatic_survey_requires_same_origin_token_without_human_review(
-    audit_api,
+@pytest.mark.parametrize("explicit_null", [False, True])
+async def test_strict_survey_defaults_to_jev_with_same_origin_token(
+    audit_api, explicit_null
 ):
-    """Automatic billing consent remains protected for unattended Surveys."""
+    """Omitted and null verification both select the active Jev-only contract."""
     _, create, _ = audit_api
-    body = {"query": "question", "auto_audit_mode": "judge", "human_review": False}
+    body = {"query": "question", "quality_policy": "strict_auto_v2"}
+    if explicit_null:
+        body["verification"] = None
     headers = {"X-LitAgent-Operation-Token": api.app.state.operation_token}
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=api.app), base_url="http://test"
     ) as client:
         assert (await client.post("/survey", json=body)).status_code == 403
-        create.assert_not_called()
         denied = await client.post(
-            "/survey", json=body, headers={**headers, "Origin": "http://evil.test"}
+            "/survey", json=body, headers={**headers, "Origin": "http://other.test"}
         )
         assert denied.status_code == 403
         create.assert_not_called()
         accepted = await client.post("/survey", json=body, headers=headers)
-        assert accepted.status_code == 202
-        policy = create.call_args.kwargs["options"]
-        assert policy.auto_audit_mode == "judge" and policy.auto_audit_max_versions == 1
+    assert accepted.status_code == 202, accepted.text
+    policy = create.call_args.kwargs["options"]
+    assert policy.verification.version == "optional-verification-v2"
+    assert policy.verification.jev and not policy.verification.judge
+    assert policy.auto_audit_mode == "off"
 
 
 @pytest.mark.asyncio
@@ -220,49 +226,48 @@ async def test_old_survey_request_remains_off_without_new_token_requirement(audi
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "mode,disabled,reason",
+    "requested",
     [
-        ("judge", "judge_available", "missing_key:LLM_API_KEY"),
-        ("judge_jev", "jev_available", "missing_key:TYPESAFE_API_KEY"),
+        {"auto_audit_mode": "judge"},
+        {"auto_audit_mode": "judge_jev"},
+        {"quality_policy": "strict_auto_v1"},
+        {"quality_policy": "strict_auto_v2", "verification": {"judge": True}},
     ],
 )
-async def test_unavailable_auto_capability_rejects_before_survey_creation(
-    audit_api, mode, disabled, reason
-):
-    """Missing configuration cannot consume generation cost first."""
-    capabilities, create, _ = audit_api
-    capabilities[disabled] = False
-    capabilities["judge_reason" if disabled == "judge_available" else "jev_reason"] = (
-        reason
-    )
+async def test_retired_judge_rejects_before_survey_creation(audit_api, requested):
+    """Old callers cannot trigger a new paid report Judge."""
+    _, create, _ = audit_api
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=api.app), base_url="http://test"
     ) as client:
         response = await client.post(
             "/survey",
-            json={"query": "question", "auto_audit_mode": mode},
+            json={"query": "question", **requested},
             headers={"X-LitAgent-Operation-Token": api.app.state.operation_token},
         )
-    assert response.status_code in {409, 422, 503}
-    assert reason in response.text
+    assert response.status_code == 422
+    assert response.json()["detail"] == "report_audit_retired"
     create.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_workbench_context_exposes_capability_without_scheduling_audit(audit_api):
-    """Reading capability never submits or resumes an audit."""
-    capabilities, _, _ = audit_api
+async def test_workbench_exposes_extraction_jev_without_resolving_judge(audit_api):
+    """Extraction capabilities are independent of historical report audit settings."""
+    config = api.app.state.config
+    config.report_audit.enabled = False
     service = api.app.state.report_audit_service
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=api.app), base_url="http://test"
     ) as client:
         result = await client.get("/workbench/context")
     assert result.status_code == 200
-    automatic = result.json()["auto_audit_capabilities"]
-    assert automatic["judge_available"] == capabilities["judge_available"]
-    assert automatic["jev_available"] == capabilities["jev_available"]
-    service.submit.assert_not_called()
-    service.submit_automatic.assert_not_called()
+    context = result.json()
+    assert context["automatic_acceptance"]["gates"] == ["extraction_jev", "evaluation"]
+    assert context["automatic_acceptance"]["default_verification"]["jev"] is True
+    assert "strict_auto_v1" not in context["quality_policies"]
+    assert context["auto_audit_capabilities"]["judge_available"] is False
+    assert context["auto_audit_capabilities"]["jev_available"] is True
+    assert service.mock_calls == []
 
 
 @pytest.mark.asyncio
@@ -438,56 +443,10 @@ async def test_terminal_same_revision_with_different_body_still_rejects(tmp_path
 
 
 @pytest.mark.asyncio
-async def test_plain_survey_freezes_its_own_artifact_without_lookup_or_mutation(
-    monkeypatch,
+async def test_survey_archives_terminal_report_without_audit_service(
+    tmp_path, monkeypatch
 ):
-    """Ordinary API runs need no flow-demo index to freeze their own evidence."""
-    report = paused_result("plain-api", options()).checkpoint.report_data
-    artifact = {
-        "run_id": "plain-api",
-        "query": "A question",
-        "status": "completed",
-        "report": report,
-        "nodes": {"worker-node": {"output": {"items": []}}},
-        "config": {"llm": {"model": "offline-generation", "origin": "http://fixture"}},
-    }
-    artifact_before = json.dumps(artifact, sort_keys=True)
-    evidence = [{"evidence_id": "ev-1", "paper_id": "paper-1", "text": "Evidence."}]
-    service = MagicMock()
-    service.submit_automatic = AsyncMock()
-    monkeypatch.setattr(api.app.state, "report_audit_service", service)
-    lookup = MagicMock(side_effect=AssertionError("No archive lookup is permitted"))
-    monkeypatch.setattr(api, "_flow_artifact", lookup)
-    extract = MagicMock(return_value=evidence)
-    monkeypatch.setattr(api, "extract_report_evidence", extract)
-    await api._submit_automatic_artifact(artifact, options())
-    extract.assert_called_once_with(artifact["nodes"], report=report)
-    frozen = service.submit_automatic.call_args.args[0]
-    assert frozen["source_run_id"] == "plain-api"
-    assert frozen["source_report_revision"] == 1
-    assert (
-        frozen["source_report_sha256"]
-        == hashlib.sha256(report["survey"].encode()).hexdigest()
-    )
-    assert frozen["ledger"] == {"ev-1": evidence[0]}
-    assert frozen["generation_provider"]["model"] == "offline-generation"
-    assert service.submit_automatic.call_args.kwargs == {
-        "mode": "judge",
-        "max_versions": 1,
-    }
-    frozen["report"]["metadata"]["human_review"]["status"] = "unexpected mutation"
-    frozen["ledger"]["ev-1"]["text"] = "changed evidence"
-    assert json.dumps(artifact, sort_keys=True) == artifact_before
-    assert evidence[0]["text"] == "Evidence."
-    lookup.assert_not_called()
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("submission_failure", ["none", "error", "cancelled"])
-async def test_noninteractive_hook_follows_terminal_archive_and_isolates_errors(
-    tmp_path, monkeypatch, submission_failure
-):
-    """Audit submission observes a committed report and cannot reverse success."""
+    """Ordinary task ownership and final archive have no report audit dependency."""
     repository = ArchiveRepository(tmp_path / "archive")
     report = paused_result("plain-api", options()).checkpoint.report_data
     report["metadata"]["human_review"]["status"] = "not_requested"
@@ -521,58 +480,16 @@ async def test_noninteractive_hook_follows_terminal_archive_and_isolates_errors(
             """Return the final local report after the workflow boundary."""
             return report
 
-    async def submit(artifact, stored_options):
-        """Check atomic archive and API status before simulating a failure."""
-        persisted = repository.get("plain-api")
-        assert repository.path_for("plain-api").is_file()
-        assert persisted["status"] == "completed" and persisted["report"] == report
-        assert artifact == persisted
-        assert entry.status == "completed" and entry.result == report
-        assert stored_options == policy
-        if submission_failure == "error":
-            raise RuntimeError("offline automatic submission error")
-        if submission_failure == "cancelled":
-            raise asyncio.CancelledError
-
-    callback = AsyncMock(side_effect=submit)
+    audit = AsyncMock(side_effect=AssertionError("Report audit invoked"))
     monkeypatch.setattr(api, "LitAgent", FakeAgent)
-    monkeypatch.setattr(api, "_submit_automatic_artifact", callback)
+    monkeypatch.setattr(api, "_report_audit_service", audit)
     monkeypatch.setattr(api.app.state, "config", config())
     monkeypatch.setattr(api.app.state, "survey_semaphore", asyncio.Semaphore(1))
-    if submission_failure == "cancelled":
-        with pytest.raises(asyncio.CancelledError):
-            await api._run_survey(entry)
-    else:
-        await api._run_survey(entry)
-    callback.assert_awaited_once()
+    await api._run_survey(entry)
+    audit.assert_not_awaited()
     assert entry.status == "completed" and entry.error is None
     assert repository.get("plain-api")["report"] == report
     assert repository.get("plain-api")["status"] == "completed"
-
-
-@pytest.mark.asyncio
-async def test_interactive_auto_helper_uses_exact_version_without_mutating_options(
-    monkeypatch,
-):
-    """An explicit persisted revision is passed unchanged to the audit owner."""
-    policy = options(auto_audit_mode="judge_jev", auto_audit_max_versions=2)
-    source = {
-        "source_run_id": "interactive",
-        "source_report_revision": 2,
-        "report": {"survey": "r2"},
-    }
-    resolver = AsyncMock(return_value=source)
-    service = MagicMock()
-    service.submit_automatic = AsyncMock()
-    monkeypatch.setattr(api, "_report_audit_snapshot", resolver)
-    monkeypatch.setattr(api.app.state, "report_audit_service", service)
-    before = policy.model_dump_json()
-    await api._submit_automatic_audit("interactive", 2, policy)
-    resolver.assert_awaited_once_with("interactive", 2)
-    service.submit_automatic.assert_awaited_once_with(
-        source, mode="judge_jev", max_versions=2
-    )
-    assert policy.model_dump_json() == before
 
 
 @pytest.mark.asyncio

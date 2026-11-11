@@ -58,9 +58,76 @@ class Contract(BaseModel):
 class VerificationOptions(Contract):
     """Bind optional verification choices to new runs without changing old defaults."""
 
-    version: Literal["optional-verification-v1"] = "optional-verification-v1"
+    version: Literal["optional-verification-v1", "optional-verification-v2"] = (
+        "optional-verification-v1"
+    )
     judge: bool = Field(default=False, strict=True)
     jev: bool = Field(default=False, strict=True)
+    extraction_failure_policy: Literal["verified_subset_v1"] | None = None
+    extraction_confidence_threshold: float | None = Field(
+        default=None, ge=0, le=1, strict=True, allow_inf_nan=False
+    )
+    extraction_resource_policy: (
+        Literal["expanded-v1", "operational-plus20-v1"] | None
+    ) = None
+
+    @model_serializer(mode="wrap")
+    def serialize_failure_policy(self, handler):
+        """Keep historical verification identities free of inactive fields."""
+        value = handler(self)
+        if self.extraction_failure_policy is None:
+            value.pop("extraction_failure_policy", None)
+        if self.extraction_confidence_threshold is None:
+            value.pop("extraction_confidence_threshold", None)
+        if self.extraction_resource_policy is None:
+            value.pop("extraction_resource_policy", None)
+        return value
+
+    @model_validator(mode="after")
+    def validate_failure_policy(self):
+        """Limit partial admission to the explicit dual-question contract."""
+        if (
+            self.extraction_failure_policy
+            and self.version != "optional-verification-v2"
+        ):
+            raise ValueError("extraction_failure_policy_requires_admission_v2")
+        if (
+            self.extraction_confidence_threshold is not None
+            and self.version != "optional-verification-v2"
+        ):
+            raise ValueError("extraction_confidence_threshold_requires_admission_v2")
+        if (
+            self.extraction_resource_policy
+            and self.version != "optional-verification-v2"
+        ):
+            raise ValueError("extraction_resource_policy_requires_admission_v2")
+        return self
+
+
+def default_verification_options(config=None) -> VerificationOptions:
+    """Enable dual extraction admission for new requests without migrating archives."""
+    from litagent.operational_limits import is_uplifted
+
+    return VerificationOptions(
+        version="optional-verification-v2",
+        judge=False,
+        jev=True,
+        extraction_failure_policy="verified_subset_v1",
+        extraction_confidence_threshold=0.6,
+        extraction_resource_policy=(
+            "operational-plus20-v1" if is_uplifted(config) else "expanded-v1"
+        ),
+    )
+
+
+def extraction_admission_enabled(value: Mapping) -> bool:
+    """Select the new pre-ledger gate only through its explicit version."""
+    selected = value.get("verification")
+    return (
+        isinstance(selected, Mapping)
+        and selected.get("version") == "optional-verification-v2"
+        and verification_enabled(value, "jev")
+    )
 
 
 def verification_enabled(value: Mapping, service: Literal["judge", "jev"]) -> bool:
@@ -172,7 +239,10 @@ class RunOptions(Contract):
             )
             or self.verification is None
             or self.verification.judge
-            or self.verification.jev
+            or (
+                self.verification.jev
+                and self.verification.version != "optional-verification-v2"
+            )
         ):
             raise ValueError(
                 "planned_budget_requires_writer_v2_without_optional_audits"
@@ -220,6 +290,27 @@ class RunOptions(Contract):
     def fingerprint(self) -> str:
         """Bind generation and review choices to a stable run identity."""
         payload = self.model_dump(mode="json")
+        if (
+            self.verification
+            and self.verification.version == "optional-verification-v2"
+        ):
+            from litagent.extraction_verification import admission_identity
+
+            payload["extraction_admission_identity"] = admission_identity()
+            if self.verification.extraction_failure_policy:
+                from litagent.extraction_verification import fallback_identity
+
+                payload["extraction_failure_identity"] = fallback_identity()
+            if self.verification.extraction_confidence_threshold is not None:
+                from litagent.extraction_verification import confidence_identity
+
+                payload["extraction_confidence_identity"] = confidence_identity()
+            if self.verification.extraction_resource_policy:
+                from litagent.extraction_verification import resource_identity
+
+                payload["extraction_resource_identity"] = resource_identity(
+                    self.verification.extraction_resource_policy
+                )
         if self.budget_policy == "legacy":
             payload.pop("budget_policy", None)
         else:
@@ -450,6 +541,23 @@ class RunOptions(Contract):
                     ]
                 )
                 payload["automatic_limits"] = [100000, 2, 200000, 20, 0.9]
+                if (
+                    self.verification is not None
+                    and self.verification.extraction_confidence_threshold is not None
+                ):
+                    payload["automatic_limits"][
+                        -1
+                    ] = self.verification.extraction_confidence_threshold
+                if self.verification and self.verification.extraction_resource_policy:
+                    from litagent.extraction_verification import extraction_config
+
+                    selected = extraction_config(
+                        resource_policy=self.verification.extraction_resource_policy
+                    )
+                    payload["automatic_limits"][2:4] = [
+                        selected.max_input_tokens,
+                        selected.max_requests,
+                    ]
                 if self.quality_policy == "strict_auto_v2":
                     from litagent.quality import (
                         NATIVE_REPAIR_CONTRACT,

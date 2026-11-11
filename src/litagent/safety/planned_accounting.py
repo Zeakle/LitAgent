@@ -14,7 +14,6 @@ from litagent.output_capacity import (
     envelope_output_tokens,
 )
 
-_CONTEXT = 117964
 _CONTRACTS = {f"planned-budget-v{version}" for version in range(2, 8)}
 _PINNED_SUPPORT_REVISIONS = frozenset(
     ("host-support-receipts-v1", "host-support-receipts-v2")
@@ -87,6 +86,8 @@ def _envelope(value):
         "identity",
     }
     optional = {
+        "run_limits",
+        "semantic_engine",
         "output_tokens",
         "capacity",
         "repair_mapping_contract",
@@ -146,6 +147,65 @@ def _envelope(value):
             == "separated-evaluation-dimensions-v1",
             "envelope_closeout_profile_invalid",
         )
+    if "semantic_engine" in value:
+        # Historical accounting reads the frozen identity without importing live RAGAS.
+        engine = value["semantic_engine"]
+        _keys(
+            engine,
+            {"contract", "ragas_version", "identity", "batch_size"},
+            {
+                "global_findings_contract",
+                "global_input_contract",
+                "global_unit_response_contract",
+                "assessment_response_contract",
+            },
+        )
+        _require(
+            engine["contract"] == "ragas-cited-faithfulness-v1"
+            and engine["ragas_version"] == "0.4.3"
+            and _hashed(engine["identity"])
+            and _integer(engine["batch_size"], 1, 20),
+            "ragas_engine_invalid",
+        )
+        _require(
+            "global_findings_contract" not in engine
+            or engine["global_findings_contract"] == "anchored-global-findings-v2",
+            "ragas_global_findings_contract_invalid",
+        )
+        _require(
+            "global_input_contract" not in engine
+            or (
+                engine["global_input_contract"] == "ragas-global-unit-input-v2"
+                and engine.get("global_findings_contract")
+                == "anchored-global-findings-v2"
+            ),
+            "ragas_global_input_contract_invalid",
+        )
+        _require(
+            "global_unit_response_contract" not in engine
+            or (
+                engine["global_unit_response_contract"]
+                in {
+                    "ragas-global-unit-keys-v1",
+                    "ragas-global-unit-keys-v2",
+                    "ragas-global-unit-keys-v3",
+                }
+                and engine.get("global_findings_contract")
+                == "anchored-global-findings-v2"
+            ),
+            "ragas_global_unit_response_contract_invalid",
+        )
+        _require(
+            "assessment_response_contract" not in engine
+            or engine["assessment_response_contract"]
+            == "ragas-assessment-statement-keys-v1",
+            "ragas_assessment_response_contract_invalid",
+        )
+    if "run_limits" in value:
+        from litagent.run_limits import validate_run_limits
+
+        validate_run_limits(value["run_limits"])
+        _require(flat and "repair_mapping_contract" in value, "run_limits_invalid")
     cap = resolve_capacity(value["capacity"]) if "capacity" in value else None
     limits = {
         "body_max_units": (5, 256 if cap else 66),
@@ -157,7 +217,16 @@ def _envelope(value):
         "claim_json_bytes": (1, 1000000),
         "frozen_component_reservation": (0, 2**63 - 1),
         **(
-            {"diagnostic_json_bytes": (1, 12288), "claim_max_json_bytes": (1, 2000)}
+            {
+                "diagnostic_json_bytes": (
+                    1,
+                    cap.diagnostic_json_bytes if cap and cap.revision else 12288,
+                ),
+                "claim_max_json_bytes": (
+                    1,
+                    cap.claim_max_json_bytes if cap and cap.revision else 2000,
+                ),
+            }
             if flat
             else {}
         ),
@@ -327,7 +396,11 @@ def _envelope(value):
             source_map
             and value.get("support_validation_revision") in _PINNED_SUPPORT_REVISIONS
             and _hashed(value.get("source_map_identity"))
-            and _integer(value.get("source_map_json_bytes"), 1, 12288)
+            and _integer(
+                value.get("source_map_json_bytes"),
+                1,
+                cap.diagnostic_json_bytes if cap and cap.revision else 12288,
+            )
             and value["source_map_json_bytes"] == value.get("diagnostic_json_bytes"),
             "envelope_source_map_invalid",
         )
@@ -342,7 +415,11 @@ def _envelope(value):
             guidance_fields.issubset(value)
             and value["repair_guidance_contract"] == "host-structured-repair-v1"
             and _hashed(value["repair_guidance_identity"])
-            and _integer(value["repair_guidance_json_bytes"], 1, 12288)
+            and _integer(
+                value["repair_guidance_json_bytes"],
+                1,
+                cap.diagnostic_json_bytes if cap and cap.revision else 12288,
+            )
             and value["repair_guidance_json_bytes"]
             == value.get("diagnostic_json_bytes")
             and flat
@@ -539,7 +616,19 @@ def _joint_plan(plan):
         and _hashed(domain["base_plan_identity"])
         and _integer(domain["rounds"], 3, 3)
         and _integer(limits["max_requests"], 1, 64)
-        and _integer(limits["request_cap"], 100000, 100000)
+        and _integer(
+            limits["request_cap"],
+            (
+                plan["envelope"]["request_caps"]["assessment"]
+                if "run_limits" in plan["envelope"]
+                else 100000
+            ),
+            (
+                plan["envelope"]["request_caps"]["assessment"]
+                if "run_limits" in plan["envelope"]
+                else 100000
+            ),
+        )
         and _integer(limits["reserved_tokens"], 16384),
         "joint_plan_invalid",
     )
@@ -636,12 +725,24 @@ def _plan(plan):
         and plan["input_identity"],
         "plan_invalid",
     )
+    from litagent.run_limits import (
+        envelope_run_limits,
+        extended_repair_stages,
+        format_recovery_stages,
+        repair_allowances,
+    )
+
+    resources = envelope_run_limits(plan.get("envelope"))
+    maximum_requests, maximum_repairs = (
+        resources["max_requests"],
+        resources["max_repairs"],
+    )
     spent, calls = plan.get("spent_tokens"), plan.get("spent_requests")
     repairs = plan.get("scope_bounds", {}).get("shared_repairs")
     _require(
         _integer(spent)
-        and _integer(calls, 0, 64)
-        and _integer(repairs, 0, 2)
+        and _integer(calls, 0, maximum_requests)
+        and _integer(repairs, 0, maximum_repairs)
         and (contract != "planned-budget-v2" or repairs == 2),
         "plan_invalid",
     )
@@ -697,6 +798,7 @@ def _plan(plan):
         )
     else:
         _require(envelope is None, "plan_invalid")
+    format_stages = format_recovery_stages(envelope)
     if adaptive:
         outputs = (
             {
@@ -706,20 +808,54 @@ def _plan(plan):
             if envelope and "output_tokens" in envelope
             else _OUTPUTS
         )
+        outputs = {
+            **outputs,
+            **{key: outputs[parent] for key, (parent, _) in format_stages.items()},
+        }
         counts = {key: item["count"] for key, item in projected.items()}
+        for key, (_, count) in format_stages.items():
+            _require(counts.pop(key, None) == count, "plan_format_path_invalid")
         body = counts.pop("body", 0), counts.pop("body_initial", 0)
         _require(
             body in {(5, 0), (4, 1)}
             and counts
-            == {
-                "summary": 1 + repairs,
-                "reviewer": 1,
-                "inventory": 1 + repairs,
-                "assessment": (envelope["assessment_batches"] if envelope else 8)
-                * (1 + repairs),
-                "global": 1 + repairs,
-                **({"repair": repairs} if repairs else {}),
-            }
+            == (
+                extended_repair_stages(envelope, repairs)
+                or {
+                    "summary": 1 + repairs,
+                    "reviewer": 1,
+                    "inventory": (
+                        (
+                            envelope["body_max_units"]
+                            + 2 * envelope["summary_max_units_per_section"]
+                            + envelope["semantic_engine"]["batch_size"]
+                            - 1
+                        )
+                        // envelope["semantic_engine"]["batch_size"]
+                        if envelope and "semantic_engine" in envelope
+                        else 1
+                    )
+                    * (1 + repairs),
+                    "assessment": (
+                        (
+                            (
+                                envelope["body_max_units"]
+                                + 2 * envelope["summary_max_units_per_section"]
+                                + envelope["semantic_engine"]["batch_size"]
+                                - 1
+                            )
+                            // envelope["semantic_engine"]["batch_size"]
+                            if "semantic_engine" in envelope
+                            else envelope["assessment_batches"]
+                        )
+                        if envelope
+                        else 8
+                    )
+                    * (1 + repairs),
+                    "global": 1 + repairs,
+                    **({"repair": repairs} if repairs else {}),
+                }
+            )
             and all(
                 item["output_tokens"] == outputs.get(key)
                 for key, item in projected.items()
@@ -729,7 +865,8 @@ def _plan(plan):
     if envelope:
         _require(
             all(
-                spec["request_cap"] == envelope["request_caps"][key]
+                spec["request_cap"]
+                == envelope["request_caps"][format_stages.get(key, (key,))[0]]
                 for key, spec in projected.items()
                 if key != "body_initial"
             )
@@ -742,7 +879,7 @@ def _plan(plan):
         )
     if flat:
         _require(
-            repairs == 2
+            2 <= repairs <= maximum_repairs
             and envelope["contract"] == "flat-writer-envelope-v1"
             and ("capacity" in envelope) == capacity
             and ("repair_mapping_contract" in envelope)
@@ -757,7 +894,14 @@ def _plan(plan):
     required = spent + sum(item["reserved_tokens"] for item in projected.values())
     requests = calls + sum(item["count"] for item in projected.values())
     maximum = 4500000 if flat else 1000000
-    _require(requests <= 64 and _margin(required) <= maximum, "plan_unadmitted")
+    if envelope and "run_limits" in envelope:
+        from litagent.run_limits import validate_run_limits
+
+        _require(contract == "planned-budget-v7", "run_limits_invalid")
+        maximum = validate_run_limits(envelope["run_limits"])["max_tokens"]
+    _require(
+        requests <= maximum_requests and _margin(required) <= maximum, "plan_unadmitted"
+    )
     result = {
         "contract": contract,
         "measurement": "complete-utf8-reservation-v1",
@@ -768,7 +912,7 @@ def _plan(plan):
         "planned_tokens": _margin(required),
         "maximum_tokens": maximum,
         "planned_requests": requests,
-        "maximum_requests": 64,
+        "maximum_requests": maximum_requests,
         "context_tokens": envelope_context_tokens(plan.get("envelope")),
         "context_reservation_limit": context_limit,
         "context_margin": 0.1,
@@ -789,7 +933,11 @@ def _plan(plan):
         result.update(
             repair_limit=repairs,
             repair_selection=(
-                "fixed-two-complete-repairs-v1"
+                (
+                    "bounded-complete-repairs-v2"
+                    if maximum_repairs > 2
+                    else "fixed-two-complete-repairs-v1"
+                )
                 if flat
                 else "largest-admissible-complete-path-v1"
             ),
@@ -800,6 +948,8 @@ def _plan(plan):
         )
     if envelope:
         result["envelope"] = envelope
+        if limits := repair_allowances(envelope):
+            result["scope_bounds"]["repair_allowances"] = limits
         result["scope_bounds"].update(
             report_max_units=envelope["body_max_units"]
             + 2 * envelope["summary_max_units_per_section"],
@@ -807,6 +957,16 @@ def _plan(plan):
             assessment_batches=envelope["assessment_batches"],
             envelope_contract=envelope["contract"],
         )
+        if envelope.get("capacity", {}).get("revision"):
+            result["scope_bounds"].update(
+                authored_text_max_characters=envelope["capacity"][
+                    "max_unit_characters"
+                ],
+                diagnostic_string_max_characters=envelope["capacity"][
+                    "max_unit_characters"
+                ],
+                assertions_per_batch=envelope["capacity"]["batch_size"],
+            )
     result["identity"] = _digest(result)
     _require(_json(result) == _json(plan), "plan_identity_invalid")
 
@@ -1046,7 +1206,10 @@ def _allocation(plan, entries, arguments, previous, *, round_budget):
         _require(
             isinstance(caps, dict)
             and set(caps).issubset({"assessment", "global"})
-            and all(_integer(amount, 1, _CONTEXT) for amount in caps.values()),
+            and all(
+                _integer(amount, 1, plan["context_reservation_limit"])
+                for amount in caps.values()
+            ),
             "allocation_caps_invalid",
         )
         for stage, amount in caps.items():
@@ -1095,8 +1258,14 @@ def _allocation(plan, entries, arguments, previous, *, round_budget):
 
 def _revisions(snapshot, plan):
     """Authenticate each ordered settled prefix and every actual round slot."""
-    round_budget = plan["contract"] == "planned-budget-v7"
+    native = "semantic_engine" in plan.get("envelope", {})
+    round_budget = plan["contract"] == "planned-budget-v7" and not native
     revisions = snapshot["capacity_revisions"]
+    if native:
+        _require(
+            not revisions and snapshot["capacity_allocation"] is None,
+            "ragas_static_escrow_invalid",
+        )
     _require(
         isinstance(revisions, list) and len(revisions) <= (3 if round_budget else 64),
         "revision_chain_invalid",
@@ -1146,7 +1315,7 @@ def _revisions(snapshot, plan):
         _json(snapshot["capacity_allocation"]) == _json(previous),
         "revision_allocation_invalid",
     )
-    if round_budget:
+    if round_budget and "semantic_engine" not in plan["envelope"]:
         slots = {}
         for event in revisions:
             round_ = event["allocation"]["round"]
@@ -1252,8 +1421,8 @@ def validate_accounting_snapshot(snapshot: dict, *, expected_plan: dict) -> dict
         broad = {
             key: {
                 **spec,
-                "count": 64,
-                "request_cap": _CONTEXT,
+                "count": expected_plan["maximum_requests"],
+                "request_cap": expected_plan["context_reservation_limit"],
                 "reserved_tokens": 2**63 - 1,
             }
             for key, spec in expected_plan["stages"].items()
@@ -1289,7 +1458,7 @@ def validate_accounting_snapshot(snapshot: dict, *, expected_plan: dict) -> dict
                 expected_plan["spent_requests"]
                 + sum(entry["sent"] for entry in snapshot["entries"].values()),
             )
-            and snapshot["requests_sent"] <= 64,
+            and snapshot["requests_sent"] <= expected_plan["maximum_requests"],
             "totals_invalid",
         )
         closed = snapshot["closed_stages"]

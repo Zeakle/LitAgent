@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 
 import httpx
 import pytest
+from model_config_helpers import load_previous_default_config as load_config
 from test_jev_citation_audit import _valid_response
 from test_scope_notice_contract import notice_document as document
 from test_strict_automatic import frozen, passing_audit
@@ -15,7 +16,6 @@ from test_strict_quality import draft, to_native
 from litagent.agents.extractor import ExtractorWorker
 from litagent.agents.synthesis import SynthesisWorker
 from litagent.benchmark.citation_audit import JevCitationAuditor
-from litagent.config import load_config
 from litagent.context.evidence_selector import EvidenceSelection
 from litagent.contracts import build_config_summary, normalize_survey_result
 from litagent.eval.automatic import automatic_acceptance, freeze_automatic_inputs

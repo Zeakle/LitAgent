@@ -8,8 +8,8 @@ import sys
 from pathlib import Path
 
 import pytest
+from model_config_helpers import load_previous_default_config as load_config
 
-from litagent.config import load_config
 from litagent.report_audit import atomic_json
 from scripts import run_frozen_writing as campaign
 from scripts.run_stage_model_quality import MODELS, ORIGIN, check_models

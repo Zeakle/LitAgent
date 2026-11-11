@@ -135,7 +135,7 @@ def test_compound_fragment_with_one_supported_assertion_protects_its_citations()
 
 
 def test_strict_duplicate_heading_cleanup_does_not_block_a_new_complete_candidate():
-    from litagent.config import load_config
+    from model_config_helpers import load_previous_default_config as load_config
 
     original = "# Review\n\n## Introduction\n\n### Introduction\n\nEViT improves speed. [E:a]\n\n## Methods\n\n### Methods\n\nEViT uses tokens. [E:a]"
     candidate = original.replace("### Introduction\n\n", "").replace(
@@ -155,7 +155,7 @@ def test_strict_duplicate_heading_cleanup_does_not_block_a_new_complete_candidat
 
 
 def test_removing_all_wrong_occurrences_still_requires_known_replacement_citations():
-    from litagent.config import load_config
+    from model_config_helpers import load_previous_default_config as load_config
 
     original = "EViT improves speed. [E:a]\n\nEViT uses tokens. [E:a]"
     evaluation = bound(original)
@@ -178,8 +178,9 @@ async def test_real_rewrite_request_and_host_validation_share_occurrence_policy(
     from types import SimpleNamespace
     from unittest.mock import AsyncMock
 
+    from model_config_helpers import load_previous_default_config as load_config
+
     from litagent.agents.synthesis import SynthesisWorker
-    from litagent.config import load_config
     from litagent.eval.base import CTX_EVIDENCE, CTX_SELECTED_EVIDENCE
     from litagent.llm.client import LLMResponse
     from litagent.quality import build_fact_cards, digest

@@ -11,12 +11,12 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
+from model_config_helpers import load_previous_default_config as load_config
 from test_native_responses import envelope, owner_for
 from test_planned_budget import plan
 from test_planned_mixed_receipts import mixed_parent
 from test_writer_v2 import case  # noqa: F401
 
-from litagent.config import load_config
 from litagent.demo import project_flow_demo_view
 from litagent.interaction_store import SqliteReviewRepository
 from litagent.interactive_service import InteractiveRunService

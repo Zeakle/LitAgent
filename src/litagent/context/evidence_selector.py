@@ -265,9 +265,10 @@ class EvidenceSelector:
         reranker: Reranker | None,
         budget: BudgetManager,
         *,
-        top_k_per_section: int = 12,
+        top_k_per_section: int = 20,
         max_items: int = 60,
         per_paper_cap: int = 3,
+        prefer_method_sections: bool = False,
         trace_hook: Callable[[str, dict], None] | None = None,
     ) -> None:
         """Initialize the evidence selector."""
@@ -285,6 +286,7 @@ class EvidenceSelector:
         self._top_k_per_section = top_k_per_section
         self._max_items = max_items
         self._per_paper_cap = per_paper_cap
+        self._prefer_method_sections = prefer_method_sections
         self._trace_hook = trace_hook
 
     def _emit(self, event: str, data: dict) -> None:
@@ -521,6 +523,28 @@ class EvidenceSelector:
                 ranking_scores[section.key] = {
                     eid: self._lexical_score(tokens, item) for eid, item in valid_items
                 }
+
+        if (
+            self._prefer_method_sections
+            and reuse_selected
+            and "methods" in section_ranked
+        ):
+            ranked_methods = section_ranked["methods"]
+            focused = [
+                eid
+                for eid in ranked_methods
+                if str(item_by_id[eid].get("chunk_key", "")).startswith("section:")
+                and re.search(
+                    r"method|approach|representation|render|encoding|sampling|"
+                    r"optimization|optimizing|architecture|formulation",
+                    str(item_by_id[eid].get("section", "")),
+                    re.I,
+                )
+            ][:3]
+            priority_ids = set(focused)
+            section_ranked["methods"] = focused + [
+                eid for eid in ranked_methods if eid not in priority_ids
+            ]
 
         # Pack round-robin while enforcing item, paper, and token caps.
         selected: dict[str, dict[str, Any]] = {}

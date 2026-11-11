@@ -440,7 +440,8 @@ def native_fixture_value(value, schema, root=None):
 async def test_real_frozen_runtime_keeps_scope_science_and_usage_separate(
     case, tmp_path, monkeypatch, mode
 ):
-    from litagent.config import load_config
+    from model_config_helpers import load_previous_default_config as load_config
+
     from litagent.frozen_writing import frozen_options, plan_frozen_budget, run_frozen
     from litagent.review_structure import build_methodology
     from litagent.runner import LitAgent, RunPolicy

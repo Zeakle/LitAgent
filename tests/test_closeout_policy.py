@@ -5,6 +5,7 @@ import json
 import sys
 
 import pytest
+from model_config_helpers import load_previous_default_config as load_config
 from test_evaluation_dimensions_identity import dimension_envelope
 from test_frozen_writer_plan import frozen_bundle  # noqa: F401
 from test_writer_v2 import case  # noqa: F401
@@ -17,7 +18,6 @@ from litagent.closeout import (
     recovery_allowed,
     result_summary,
 )
-from litagent.config import load_config
 from litagent.eval.inventory_recovery import (
     DEFINITION_RECOVERY_INSTRUCTION,
     MIXED_CONTRACT,

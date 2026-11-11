@@ -314,12 +314,16 @@ def evaluation_execution(faithfulness: dict) -> str:
     if not isinstance(details, dict):
         return "unrecorded"
     if details.get("evaluation_result_contract") == "independent-evaluation-v1":
-        from litagent.eval.results import EvaluationRunResult
+        from litagent.eval.results import EvaluationRunResult, historical_checks
 
-        run = EvaluationRunResult.from_details(details, details["source_report_sha256"])
+        checks = historical_checks(details, details["source_report_sha256"])
+        if checks is None:
+            checks = EvaluationRunResult.from_details(
+                details, details["source_report_sha256"]
+            ).checks()
         return (
             "completed"
-            if run.checks()["execution"]["status"] == "passed"
+            if checks.get("execution", {}).get("status") == "passed"
             and details.get("stages", {}).get("global_check") == "completed"
             else "incomplete"
         )

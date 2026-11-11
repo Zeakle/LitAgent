@@ -7,10 +7,10 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from model_config_helpers import load_previous_default_config as load_config
 from test_reference_occurrence_policy import bound
 
 from litagent.agents.synthesis import SynthesisWorker
-from litagent.config import load_config
 from litagent.eval.base import CTX_EVIDENCE, CTX_SELECTED_EVIDENCE
 from litagent.llm.client import LLMResponse
 from litagent.quality import (

@@ -13,12 +13,43 @@ from typing import Any
 CONTRACT = "independent-evaluation-v1"
 FIELDS = ("evaluation_result_contract", "evaluation_result_identity")
 IMPLEMENTATION = "litagent-actual-citation-support-v1"
+HISTORICAL_RESULT_IDENTITIES = frozenset(
+    {"a4273caa2f6f848615de3ea2a7dcff7ce6244f6e31408ceab84f82d4a1c65b2f"}
+)
+
+
+def historical_checks(details, report_sha256):
+    """Read stored checks for a known old execution without recomputing its verdicts."""
+    identity = details.get("evaluation_result_identity")
+    if type(identity) is not str or identity not in HISTORICAL_RESULT_IDENTITIES:
+        return None
+    if (
+        details.get("evaluation_result_contract") != CONTRACT
+        or details.get("source_report_sha256") != report_sha256
+    ):
+        raise ValueError("evaluation_result_report_identity_invalid")
+    checks = details.get("evaluation_checks")
+    if checks is None:
+        return {}
+    if not isinstance(checks, dict) or any(
+        not isinstance(item, dict)
+        or item.get("status")
+        not in {"passed", "failed", "unverified", "error", "not_applicable"}
+        for item in checks.values()
+    ):
+        raise ValueError("evaluation_result_historical_checks_invalid")
+    return copy.deepcopy(checks)
 
 
 @lru_cache(maxsize=1)
 def contract_identity() -> str:
     """Bind responsibilities, state semantics and formulas without changing old IDs."""
+    from litagent.body_quality import (
+        bound_repair_diagnostics,
+        report_repair_diagnostics,
+    )
     from litagent.eval.responsibilities import (
+        FORBIDDEN_CODES,
         GLOBAL_INSTRUCTION,
         parse_global_response,
         project_global_schema,
@@ -28,11 +59,14 @@ def contract_identity() -> str:
         CONTRACT,
         IMPLEMENTATION,
         GLOBAL_INSTRUCTION,
+        sorted(FORBIDDEN_CODES),
+        inspect.getsource(report_repair_diagnostics),
+        inspect.getsource(bound_repair_diagnostics),
         inspect.getsource(project_global_schema),
         inspect.getsource(parse_global_response),
         inspect.getsource(result),
         inspect.getsource(check),
-        inspect.getsource(execute_evaluation),
+        inspect.getsource(_legacy_execute_evaluation),
         inspect.getsource(derive_quality),
         inspect.getsource(EvaluationRunResult),
         inspect.getsource(acceptance),
@@ -464,7 +498,9 @@ def public_summary(report):
     if details.get("evaluation_result_contract") != CONTRACT:
         return None
     sha = hashlib.sha256(report.get("survey", "").encode()).hexdigest()
-    run = EvaluationRunResult.from_details(details, sha)
+    checks = historical_checks(details, sha)
+    if checks is None:
+        checks = EvaluationRunResult.from_details(details, sha).checks()
     metrics = {
         name: {
             "status": item.get("status", "unverified"),
@@ -475,16 +511,25 @@ def public_summary(report):
         for name, item in evaluation.items()
         if name in {"citation_accuracy", "faithfulness", "internal_consistency"}
     }
+    history = (report.get("metadata") or {}).get("evaluation_history") or {}
+    from litagent.eval.ragas_repair import sanitize_recovery
+
+    recovery = (
+        sanitize_recovery(history.get("recovery"))
+        if history.get("source_report_sha256") == sha
+        else None
+    )
     return {
         "contract": CONTRACT,
         "report_sha256": sha,
+        **({"recovery": recovery} if recovery else {}),
         "metrics": metrics,
         "checks": {
             name: {
                 "status": item.get("status", "unverified"),
                 "reason_codes": item.get("reason_codes", []),
             }
-            for name, item in run.checks().items()
+            for name, item in checks.items()
         },
         "science": {
             key: details.get(key)
@@ -579,6 +624,10 @@ def sanitize_summary(value):
             )
             for key in fields
         }
+    from litagent.eval.ragas_repair import sanitize_recovery
+
+    if recovery := sanitize_recovery(value.get("recovery")):
+        out["recovery"] = recovery
     return out
 
 
@@ -591,6 +640,25 @@ def summary_tables(rows):
         summary = row.get("evaluation_summary")
         if not isinstance(summary, dict) or summary.get("contract") != CONTRACT:
             continue
+        if recovery := summary.get("recovery"):
+            remaining = recovery.get("remaining_by_category")
+            balance = (
+                " / ".join(
+                    f"{kind} {remaining[kind]}"
+                    for kind in ("capacity", "inventory", "prose")
+                )
+                if remaining
+                else str(recovery.get("remaining_attempts", "—"))
+            )
+            entries.append(
+                [
+                    row.get("case_id", ""),
+                    "修复 / Recovery · " + recovery["action"],
+                    recovery["reassessment"],
+                    balance + " remaining / 剩余",
+                    recovery["outcome_reason"] or recovery["decision_reason"] or "—",
+                ]
+            )
         for group in ("metrics", "checks"):
             for name, item in summary.get(group, {}).items():
                 score = item.get("score")
@@ -633,3 +701,24 @@ def summary_tables(rows):
         for row in entries
     )
     return markdown, document + "</tbody></table></section>"
+
+
+# Keep the historical execution source as an identity input for old envelopes.
+_legacy_execute_evaluation = execute_evaluation
+
+
+async def execute_evaluation(*, llm, survey, context, config):
+    """Select native RAGAS only from the server-frozen budget owner."""
+    from litagent.eval.engine_policy import validate_engine
+    from litagent.safety.planned_budget import locked_writer_envelope
+
+    envelope = locked_writer_envelope(getattr(llm, "_cost_budget", None))
+    engine = (envelope or {}).get("semantic_engine")
+    if engine is None:
+        return await _legacy_execute_evaluation(
+            llm=llm, survey=survey, context=context, config=config
+        )
+    validate_engine(engine)
+    from litagent.eval.ragas_native import execute_native
+
+    return await execute_native(llm=llm, survey=survey, context=context, config=config)

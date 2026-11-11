@@ -27,6 +27,7 @@ from litagent.llm.routing import ModelBoundClient
 from litagent.quality import build_fact_cards, digest
 from litagent.safety.budget import strict_request_reservation
 from litagent.writer_source_view import (
+    FINAL_CHAPTER_INSTRUCTION,
     GROUNDING_INSTRUCTION,
     selected_source_view,
     source_view_identity,
@@ -45,7 +46,7 @@ from litagent.writing_v2 import (
 
 VIEW = "source-only-writer-v1"
 PAIR = {"writer_source_view", "writer_source_view_identity"}
-LOOKUP_FIELDS = {"source_ref", "evidence_id", "semantic_status"}
+LOOKUP_FIELDS = {"source_ref"}
 CANDIDATE_MARKER = "LOCAL_ONLY_EXTRACTION_CANDIDATE_"
 OMITTED = object()
 
@@ -201,19 +202,32 @@ def assert_selected_requests(result, canonical_packet):
         assert CANDIDATE_MARKER not in json.dumps(entry["request"])
         if "cards" in payload:
             assert list(payload["cards"]) == list(canonical_packet["cards"])
-            assert payload["sources"] == canonical_packet["sources"]
+            assert payload["sources"] == {
+                sid: {key: source[key] for key in ("paper_id", "source_quote")}
+                for sid, source in canonical_packet["sources"].items()
+            }
+            for sid, source in payload["sources"].items():
+                assert (
+                    hashlib.sha256(source["source_quote"].encode()).hexdigest()
+                    == canonical_packet["sources"][sid]["content_sha256"]
+                )
             assert list(payload["sources"]) == list(canonical_packet["sources"])
             for ref, card in payload["cards"].items():
                 assert set(card) == LOOKUP_FIELDS
                 assert card == {
                     key: canonical_packet["cards"][ref][key] for key in LOOKUP_FIELDS
                 }
-                assert card["semantic_status"] == "not_verified"
+                assert (
+                    canonical_packet["cards"][ref]["semantic_status"] == "not_verified"
+                )
         else:
             assert "sources" not in payload and "body_units" in payload
         messages, native, identity = request_parts(entry)
         if "targets" in payload:
             assert payload["grounding_instruction"] == GROUNDING_INSTRUCTION
+        elif "requested_body_section" in payload:
+            assert messages[0]["content"].count(FINAL_CHAPTER_INSTRUCTION) == 1
+            assert "Read complete cited originals" in messages[0]["content"]
         else:
             assert messages[0]["content"].count(GROUNDING_INSTRUCTION) == 1
         matching = [

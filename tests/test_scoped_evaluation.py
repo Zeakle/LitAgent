@@ -5,8 +5,9 @@ import json
 from types import SimpleNamespace
 
 import pytest
+from model_config_helpers import load_previous_default_config as load_config
 
-from litagent.config import EvalConfig, load_config
+from litagent.config import EvalConfig
 from litagent.eval.citation import CitationEvaluator
 from litagent.eval.consistency import ConsistencyEvaluator
 from litagent.eval.ragas_eval import RagasFaithfulnessEvaluator

@@ -22,6 +22,13 @@ _HEADING = re.compile(
     r"experiments?|results?|discussion|conclusions?|references)$",
     re.IGNORECASE,
 )
+NUMBERED_HEADING_POLICY = "numbered-headings-v1"
+_NUMBERED_HEADING = re.compile(
+    r"^(?:\d+(?:\.\d+)*\s+)?(?:abstract|introduction|related work|background|"
+    r"methods?|approach|experiments?|results?|discussion|conclusions?|references)$"
+    r"|^\d+(?:\.\d+)*\s+[A-Za-z][A-Za-z0-9 :()/-]{2,89}$",
+    re.IGNORECASE,
+)
 
 
 class CorpusParseError(RuntimeError):
@@ -70,11 +77,16 @@ class PyMuPDFParser:
         opener: Callable[[Path], Any] | None = None,
         quality_gate: CorpusTextQualityGate | None = None,
         chunker: CorpusChunker | None = None,
+        heading_policy: str | None = None,
     ) -> None:
         """Initialize the PyMuPDF parser."""
         self._opener = opener or _default_open
         self._quality_gate = quality_gate or CorpusTextQualityGate()
         self._chunker = chunker or PageBlockChunker()
+        if heading_policy not in (None, NUMBERED_HEADING_POLICY):
+            raise ValueError("pdf_heading_policy_invalid")
+        self._heading_policy = heading_policy
+        self._heading = _NUMBERED_HEADING if heading_policy else _HEADING
 
     def parse(self, asset: RawPaperAsset) -> PaperRecord:
         """Parse one local PDF and always release the underlying document."""
@@ -134,9 +146,14 @@ class PyMuPDFParser:
                     continue
                 text = str(block[4])
                 normalized_heading = " ".join(text.split())
-                if _HEADING.fullmatch(normalized_heading):
+                if self._heading.fullmatch(normalized_heading):
                     current_section = normalized_heading.lower().replace(" ", "_")
-                    continue
+                    # Generic numbered headings are only routing hints. Keep
+                    # their source block in case it is a numbered assertion.
+                    if self._heading_policy is None or _HEADING.fullmatch(
+                        normalized_heading
+                    ):
+                        continue
                 raw = RawTextBlock.from_text(
                     paper_id=asset.paper_id,
                     text=text,

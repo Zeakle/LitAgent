@@ -411,7 +411,8 @@ async def test_flat_raw_failures_remain_durable_and_never_replay(case, tmp_path,
 async def test_flat_real_frozen_worker_runner_and_report_exit(
     case, tmp_path, monkeypatch, unsupported, unbound_runtime, budget_policy
 ):
-    from litagent.config import load_config
+    from model_config_helpers import load_previous_default_config as load_config
+
     from litagent.frozen_writing import frozen_options, plan_frozen_budget, run_frozen
     from litagent.review_structure import build_methodology
     from litagent.runner import LitAgent, RunPolicy

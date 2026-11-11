@@ -45,14 +45,17 @@ def chapter_payload(case, scope):
 
 
 def lookup(packet):
-    """Spell out the only permitted model card fields independently."""
+    """Spell out the only model card field independently of production helpers."""
     return {
-        ref: {
-            "source_ref": card["source_ref"],
-            "evidence_id": card["evidence_id"],
-            "semantic_status": card["semantic_status"],
-        }
-        for ref, card in packet["cards"].items()
+        ref: {"source_ref": card["source_ref"]} for ref, card in packet["cards"].items()
+    }
+
+
+def model_sources(packet):
+    """Keep every complete original while leaving hashes in the canonical packet."""
+    return {
+        sid: {key: source[key] for key in ("paper_id", "source_quote")}
+        for sid, source in packet["sources"].items()
     }
 
 
@@ -143,18 +146,39 @@ def test_actual_chapter_final_builder_retains_complete_sources_and_local_candida
     new_system, result = prepare_planned_input(
         system, payload, case.packet, case.aliases, RANGE_WRITING_PLAN, scope
     )
-    assert new_system == old_system + "\n" + view.GROUNDING_INSTRUCTION
-    assert result == {**old_payload, "cards": lookup(case.packet)}
+    assert (
+        new_system
+        == view._compact_chapter_system(old_system) + "\n" + view.GROUNDING_INSTRUCTION
+    )
+    assert result == {
+        **old_payload,
+        "cards": lookup(case.packet),
+        "sources": model_sources(case.packet),
+        "writing_plan": {
+            key: value
+            for key, value in old_payload["writing_plan"].items()
+            if key
+            not in {
+                "contract",
+                "scientific_assessment",
+                "repair_scope_contract",
+                "capacity_failure_family",
+            }
+        },
+    }
+    assert old_payload["writing_plan"]["scientific_assessment"] == "not_verified"
+    assert result["writing_plan"]["body_max_units"] == scope["body_max_units"]
     assert list(result["sources"]) == list(case.packet["sources"])
-    assert result["sources"] == case.packet["sources"]
+    assert result["sources"] == model_sources(case.packet)
     assert case.packet == packet_before
     assert payload == payload_before
     assert all("finding_candidate" in card for card in case.packet["cards"].values())
     assert not set(view._PAIR).intersection(result)
-    for source in result["sources"].values():
+    for sid, source in result["sources"].items():
+        assert set(source) == {"paper_id", "source_quote"}
         assert (
             hashlib.sha256(source["source_quote"].encode()).hexdigest()
-            == source["content_sha256"]
+            == case.packet["sources"][sid]["content_sha256"]
         )
 
 
@@ -169,7 +193,7 @@ def test_lookup_projection_is_idempotent_but_returns_independent_payload(case, s
     assert second == first
     assert second is not first
     second["sources"][next(iter(second["sources"]))]["source_quote"] = "changed"
-    assert first["sources"] == case.packet["sources"]
+    assert first["sources"] == model_sources(case.packet)
 
 
 def test_mixed_full_and_lookup_cards_are_not_an_authenticated_directory(case, scope):
@@ -326,7 +350,13 @@ def test_summary_repair_keeps_exact_body_targets_and_diagnostics(
     assert system == "unchanged system"
     expected = {**before, "grounding_instruction": view.GROUNDING_INSTRUCTION}
     assert result == (
-        {**expected, "cards": lookup(case.packet)} if with_sources else expected
+        {
+            **expected,
+            "cards": lookup(case.packet),
+            "sources": model_sources(case.packet),
+        }
+        if with_sources
+        else expected
     )
     repeated_system, repeated = view.project_source_view(
         system, result, case.packet, scope
@@ -377,7 +407,11 @@ def test_reviewer_source_binding_is_shared_without_changing_report_prose(case, s
         "duties": case.packet["section_duties"],
     }
     _, result = view.project_source_view("review system", payload, case.packet, scope)
-    assert result == {**payload, "cards": lookup(case.packet)}
+    assert result == {
+        **payload,
+        "cards": lookup(case.packet),
+        "sources": model_sources(case.packet),
+    }
 
 
 def test_local_record_binds_actual_final_payload_without_model_metadata(case, scope):

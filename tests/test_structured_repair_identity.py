@@ -6,6 +6,7 @@ import json
 from types import SimpleNamespace
 
 import pytest
+from model_config_helpers import load_previous_default_config as load_config
 from pydantic import ValidationError
 from test_frozen_writer_plan import frozen_bundle  # noqa: F401
 from test_reference_set_identity import envelope as reference_envelope
@@ -13,7 +14,6 @@ from test_support_receipt_identity import FLAGS, selected_envelope
 from test_writer_v2 import case  # noqa: F401
 
 from litagent.capacity import CapacityConfig
-from litagent.config import load_config
 from litagent.frozen_writing import plan_frozen_budget, run_frozen
 from litagent.quality import digest
 from litagent.safety.planned_accounting import _envelope as accounting_envelope

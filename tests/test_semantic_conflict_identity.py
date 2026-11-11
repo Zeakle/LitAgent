@@ -6,6 +6,7 @@ import json
 from types import SimpleNamespace
 
 import pytest
+from model_config_helpers import load_previous_default_config as load_config
 from test_adaptive_capacity import settle_initial
 from test_frozen_writer_plan import frozen_bundle  # noqa: F401
 from test_source_owner_pipeline import FLAGS
@@ -15,7 +16,6 @@ from test_writer_v2 import case  # noqa: F401
 
 import litagent.eval.semantic_conflict as semantic
 from litagent.capacity_rounds import plan_round, request_proof
-from litagent.config import load_config
 from litagent.frozen_writing import plan_frozen_budget, run_frozen
 from litagent.safety.planned_accounting import _envelope as accounting_envelope
 from litagent.safety.planned_accounting import validate_accounting_snapshot

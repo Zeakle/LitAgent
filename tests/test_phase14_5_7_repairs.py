@@ -6,8 +6,8 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+from model_config_helpers import load_previous_default_config as load_config
 
-from litagent.config import load_config
 from litagent.context.budget import BudgetManager
 from litagent.context.evidence_selector import EvidenceSelector, SectionSpec
 from litagent.eval.ragas_eval import RagasFaithfulnessEvaluator

@@ -7,9 +7,9 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from model_config_helpers import load_previous_default_config as load_config
 
 from litagent.agents.synthesis import SynthesisWorker
-from litagent.config import load_config
 from litagent.context.evidence_selector import EvidenceSelection
 from litagent.llm.client import LLMResponse
 from litagent.orchestrator.task_graph import SubTask, TaskGraph

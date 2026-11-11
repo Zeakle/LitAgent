@@ -100,7 +100,8 @@ def test_server_seal_detects_changes_at_request_boundaries(
     import hashlib
     import json
 
-    from litagent.config import load_config
+    from model_config_helpers import load_previous_default_config as load_config
+
     from litagent.contracts import build_config_summary
     from scripts.run_frozen_writing import frozen_runtime_guard
 

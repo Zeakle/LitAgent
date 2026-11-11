@@ -5,6 +5,7 @@ import json
 
 import httpx
 import pytest
+from model_config_helpers import load_previous_default_config as load_config
 from test_flat_writer_pipeline import FlatGateway
 from test_native_responses import owner_for
 from test_source_map_pipeline import products, sent_with
@@ -12,7 +13,6 @@ from test_source_owner_pipeline import FLAGS as SOURCE_OWNER_FLAGS
 from test_writer_v2 import case  # noqa: F401
 
 from litagent.capacity import CapacityConfig
-from litagent.config import load_config
 from litagent.eval.batched import _restore_batch_support_ids
 from litagent.eval.scoped import Assessment
 from litagent.frozen_writing import frozen_options, plan_frozen_budget, run_frozen

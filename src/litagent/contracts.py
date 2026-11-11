@@ -11,6 +11,7 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel, ConfigDict, Field
 
 from litagent.config import AppConfig
+from litagent.operational_limits import configured_ceiling
 from litagent.quality import WRITING_VERSION
 from litagent.safety.budget import STRICT_EXTRACTION_OUTPUT_TOKENS
 
@@ -133,6 +134,19 @@ def build_config_summary(
         },
         "mcp_servers": _mcp_summary(config),
     }
+    if config.extractor.evidence_preparation_policy is not None:
+        from litagent.body_quality import (
+            PREPARATION_MAX_CHARS,
+            PREPARATION_MAX_CHUNKS,
+            evidence_preparation_identity,
+        )
+
+        effective["extractor"]["evidence_preparation"] = {
+            "identity": evidence_preparation_identity(),
+            "max_chunks": PREPARATION_MAX_CHUNKS,
+            "max_context_chars": PREPARATION_MAX_CHARS,
+            "max_fulltext_papers": 8,
+        }
     if any(
         getattr(config.llm, f"{stage}_model") is not None
         for stage in ("extraction", "generation", "evaluation")
@@ -212,15 +226,15 @@ def build_config_summary(
                 "complete-review-materials-v2",
                 "grounded-request-encoding-v1",
             ],
-            "request_limit": 64,
+            "request_limit": configured_ceiling(config, 64),
             "stage_tokens": [
                 int(config.safety.max_cost_tokens * ratio) for ratio in (0.4, 0.2, 0.4)
             ],
             "strict_eval": strict_fields,
         }
-        effective["extractor"][
-            "strict_max_output_tokens"
-        ] = STRICT_EXTRACTION_OUTPUT_TOKENS
+        effective["extractor"]["strict_max_output_tokens"] = configured_ceiling(
+            config, STRICT_EXTRACTION_OUTPUT_TOKENS
+        )
         if quality_policy in {"strict_auto_v1", "strict_auto_v2"}:
             effective["extractor"]["automatic_transport_timeout_ms"] = int(
                 config.llm.request_timeouts_seconds.get(
@@ -390,12 +404,15 @@ def normalize_survey_result(
 
     details = value.get("evaluation", {}).get("faithfulness", {}).get("details", {})
     if details.get("evaluation_result_contract") == RESULT_CONTRACT:
-        from litagent.eval.results import EvaluationRunResult
+        from litagent.eval.results import EvaluationRunResult, historical_checks
 
-        run = EvaluationRunResult.from_details(
-            details, hashlib.sha256(value["survey"].encode()).hexdigest()
+        report_sha = hashlib.sha256(value["survey"].encode()).hexdigest()
+        stored = historical_checks(details, report_sha)
+        value["evaluation_checks"] = (
+            EvaluationRunResult.from_details(details, report_sha).checks()
+            if stored is None
+            else stored
         )
-        value["evaluation_checks"] = run.checks()
     elif value.get("evaluation_checks") is not None:
         raise ValueError("evaluation_checks_contract_missing")
     serialized = SurveyResult.model_validate(value).model_dump()

@@ -577,7 +577,8 @@ async def test_frozen_runtime_uses_real_workers_report_exit_and_evaluation(
     case, tmp_path, monkeypatch, scenario, thinking_mode, native_reasoning_effort
 ):
     """Frozen runtime uses real workers report exit and evaluation."""
-    from litagent.config import load_config
+    from model_config_helpers import load_previous_default_config as load_config
+
     from litagent.frozen_writing import frozen_options, run_frozen
     from litagent.review_structure import build_methodology
     from litagent.runner import LitAgent, RunPolicy

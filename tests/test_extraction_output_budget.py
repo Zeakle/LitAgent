@@ -7,12 +7,12 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from model_config_helpers import load_previous_default_config as load_config
 from test_observability import _tracer_with_mock
 from test_strict_auto_recovery import extraction, paper
 
 from litagent.agents.extraction_strategy import LLMStrategy, _parse_extraction_response
 from litagent.agents.extractor import ExtractorWorker
-from litagent.config import load_config
 from litagent.contracts import build_config_summary
 from litagent.llm.client import LLMResponse, OpenAICompatibleClient
 from litagent.observability.recorder import RedactingTraceHook

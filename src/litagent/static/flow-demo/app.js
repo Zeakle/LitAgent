@@ -1,15 +1,15 @@
-import { bindAuditControls, bindAutomaticAuditPreferences } from "./audit-controls.js?v=15.10.6.163-summary-contract";
+import { bindAuditControls, bindSurveyVerification } from "./audit-controls.js?v=15.10.6.384-verification";
 import { bindFormatControls } from "./format-controls.js?v=15.10.10";
 import { createApiClient, openEventStream } from "./api-client.js";
 import { createBenchmarkController } from "./benchmark-controller.js?v=15.10.6.163-summary-contract";
 import { renderBenchmarkDetail, renderBenchmarkList, renderBenchmarkObservation } from "./benchmark-view.js?v=15.10.6.163-summary-contract";
-import { adaptArchiveView, adaptInteractiveView, chooseDefaultSection, normalizeRunList } from "./adapters.js?v=15.10.6.325-closeout";
+import { adaptArchiveView, adaptInteractiveView, chooseDefaultSection, normalizeRunList } from "./adapters.js?v=15.10.6.367-repair";
 import { evidenceMap, renderEvidenceList } from "./evidence-view.js";
 import { createExecutionWorkspace } from "./execution-workspace.js";
 import { renderExecutionInspector } from "./execution-inspector.js";
 import { renderHistory } from "./history-view.js";
-import { applyTranslations, translator } from "./i18n.js?v=15.10.6.163-summary-contract";
-import { renderQuality, locateReportDiagnostic } from "./quality-view.js?v=15.10.6.325-closeout";
+import { applyTranslations, translator } from "./i18n.js?v=15.10.6.384-verification";
+import { renderQuality, locateReportDiagnostic } from "./quality-view.js?v=15.10.6.384-verification";
 import { navigateReportHeading, renderOutline, renderReportDocument, renderSearchRecords } from "./report-view.js?v=15.10.260";
 import { renderReview } from "./review-view.js?v=15.10.5-strict";
 import { createWorkbenchStore } from "./state.js";
@@ -26,7 +26,7 @@ const mobileSidebar = globalThis.matchMedia?.("(max-width: 760px)");
 const benchmarkState = { results: [], selectedId: null, detail: null, observation: null, loaded: false };
 const api = createApiClient(() => context?.operation_token);
 const executionWorkspace = createExecutionWorkspace({ store, t, onInspect: setInspector });
-const automaticAuditPreferences = bindAutomaticAuditPreferences({ capabilities: () => ({...context?.auto_audit_capabilities, default_generation_strategy:context?.automatic_acceptance?.default_generation_strategy, default_budget_policy:context?.automatic_acceptance?.default_budget_policy, maximum_survey_tokens:context?.automatic_acceptance?.maximum_survey_tokens}), t });
+const surveyVerification = bindSurveyVerification({ capabilities: () => ({...context?.auto_audit_capabilities, default_generation_strategy:context?.automatic_acceptance?.default_generation_strategy, default_budget_policy:context?.automatic_acceptance?.default_budget_policy, maximum_survey_tokens:context?.automatic_acceptance?.maximum_survey_tokens, default_verification:context?.automatic_acceptance?.default_verification, maximum_survey_requests:context?.automatic_acceptance?.maximum_survey_requests}), t });
 function t(key) { return translator(store.get().locale)(key); }
 function setNotice(message = "", kind = "info") {
   const element = $("#notice");
@@ -153,7 +153,7 @@ function renderControls(view) {
 function render() {
   const state = store.get(); const view = state.view;
   applyTranslations(document, t);
-  automaticAuditPreferences.render();
+  surveyVerification.render();
   document.documentElement.lang = state.locale;
   $("#locale-toggle").textContent = state.locale === "zh-CN" ? "EN" : "中文";
   $("#run-count").textContent = state.runs.length;
@@ -190,7 +190,7 @@ function renderQualityContent() {
   const state = store.get(); const view = state.view;
   const revision = Number(view?.displayRevision || view?.versions?.[0]?.revision || 1);
   const snapshot = independentAuditState?.target && view?.identity && independentAuditState.target.runId === view.identity.runId && independentAuditState.target.revision === revision ? independentAuditState : null;
-  renderQuality($("#quality-content"), view?.runtimeEvaluation || {}, view?.quality, view?.delivery, setInspector, t, { budgetPlan: view?.budgetPlan, budgetState: view?.budgetState, runId: view?.identity?.runId, locale: state.locale, revision: view?.report?.survey ? revision : null, sha: snapshot?.data?.source_report_sha256 || view?.reportSha, audits: snapshot, qualityPolicy: view?.report?.metadata?.quality_policy, verification: view?.report?.metadata?.verification, bodyDiagnostics: view?.report?.metadata?.body_diagnostics, analysisPlan: view?.report?.metadata?.analysis_plan, pipelineVerification: view?.pipelineVerification, extractionVerification: view?.report?.metadata?.extraction_verification, automaticAcceptance: view?.report?.metadata?.automatic_acceptance, evaluationHistory: view?.report?.metadata?.evaluation_history, writerFailure: view?.report?.metadata?.writer_failure, writerContract: view?.report?.metadata?.writing_bindings?.writer_contract, targetedRepairState: view?.report?.metadata?.targeted_repair_state || (view?.report?.survey ? null : view?.targetedRepairState) });
+  renderQuality($("#quality-content"), view?.runtimeEvaluation || {}, view?.quality, view?.delivery, setInspector, t, { budgetPlan: view?.budgetPlan, budgetState: view?.budgetState, runId: view?.identity?.runId, locale: state.locale, revision: view?.report?.survey ? revision : null, sha: snapshot?.data?.source_report_sha256 || view?.reportSha, audits: snapshot, reportJudgeRetired: true, qualityPolicy: view?.report?.metadata?.quality_policy, verification: view?.report?.metadata?.verification, bodyDiagnostics: view?.report?.metadata?.body_diagnostics, analysisPlan: view?.report?.metadata?.analysis_plan, pipelineVerification: view?.pipelineVerification, extractionVerification: view?.report?.metadata?.extraction_verification, automaticAcceptance: view?.report?.metadata?.automatic_acceptance, evaluationHistory: view?.report?.metadata?.evaluation_history, providerFailures: view?.report?.metadata?.provider_failures, writerFailure: view?.report?.metadata?.writer_failure, writerFormat: view?.report?.metadata?.writer_format, writerContract: view?.report?.metadata?.writing_bindings?.writer_contract, targetedRepairState: view?.report?.metadata?.targeted_repair_state || (view?.report?.survey ? null : view?.targetedRepairState) });
 }
 
 function renderBenchmarkState() {
@@ -321,7 +321,7 @@ async function startRun(event) {
   const qualityPolicy = $("#quality-policy").value;
   const humanReview = qualityPolicy === "strict_v1" || (!["strict_auto_v1", "strict_auto_v2"].includes(qualityPolicy) && $("#human-review").checked);
   try {
-    const created = await api.json("/survey", { method: "POST", mutate: true, body: { query, quality_policy: qualityPolicy, report_language: $("#report-language").value, human_review: humanReview, review_structure: $("#review-structure").value, citation_style: $("#new-citation-style").value, ...automaticAuditPreferences.options() } });
+    const created = await api.json("/survey", { method: "POST", mutate: true, body: { query, quality_policy: qualityPolicy, report_language: $("#report-language").value, human_review: humanReview, review_structure: $("#review-structure").value, citation_style: $("#new-citation-style").value, ...surveyVerification.options() } });
     citationPreferences.set(created.task_id, $("#new-citation-style").value);
     $("#new-run-dialog").close();
     if (humanReview) { await loadRunList(`interactive:${created.task_id}`); } else { await refreshLegacy(created.task_id, query); }
@@ -329,7 +329,7 @@ async function startRun(event) {
 }
 async function initialize() {
   context = await api.json("/workbench/context"); $("#runtime-mode").textContent = context.mode;
-  automaticAuditPreferences.render();
+  surveyVerification.render();
   $("#open-new-run").disabled = !context.live_enabled; $("#live-warning").textContent = context.live_enabled ? "" : t("offline");
   if (context.format_capabilities?.academic_engine_available === false) {
     for (const select of [$("#new-citation-style"), $("#export-style")]) for (const option of select.options) if (!["numbered", "evidence"].includes(option.value)) option.disabled = true;
@@ -357,13 +357,13 @@ $("#quality-policy").addEventListener("change", () => {
   const strict = $("#quality-policy").value === "strict_v1";
   $("#human-review").disabled = strict || ["strict_auto_v1", "strict_auto_v2"].includes($("#quality-policy").value);
   $("#human-review").checked = strict;
-  automaticAuditPreferences.render();
+  surveyVerification.render();
 });
 $("#locale-toggle").addEventListener("click", () => { const next = store.get().locale === "zh-CN" ? "en" : "zh-CN"; localStorage.setItem("litagent-locale", next); store.update({ locale: next }); });
 $("#cancel-run").addEventListener("click", async () => { const view = store.get().view; if (!view) return; await api.request(`/survey/${encodeURIComponent(view.identity.runId)}`, { method: "DELETE", mutate: true }); await refreshInteractive(view.identity.runId); });
 $("#download-artifact").addEventListener("click", () => { const view = store.get().view; if (view) location.href = `/flow-demo/runs/${encodeURIComponent(view.identity.runId)}/download`; });
 bindFormatControls({ store, api, t, setNotice, citationPreferences });
-bindAuditControls({ store, api, setNotice, onSource: claim => {if (!locateReportDiagnostic($("#report-document"), store.get().view?.report?.survey || "", claim)) setNotice(store.get().locale === "zh-CN" ? "无法唯一定位所示原文。" : "Cannot uniquely locate this source quote.", "error");}, onSnapshot: snapshot => { independentAuditState = snapshot; renderQualityContent(); }, onEvidence: (id, button) => {
+bindAuditControls({ store, api, onSource: claim => {if (!locateReportDiagnostic($("#report-document"), store.get().view?.report?.survey || "", claim)) setNotice(store.get().locale === "zh-CN" ? "无法唯一定位所示原文。" : "Cannot uniquely locate this source quote.", "error");}, onSnapshot: snapshot => { independentAuditState = snapshot; renderQualityContent(); }, onEvidence: (id, button) => {
   const view = store.get().view; const normalized = id.startsWith("E:") ? id : `E:${id}`;
   const item = evidenceMap(view?.evidence || []).get(normalized);
   if (item) setInspector({kind: "evidence", id: normalized, value: item}, button);

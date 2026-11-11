@@ -15,14 +15,15 @@ MAX_OUTPUT_TOKENS = 32768
 EXPANDED_CONTEXT_TOKENS = 196608
 
 
-def validate_output_tokens(value: Mapping) -> dict[str, int]:
+def validate_output_tokens(
+    value: Mapping, *, maximum=MAX_OUTPUT_TOKENS
+) -> dict[str, int]:
     """Reject incomplete, coerced, or unsupported server output reservations."""
     if (
         not isinstance(value, Mapping)
         or set(value) != set(LEGACY_OUTPUT_TOKENS)
         or any(
-            type(value[key]) is not int
-            or not minimum <= value[key] <= MAX_OUTPUT_TOKENS
+            type(value[key]) is not int or not minimum <= value[key] <= maximum
             for key, minimum in LEGACY_OUTPUT_TOKENS.items()
         )
         or len({value[key] for key in ("body", "summary", "repair")}) != 1
@@ -56,21 +57,34 @@ def configured_output_tokens(config) -> dict[str, int] | None:
     )
     if type(context) is not int or context < EXPANDED_CONTEXT_TOKENS:
         raise ValueError("stage_output_context_capacity_invalid")
-    return validate_output_tokens(value)
+    from litagent.run_limits import configured_run_limits, envelope_run_limits
+
+    limits = configured_run_limits(config)
+    maximum = envelope_run_limits({"run_limits": limits} if limits else None)[
+        "max_output_tokens"
+    ]
+    return validate_output_tokens(value, maximum=maximum)
 
 
 def envelope_output_tokens(envelope=None) -> dict[str, int]:
     """Use frozen stage limits, falling back only when the opt-in field is absent."""
     if envelope is None or "output_tokens" not in envelope:
         return dict(LEGACY_OUTPUT_TOKENS)
-    return validate_output_tokens(envelope["output_tokens"])
+    from litagent.run_limits import envelope_run_limits
+
+    return validate_output_tokens(
+        envelope["output_tokens"],
+        maximum=envelope_run_limits(envelope)["max_output_tokens"],
+    )
 
 
 def envelope_context_tokens(envelope=None) -> int:
     """Bind expanded requests to a fixed, conservatively sized model context."""
     if envelope is not None and "output_tokens" in envelope:
-        validate_output_tokens(envelope["output_tokens"])
-        return EXPANDED_CONTEXT_TOKENS
+        envelope_output_tokens(envelope)
+        from litagent.run_limits import envelope_run_limits
+
+        return envelope_run_limits(envelope)["context_tokens"]
     return 131072
 
 

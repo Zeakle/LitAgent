@@ -162,8 +162,9 @@ async def run_capacity_case(
     allow_uncertain=False,
 ):
     """Exercise the real frozen consumers with a bounded external gateway."""
+    from model_config_helpers import load_previous_default_config as load_config
+
     from litagent.capacity import CapacityConfig
-    from litagent.config import load_config
     from litagent.frozen_writing import frozen_options, plan_frozen_budget, run_frozen
     from litagent.quality import digest
     from litagent.review_structure import build_methodology

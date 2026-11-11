@@ -10,6 +10,7 @@ import json
 
 import httpx
 import pytest
+from model_config_helpers import load_previous_default_config as load_config
 from test_flat_writer_pipeline import FlatGateway
 from test_guidance_wire_pipeline import assert_complete_model_wire
 from test_native_responses import owner_for
@@ -18,7 +19,6 @@ from test_support_receipts_pipeline import SELECTION
 from test_writer_v2 import case  # noqa: F401
 
 from litagent.capacity import CapacityConfig
-from litagent.config import load_config
 from litagent.frozen_writing import frozen_options, plan_frozen_budget, run_frozen
 from litagent.quality import digest
 from litagent.review_structure import build_methodology

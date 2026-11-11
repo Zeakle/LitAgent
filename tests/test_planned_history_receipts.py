@@ -8,11 +8,11 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
+from model_config_helpers import load_previous_default_config as load_config
 from test_native_responses import envelope, owner_for
 from test_planned_budget import plan
 from test_writer_v2 import case  # noqa: F401
 
-from litagent.config import load_config
 from litagent.contracts import build_config_summary
 from litagent.llm.routing import ModelBoundClient
 from litagent.report_audit import atomic_json, digest

@@ -518,10 +518,11 @@ def test_root_accounting_survives_restarts_without_counting_product_twice(tmp_pa
 async def test_judge_only_dry_run_reads_artifacts_without_services_or_writes(
     tmp_path, monkeypatch
 ):
+    from model_config_helpers import load_previous_default_config as load_config
+
     from litagent.benchmark.datasets import load_survey_dataset, load_survey_profiles
     from litagent.benchmark.survey_runner import SurveyBenchmarkRunner
     from litagent.cli import _cmd_benchmark, build_parser
-    from litagent.config import load_config
     from litagent.observability.recorder import ArchiveRepository
 
     dataset = load_survey_dataset(Path("benchmarks/survey/dataset.yaml"))
@@ -596,9 +597,10 @@ async def test_judge_only_dry_run_reads_artifacts_without_services_or_writes(
 
 
 def test_budget_counts_history_and_does_not_block_judge_on_product_count(tmp_path):
+    from model_config_helpers import load_previous_default_config as load_config
+
     from litagent.benchmark.survey_models import SurveyBenchmarkBudget
     from litagent.benchmark.survey_runner import SurveyBenchmarkRunner
-    from litagent.config import load_config
     from litagent.observability.recorder import ArchiveRepository
 
     product, _ = make_product(tmp_path)
@@ -630,8 +632,9 @@ def test_budget_counts_history_and_does_not_block_judge_on_product_count(tmp_pat
 
 @pytest.mark.asyncio
 async def test_partial_product_does_not_spend_on_judge(tmp_path, monkeypatch):
+    from model_config_helpers import load_previous_default_config as load_config
+
     from litagent.benchmark.survey_runner import SurveyBenchmarkRunner
-    from litagent.config import load_config
     from litagent.observability.recorder import ArchiveRepository
 
     product, artifact = make_product(tmp_path)
@@ -684,9 +687,10 @@ async def test_product_is_saved_before_judge_and_restart_never_generates_again(
 ):
     from types import SimpleNamespace
 
+    from model_config_helpers import load_previous_default_config as load_config
+
     from litagent.benchmark.datasets import load_survey_dataset, load_survey_profiles
     from litagent.benchmark.survey_runner import SurveyBenchmarkRunner
-    from litagent.config import load_config
     from litagent.observability.recorder import ArchiveRepository
 
     dataset = load_survey_dataset(Path("benchmarks/survey/dataset.yaml"))

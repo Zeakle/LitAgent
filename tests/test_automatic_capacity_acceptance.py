@@ -4,6 +4,7 @@ import copy
 import hashlib
 
 import pytest
+from model_config_helpers import load_previous_default_config as load_config
 from test_adaptive_capacity import plan_for, settle, settle_initial
 from test_optional_verification import optional_report
 from test_round_capacity import make_owner, send, wires
@@ -11,7 +12,7 @@ from test_writer_v2 import case  # noqa: F401
 
 from litagent.capacity_evaluation import adaptive_eval_config, preflight_round
 from litagent.capacity_rounds import choose_refinement, plan_round
-from litagent.config import EvalConfig, load_config
+from litagent.config import EvalConfig
 from litagent.eval.automatic import automatic_acceptance, freeze_automatic_inputs
 from litagent.eval.base import CTX_EVIDENCE
 from litagent.eval.batched import (

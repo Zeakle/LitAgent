@@ -509,10 +509,10 @@ async def test_actual_human_revision_uses_two_parts_and_never_commits_body_mutat
 ):
     from unittest.mock import AsyncMock
 
+    from model_config_helpers import load_previous_default_config as load_config
     from test_complete_native_repair import source_selection
 
     from litagent.agents.synthesis import SynthesisWorker
-    from litagent.config import load_config
     from litagent.eval.base import CTX_EVIDENCE, CTX_SELECTED_EVIDENCE
     from litagent.runner import LitAgent
 

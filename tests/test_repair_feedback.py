@@ -600,10 +600,10 @@ async def run_feedback_case(
     case, tmp_path, monkeypatch, failing_candidates, *, config=None
 ):
     """Mock external HTTP only while retaining the full transactional consumer chain."""
+    from model_config_helpers import load_previous_default_config as load_config
     from test_native_responses import owner_for
     from test_scientific_repair_pipeline import ScientificRepairGateway
 
-    from litagent.config import load_config
     from litagent.frozen_writing import frozen_options, plan_frozen_budget, run_frozen
     from litagent.output_capacity import configured_output_tokens
     from litagent.review_structure import build_methodology
@@ -613,7 +613,11 @@ async def run_feedback_case(
     gateway = ScientificRepairGateway(case, failing_candidates)
     owner, _, _ = await owner_for(gateway)
     legacy_output = config is None
-    config = load_config() if config is None else config.model_copy(deep=True)
+    config = (
+        load_config("config/default.yaml")
+        if config is None
+        else config.model_copy(deep=True)
+    )
     config.observability.enabled = False
     config.mcp_servers = {}
     config.llm.model = config.llm.extraction_model = config.llm.evaluation_model = (

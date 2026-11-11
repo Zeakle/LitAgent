@@ -687,6 +687,12 @@ def check_profile(config, profile, *, writing_plan=None):
         baseline.adversarial.review_max_tokens = 4096
         baseline.eval.max_tokens = 16384
         baseline.adversarial.thinking_mode = "disabled"
+        from litagent.operational_limits import is_uplifted
+
+        if is_uplifted(config):
+            if config.safety.max_cost_tokens != 600000:
+                raise ValueError("frozen_writing_profile_preparation_limit_conflict")
+            baseline.safety.max_cost_tokens = 500000
         check_models(baseline)
         return
     if config.adversarial.review_max_tokens != 4096 or config.eval.max_tokens != 16384:
@@ -4816,7 +4822,14 @@ def syntax_normalizations(run_id, policy):
 
 def export(root, state, manifest):
     """Publish one sanitized data source with separate execution and quality outcomes."""
+    from litagent.run_limits import (
+        FORMAT_JSON_POLICY,
+        LOSSLESS_JSON_POLICY,
+        envelope_run_limits,
+        repair_allowances,
+    )
     from litagent.safety.planned_accounting import _digest, _envelope
+    from litagent.writing_v2 import planned_syntax_policy
 
     executed = state["cases"]
     budget_plans = manifest.get("budget_plans")
@@ -4843,11 +4856,18 @@ def export(root, state, manifest):
                 return False
             if plan["contract"] != "planned-budget-v2" and (
                 type(plan.get("repair_limit")) is not int
-                or not 0 <= plan["repair_limit"] <= 2
+                or not 0
+                <= plan["repair_limit"]
+                <= envelope_run_limits(plan.get("envelope"))["max_repairs"]
             ):
                 return False
             if plan["contract"] not in {"planned-budget-v2", "planned-budget-v3"}:
                 _envelope(plan.get("envelope"))
+            if allowances := repair_allowances(plan.get("envelope")):
+                if plan["scope_bounds"].get("repair_allowances") != allowances or plan[
+                    "repair_limit"
+                ] != sum(allowances.values()):
+                    return False
             if "joint_round_escrow" in plan:
                 from litagent.safety.planned_accounting import _plan
 
@@ -4859,11 +4879,24 @@ def export(root, state, manifest):
     display_plans = {
         case: plan for case, plan in budget_plans.items() if display_plan(plan)
     }
+
+    def repair_scope(plan):
+        quotas = plan["scope_bounds"].get("repair_allowances")
+        if quotas:
+            return ", ".join(f"{kind}={count}" for kind, count in quotas.items())
+        maximum = envelope_run_limits(plan.get("envelope"))["max_repairs"]
+        return f"{plan['repair_limit']}/{maximum}"
+
     writing_profile = profile_description(
         manifest.get("writing_profile", DISABLED_PROFILE),
         manifest.get("config", {}),
         writing_plan=manifest.get("writing_plan"),
     )
+    policies = {
+        planned_syntax_policy(plan.get("envelope")) for plan in display_plans.values()
+    }
+    if policies in ({LOSSLESS_JSON_POLICY}, {FORMAT_JSON_POLICY}):
+        writing_profile["syntax_policy"] = next(iter(policies))
     if "writer_wire_contract" in manifest:
         # Read historical metadata verbatim rather than inferring today's wire.
         writing_profile["writer_wire_contract"] = manifest["writer_wire_contract"]
@@ -5111,6 +5144,12 @@ def export(root, state, manifest):
         row["syntax_normalization_count"] = (
             len(receipts) if receipts is not None else None
         )
+        if row.get("writer_format", {}).get("policy") in {
+            LOSSLESS_JSON_POLICY,
+            FORMAT_JSON_POLICY,
+        }:
+            row["syntax_policy"] = row["writer_format"]["policy"]
+            row["syntax_normalization_count"] = row["writer_format"]["recovered_count"]
         row["provider_api"] = writing_profile.get("provider_api", "chat")
         row["reasoning_effort"] = writing_profile.get("reasoning_effort")
         row["shape_recovery_contract"] = writing_profile.get("shape_recovery_contract")
@@ -5415,6 +5454,8 @@ def export(root, state, manifest):
         keys.append("evaluation_history")
     if any("evaluation_summary" in row for row in rows):
         keys.append("evaluation_summary")
+    if any("writer_format" in row for row in rows):
+        keys.append("writer_format")
     writer = csv.DictWriter(buf, fieldnames=keys, extrasaction="ignore")
     writer.writeheader()
 
@@ -5447,7 +5488,11 @@ def export(root, state, manifest):
             projected["cost_diagnostic"] = json.dumps(
                 row["cost_diagnostic"], ensure_ascii=False
             )
-        for key in ("semantic_conflict_effects", "partial_semantic_conflict_effects"):
+        for key in (
+            "semantic_conflict_effects",
+            "partial_semantic_conflict_effects",
+            "writer_format",
+        ):
             if key in row:
                 projected[key] = json.dumps(row[key], ensure_ascii=False)
         return projected
@@ -5560,7 +5605,7 @@ def export(root, state, manifest):
             md += (
                 "\n计划修复路径（仅准入后锁定） / Planned repairs (locked only after admission): "
                 + ", ".join(
-                    f"{case}={plan['repair_limit']}/2"
+                    f"{case}={repair_scope(plan)}"
                     for case, plan in display_plans.items()
                 )
                 + "。首次完整 Evaluation 不可省略；0次修复不代表科学通过。\n"
@@ -5596,6 +5641,35 @@ def export(root, state, manifest):
             for r in rows
         )
     from litagent.eval.results import summary_tables
+
+    format_rows = [r for r in rows if r.get("writer_format", {}).get("calls")]
+    if format_rows:
+        md += "\n格式恢复 / Format recovery\n\n| Case | Recovered | Stage and outcome |\n|---|---:|---|\n"
+        for row in format_rows:
+            status = row["writer_format"]
+            details = "; ".join(
+                " · ".join(
+                    filter(
+                        None,
+                        [
+                            call["call"],
+                            call["stage"],
+                            call["status"],
+                            *call["kinds"],
+                            call["reason"],
+                        ],
+                    )
+                )
+                for call in status["calls"]
+            )
+            if status.get("policy") == FORMAT_JSON_POLICY:
+                details += (
+                    f" · regenerated {status['regenerated_count']}"
+                    f" · requests {status['requests_used']} used / {status['requests_remaining']} reserved unused"
+                    f" · tokens {status['actual_tokens']} actual / {status['unknown_tokens']} unknown"
+                    f" / {status['reserved_tokens']} reserved"
+                )
+            md += f"| {row['case_id']} | {status['recovered_count']} | {details} |\n"
 
     independent_markdown, _ = summary_tables(rows)
     md += independent_markdown
@@ -5656,7 +5730,7 @@ def export(root, state, manifest):
             )
             + "</section>"
         )
-    page = """<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LitAgent · Frozen writing validation</title><style>*{box-sizing:border-box}body{font:16px/1.6 system-ui;background:#f4f6fa;color:#172c43;max-width:1100px;padding:20px;margin:auto}section,header{background:white;padding:20px;margin:16px 0;border:1px solid #dbe2ee;border-radius:12px}h1{font-size:1.7rem}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}.stat{background:#edf2f9;padding:14px}.scroll{overflow:auto}table{width:100%;border-collapse:collapse}th,td{padding:10px;border-bottom:1px solid #ccc;text-align:left}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:.85em}button,a,summary{cursor:pointer}button{font:inherit;padding:8px}a{color:#135a9e}*:focus-visible{outline:3px solid #1679d2}summary{padding:12px 0}p{overflow-wrap:anywhere}@media(max-width:430px){body{padding:10px}section,header{padding:14px}h1{font-size:1.3rem}}</style><header><button id="locale">English / 中文</button><h1 id="title">三域冻结正文验收</h1><p id="scope">固定证据 → 正文 → Reviewer → Evaluation → 自动交付或失败归档；不重新检索。Judge/Jev关闭。</p><p id="profile"></p><p id="transport"></p><p id="syntax"></p></header><section><div id="stats" class="grid"></div><p id="note">自动评测；人工校准未验证。未核验不等于通过，协议完成不等于科学通过。失败及未运行题均保留在分母。</p><p id="status"></p></section><section class="scroll"><table><thead><tr><th>Case</th><th>Generated</th><th>Evaluation</th><th>Delivered</th><th>Supported</th><th>Unsupported</th><th>Unverified</th><th>Detail</th></tr></thead><tbody>__ROWS__</tbody></table></section><section><h2>诊断 / Diagnostics</h2>__DETAILS__</section><section><a href="benchmark.json">JSON</a> · <a href="benchmark.csv">CSV</a> · <a href="benchmark.md">Markdown</a><pre id="usage"></pre></section><script id="data" type="application/json">__DATA__</script><script>const d=JSON.parse(document.getElementById('data').textContent);let en=false;function draw(){document.documentElement.lang=en?'en':'zh-CN';document.getElementById('title').textContent=d.budget_plans&&d.state==='preflight_rejected'?(en?'Three-domain budget admission · offline review':'三域预算准入 · 离线审查'):(en?'Three-domain frozen writing validation':'三域冻结正文验收');document.getElementById('scope').textContent=en?'Frozen evidence → writing → Reviewer → Evaluation → automatic delivery or archived failure. No retrieval. Judge/Jev disabled.':'固定证据 → 正文 → Reviewer → Evaluation → 自动交付或失败归档；不重新检索。Judge/Jev关闭。';document.getElementById('note').textContent=en?'Automatic evaluation; no human calibration. Unverified is not passed. Protocol completion is not scientific acceptance. Failures and unrun cases remain in the denominator.':'自动评测；人工校准未验证。未核验不等于通过，协议完成不等于科学通过。失败及未运行题均保留在分母。';const t=d.cases.filter(r=>r.transport_diagnostic).map(r=>r.case_id+' · HTTP '+r.http_status+' · '+(r.provider_error_code||'—')+' · '+(r.rejected_parameter||'—')).join('; ');document.getElementById('transport').textContent=t?((en?'Provider diagnosis (usage unknown is not zero cost): ':'供应商诊断（未知用量不等于零费用）：')+t):'';const p=d.writing_profile;document.getElementById('syntax').textContent=p.syntax_policy?((en?'Host EOF container normalization; scientific verification still required: ':'宿主末尾容器闭合；仍须完整科学核验：')+p.syntax_policy):'';document.getElementById('profile').textContent=(en?'Frozen thinking profile: ':'冻结思考配置：')+p.id+' · '+(p.provider_api||'chat')+' · '+(en?'Writing':'写作')+' '+p.generation_thinking_mode+' / Reviewer '+p.reviewer_thinking_mode+' / Evaluation '+p.evaluation_thinking_mode+' · '+(p.reasoning_effort?((p.reviewer_thinking_mode==='disabled'?'writing effort=':'effort=')+p.reasoning_effort+' · '):'')+p.output_limit_parameter+' '+(p.generation_output_tokens??'—')+' / '+(p.reviewer_output_tokens??'—');document.getElementById('status').textContent=d.state+' · '+(d.stop_reason||'');let s=document.getElementById('stats');s.replaceChildren();for(const [k,v]of Object.entries({Planned:3,Run:d.run,Generated:d.generated,Evaluated:d.evaluation_completed,Delivered:d.passed})){let e=document.createElement('div');e.className='stat';e.textContent=k+' '+v+' / 3';s.append(e)}document.getElementById('usage').textContent=JSON.stringify({budget_plans:d.budget_plans??null,new_usage:d.new_usage,historical_usage:d.historical_usage,writing_profile:d.writing_profile,writer_prompt_contract:d.writer_prompt_contract??'unavailable',source_commit:d.source_commit,contract:d.contract},null,2)}document.getElementById('locale').onclick=()=>{en=!en;draw()};draw();</script></html>"""
+    page = """<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LitAgent · Frozen writing validation</title><style>*{box-sizing:border-box}body{font:16px/1.6 system-ui;background:#f4f6fa;color:#172c43;max-width:1100px;padding:20px;margin:auto}section,header{background:white;padding:20px;margin:16px 0;border:1px solid #dbe2ee;border-radius:12px}h1{font-size:1.7rem}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}.stat{background:#edf2f9;padding:14px}.scroll{overflow:auto}table{width:100%;border-collapse:collapse}th,td{padding:10px;border-bottom:1px solid #ccc;text-align:left}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:.85em}button,a,summary{cursor:pointer}button{font:inherit;padding:8px}a{color:#135a9e}*:focus-visible{outline:3px solid #1679d2}summary{padding:12px 0}p{overflow-wrap:anywhere}@media(max-width:430px){body{padding:10px}section,header{padding:14px}h1{font-size:1.3rem}}</style><header><button id="locale">English / 中文</button><h1 id="title">三域冻结正文验收</h1><p id="scope">固定证据 → 正文 → Reviewer → Evaluation → 自动交付或失败归档；不重新检索。Judge/Jev关闭。</p><p id="profile"></p><p id="transport"></p><p id="syntax"></p></header><section><div id="stats" class="grid"></div><p id="note">自动评测；人工校准未验证。未核验不等于通过，协议完成不等于科学通过。失败及未运行题均保留在分母。</p><p id="status"></p></section><section class="scroll"><table><thead><tr><th>Case</th><th>Generated</th><th>Evaluation</th><th>Delivered</th><th>Supported</th><th>Unsupported</th><th>Unverified</th><th>Detail</th></tr></thead><tbody>__ROWS__</tbody></table></section><section><h2>诊断 / Diagnostics</h2>__DETAILS__</section><section><a href="benchmark.json">JSON</a> · <a href="benchmark.csv">CSV</a> · <a href="benchmark.md">Markdown</a><pre id="usage"></pre></section><script id="data" type="application/json">__DATA__</script><script>const d=JSON.parse(document.getElementById('data').textContent);let en=false;function draw(){document.documentElement.lang=en?'en':'zh-CN';document.getElementById('title').textContent=d.budget_plans&&d.state==='preflight_rejected'?(en?'Three-domain budget admission · offline review':'三域预算准入 · 离线审查'):(en?'Three-domain frozen writing validation':'三域冻结正文验收');document.getElementById('scope').textContent=en?'Frozen evidence → writing → Reviewer → Evaluation → automatic delivery or archived failure. No retrieval. Judge/Jev disabled.':'固定证据 → 正文 → Reviewer → Evaluation → 自动交付或失败归档；不重新检索。Judge/Jev关闭。';document.getElementById('note').textContent=en?'Automatic evaluation; no human calibration. Unverified is not passed. Protocol completion is not scientific acceptance. Failures and unrun cases remain in the denominator.':'自动评测；人工校准未验证。未核验不等于通过，协议完成不等于科学通过。失败及未运行题均保留在分母。';const t=d.cases.filter(r=>r.transport_diagnostic).map(r=>r.case_id+' · HTTP '+r.http_status+' · '+(r.provider_error_code||'—')+' · '+(r.rejected_parameter||'—')).join('; ');document.getElementById('transport').textContent=t?((en?'Provider diagnosis (usage unknown is not zero cost): ':'供应商诊断（未知用量不等于零费用）：')+t):'';const p=d.writing_profile;document.getElementById('syntax').textContent=p.syntax_policy?((en?'Host format recovery; scientific verification still required: ':'宿主格式恢复；仍须完整科学核验：')+p.syntax_policy):'';document.getElementById('profile').textContent=(en?'Frozen thinking profile: ':'冻结思考配置：')+p.id+' · '+(p.provider_api||'chat')+' · '+(en?'Writing':'写作')+' '+p.generation_thinking_mode+' / Reviewer '+p.reviewer_thinking_mode+' / Evaluation '+p.evaluation_thinking_mode+' · '+(p.reasoning_effort?((p.reviewer_thinking_mode==='disabled'?'writing effort=':'effort=')+p.reasoning_effort+' · '):'')+p.output_limit_parameter+' '+(p.generation_output_tokens??'—')+' / '+(p.reviewer_output_tokens??'—');document.getElementById('status').textContent=d.state+' · '+(d.stop_reason||'');let s=document.getElementById('stats');s.replaceChildren();for(const [k,v]of Object.entries({Planned:3,Run:d.run,Generated:d.generated,Evaluated:d.evaluation_completed,Delivered:d.passed})){let e=document.createElement('div');e.className='stat';e.textContent=k+' '+v+' / 3';s.append(e)}document.getElementById('usage').textContent=JSON.stringify({budget_plans:d.budget_plans??null,new_usage:d.new_usage,historical_usage:d.historical_usage,writing_profile:d.writing_profile,writer_prompt_contract:d.writer_prompt_contract??'unavailable',source_commit:d.source_commit,contract:d.contract},null,2)}document.getElementById('locale').onclick=()=>{en=!en;draw()};draw();</script></html>"""
     page = (
         page.replace("<th>Delivered</th>", "<th>Repairs</th><th>Delivered</th>")
         .replace("__ROWS__", table)
@@ -5745,7 +5819,7 @@ def export(root, state, manifest):
             ROUND_PROFILE,
         ):
             limits = ", ".join(
-                f"{case}={p['repair_limit']}/2" for case, p in display_plans.items()
+                f"{case}={repair_scope(p)}" for case, p in display_plans.items()
             )
             panel += (
                 "<section><p>计划修复路径（仅准入后锁定） / Planned repairs (locked only after admission): "
@@ -6179,6 +6253,8 @@ async def _execute(root, config):
                 if candidate_errors:
                     failure = {"family": "protocol", "code": candidate_errors[0]}
             failure = meta.get("writer_failure") or failure
+            if "writer_format" in meta:
+                entry["writer_format"] = copy.deepcopy(meta["writer_format"])
             journal = Path(
                 "artifacts/targeted-repairs", run_id + ".json.writer-v2.json"
             )

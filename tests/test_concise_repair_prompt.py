@@ -458,7 +458,7 @@ def test_actual_prepare_validate_locks_pair_and_rejects_manifest_strip(
     case, tmp_path, monkeypatch
 ):
     """Replace archive and Git inputs while keeping real preparation consumers."""
-    from litagent.config import load_config
+    from model_config_helpers import load_previous_default_config as load_config
 
     monkeypatch.chdir(tmp_path)
     archives = tmp_path / "artifacts/runs"

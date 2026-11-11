@@ -221,7 +221,8 @@ def test_real_059_pairs_remain_rejected_without_reclassification():
 
 
 def test_real_059_archive_and_result_contract_still_read_without_migration():
-    from litagent.eval.results import EvaluationRunResult
+    from litagent.eval.results import EvaluationRunResult, public_summary
+    from litagent.observability.recorder import ArchiveRepository
 
     path = Path("artifacts/runs/frozen-writer-single-20261104-059-few-shot-metric.json")
     if not path.exists():
@@ -229,9 +230,13 @@ def test_real_059_archive_and_result_contract_still_read_without_migration():
     raw = path.read_bytes()
     report = json.loads(raw)["report"]
     details = report["evaluation"]["faithfulness"]["details"]
-    run = EvaluationRunResult.from_details(
-        details, hashlib.sha256(report["survey"].encode()).hexdigest()
-    )
-    assert run.metrics()["faithfulness"]["score"] is None
-    assert run.metrics()["internal_consistency"]["score"] is None
+    stored = ArchiveRepository(path.parent).get(path.stem)
+    assert stored["report"] == report
+    summary = public_summary(report)
+    assert summary["metrics"]["faithfulness"]["score"] is None
+    assert summary["metrics"]["internal_consistency"]["score"] is None
+    with pytest.raises(ValueError, match="evaluation_result_contract_identity_invalid"):
+        EvaluationRunResult.from_details(
+            details, hashlib.sha256(report["survey"].encode()).hexdigest()
+        )
     assert path.read_bytes() == raw

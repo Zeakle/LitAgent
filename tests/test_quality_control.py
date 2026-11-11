@@ -5,13 +5,14 @@ import json
 from unittest.mock import AsyncMock
 
 import pytest
+from model_config_helpers import load_previous_default_config as load_config
 from test_batched_evaluation import BatchLLM, materials
 from test_strict_quality import draft, to_native
 from test_support_passages import selected
 
 from litagent.agents.extraction_strategy import build_extraction_context
 from litagent.agents.reviewer import ReviewerWorker
-from litagent.config import EvalConfig, load_config
+from litagent.config import EvalConfig
 from litagent.contracts import build_config_summary
 from litagent.eval.scoped import (
     build_support_passages,

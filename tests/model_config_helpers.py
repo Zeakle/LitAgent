@@ -1,11 +1,17 @@
 """Keep historical Mini replay fixtures explicit as production defaults evolve."""
 
+from pathlib import Path
+
 from litagent.config import load_config
 
 
 def load_legacy_mini_config(config_path=None):
-    """Load unchanged non-model settings with the original single-model identity."""
-    config = load_config(config_path)
+    """Recreate the original model and selection settings for historical replay."""
+    config = load_previous_default_config(config_path)
+    config.safety = config.safety.model_copy(update={"planned_run_limits": None})
+    config.context = config.context.model_copy(
+        update={"evidence_top_k_per_section": 12}
+    )
     config.llm = config.llm.model_copy(
         update={
             "model": "doubao-seed-2-0-mini-260428",
@@ -32,5 +38,14 @@ def load_legacy_mini_config(config_path=None):
     config.adversarial = config.adversarial.model_copy(
         update={"task_timeout_ms": 720000}
     )
-    config.eval = config.eval.model_copy(update={"total_timeout_seconds": None})
+    config.eval = config.eval.model_copy(
+        update={"total_timeout_seconds": None, "semantic_engine": None}
+    )
     return config
+
+
+def load_previous_default_config(config_path=None):
+    """Select the historical YAML explicitly, including after a test changes cwd."""
+    return load_config(
+        config_path or str(Path(__file__).resolve().parents[1] / "config/default.yaml")
+    )

@@ -10,8 +10,9 @@ from unittest.mock import AsyncMock, MagicMock
 import httpx
 import pytest
 from langchain_core.documents import Document
+from model_config_helpers import load_previous_default_config as load_config
 
-from litagent.config import AgentConfig, AppConfig, LoggingConfig, load_config
+from litagent.config import AgentConfig, AppConfig, LoggingConfig
 from litagent.eval.base import EvalResult
 from litagent.llm.client import LLMResponse
 from litagent.observability.recorder import ArchiveRepository, RunRecorder

@@ -5,8 +5,8 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from model_config_helpers import load_previous_default_config as load_config
 
-from litagent.config import load_config
 from litagent.eval.ragas_eval import RagasFaithfulnessEvaluator
 
 

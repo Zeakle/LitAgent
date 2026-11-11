@@ -845,6 +845,10 @@ const fs=require('node:fs');
  if(!text.includes('Judge · '+disabled)||!text.includes('Jev · '+disabled))throw Error(text);
  if(!text.includes(locale==='en'?'Complete Evaluation is required':'完整 Evaluation 为必需门禁'))throw Error('mandatory Evaluation missing');
  if(text.includes(locale==='en'?'must all pass':'全部通过'))throw Error('old gates shown for optional run');
+ const current=new E();
+ renderQuality(current,{faithfulness:{details:{evaluation_version:'survey-evaluation-ragas-v1'}}},{status:'failed'},{status:'blocked'},()=>{},x=>x,{locale,automaticAcceptance:acceptance,reportJudgeRetired:true});
+ const currentText=walk(current).map(e=>e.textContent).join(' ');
+ if(/judge/i.test(currentText)||!currentText.includes('Jev · '+disabled)||!currentText.includes('Evaluation'))throw Error(currentText);
  if(JSON.stringify(acceptance)!==before)throw Error('mutated result');
 })().catch(error=>{console.error(error);process.exit(1)});
 """
@@ -1001,3 +1005,30 @@ const fs=require('node:fs');
         timeout=15,
     )
     assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize(
+    ("locale", "label"), [("en", "Usage unknown"), ("zh", "用量未知")]
+)
+def test_provider_rejection_shows_status_and_usage_independently(locale, label):
+    """Show the sanitized HTTP rejection next to its separate billing state."""
+    view = render_repair_state(
+        {
+            "options": {
+                "providerFailures": [
+                    {
+                        "task_id": "evidence_rewrite",
+                        "provider_http_status": 429,
+                        "provider_error_code": "RequestBurstTooFast",
+                        "provider_request_id": "offline-42",
+                        "usage_available": False,
+                    }
+                ]
+            }
+        },
+        locale,
+    )
+    assert all(
+        value in view["text"]
+        for value in ("HTTP 429", "RequestBurstTooFast", "offline-42", label)
+    )

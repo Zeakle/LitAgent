@@ -3,8 +3,9 @@
 import json
 
 import pytest
+from model_config_helpers import load_previous_default_config as load_config
 
-from litagent.config import EvalConfig, load_config
+from litagent.config import EvalConfig
 from litagent.eval.ragas_eval import RagasFaithfulnessEvaluator
 from litagent.eval.scoped import EVALUATION_VERSION, evaluate_scoped
 from litagent.llm.client import LLMResponse

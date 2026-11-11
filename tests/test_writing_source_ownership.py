@@ -4,10 +4,10 @@ import copy
 import json
 
 import pytest
+from model_config_helpers import load_previous_default_config as load_config
 from test_fragment_repair import case
 from test_strict_quality import draft, to_native
 
-from litagent.config import load_config
 from litagent.contracts import build_config_summary
 from litagent.quality import (
     GroundedWritingError,

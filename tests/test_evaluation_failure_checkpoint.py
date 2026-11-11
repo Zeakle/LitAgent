@@ -9,11 +9,11 @@ from unittest.mock import Mock
 
 import httpx
 import pytest
+from model_config_helpers import load_previous_default_config as load_config
 from test_batched_evaluation import BatchLLM, materials
 from test_native_responses import owner_for
 from test_step_timeouts import response
 
-from litagent.config import load_config
 from litagent.eval import ragas_eval
 from litagent.eval.ragas_eval import RagasFaithfulnessEvaluator
 from litagent.eval.scoped import ScopedEvaluationError

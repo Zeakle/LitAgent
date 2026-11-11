@@ -98,15 +98,14 @@ class TestReactGraph:
 
 
 @pytest.fixture(autouse=True)
-def _ensure_registry():
-    """Reset and populate the tool registry for each test."""
-    from litagent.tools.registry import get_registry
+def _ensure_registry(monkeypatch):
+    """Own an isolated search registry without borrowing prior tests' globals."""
+    from litagent.tools import registry as registry_module
+    from litagent.tools.builtin.search import register_search_tools
 
-    registry = get_registry()
-    if len(registry) == 0:
-        from litagent.tools.builtin.search import register_search_tools
-
-        register_search_tools()
+    registry = registry_module.ToolRegistry()
+    monkeypatch.setattr(registry_module, "_registry", registry)
+    register_search_tools(registry)
 
 
 class TestValidateToolCallWithGraphTools:

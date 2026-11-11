@@ -3,10 +3,10 @@
 from unittest.mock import patch
 
 import pytest
+from model_config_helpers import load_previous_default_config as load_config
 from test_quantitative_attribution import evaluate_claim
 from test_support_passages import selected
 
-from litagent.config import load_config
 from litagent.contracts import build_config_summary
 from litagent.eval.automatic import frozen_judge_fingerprint
 from litagent.eval.scoped import validate_support_basis

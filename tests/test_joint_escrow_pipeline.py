@@ -10,6 +10,7 @@ from types import SimpleNamespace
 import pytest
 import test_scientific_repair_pipeline as scientific
 import test_structured_repair_pipeline as structured
+from model_config_helpers import load_previous_default_config as load_config
 from test_concise_repair_prompt import FLAGS
 from test_frozen_writer_plan import frozen_bundle  # noqa: F401
 from test_repair_feedback import run_feedback_case
@@ -17,7 +18,6 @@ from test_source_map_pipeline import products, sent_with
 from test_writer_v2 import case  # noqa: F401
 
 from litagent.capacity import CapacityConfig
-from litagent.config import load_config
 from litagent.frozen_writing import plan_frozen_budget, run_frozen
 from litagent.orchestrator.task_graph import SubTask
 from litagent.quality import digest

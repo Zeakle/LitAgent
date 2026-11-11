@@ -14,7 +14,7 @@ from typing import Any, Literal
 
 import httpx
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
 
 from litagent.benchmark.artifacts import BenchmarkArtifactRepository
 from litagent.benchmark.survey_models import JudgeInventorySnapshot
@@ -44,18 +44,36 @@ class JevAuditConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    resource_revision: Literal["operational-plus20-v1"] | None = None
     enabled: bool = False
     base_url: str = "https://api.typesafe.ai"
     model: str = "jev-1.13.0"
     api_key_env: str = "TYPESAFE_API_KEY"
     timeout_seconds: float = Field(default=30.0, gt=0)
-    max_questions_per_batch: int = Field(default=16, ge=1, le=16)
-    concurrency: int = Field(default=2, ge=1, le=2)
+    max_questions_per_batch: int = Field(default=16, ge=1, le=39)
+    concurrency: int = Field(default=2, ge=1, le=5)
     max_retries: int = Field(default=0, ge=0, le=0)
     confidence_threshold: float = Field(default=0.9, ge=0, le=1)
     max_requests: int = Field(default=20, ge=1)
     max_input_tokens: int = Field(default=200_000, ge=1)
     max_request_bytes: int = Field(default=24_000, ge=1)
+
+    @model_validator(mode="after")
+    def validate_resource_revision(self):
+        """Keep old protocol ceilings unless the server selected the new revision."""
+        if self.resource_revision is None and (
+            self.max_questions_per_batch > 32 or self.concurrency > 4
+        ):
+            raise ValueError("jev_resource_revision_required")
+        return self
+
+    @model_serializer(mode="wrap")
+    def preserve_resource_identity(self, handler):
+        """Do not change the canonical fingerprints of historical Jev receipts."""
+        value = handler(self)
+        if self.resource_revision is None:
+            value.pop("resource_revision", None)
+        return value
 
     @property
     def fingerprint(self) -> str:
@@ -110,7 +128,7 @@ class CitationAuditDecision(BaseModel):
 
     question_id: str
     claim_id: str
-    kind: Literal["group", "member"]
+    kind: Literal["group", "member", "claim_validity", "claim_format"]
     evidence_id: str | None = None
     choice: str
     probabilities: dict[str, float]
@@ -221,11 +239,13 @@ class _QuestionSpec(BaseModel):
 
     question_id: str
     claim_id: str
-    kind: Literal["group", "member"]
+    kind: Literal["group", "member", "claim_validity", "claim_format"]
     evidence_id: str | None = None
     state: dict[str, Any]
     criteria: dict[str, str]
-    verification_stage: Literal["report", "extraction"] = "report"
+    verification_stage: Literal["report", "extraction", "extraction_admission"] = (
+        "report"
+    )
 
 
 def _artifact_raw_chunks(artifact: Mapping[str, Any]) -> dict[str, str]:
@@ -365,7 +385,10 @@ def _input_identity(item: CitationAuditInput) -> dict:
 
 
 def _question_specs(
-    inputs: list[CitationAuditInput], *, verification_stage="report"
+    inputs: list[CitationAuditInput],
+    *,
+    verification_stage="report",
+    candidate_ledger=None,
 ) -> list[_QuestionSpec]:
     specs: list[_QuestionSpec] = []
     for item in inputs:
@@ -381,6 +404,47 @@ def _question_specs(
                 for evidence in item.evidence
             ],
         }
+        if verification_stage == "extraction_admission":
+            if candidate_ledger is None or len(item.evidence) != 1:
+                raise ValueError("extraction_admission_source_invalid")
+            record = candidate_ledger[item.evidence[0].evidence_id]
+            common["candidate_record"] = {
+                key: record[key]
+                for key in ("evidence_id", "paper_id", "text", "fact_fields")
+                if key in record
+            }
+            for prefix, kind, criteria in (
+                (
+                    "v",
+                    "claim_validity",
+                    {
+                        "ok": "An independently testable scientific proposition, with every entity, condition, value and extracted field entailed by this same original source.",
+                        "not_ok": "Not a scientific claim, independently conflated findings, contradicted or unsupported content, or incorrect source/condition/value attribution.",
+                        "uncertain": "The supplied original does not permit a confident complete decision.",
+                    },
+                ),
+                (
+                    "f",
+                    "claim_format",
+                    {
+                        "ok": "A complete self-contained declarative claim in candidate_record.text, with coherent populated fields, no placeholder, broken markup, field-name list, instruction or unfinished sentence.",
+                        "not_ok": "Incomplete or malformed expression, placeholders, instructions, broken markup or fields inconsistent with the stated claim.",
+                        "uncertain": "Expression or record format is ambiguous and cannot confidently be accepted.",
+                    },
+                ),
+            ):
+                specs.append(
+                    _QuestionSpec(
+                        question_id=f"{prefix}:{item.claim_id}",
+                        claim_id=item.claim_id,
+                        kind=kind,
+                        evidence_id=item.evidence[0].evidence_id,
+                        verification_stage=verification_stage,
+                        state=common,
+                        criteria=criteria,
+                    )
+                )
+            continue
         specs.append(
             _QuestionSpec(
                 question_id=f"g:{item.claim_id}",
@@ -435,7 +499,14 @@ def _request_payload(specs: list[_QuestionSpec], model: str) -> dict[str, Any]:
                         "every nonempty field's association to its subject, conditions, "
                         "dataset, metric, value, unit and qualifier. Mere word occurrence "
                         "is insufficient; do not substitute other papers or prior knowledge."
-                        if spec.verification_stage == "extraction"
+                        if spec.verification_stage
+                        in {"extraction", "extraction_admission"}
+                        else ""
+                    )
+                    + (
+                        f" Answer only the {spec.kind} question: validity and format are independent gates. "
+                        "Local JSON/type/source checks remain mandatory; an ok format does not prove scientific support."
+                        if spec.verification_stage == "extraction_admission"
                         else ""
                     )
                     + (
@@ -626,9 +697,12 @@ def derive_citation_audit_summary(
     }
     summary: dict[str, Any] = {
         "planned_claims": len(result.inputs),
-        "audited_claims": sum(item.kind == "group" for item in result.decisions),
+        "audited_claims": sum(
+            item.kind in {"group", "claim_validity"} for item in result.decisions
+        ),
         "claim_completion_rate": (
-            sum(item.kind == "group" for item in result.decisions) / len(result.inputs)
+            sum(item.kind in {"group", "claim_validity"} for item in result.decisions)
+            / len(result.inputs)
             if result.inputs
             else None
         ),
@@ -646,6 +720,17 @@ def derive_citation_audit_summary(
         "false_accept_rate": None,
         "miss_rate": None,
     }
+    if any(item.kind == "claim_validity" for item in result.decisions):
+        summary["admission_checks"] = {
+            kind: {
+                "completed": sum(item.kind == kind for item in result.decisions),
+                "passed": sum(
+                    item.kind == kind and item.choice == "ok" and not item.uncertain
+                    for item in result.decisions
+                ),
+            }
+            for kind in ("claim_validity", "claim_format")
+        }
     if reference_judge:
         judge_items = {
             item.get("claim_id"): item
@@ -745,8 +830,11 @@ class JevCitationAuditor:
         specs = _question_specs(
             inputs,
             verification_stage=(
-                "extraction" if artifact.get("extraction_protocol") else "report"
+                "extraction_admission"
+                if artifact.get("extraction_protocol") == "jev-extraction-admission-v2"
+                else "extraction" if artifact.get("extraction_protocol") else "report"
             ),
+            candidate_ledger=ledger,
         )
         evidence_sha256 = _stable_sha256([_input_identity(item) for item in inputs])
         batches, rejected = _pack_batches(specs, config)
@@ -1003,6 +1091,12 @@ class JevCitationAuditor:
                 reason = "jev_response_invalid"
                 if isinstance(exc, httpx.HTTPStatusError):
                     reason = f"jev_http_{exc.response.status_code}"
+                    # Error responses can carry billable usage. Never infer zero
+                    # from an HTTP status or discard provider accounting.
+                    try:
+                        response_payload = exc.response.json()
+                    except ValueError:
+                        response_payload = None
                 elif isinstance(exc, (httpx.TimeoutException, asyncio.TimeoutError)):
                     reason = "jev_timeout"
                 elif isinstance(exc, httpx.ConnectError):

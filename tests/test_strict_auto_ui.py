@@ -17,15 +17,15 @@ def test_new_workbench_contract_modules_share_the_bootstrap_cache_version():
     assert f'quality-view.js?v={version}"' in script
     assert f'adapters.js?v={version}"' in script
     assert f'styles.css?v={version}"' in markup
+    assert f'audit-controls.js?v={version}"' in script
+    assert f'i18n.js?v={version}"' in script
     assert 'report-view.js?v=15.10.260"' in script
-    # These consumers have no navigation changes; retain their latest shared
-    # contract revision rather than invalidating unrelated browser modules.
+    # Admission controls and dictionaries changed with this bootstrap. Retain
+    # the frozen revision only for the unrelated benchmark consumers.
     contract_version = "15.10.6.163-summary-contract"
     for module in (
-        "audit-controls.js",
         "benchmark-controller.js",
         "benchmark-view.js",
-        "i18n.js",
     ):
         assert f'{module}?v={contract_version}"' in script
 

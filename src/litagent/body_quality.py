@@ -88,6 +88,126 @@ ADAPTIVE_ASSESSMENT_INPUT_CONTRACT = "host-citation-support-aliases-v2"
 EXTRACTION_FIELD_SPAN_CONTRACT = "host-extraction-field-spans-v2"
 EXTRACTION_SOURCE_LAYOUT_CONTRACT = "host-source-token-blocks-v1:size=8"
 EXTRACTION_CLAIM_CONTRACT = "host-grounded-claims-v1"
+EVIDENCE_PREPARATION_POLICY = "question_focused_v1"
+PREPARATION_MAX_CHUNKS = 12
+PREPARATION_MAX_CHARS = 12_000
+
+
+def check_preparation_policy(value):
+    """Accept only the server-owned opt-in preparation policy or historical None."""
+    if value is not None and (
+        type(value) is not str or value != EVIDENCE_PREPARATION_POLICY
+    ):
+        raise ValueError("evidence_preparation_policy_invalid")
+    return value
+
+
+def checked_preparation_chunks(paper):
+    """Validate paper-owned canonical chunks without repairing their source hashes."""
+    from litagent.rag.models import ContentChunk, ContentScope, normalize_paper_identity
+
+    pid = paper.get("paper_id")
+    raw = paper.get("chunks", [])
+    if not isinstance(pid, str) or not pid or not isinstance(raw, list):
+        raise ValueError("evidence_preparation_source_invalid")
+    checked = []
+    keys = set()
+    for value in raw:
+        chunk = ContentChunk.model_validate(value)
+        if (
+            normalize_paper_identity(chunk.paper_id) != normalize_paper_identity(pid)
+            or chunk.chunk_key in keys
+            or chunk.content_hash != hashlib.sha256(chunk.text.encode()).hexdigest()
+        ):
+            raise ValueError("evidence_preparation_source_identity_invalid")
+        keys.add(chunk.chunk_key)
+        checked.append(chunk.model_dump(mode="json"))
+    abstract = paper.get("abstract") or ""
+    if not isinstance(abstract, str):
+        raise ValueError("evidence_preparation_source_invalid")
+    if abstract.strip() and not any(c["content_scope"] == "abstract" for c in checked):
+        if "abstract" in keys:
+            raise ValueError("evidence_preparation_source_identity_invalid")
+        checked.insert(
+            0,
+            ContentChunk.from_text(
+                paper_id=pid,
+                chunk_key="abstract",
+                text=abstract,
+                section="abstract",
+                content_scope=ContentScope.ABSTRACT,
+            ).model_dump(mode="json"),
+        )
+    return checked
+
+
+def evidence_preparation_identity():
+    """Bind the complete new preparation path without changing absent identities."""
+    import inspect
+
+    from litagent.agents.extraction_strategy import (
+        _CONTEXT_STOP_WORDS,
+        LLMStrategy,
+        _context_words,
+        _field_source_chunks,
+        _preparation_request_identity,
+        _preparation_request_scope,
+        _strategy_context,
+        focused_extraction_context,
+    )
+    from litagent.agents.extractor import ExtractorWorker
+    from litagent.rag.pdf_parser import (
+        _NUMBERED_HEADING,
+        NUMBERED_HEADING_POLICY,
+        PyMuPDFParser,
+    )
+    from litagent.rag.targeted_fulltext import TargetedFulltext
+    from litagent.safety.budget import CostBudget
+    from litagent.safety.planned_budget import (
+        PREPARATION_BUDGET_CONTRACT,
+        build_budget_plan,
+        preparation_budget_plan,
+        settled_preparation_budget,
+    )
+
+    return hashlib.sha256(
+        json.dumps(
+            [
+                EVIDENCE_PREPARATION_POLICY,
+                PREPARATION_MAX_CHUNKS,
+                PREPARATION_MAX_CHARS,
+                NUMBERED_HEADING_POLICY,
+                _NUMBERED_HEADING.pattern,
+                _NUMBERED_HEADING.flags,
+                sorted(_CONTEXT_STOP_WORDS),
+                PREPARATION_BUDGET_CONTRACT,
+                inspect.getsource(preparation_budget_plan),
+                inspect.getsource(build_budget_plan),
+                inspect.getsource(settled_preparation_budget),
+                inspect.getsource(CostBudget.activate_plan),
+                inspect.getsource(_preparation_request_identity),
+                inspect.getsource(_preparation_request_scope),
+                inspect.getsource(checked_preparation_chunks),
+                inspect.getsource(_context_words),
+                inspect.getsource(focused_extraction_context),
+                inspect.getsource(_strategy_context),
+                inspect.getsource(_field_source_chunks),
+                inspect.getsource(LLMStrategy._strict_resources),
+                inspect.getsource(LLMStrategy._prepare_grounded_batch),
+                inspect.getsource(LLMStrategy.prepare_batch),
+                inspect.getsource(LLMStrategy.preflight_batches),
+                inspect.getsource(LLMStrategy.extract_batch),
+                inspect.getsource(PyMuPDFParser.__init__),
+                inspect.getsource(PyMuPDFParser._parse_quality_document),
+                inspect.getsource(TargetedFulltext.__init__),
+                inspect.getsource(TargetedFulltext.enrich),
+                inspect.getsource(ExtractorWorker.execute),
+            ],
+            ensure_ascii=False,
+        ).encode()
+    ).hexdigest()
+
+
 METRIC_INFLECTION_CONTRACT = "accuracy-inflection-v1"
 SUMMARY_ARRAY_WIRE_CONTRACT = "summary-array-items-v1"
 NATIVE_ARRAY_WIRE_CONTRACT = "native-array-wire-v1"
@@ -401,10 +521,115 @@ def analysis_repair_diagnostics(details):
     return list(output.values())
 
 
+def report_repair_diagnostics(details):
+    """Locate genuine report defects without treating support dependencies as defects."""
+    from litagent.eval.results import CONTRACT, contract_identity
+
+    stages = details.get("stages", {})
+    if (
+        details.get("evaluation_result_contract") != CONTRACT
+        or details.get("evaluation_result_identity") != contract_identity()
+        or stages.get("global_check") != "completed"
+        or details.get("inventory_check", {}).get("status") != "passed"
+    ):
+        return []
+    claims = {c["claim_id"]: c for c in details.get("assertions", [])}
+    regions = stages.get("global_sections", {})
+    output = []
+    if regions.get("issues", {}).get("status") == "passed":
+        for diagnostic in details.get("unsupported_claims", []):
+            if diagnostic.get("diagnostic_owner") != "report":
+                continue
+            claim = claims.get(diagnostic.get("claim_id"), {})
+            if claim.get("status") != "supported":
+                continue
+            for issue in details.get("global_issues", []):
+                if (
+                    issue.get("owner") == "report"
+                    and issue.get("code") in {"category_count", "repetition"}
+                    and diagnostic.get("reason_code")
+                    == "evaluation_report_" + issue["code"]
+                    and claim.get("claim_id") in issue.get("claim_ids", [])
+                    and issue.get("source_unit_id") == claim.get("source_unit_id")
+                    and diagnostic.get("explanation") == issue.get("explanation")
+                    and diagnostic.get("diagnostic_source") == "survey-evaluation-v3"
+                    and all(
+                        diagnostic.get(key) == value
+                        for key, value in claim.items()
+                        if key not in {"explanation", "reason_code"}
+                    )
+                ):
+                    output.append(diagnostic)
+                    break
+
+    def locate(rows, field, code):
+        for row in rows:
+            if (
+                row.get(field) is not False
+                or not isinstance(row.get("explanation"), str)
+                or not row["explanation"].strip()
+            ):
+                continue
+            for cid in row.get("claim_ids", []):
+                claim = claims.get(cid, {})
+                if (
+                    claim.get("status") != "supported"
+                    or claim.get("kind") != "scientific"
+                ):
+                    continue
+                output.append(
+                    {
+                        **claim,
+                        "statement_id": claim["claim_id"],
+                        "reason_code": code,
+                        "diagnostic_owner": "report",
+                        "diagnostic_source": "survey-evaluation-v3",
+                        "alignment_status": "exact",
+                        "citation_scope": "exact",
+                        "explanation": row["explanation"],
+                        "preserve_supported_claim": True,
+                    }
+                )
+
+    if regions.get("coverage", {}).get("status") == "passed":
+        locate(
+            details.get("core_coverage", []),
+            "answered",
+            "evaluation_report_core_coverage",
+        )
+    if regions.get("limitations", {}).get("status") == "passed":
+        locate(
+            [details.get("limitations_check", {})],
+            "model_adequate",
+            "evaluation_report_limitations",
+        )
+    if regions.get("conflicts", {}).get("status") == "passed":
+        locate(
+            [
+                {
+                    "consistent": False,
+                    "claim_ids": [pair.get("claim_a"), pair.get("claim_b")],
+                    "explanation": pair.get("reason"),
+                }
+                for pair in details.get("conflicts", [])
+            ],
+            "consistent",
+            "evaluation_report_contradiction",
+        )
+    return output
+
+
 def bound_repair_diagnostics(details):
     """Keep scientific failures separate while sharing the same bounded repair loop."""
     science = list(details.get("unsupported_claims") or [])
-    known = {d.get("claim_id") for d in science}
-    return science + [
-        d for d in analysis_repair_diagnostics(details) if d["claim_id"] not in known
-    ]
+    report = report_repair_diagnostics(details)
+    known = {d.get("claim_id") for d in science if d not in report}
+    return (
+        science
+        + [d for d in report if d not in science]
+        + [
+            d
+            for d in analysis_repair_diagnostics(details)
+            if d["claim_id"] not in known
+        ]
+    )

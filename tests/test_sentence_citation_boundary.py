@@ -4,10 +4,11 @@ import json
 from unittest.mock import patch
 
 import pytest
+from model_config_helpers import load_previous_default_config as load_config
 from test_batched_evaluation import BatchLLM, materials
 from test_strict_quality import draft, to_native
 
-from litagent.config import EvalConfig, load_config
+from litagent.config import EvalConfig
 from litagent.contracts import build_config_summary
 from litagent.eval.scoped import build_source_fragments, evaluate_scoped
 from litagent.quality import build_fact_cards, digest, render_grounded_report
