@@ -375,11 +375,13 @@ def test_stage_reservations_transfer_only_forward_and_failed_restore_is_atomic()
 async def test_provider_attempt_cap_and_zero_retry_apply_even_to_failed_transport():
     budget = CostBudget()
     budget.configure_strict()
-    client = object.__new__(OpenAICompatibleClient)
-    client._request_timeouts = {}
-    client._cost_budget = budget
-    client._transport_max_attempts = 3
-    client._max_tokens = 1
+    client = OpenAICompatibleClient(
+        "https://offline.invalid/v1",
+        "offline",
+        max_tokens=1,
+        cost_budget=budget,
+        api_key="offline",
+    )
     sent = []
 
     async def send(messages, **kwargs):
@@ -387,14 +389,19 @@ async def test_provider_attempt_cap_and_zero_retry_apply_even_to_failed_transpor
         raise TimeoutError()
 
     client._chat_attempt = send
-    with pytest.raises(TimeoutError):
-        await client.chat([{"role": "user", "content": "test"}])
-    assert (
-        len(sent) == 1 and budget.snapshot()["requests_sent"] == 1 and budget.used > 0
-    )
-    budget._requests_sent = 64
-    with pytest.raises(ValueError, match="request_budget_exceeded"):
-        await client.chat([])
+    try:
+        with pytest.raises(TimeoutError):
+            await client.chat([{"role": "user", "content": "test"}])
+        assert (
+            len(sent) == 1
+            and budget.snapshot()["requests_sent"] == 1
+            and budget.used > 0
+        )
+        budget._requests_sent = 64
+        with pytest.raises(ValueError, match="request_budget_exceeded"):
+            await client.chat([])
+    finally:
+        await client.close()
     assert len(sent) == 1
 
 

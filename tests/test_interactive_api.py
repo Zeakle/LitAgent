@@ -1,5 +1,6 @@
 """Verify workbench API boundaries without executing a live survey."""
 
+import pytest
 from fastapi.testclient import TestClient
 
 from litagent.api import app
@@ -15,6 +16,8 @@ class FakeService:
     async def start(self, query, options):
         assert query == "few-shot vision"
         assert options.report_language == "zh-CN"
+        assert options.budget_policy == "legacy"
+        assert options.generation_strategy == "single_v1"
         return "interactive-1"
 
     async def get(self, run_id):
@@ -100,19 +103,43 @@ def headers():
     return {"X-LitAgent-Operation-Token": app.state.operation_token}
 
 
-def test_budget_default_is_advertised_without_changing_api_omission():
+@pytest.mark.parametrize(
+    "mode,max_tokens,max_requests,shared_repairs",
+    [("live", 47_420_000, 226, None), ("offline", 12_000_000, 77, 3)],
+)
+def test_budget_default_is_advertised_without_changing_api_omission(
+    monkeypatch, mode, max_tokens, max_requests, shared_repairs
+):
+    """Check the server's mode-specific budget and legacy request defaults."""
+    from litagent.api import SurveyRequest
     from litagent.workbench import RunOptions
 
+    monkeypatch.setenv("LITAGENT_DEMO_MODE", mode)
+    monkeypatch.delenv("LITAGENT_CONFIG", raising=False)
+    monkeypatch.setattr(app.state, "config", None)
     response = client.get("/workbench/context")
     assert response.status_code == 200
-    automatic = response.json()["automatic_acceptance"]
+    context = response.json()
+    assert context["mode"] == mode
+    automatic = context["automatic_acceptance"]
     assert automatic["default_budget_policy"] == "planned-budget-v7"
     assert automatic["semantic_engine"] == "ragas-cited-faithfulness-v1"
     assert automatic["default_generation_strategy"] == "body_summary_v3"
-    assert automatic["maximum_survey_tokens"] == 12000000
-    assert automatic["maximum_survey_requests"] == 77
-    assert automatic["maximum_shared_repairs"] == 3
+    assert automatic["maximum_survey_tokens"] == max_tokens
+    assert automatic["maximum_survey_requests"] == max_requests
+    assert automatic["maximum_shared_repairs"] == shared_repairs
+    if mode == "live":
+        assert automatic["maximum_repair_attempts_by_category"] == {
+            "capacity": 3,
+            "inventory": 3,
+            "prose": 5,
+        }
+    else:
+        assert "maximum_repair_attempts_by_category" not in automatic
     assert automatic["survey_tokens"] == 500000
+    request = SurveyRequest(query="few-shot vision")
+    assert request.budget_policy == "legacy"
+    assert request.generation_strategy == "single_v1"
     assert "budget_policy" not in RunOptions().model_dump()
 
 

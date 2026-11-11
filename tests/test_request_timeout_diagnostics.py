@@ -316,11 +316,11 @@ print('API imported without history scan')
 
 @pytest.mark.asyncio
 async def test_live_lifespan_still_indexes_history_once(monkeypatch):
+    """Use the live profile and load the archive index once during startup."""
     from types import SimpleNamespace
     from unittest.mock import AsyncMock
 
     from fastapi import FastAPI
-    from model_config_helpers import load_previous_default_config as load_config
 
     from litagent import api
 
@@ -330,12 +330,10 @@ async def test_live_lifespan_still_indexes_history_once(monkeypatch):
         listed.append(True)
         return [{"run_id": "offline-archive"}]
 
-    audit = SimpleNamespace(initialize=AsyncMock(), shutdown=AsyncMock())
     interactive = SimpleNamespace(initialize=AsyncMock(), shutdown=AsyncMock())
+    monkeypatch.setenv("LITAGENT_DEMO_MODE", "live")
+    monkeypatch.delenv("LITAGENT_CONFIG", raising=False)
     monkeypatch.setattr(api, "presentation_enabled", lambda: False)
-    config = load_config()
-    monkeypatch.setattr(api, "load_config", lambda: config)
-    monkeypatch.setattr(api, "ReportAuditService", lambda *a, **k: audit)
     monkeypatch.setattr(api, "InteractiveRunService", lambda *a, **k: interactive)
     application = FastAPI()
     application.state.tasks = {}
@@ -348,7 +346,9 @@ async def test_live_lifespan_still_indexes_history_once(monkeypatch):
         assert application.state.flow_archive_index == {
             "offline-archive": {"run_id": "offline-archive"}
         }
-        audit.initialize.assert_awaited_once()
+        assert application.state.config.safety.planned_run_limits.profile == (
+            "agent-format-repair-v1"
+        )
+        assert application.state.report_audit_service is None
         interactive.initialize.assert_awaited_once()
-    audit.shutdown.assert_awaited_once()
     interactive.shutdown.assert_awaited_once()

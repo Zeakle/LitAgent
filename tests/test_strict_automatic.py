@@ -172,20 +172,25 @@ async def test_unknown_usage_stops_next_transport_and_survives_restore():
 
     budget = CostBudget()
     budget.configure_strict(halt_on_unknown_usage=True)
-    client = object.__new__(OpenAICompatibleClient)
-    client._request_timeouts = {}
-    client._cost_budget = budget
-    client._transport_max_attempts = 3
-    client._max_tokens = 1
+    client = OpenAICompatibleClient(
+        "https://offline.invalid/v1",
+        "offline",
+        max_tokens=1,
+        cost_budget=budget,
+        api_key="offline",
+    )
     sent = AsyncMock(side_effect=asyncio.CancelledError())
     client._chat_attempt = sent
-    with pytest.raises(asyncio.CancelledError):
-        await client.chat([{"role": "user", "content": "first"}])
-    snapshot = budget.snapshot()
-    assert snapshot["usage_uncertain"] and snapshot["requests_sent"] == 1
-    assert budget.is_exceeded() and budget.remaining() == 0
-    with pytest.raises(ValueError, match="strict_usage_unknown"):
-        await client.chat([{"role": "user", "content": "next phase"}])
+    try:
+        with pytest.raises(asyncio.CancelledError):
+            await client.chat([{"role": "user", "content": "first"}])
+        snapshot = budget.snapshot()
+        assert snapshot["usage_uncertain"] and snapshot["requests_sent"] == 1
+        assert budget.is_exceeded() and budget.remaining() == 0
+        with pytest.raises(ValueError, match="strict_usage_unknown"):
+            await client.chat([{"role": "user", "content": "next phase"}])
+    finally:
+        await client.close()
     assert sent.await_count == 1 and budget.snapshot() == snapshot
     restored = CostBudget.from_snapshot(snapshot)
     assert restored.is_exceeded() and restored.remaining() == 0

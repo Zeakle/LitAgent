@@ -1,9 +1,7 @@
 """Verify exported links remain usable without changing frozen report sources."""
 
 import io
-import threading
 import zipfile
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from xml.etree import ElementTree
 
 import fitz
@@ -188,41 +186,29 @@ async def test_link_enrichment_does_not_rewrite_markdown_export_or_frozen_source
     assert exported.report_sha256 == report.content_sha256
 
 
-@pytest.fixture
-def image_server():
-    """Observe resource requests on a controlled loopback endpoint only."""
-    requests = []
-
-    class Handler(BaseHTTPRequestHandler):
-        def do_GET(self):
-            requests.append(self.path)
-            self.send_response(204)
-            self.end_headers()
-
-        def log_message(self, *_args):
-            pass
-
-    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    try:
-        yield f"http://127.0.0.1:{server.server_port}/untrusted-image.png", requests
-    finally:
-        server.shutdown()
-        server.server_close()
-        thread.join(timeout=2)
-
-
 @pytest.mark.asyncio
-async def test_pdf_hyperlink_repair_does_not_fetch_embedded_images(image_server):
-    url, requests = image_server
+async def test_pdf_hyperlink_repair_does_not_fetch_embedded_images(monkeypatch):
+    """Assert that external images never reach the real PDF renderer."""
+    url = "https://offline.invalid/untrusted-image.png"
+    story_init = fitz.Story.__init__
+    fragments = []
+
+    def inspect_story(self, *, html, **kwargs):
+        fragments.append(html)
+        assert "<img" not in html.lower() and url not in html
+        story_init(self, html=html, **kwargs)
+
+    monkeypatch.setattr(fitz.Story, "__init__", inspect_story)
     report = version(
         f"# Survey\n\nRead [paper]({PAPER_URL}).\n\n![Untrusted image]({url})\n"
     )
     exported = await LocalReportExporter().export(
         report, format="pdf", publishable=False
     )
-    assert requests == []
+    assert fragments
     with fitz.open(stream=exported.content, filetype="pdf") as document:
         assert all(page.get_images() == [] for page in document)
         assert "[image omitted]" in "".join(page.get_text() for page in document)
+        assert PAPER_URL in {
+            link.get("uri") for page in document for link in page.get_links()
+        }

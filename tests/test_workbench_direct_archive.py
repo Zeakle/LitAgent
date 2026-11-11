@@ -27,7 +27,7 @@ const identity=id=>({key:'archive:'+id,runId:id,source:'archive',query:id,status
  const api={abort(){},json(p){if(p==='/workbench/context')return Promise.resolve({mode:'offline',live_enabled:false});return new Promise((resolve,reject)=>requests.push({path:p,resolve,reject}))}};
  const ctx=vm.createContext({store,api,$,context:null,historyLoading:false,eventSource:null,mobileSidebar:null,citationPreferences:new Map(),URLSearchParams,
    location:{search:scenario==='default'?'':'?run=archive%3Atarget&view=quality'},history:{replaceState:(_,__,url)=>urls.push(url)},
-   automaticAuditPreferences:{render(){}},t:x=>x,setNotice:message=>notices.push(message),
+   surveyVerification:{render(){}},t:x=>x,setNotice:message=>notices.push(message),
    ...adapters,setSection(){},refreshInteractive(){throw Error('unexpected interactive fallback')}});
  const start=app.indexOf('async function selectRun('),end=app.indexOf('async function submitReview(');
  assert(start>0&&end>start);

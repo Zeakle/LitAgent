@@ -302,12 +302,9 @@ async def test_actual_runner_and_transport_boundary_reject_bad_native_candidate_
     calls = []
 
     def client_factory(**kwargs):
-        client = object.__new__(OpenAICompatibleClient)
-        client._request_timeouts = {}
-        client._cost_budget = kwargs["cost_budget"]
-        client._trace_hook = kwargs["trace_hook"]
-        client._max_tokens = 20000
-        client._transport_max_attempts = 1
+        client = OpenAICompatibleClient(
+            **(kwargs | {"base_url": "https://offline.invalid/v1"}), api_key="offline"
+        )
 
         async def attempt(messages, **options):
             calls.append((messages, options))
@@ -341,7 +338,6 @@ async def test_actual_runner_and_transport_boundary_reject_bad_native_candidate_
             return LLMResponse(content="{}", model="offline", usage=usage)
 
         client._chat_attempt = attempt
-        client.close = AsyncMock()
         return client
 
     deps, _ = factories()
