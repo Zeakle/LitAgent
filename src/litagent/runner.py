@@ -2545,15 +2545,18 @@ class LitAgent:
                 context["recovery_on_send"] = recovery_on_send
             if is_strict_policy(context.get("quality_policy")):
                 from litagent.body_quality import EVALUATION_ENCODING_CONTRACT
+                from litagent.eval.results import evaluation_run_identity
                 from litagent.quality import digest
 
-                identity = digest([self._session_id, survey, phase])
-                if inventory_recovery is not None:
-                    identity = digest([identity, inventory_recovery])
-                if (frozen_eval_envelope or {}).get("semantic_engine"):
-                    identity = digest(
-                        [identity, frozen_eval_envelope["semantic_engine"]["identity"]]
-                    )
+                engine = (frozen_eval_envelope or {}).get("semantic_engine") or {}
+                identity = evaluation_run_identity(
+                    self._session_id,
+                    survey,
+                    phase,
+                    engine_identity=engine["identity"] if engine else None,
+                    inventory_recovery=inventory_recovery,
+                )
+                if engine:
                     context["native_evaluation_identity"] = identity
                 progress_root = self._evaluation_progress_root or Path(
                     "artifacts/evaluations"

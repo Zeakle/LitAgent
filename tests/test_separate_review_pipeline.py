@@ -341,6 +341,22 @@ async def test_third_editorial_rejection_only_retains_draft_for_settled_empty_pa
 
 
 @pytest.mark.asyncio
+async def test_large_revised_inventory_reaches_automatic_delivery(
+    case, tmp_path, monkeypatch
+):
+    """Exercise budget-partition validation through the real report outlet."""
+    gateway = SeparateGateway(case, reviews=0)
+    gateway.statements_per_unit = 25
+    report = await execute(case, tmp_path, monkeypatch, gateway)
+    metric = report["evaluation"]["faithfulness"]
+    assert metric["details"]["factual_claim_count"] > 128
+    assert metric["score"] == 1.0
+    assert gateway.repair_count == 1 and gateway.global_calls == 2
+    assert report["metadata"]["automatic_acceptance"]["inventory_sha256"]
+    assert report["delivery"]["publishable"], report["delivery"]
+
+
+@pytest.mark.asyncio
 async def test_improved_unpublished_candidate_becomes_next_repair_base(
     case, tmp_path, monkeypatch
 ):
