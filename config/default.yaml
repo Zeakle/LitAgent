@@ -131,7 +131,7 @@ adversarial:
   thinking_mode: disabled
   task_timeout_ms: 1800000  # synthesis/review/revision loop: 30 min
 
-mcp_servers: {} 
+mcp_servers: {}
 
 safety:
   planned_run_limits:
