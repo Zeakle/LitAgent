@@ -11,6 +11,6 @@
 - 40个历史保护文件及483个冻结源码副本保持。实际预算快照、原始请求、响应和全文仅留本地。
 - LangFuse读回实际2个generation、22014 tokens、思考用量元数据及科学输入输出为空；不声称完整执行树验收。
 
-[HTML](benchmark.html) · [JSON](benchmark.json) · [CSV](benchmark.csv) · [Markdown](benchmark.md) · [脱敏协议诊断](protocol-diagnostic.json) · [故障审计](../../../../docs/structured-output-failure-20261025.md)
+[HTML](benchmark.html) · [JSON](benchmark.json) · [CSV](benchmark.csv) · [Markdown](benchmark.md) · [脱敏协议诊断](protocol-diagnostic.json) · 故障审计
 
 当前证据证明已移除010的未知字段阻塞，但仍有服务返回schema不符的问题。尚无Evaluation结果，科学支持率不可用，不能计为零分或质量改善。后续先离线重放、核对供应商契约及真实消费者，不恢复011、不补数组后接受、不自动追加付费到通过。Phase14.5保持in_progress。

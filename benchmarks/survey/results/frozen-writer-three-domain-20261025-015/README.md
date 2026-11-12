@@ -13,6 +13,6 @@
 - 累计771请求、4483702已知tokens、1142672旧未知占用，Jev67、Judge0保持。旧失败及013欠费占用不退款、不清零。
 - LangFuse读回9个generation、149128tokens、6484思考明细、空科学IO；不声称完整业务链或科学正确性已验证。
 
-[HTML](benchmark.html) · [JSON](benchmark.json) · [CSV](benchmark.csv) · [Markdown](benchmark.md) · [脱敏诊断与分阶段用量](protocol-diagnostic.json) · [同schema提示离线证据](../../../../docs/native-layout-guidance-20261025.md)
+[HTML](benchmark.html) · [JSON](benchmark.json) · [CSV](benchmark.csv) · [Markdown](benchmark.md) · [脱敏诊断与分阶段用量](protocol-diagnostic.json) · 同schema提示离线证据
 
 本轮没有在中途修改源码、追加重试或恢复已终止任务。正文编译完成不证明提示造成统计意义上的质量提升。下一步先离线审查Pro写作与Lite Reviewer思考配置的耦合，在原4096输出与总预算内调整角色分工；不自动提高预算或付费重跑015。Phase14.5保持`in_progress`。

@@ -12,10 +12,10 @@
 - LangFuse读回6个generation、83749tokens、2409思考明细及空科学IO；不声称完整业务链或科学内容正确性已验证。
 - 累计777请求、4567451已知tokens、1142672旧未知占用；Jev67、Judge0保持。全部历史失败及费用保留，没有退款、清零或追加到通过。
 
-[HTML](benchmark.html) · [JSON](benchmark.json) · [CSV](benchmark.csv) · [Markdown](benchmark.md) · [脱敏诊断与分阶段用量](protocol-diagnostic.json) · [Reviewer离线修复](../../../../docs/reviewer-role-review-20261026.md)
+[HTML](benchmark.html) · [JSON](benchmark.json) · [CSV](benchmark.csv) · [Markdown](benchmark.md) · [脱敏诊断与分阶段用量](protocol-diagnostic.json) · Reviewer离线修复
 
 本轮没有在运行中改源码或恢复终止任务。旧的两次恢复后协议分类缺陷已由真实停止行为验证，但生成协议可靠性问题仍存在；这不是科学支持率零分。下一步只离线审查现有生成契约与供应商响应边界，不提高预算、不补JSON、不追加付费尝试或新增另一套输出编码。Phase14.5保持`in_progress`。
 
 ## 后续只读展示修复
 
-终态定位升级为view-v10：原先错误指向已恢复taxonomy/2330，现在JSON、CSV、Markdown和HTML准确指向experiments/2538及原SHA b93374a5...。旧导出副本保留本地；原始报告、评分、state、journal及费用不变，运行源码仍为fa760bf。桌面/390px、中英文和键盘验收已在自动审批服务恢复后补齐，页面console零错误/警告。详见[定位修复说明](../../../../docs/terminal-diagnostic-review-20261026.md)。未核验科学内容不能因展示修复变为可交付。
+终态定位升级为view-v10：原先错误指向已恢复taxonomy/2330，现在JSON、CSV、Markdown和HTML准确指向experiments/2538及原SHA b93374a5...。旧导出副本保留本地；原始报告、评分、state、journal及费用不变，运行源码仍为fa760bf。桌面/390px、中英文和键盘验收已在自动审批服务恢复后补齐，页面console零错误/警告。详见定位修复说明。未核验科学内容不能因展示修复变为可交付。
