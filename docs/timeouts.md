@@ -1,6 +1,6 @@
 # 阶段超时配置
 
-`config/default.yaml` 中的超时由服务端配置控制。修改后重启 live 服务；已有运行仍绑定原配置与 fingerprint，不能用新时限恢复原终态或重发结果未知的请求。
+默认超时由 [config/default.yaml](../config/default.yaml) 设置。修改后重启 live 服务；已有运行仍绑定原配置与 fingerprint，不能用新时限恢复原终态或重发结果未知的请求。
 
 | 阶段 | 配置 | 默认时限 |
 |---|---|---:|
@@ -25,10 +25,8 @@ DAG 时限不包括尾部 Evaluation；这些值不是整个 Survey 的统一墙
 
 请求继承 DAG、Worker、策略或 Evaluation 中最早的 deadline。新策略要求剩余时间至少能容纳完整单次请求时限加 `llm.request_deadline_margin_seconds`（默认 5 秒）；否则返回 `request_deadline_insufficient`，记录 `llm.not_sent`，不发送 HTTP，也不增加请求计数或未知用量占用。
 
-已经发送的请求被取消或超时时，仍保留未知用量的保守占用，不自动重发。延长时限不会增加 500,000 tokens／64 请求预算、重试次数或科学验收容忍度。
+已经发送的请求被取消或超时时，系统保留未知用量占用，避免自动重发。请求额度另见[模型用量与运行额度](output-capacity.md)。
 
-配置会校验请求、提取策略、Worker、Evaluation 和编排时限的关系。单次请求最多 600 秒；任务使用毫秒、请求与策略使用秒。未配置的新字段保持历史默认与旧 fingerprint；当前 YAML 显式启用新时限，故新运行身份会变化。
+## 独立双循环配置
 
-## 能保证什么
-
-这组配置用于减少固定 300 秒提取任务和固定 180 秒正文请求造成的工程性中断。离线测试验证接线、真实 SDK timeout 参数、旧身份兼容、发送前拒绝及发送后取消计账；不代表新时限已通过真实模型运行，也不能保证任何主题都能生成合格正文。
+[独立双循环配置](../config/separate-review-evaluation.yaml)将提取请求时限设为 216 秒，正文生成和修订设为 720 秒，摘要、Reviewer 和 Evaluation 请求设为 360 秒。完整 Evaluation 上限为 8,640 秒。
