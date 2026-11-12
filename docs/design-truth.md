@@ -9,6 +9,7 @@ Phase 14.5 scientific acceptance remains in progress.
 | Claim | Status | Repository evidence |
 | --- | --- | --- |
 | Multi-agent Survey DAG | implemented | [runner](../src/litagent/runner.py), [orchestrator tests](../tests/test_orchestrator.py) |
+| Independent editorial review and Evaluation repair loops | opt-in implementation; historical defaults retained; no new live result claimed here | [current architecture](system-overview.md#independent-review-and-evaluation-loops), [explicit profile](../config/separate-review-evaluation.yaml), [pipeline tests](../tests/test_separate_review_pipeline.py) |
 | Cross-run Paper Corpus | implemented | [corpus](../src/litagent/rag/corpus.py), [tests](../tests/test_phase14_1.py) |
 | PDF ingestion/provenance | implemented | [parser](../src/litagent/rag/pdf_parser.py), [tests](../tests/test_phase14_2.py) |
 | RAG benchmark | completed | [measured results](../benchmarks/rag/RESULTS.md), [machine-readable evidence](../benchmarks/rag/phase14_3_results.json) |

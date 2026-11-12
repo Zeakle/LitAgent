@@ -42,4 +42,4 @@ Reviewer在4,096输出tokens处返回`responses_incomplete`，thinking已关闭�
 
 后续问题优先处理Reviewer有限输出与诊断容量契约，然后才安排新的有界科学实验；本轮不修上限后追加运行。预算控制可核对不等于正文科学可靠，工程版本不宣称通用综述正确性。
 
-[三分钟演示与简历材料](presentation-guide.md) · [能力与证据](design-truth.md) · [启动说明](../README.zh-CN.md)
+[三分钟演示与简历材料](presentation-guide.md) · [能力与证据](design-truth.md) · [启动说明](../README.md#快速开始)

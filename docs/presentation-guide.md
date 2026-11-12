@@ -2,7 +2,8 @@
 
 ## 启动与准备
 
-按根目录 README 安装后运行 `litagent demo --presentation`。浏览器先开
+按[中文首页](../README.md#快速开始)安装后运行 `litagent demo --presentation`；
+[English](../README.en.md#quick-start) 提供相同启动步骤。浏览器先开
 `http://127.0.0.1:8000/presentation`，再进入工作台。
 演示不需要密钥或后台 Docker，也不读取私人 artifacts。依赖安装仍需网络。
 现场不启动新的付费 Survey；预录屏和页面是网络不稳定时的备用材料。
@@ -30,6 +31,11 @@ Windows Microsoft YaHei，Linux 可安装 Noto CJK。字体缺失不伪称导出
 
 ## 架构讲解与追问
 
+- 当前架构以[源码核对后的流程图](system-overview.md)为准：Survey 由自定义
+  TaskGraph/asyncio Scheduler 编排，LangGraph 用于 ReAct 子流程；当前结构化写作直接使用 WriterSession。
+- 独立双循环需显式选择 `config/separate-review-evaluation.yaml`：Reviewer 负责编辑审阅，
+  Evaluation 负责独立核验与修复复评，两类修订预算独立。编辑接受与科学通过分别展示，
+  已改善但未通过的候选只能作为工作草稿，不能自动发布。历史样例不补造双循环记录。
 - 为什么多 Agent：显式任务依赖与独立审阅职责；没有为展示而新加 Agent。
 - 如何限制循环：运行前锁定预算与次数，遇到无进展或候选回归就停止。本案例沿用正文五轮上限，累计两轮即通过。
 - 如何处理幻觉：完整支持文本与候选 finding 分离；每条科学断言只检查实际引文，
@@ -86,6 +92,11 @@ Pro 已带来统计显著提升。独立完成/主导等归属表述应由本人
 
 ## 保存的演示材料
 
-[25 秒截屏讲解视频](images/demo-walkthrough.mp4)和[字幕](images/demo-walkthrough.srt)。
-这是页面与导出检查的截屏序列，不是实时生成录屏；内置报告是明确标识的合成夹具。
-[公开依据页截图](images/public-overview.jpg)可作离线备用。
+- **当前首页截图**：[中文工作台与证据检查](images/readme-workbench-zh.jpg)。
+  2026-11-12 从源码 `bdfecbd` 启动 `litagent demo --presentation` 后采集，
+  选择合成 `sample-ready` 并打开引用检查面板。截图展示当前界面；样例内容不证明模型质量，
+  也不用于证明新双循环已完成真实运行。
+- **历史演示素材**：[25 秒截屏讲解视频](images/demo-walkthrough.mp4)和
+  [字幕](images/demo-walkthrough.srt)，归档于 2026-10-20 提交 `19cd514`。
+  这是当时的页面与导出检查截屏序列，不是实时生成录屏或重构后界面实录；
+  内置报告为合成夹具。[历史公开依据页截图](images/public-overview.jpg)仅作旧版参考。
