@@ -1,0 +1,40 @@
+{
+  "provenance": "public-paper-derived taxonomy from frozen writer 021; syntax only, scientific claims unverified",
+  "raw": "{\"taxonomy\":[{\"sentences\":[{\"text\":\"按学习范式划分，少样本方法可先区分为迁移学习与元学习：迁移学习依赖上游预训练后在下游任务上微调，元学习则在许多不同分类任务上训练可泛化的学习能力；度量学习通常通过支持集—查询集的相似性比较嵌入这一问题，但不应与单纯的大规模预训练迁移等同。\",\"fact_card_refs\":[\"c10\",\"c16\",\"c17\",\"c20\"]},{\"text\":\"在度量学习内部，可按度量形成的三个阶段分类：学习特征嵌入、学习类别表示、学习距离或相似性度量；这一分类把“如何表征图像或类别”和“如何比较查询与支持样本”作为不同的设计维度。\",\"fact_card_refs\":[\"c7\",\"c15\",\"c18\"]}]},{\"sentences\":[{\"text\":\"固定度量与可学习度量是比较方法的关键关系：传统方法通常学习可迁移嵌入并预先规定欧氏距离等固定度量，而关系网络一类方法把比较本身交给网络完成，因而属于可学习、非线性的关系函数，而非静态距离规则。\",\"fact_card_refs\":[\"c14\",\"c3\",\"c5\"]},{\"text\":\"向量表示与子空间表示构成另一项分类标准：多数全局方法把图像或类别原型表示为嵌入向量，SRL 则把局部 CNN 特征中的子空间作为图像或类别的表示，并用加权子空间距离比较样本，从而把度量学习从向量扩展到子空间。\",\"fact_card_refs\":[\"c9\",\"c18\"]}]}",
+  "raw_sha256": "2bae3baad327c97e4a6a54f763bc14a9ff7dea41937194b2f290938f2a8731a4",
+  "suffix": "]}",
+  "references": [
+    "c1",
+    "c2",
+    "c3",
+    "c4",
+    "c5",
+    "c6",
+    "c7",
+    "c8",
+    "c9",
+    "c10",
+    "c11",
+    "c12",
+    "c13",
+    "c14",
+    "c15",
+    "c16",
+    "c17",
+    "c18",
+    "c19",
+    "c20"
+  ],
+  "section": "taxonomy",
+  "maximum": 9,
+  "paragraphs": 2,
+  "units": 4,
+  "usage": {
+    "prompt_tokens": 10702,
+    "completion_tokens": 346,
+    "usage_available": true,
+    "reasoning_usage_available": true,
+    "reasoning_tokens": 0
+  },
+  "scientific_assessment": "not_verified"
+}

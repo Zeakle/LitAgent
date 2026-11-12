@@ -1,0 +1,269 @@
+{
+  "source_run_id": "body-quality-paired-20261016-003-vit-baseline",
+  "source_units": [
+    {
+      "source_unit_id": "unit:0:34",
+      "source_fragments": [
+        {
+          "source_fragment_id": "unit:0:34:fragment:0",
+          "text": "Host-owned scientific fragment.",
+          "citation_aliases": []
+        },
+        {
+          "source_fragment_id": "unit:0:34:fragment:1",
+          "text": "Host-owned scientific fragment.",
+          "citation_aliases": []
+        },
+        {
+          "source_fragment_id": "unit:0:34:fragment:2",
+          "text": "Host-owned scientific fragment.",
+          "citation_aliases": []
+        }
+      ]
+    },
+    {
+      "source_unit_id": "unit:1:476",
+      "source_fragments": [
+        {
+          "source_fragment_id": "unit:1:476:fragment:0",
+          "text": "Host-owned scientific fragment.",
+          "citation_aliases": []
+        },
+        {
+          "source_fragment_id": "unit:1:476:fragment:1",
+          "text": "Host-owned scientific fragment.",
+          "citation_aliases": []
+        }
+      ]
+    },
+    {
+      "source_unit_id": "unit:2:747",
+      "source_fragments": [
+        {
+          "source_fragment_id": "unit:2:747:fragment:0",
+          "text": "Host-owned scientific fragment.",
+          "citation_aliases": []
+        },
+        {
+          "source_fragment_id": "unit:2:747:fragment:1",
+          "text": "Host-owned scientific fragment.",
+          "citation_aliases": []
+        }
+      ]
+    },
+    {
+      "source_unit_id": "unit:3:1003",
+      "source_fragments": [
+        {
+          "source_fragment_id": "unit:3:1003:fragment:0",
+          "text": "Host-owned scientific fragment.",
+          "citation_aliases": []
+        },
+        {
+          "source_fragment_id": "unit:3:1003:fragment:1",
+          "text": "Host-owned scientific fragment.",
+          "citation_aliases": []
+        }
+      ]
+    },
+    {
+      "source_unit_id": "unit:4:1287",
+      "source_fragments": [
+        {
+          "source_fragment_id": "unit:4:1287:fragment:0",
+          "text": "Host-owned scientific fragment.",
+          "citation_aliases": []
+        },
+        {
+          "source_fragment_id": "unit:4:1287:fragment:1",
+          "text": "Host-owned scientific fragment.",
+          "citation_aliases": []
+        }
+      ]
+    },
+    {
+      "source_unit_id": "unit:5:1558",
+      "source_fragments": [
+        {
+          "source_fragment_id": "unit:5:1558:fragment:0",
+          "text": "Host-owned scientific fragment.",
+          "citation_aliases": []
+        },
+        {
+          "source_fragment_id": "unit:5:1558:fragment:1",
+          "text": "Host-owned scientific fragment.",
+          "citation_aliases": []
+        }
+      ]
+    },
+    {
+      "source_unit_id": "unit:6:1806",
+      "source_fragments": [
+        {
+          "source_fragment_id": "unit:6:1806:fragment:0",
+          "text": "Host-owned scientific fragment.",
+          "citation_aliases": []
+        },
+        {
+          "source_fragment_id": "unit:6:1806:fragment:1",
+          "text": "Host-owned scientific fragment.",
+          "citation_aliases": []
+        }
+      ]
+    }
+  ],
+  "nested_response": {
+    "units": {
+      "unit:0:34": {
+        "unit:0:34:fragment:0": {
+          "assertions": [
+            {
+              "kind": "scientific",
+              "claim_text": "视觉Transformer在计算机视觉任务中展现出优异性能，但其训练依赖大规模数据与计算资源，限制了在资源受限场景的应用，因此数据高效训练方法成为该领域的研究重点"
+            }
+          ],
+          "exclusion_reason": ""
+        },
+        "unit:0:34:fragment:1": {
+          "assertions": [
+            {
+              "kind": "scientific",
+              "claim_text": "Kronecker Adaptation（KAdaptation）是一种参数高效的视觉Transformer适配方法，在20个图像分类数据集的少样本设置及7个数据集的全样本设置中，其准确率与参数效率的权衡表现优于其他基线方法"
+            }
+          ],
+          "exclusion_reason": ""
+        },
+        "unit:0:34:fragment:2": {
+          "assertions": [
+            {
+              "kind": "scientific",
+              "claim_text": "Hint-Aug方法在Pet数据集上使用50%的训练数据时，相比现有数据增强方法可提升2.22%的准确率，验证了数据增强类方法在视觉Transformer数据高效训练中的有效性"
+            }
+          ],
+          "exclusion_reason": ""
+        },
+        "unit:1:476": {
+          "unit:1:476:fragment:0": {
+            "assertions": [
+              {
+                "kind": "scientific",
+                "claim_text": "视觉Transformer在计算机视觉任务中展现出优异性能，但其训练依赖大规模数据与计算资源，限制了在资源受限场景的应用，因此数据高效训练方法成为该领域的研究重点"
+              }
+            ],
+            "exclusion_reason": ""
+          },
+          "unit:1:476:fragment:1": {
+            "assertions": [
+              {
+                "kind": "scientific",
+                "claim_text": "现有视觉Transformer预训练方案通常需要海量图像数据与高性能计算基础设施，导致其部署门槛较高"
+              }
+            ],
+            "exclusion_reason": ""
+          },
+          "unit:2:747": {
+            "unit:2:747:fragment:0": {
+              "assertions": [
+                {
+                  "kind": "scientific",
+                  "claim_text": "针对视觉Transformer的数据高效训练方法可分为知识蒸馏、参数高效微调、数据增强与子集选择等类别，不同方法的核心目标均为降低训练对数据量与计算资源的需求"
+                }
+              ],
+              "exclusion_reason": ""
+            },
+            "unit:2:747:fragment:1": {
+              "assertions": [
+                {
+                  "kind": "scientific",
+                  "claim_text": "多焦点注意力偏置方法通过约束自注意力的感受野，减少视觉Transformer训练所需的数据量，属于数据高效训练的一类技术路径"
+                }
+              ],
+              "exclusion_reason": ""
+            },
+            "unit:3:1003": {
+              "unit:3:1003:fragment:0": {
+                "assertions": [
+                  {
+                    "kind": "scientific",
+                    "claim_text": "Kronecker Adaptation（KAdaptation）是一种参数高效的视觉Transformer适配方法，在20个图像分类数据集的少样本设置及7个数据集的全样本设置中，其准确率与参数效率的权衡表现优于其他基线方法"
+                  }
+                ],
+                "exclusion_reason": ""
+              },
+              "unit:3:1003:fragment:1": {
+                "assertions": [
+                  {
+                    "kind": "scientific",
+                    "claim_text": "基于预训练视觉基础模型的参数高效微调方法，可在数据有限的场景下为下游任务提供有效先验，减少对任务专属数据的依赖"
+                  }
+                ],
+                "exclusion_reason": ""
+              },
+              "unit:4:1287": {
+                "unit:4:1287:fragment:0": {
+                  "assertions": [
+                    {
+                      "kind": "scientific",
+                      "claim_text": "Hint-Aug方法在Pet数据集上使用50%的训练数据时，相比现有数据增强方法可提升2.22%的准确率，验证了数据增强类方法在视觉Transformer数据高效训练中的有效性"
+                    }
+                  ],
+                  "exclusion_reason": ""
+                },
+                "unit:4:1287:fragment:1": {
+                  "assertions": [
+                    {
+                      "kind": "scientific",
+                      "claim_text": "DeiT模型在中等规模数据集上的分类性能优于传统视觉Transformer，体现了数据高效训练对视觉Transformer性能的提升作用"
+                    }
+                  ],
+                  "exclusion_reason": ""
+                },
+                "unit:5:1558": {
+                  "unit:5:1558:fragment:0": {
+                    "assertions": [
+                      {
+                        "kind": "scientific",
+                        "claim_text": "现有针对视觉Transformer的子集选择方法在不同 coreset 大小、数据集及模型类型下的鲁棒性仍需进一步验证，随机选择策略在部分场景下的表现优于当前最优选择方法"
+                      }
+                    ],
+                    "exclusion_reason": ""
+                  },
+                  "unit:5:1558:fragment:1": {
+                    "assertions": [
+                      {
+                        "kind": "scientific",
+                        "claim_text": "数据高效训练方法在跨领域医学图像等非自然图像数据上的泛化能力，以及与其他模型架构的适配性仍存在未解决的问题"
+                      }
+                    ],
+                    "exclusion_reason": ""
+                  },
+                  "unit:6:1806": {
+                    "unit:6:1806:fragment:0": {
+                      "assertions": [
+                        {
+                          "kind": "scientific",
+                          "claim_text": "Kronecker Adaptation（KAdaptation）是一种参数高效的视觉Transformer适配方法，在20个图像分类数据集的少样本设置及7个数据集的全样本设置中，其准确率与参数效率的权衡表现优于其他基线方法"
+                        }
+                      ],
+                      "exclusion_reason": ""
+                    },
+                    "unit:6:1806:fragment:1": {
+                      "assertions": [
+                        {
+                          "kind": "scientific",
+                          "claim_text": "Hint-Aug方法在Pet数据集上使用50%的训练数据时，相比现有数据增强方法可提升2.22%的准确率，验证了数据增强类方法在视觉Transformer数据高效训练中的有效性"
+                        }
+                      ],
+                      "exclusion_reason": ""
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "reason": "evaluation_inventory_unit_coverage_invalid"
+}

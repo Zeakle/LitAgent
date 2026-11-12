@@ -1,0 +1,23 @@
+{
+  "contract": "run059-original-status-pairs-v1",
+  "scientific_gold_standard": false,
+  "source_response_sha256": "5ce7f6b0d42a1f1a812d029ad959875dac30c6e3068173d3c1d9cbfbde2cdf6c",
+  "fields_preserved_without_normalization": true,
+  "decisions": [
+    {
+      "claim_id": "claim_10",
+      "status": "unsupported",
+      "reason_code": "unverifiable"
+    },
+    {
+      "claim_id": "claim_11",
+      "status": "unsupported",
+      "reason_code": "unverifiable"
+    },
+    {
+      "claim_id": "claim_12",
+      "status": "unsupported",
+      "reason_code": "unverifiable"
+    }
+  ]
+}

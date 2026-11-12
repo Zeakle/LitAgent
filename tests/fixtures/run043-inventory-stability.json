@@ -1,0 +1,457 @@
+{
+  "provenance": {
+    "source_diagnostic_sha256": "b6e92259c5ad33ae2045d3cd4c50b8796b1b679008c165d5baf5575c46374432",
+    "report_sha256": "c44d2a2b5d46cdc44f33a6a1e4c23b5b41c6faea6302ce6e56aae83b678a843c",
+    "source_manifest_identity": "78e11bf4ad72b0276555032db3c18603bc3fc1715a3fdab983c2f011311870d5",
+    "not_human_gold": true,
+    "copied_model_fields_not_rejudged": true,
+    "checkpoints": [
+      {
+        "identity": "1e14a5229920a77f0ede6481189cf39bef86d93c4642cbd35ca020594e6cb01f",
+        "sha256_at_read": "5cfc629134508f972235e80aeb5d9f1607e09e554f196e88ae107d47c23130a0",
+        "assertions": 169,
+        "processed_assertions": 169
+      },
+      {
+        "identity": "24f1cd62d002b15a9efe962e63cea28c8c89d489bee6fe22ceef6c1c4c72c74e",
+        "sha256_at_read": "f1b38580fe57a0b5b9c0e6231fb8147d9ff3c2f3145e82c5eaec179f4cae24f4",
+        "assertions": 185,
+        "processed_assertions": 185
+      },
+      {
+        "identity": "5f8a9daf7f763037d9b37ef1a255f65c9758b88dda3523b71be326a224b9f272",
+        "sha256_at_read": "3f3db2e76b30fe9aab710817f19ab2e19525f6f28e1de6c13243d7e4fa24c1bb",
+        "assertions": 175,
+        "processed_assertions": 48
+      }
+    ]
+  },
+  "legacy_mixed_instruction_sha256": "cf0768ed710dc101977b4464568f74858103b6d615311d91c4af69e58c0705ad",
+  "pairs": [
+    {
+      "name": "independent_results_split_then_recombined",
+      "rounds": [
+        [
+          {
+            "assertion": {
+              "claim_id": "claim_94",
+              "kind": "scientific",
+              "claim_text": "因此，只能分别陈述：K-tuplet 报告优于其他度量方法；Proto-Triplet Loss 与 ICNN loss 报告 2% 准确率提升；SRL 报告 competitive/superior。",
+              "source_unit_id": "unit:15:9876",
+              "source_fragment_id": "unit:15:9876:native:writer:experiments:1:0",
+              "source_start": 9876,
+              "source_end": 10292,
+              "evidence_ids": [
+                "arxiv:2305.09062:abstract:claim:549b9167d596",
+                "arxiv:1907.03123:abstract:claim:998fb93b2a24",
+                "arxiv:2105.00379:abstract:claim:e2d40a72c0d6"
+              ]
+            },
+            "decision": {
+              "status": "unsupported",
+              "reason_code": "insufficient_support",
+              "atomic": false,
+              "classification_valid": true,
+              "source_faithful": true,
+              "correct_kind": "scientific",
+              "explanation": "The assertion combines three independently verifiable results (K-tuplet outperforms other metric methods; Proto-Triplet Loss and ICNN loss report 2% accuracy improvement; SRL reports competitive/superior) under a single causal conclusion that these can only be stated separately. While each individual result is supported by its respective cited original, the combined assertion merges independently cited claims under one clause, and the cited originals do not collectively establish the causal conclusion that these results can only be stated separately without cross-method ranking."
+            }
+          }
+        ],
+        [
+          {
+            "assertion": {
+              "claim_id": "claim_103",
+              "kind": "scientific",
+              "claim_text": "K-tuplet 在 miniImageNet/MiniImageNet 基准上报告优于其他度量方法。",
+              "source_unit_id": "unit:15:9876",
+              "source_fragment_id": "unit:15:9876:native:writer:experiments:1:0",
+              "source_start": 9876,
+              "source_end": 10292,
+              "evidence_ids": [
+                "arxiv:2305.09062:abstract:claim:549b9167d596",
+                "arxiv:1907.03123:abstract:claim:998fb93b2a24",
+                "arxiv:2105.00379:abstract:claim:e2d40a72c0d6"
+              ]
+            },
+            "decision": {
+              "status": "supported",
+              "reason_code": "supported",
+              "atomic": true,
+              "classification_valid": true,
+              "source_faithful": true,
+              "correct_kind": "scientific",
+              "explanation": "The claim states K-tuplet reports outperforming other metric methods on the miniImageNet/MiniImageNet benchmark. Original support s5 explicitly states: 'Our result on the miniImageNet benchmark outperforms other metric-based few-shot classification methods.'"
+            }
+          },
+          {
+            "assertion": {
+              "claim_id": "claim_104",
+              "kind": "scientific",
+              "claim_text": "Proto-Triplet Loss 与 ICNN loss 在 miniImageNet/MiniImageNet 基准上报告 2% 准确率提升。",
+              "source_unit_id": "unit:15:9876",
+              "source_fragment_id": "unit:15:9876:native:writer:experiments:1:0",
+              "source_start": 9876,
+              "source_end": 10292,
+              "evidence_ids": [
+                "arxiv:2305.09062:abstract:claim:549b9167d596",
+                "arxiv:1907.03123:abstract:claim:998fb93b2a24",
+                "arxiv:2105.00379:abstract:claim:e2d40a72c0d6"
+              ]
+            },
+            "decision": {
+              "status": "supported",
+              "reason_code": "supported",
+              "atomic": true,
+              "classification_valid": true,
+              "source_faithful": true,
+              "correct_kind": "scientific",
+              "explanation": "The claim states Proto-Triplet Loss and ICNN loss report a 2% accuracy improvement on the miniImageNet/MiniImageNet benchmark. Original support s6 explicitly states: 'show a significant improvement in accuracy in the miniImagenNet benchmark compared to other metric-based few-shot learning methods by a margin of 2%'."
+            }
+          },
+          {
+            "assertion": {
+              "claim_id": "claim_105",
+              "kind": "scientific",
+              "claim_text": "SRL 在 miniImageNet/MiniImageNet 基准上报告 competitive/superior。",
+              "source_unit_id": "unit:15:9876",
+              "source_fragment_id": "unit:15:9876:native:writer:experiments:1:0",
+              "source_start": 9876,
+              "source_end": 10292,
+              "evidence_ids": [
+                "arxiv:2305.09062:abstract:claim:549b9167d596",
+                "arxiv:1907.03123:abstract:claim:998fb93b2a24",
+                "arxiv:2105.00379:abstract:claim:e2d40a72c0d6"
+              ]
+            },
+            "decision": {
+              "status": "supported",
+              "reason_code": "supported",
+              "atomic": true,
+              "classification_valid": true,
+              "source_faithful": true,
+              "correct_kind": "scientific",
+              "explanation": "The claim states SRL reports competitive/superior performance on the miniImageNet/MiniImageNet benchmark. Original support s7 explicitly states: 'the experimental results illustrate competitive/superior performance of our method compared to the previous state-of-the-art' on MiniImageNet, TieredImageNet and CUB."
+            }
+          },
+          {
+            "assertion": {
+              "claim_id": "claim_106",
+              "kind": "scientific",
+              "claim_text": "不能依据这些摘要级信息判定 K-tuplet、Proto-Triplet/ICNN 与 SRL 三者之间的数值名次。",
+              "source_unit_id": "unit:15:9876",
+              "source_fragment_id": "unit:15:9876:native:writer:experiments:1:0",
+              "source_start": 9876,
+              "source_end": 10292,
+              "evidence_ids": [
+                "arxiv:2305.09062:abstract:claim:549b9167d596",
+                "arxiv:1907.03123:abstract:claim:998fb93b2a24",
+                "arxiv:2105.00379:abstract:claim:e2d40a72c0d6"
+              ]
+            },
+            "decision": {
+              "status": "unsupported",
+              "reason_code": "insufficient_support",
+              "atomic": true,
+              "classification_valid": true,
+              "source_faithful": true,
+              "correct_kind": "scientific",
+              "explanation": "The claim asserts that numerical ranking among K-tuplet, Proto-Triplet/ICNN and SRL cannot be determined from summary-level information. This is a meta-claim about the review's evidence limitations, not a scientific claim supported by the cited original papers. The cited materials (e9, e15, e16) are the original papers themselves, which do not make statements about whether cross-method ranking can be determined from summary-level information."
+            }
+          }
+        ],
+        [
+          {
+            "assertion": {
+              "claim_id": "claim_99",
+              "kind": "scientific",
+              "claim_text": "因此，只能分别陈述：K-tuplet 报告优于其他度量方法；Proto-Triplet Loss 与 ICNN loss 报告 2% 准确率提升；SRL 报告 competitive/superior。",
+              "source_unit_id": "unit:15:9876",
+              "source_fragment_id": "unit:15:9876:native:writer:experiments:1:0",
+              "source_start": 9876,
+              "source_end": 10292,
+              "evidence_ids": [
+                "arxiv:2305.09062:abstract:claim:549b9167d596",
+                "arxiv:1907.03123:abstract:claim:998fb93b2a24",
+                "arxiv:2105.00379:abstract:claim:e2d40a72c0d6"
+              ]
+            },
+            "decision": null
+          },
+          {
+            "assertion": {
+              "claim_id": "claim_100",
+              "kind": "scientific",
+              "claim_text": "不能依据这些摘要级信息判定三者之间的数值名次。",
+              "source_unit_id": "unit:15:9876",
+              "source_fragment_id": "unit:15:9876:native:writer:experiments:1:0",
+              "source_start": 9876,
+              "source_end": 10292,
+              "evidence_ids": [
+                "arxiv:2305.09062:abstract:claim:549b9167d596",
+                "arxiv:1907.03123:abstract:claim:998fb93b2a24",
+                "arxiv:2105.00379:abstract:claim:e2d40a72c0d6"
+              ]
+            },
+            "decision": null
+          }
+        ]
+      ],
+      "finding": "The original three independent paper results were split in round1 and the exact original compound returned in round2. Its round2 claim99 has no accepted assessment because processing stopped at48. This is an extraction regression, not a new scientific verdict.",
+      "actual_citation_cards": [
+        {
+          "evidence_id": "arxiv:2305.09062:abstract:claim:549b9167d596",
+          "paper_id": "arxiv:2305.09062",
+          "text": "Using the two proposed loss functions, the few-shot learning method achieves a 2% accuracy improvement on the miniImageNet benchmark compared to other metric-based few-shot learning methods, demonstrating better generalization to previously unseen classes.",
+          "supporting_text": "Few-shot learning is a challenging area of research that aims to learn new concepts with only a few labeled samples of data. Recent works based on metric-learning approaches leverage the meta-learning approach, which is encompassed by episodic tasks that make use a support (training) and query set (test) with the objective of learning a similarity comparison metric between those sets. Due to the lack of data, the learning process of the embedding network becomes an important part of the few-shot task. Previous works have addressed this problem using metric learning approaches, but the properties of the underlying latent space and the separability of the difference classes on it was not entirely enforced. In this work, we propose two different loss functions which consider the importance of the embedding vectors by looking at the intra-class and inter-class distance between the few data. The first loss function is the Proto-Triplet Loss, which is based on the original triplet loss with the modifications needed to better work on few-shot scenarios. The second loss function, which we dub ICNN loss is based on an inter and intra class nearest neighbors score, which help us to assess the quality of embeddings obtained from the trained network. Our results, obtained from a extensive experimental setup show a significant improvement in accuracy in the miniImagenNet benchmark compared to other metric-based few-shot learning methods by a margin of 2%, demonstrating the capability of these loss functions to allow the network to generalize better to previously unseen classes. In our experiments, we demonstrate competitive generalization capabilities to other domains, such as the Caltech CUB, Dogs and Cars datasets compared with the state of the art."
+        },
+        {
+          "evidence_id": "arxiv:1907.03123:abstract:claim:998fb93b2a24",
+          "paper_id": "arxiv:1907.03123",
+          "text": "The proposed deep K-tuplet network for few-shot classification, built by extending the classical triplet network from deep metric learning, outperforms other metric-based few-shot classification methods on the miniImageNet benchmark.",
+          "supporting_text": "The goal of few-shot learning is to recognize new visual concepts with just a few amount of labeled samples in each class. Recent effective metric-based few-shot approaches employ neural networks to learn a feature similarity comparison between query and support examples. However, the importance of feature embedding, i.e., exploring the relationship among training samples, is neglected. In this work, we present a simple yet powerful baseline for few-shot classification by emphasizing the importance of feature embedding. Specifically, we revisit the classical triplet network from deep metric learning, and extend it into a deep K-tuplet network for few-shot learning, utilizing the relationship among the input samples to learn a general representation learning via episode-training. Once trained, our network is able to extract discriminative features for unseen novel categories and can be seamlessly incorporated with a non-linear distance metric function to facilitate the few-shot classification. Our result on the miniImageNet benchmark outperforms other metric-based few-shot classification methods. More importantly, when evaluated on completely different datasets (Caltech-101, CUB-200, Stanford Dogs and Cars) using the model trained with miniImageNet, our method significantly outperforms prior methods, demonstrating its superior capability to generalize to unseen classes."
+        },
+        {
+          "evidence_id": "arxiv:2105.00379:abstract:claim:e2d40a72c0d6",
+          "paper_id": "arxiv:2105.00379",
+          "text": "Experimental results of the SRL framework illustrate competitive or superior performance compared to the previous state-of-the-art.",
+          "supporting_text": "In this paper, we propose a subspace representation learning (SRL) framework to tackle few-shot image classification tasks. It exploits a subspace in local CNN feature space to represent an image, and measures the similarity between two images according to a weighted subspace distance (WSD). When K images are available for each class, we develop two types of template subspaces to aggregate K-shot information: the prototypical subspace (PS) and the discriminative subspace (DS). Based on the SRL framework, we extend metric learning based techniques from vector to subspace representation. While most previous works adopted global vector representation, using subspace representation can effectively preserve the spatial structure, and diversity within an image. We demonstrate the effectiveness of the SRL framework on three public benchmark datasets: MiniImageNet, TieredImageNet and Caltech-UCSD Birds-200-2011 (CUB), and the experimental results illustrate competitive/superior performance of our method compared to the previous state-of-the-art."
+        }
+      ]
+    },
+    {
+      "name": "conditional_proposal_and_source_bounded_absence_retained",
+      "rounds": [
+        [
+          {
+            "assertion": {
+              "claim_id": "claim_161",
+              "kind": "scientific",
+              "claim_text": "未来若要比较这些取舍，需要在相同骨干、相同 5-way shot 协议、相同训练数据和相同跨域测试集上报告逐项准确率、消融、置信信息及计算成本；当前材料没有提供这些统一条件。",
+              "source_unit_id": "unit:31:15625",
+              "source_fragment_id": "unit:31:15625:native:writer:open_problems:8:0",
+              "source_start": 15625,
+              "source_end": 16283,
+              "evidence_ids": [
+                "arxiv:1907.03123:abstract:claim:5a36249bbf1e",
+                "arxiv:2409.07989:abstract:claim:5ed923dac68f",
+                "arxiv:2305.09062:abstract:claim:549b9167d596",
+                "arxiv:2105.00379:abstract:claim:38498384e907",
+                "arxiv:1907.03123:abstract:claim:b4d49aba47c5",
+                "arxiv:1711.06025:section:abstract:4:b851ec357ca4:claim:3868df819471",
+                "arxiv:2010.04525:abstract:claim:7178a9c4f03f",
+                "arxiv:2305.09062:abstract:claim:aaed703eb739"
+              ]
+            },
+            "decision": {
+              "status": "unsupported",
+              "reason_code": "insufficient_support",
+              "atomic": false,
+              "classification_valid": true,
+              "source_faithful": true,
+              "correct_kind": "scientific",
+              "explanation": "The first clause proposes a future experimental design requiring identical backbone, 5-way shot protocol, training data, cross-domain test set, and reporting of per-item accuracy, ablations, confidence information, and computational cost. The second clause is a report-level meta-claim that the current cited materials do not provide these unified conditions. The cited papers do not establish the normative proposal, and no citation can prove the absence of such unified conditions across the literature. The two clauses are independently verifiable, so the assertion is non-atomic."
+            }
+          }
+        ],
+        [
+          {
+            "assertion": {
+              "claim_id": "claim_175",
+              "kind": "scientific",
+              "claim_text": "未来若要比较这些取舍，需要在相同骨干、相同 5-way shot 协议、相同训练数据和相同跨域测试集上报告逐项准确率、消融、置信信息及计算成本。",
+              "source_unit_id": "unit:31:15625",
+              "source_fragment_id": "unit:31:15625:native:writer:open_problems:8:0",
+              "source_start": 15625,
+              "source_end": 16283,
+              "evidence_ids": [
+                "arxiv:1907.03123:abstract:claim:5a36249bbf1e",
+                "arxiv:2409.07989:abstract:claim:5ed923dac68f",
+                "arxiv:2305.09062:abstract:claim:549b9167d596",
+                "arxiv:2105.00379:abstract:claim:38498384e907",
+                "arxiv:1907.03123:abstract:claim:b4d49aba47c5",
+                "arxiv:1711.06025:section:abstract:4:b851ec357ca4:claim:3868df819471",
+                "arxiv:2010.04525:abstract:claim:7178a9c4f03f",
+                "arxiv:2305.09062:abstract:claim:aaed703eb739"
+              ]
+            },
+            "decision": {
+              "status": "unsupported",
+              "reason_code": "insufficient_support",
+              "atomic": true,
+              "classification_valid": true,
+              "source_faithful": true,
+              "correct_kind": "scientific",
+              "explanation": "The assertion proposes that future comparisons of these tradeoffs require unified conditions: same backbone, same 5-way shot protocol, same training data, same cross-domain test set, with reported per-item accuracy, ablations, confidence information, and computational cost. This is a research proposal synthesized across the cited materials, but none of the cited individual papers explicitly state this specific set of unified comparison requirements, so the proposal is not directly supported by the cited sources."
+            }
+          },
+          {
+            "assertion": {
+              "claim_id": "claim_176",
+              "kind": "scientific",
+              "claim_text": "当前材料没有提供这些统一条件。",
+              "source_unit_id": "unit:31:15625",
+              "source_fragment_id": "unit:31:15625:native:writer:open_problems:8:0",
+              "source_start": 15625,
+              "source_end": 16283,
+              "evidence_ids": [
+                "arxiv:1907.03123:abstract:claim:5a36249bbf1e",
+                "arxiv:2409.07989:abstract:claim:5ed923dac68f",
+                "arxiv:2305.09062:abstract:claim:549b9167d596",
+                "arxiv:2105.00379:abstract:claim:38498384e907",
+                "arxiv:1907.03123:abstract:claim:b4d49aba47c5",
+                "arxiv:1711.06025:section:abstract:4:b851ec357ca4:claim:3868df819471",
+                "arxiv:2010.04525:abstract:claim:7178a9c4f03f",
+                "arxiv:2305.09062:abstract:claim:aaed703eb739"
+              ]
+            },
+            "decision": {
+              "status": "unsupported",
+              "reason_code": "insufficient_support",
+              "atomic": true,
+              "classification_valid": true,
+              "source_faithful": true,
+              "correct_kind": "scientific",
+              "explanation": "该断言是对当前综述所选材料覆盖范围的否定性元陈述，其证据列表中的 e8、e14、e9、e10、e17、e13、e5、e18 均为具体方法论文献，仅能证明各自方法的实验设置，无法从这些论文的存在或内容推出“当前材料没有提供统一比较条件”这一关于本综述证据集的结论，缺乏支持依据。"
+            }
+          }
+        ],
+        [
+          {
+            "assertion": {
+              "claim_id": "claim_166",
+              "kind": "scientific",
+              "claim_text": "未来若要比较这些取舍，需要在相同骨干、相同 5-way shot 协议、相同训练数据和相同跨域测试集上报告逐项准确率、消融、置信信息及计算成本。",
+              "source_unit_id": "unit:31:15625",
+              "source_fragment_id": "unit:31:15625:native:writer:open_problems:8:0",
+              "source_start": 15625,
+              "source_end": 16283,
+              "evidence_ids": [
+                "arxiv:1907.03123:abstract:claim:5a36249bbf1e",
+                "arxiv:2409.07989:abstract:claim:5ed923dac68f",
+                "arxiv:2305.09062:abstract:claim:549b9167d596",
+                "arxiv:2105.00379:abstract:claim:38498384e907",
+                "arxiv:1907.03123:abstract:claim:b4d49aba47c5",
+                "arxiv:1711.06025:section:abstract:4:b851ec357ca4:claim:3868df819471",
+                "arxiv:2010.04525:abstract:claim:7178a9c4f03f",
+                "arxiv:2305.09062:abstract:claim:aaed703eb739"
+              ]
+            },
+            "decision": null
+          },
+          {
+            "assertion": {
+              "claim_id": "claim_167",
+              "kind": "scientific",
+              "claim_text": "当前材料没有提供这些统一条件。",
+              "source_unit_id": "unit:31:15625",
+              "source_fragment_id": "unit:31:15625:native:writer:open_problems:8:0",
+              "source_start": 15625,
+              "source_end": 16283,
+              "evidence_ids": [
+                "arxiv:1907.03123:abstract:claim:5a36249bbf1e",
+                "arxiv:2409.07989:abstract:claim:5ed923dac68f",
+                "arxiv:2305.09062:abstract:claim:549b9167d596",
+                "arxiv:2105.00379:abstract:claim:38498384e907",
+                "arxiv:1907.03123:abstract:claim:b4d49aba47c5",
+                "arxiv:1711.06025:section:abstract:4:b851ec357ca4:claim:3868df819471",
+                "arxiv:2010.04525:abstract:claim:7178a9c4f03f",
+                "arxiv:2305.09062:abstract:claim:aaed703eb739"
+              ]
+            },
+            "decision": null
+          }
+        ]
+      ],
+      "finding": "The future-comparison antecedent, backbone,5-way,training/cross-domain conditions,outputs and separate source-bounded absence survive this inspected split. It is not evidence that every uninspected proposition survives."
+    },
+    {
+      "name": "single_causal_chain_nonatomic_flag_needs_explanation",
+      "rounds": [
+        [
+          {
+            "assertion": {
+              "claim_id": "claim_9",
+              "kind": "scientific",
+              "claim_text": "度量学习路径通过深度神经网络学习嵌入空间，并依据未见查询样本与已见支持样本之间的距离或相似性进行分类，从而避免直接在少量样本上训练复杂分类器。",
+              "source_unit_id": "unit:1:1357",
+              "source_fragment_id": "unit:1:1357:native:writer:introduction:0:0",
+              "source_start": 1357,
+              "source_end": 1553,
+              "evidence_ids": [
+                "arxiv:2105.08149:page:1:block:9:claim:7cf2d36a262c"
+              ]
+            },
+            "decision": {
+              "status": "supported",
+              "reason_code": "supported",
+              "atomic": true,
+              "classification_valid": true,
+              "source_faithful": true,
+              "correct_kind": "scientific",
+              "explanation": "度量学习路径的工作机制与作用表述由 e1（s1）的原文内容支持，与引言片段表述一致。"
+            }
+          }
+        ],
+        [
+          {
+            "assertion": {
+              "claim_id": "claim_10",
+              "kind": "scientific",
+              "claim_text": "度量学习路径通过深度神经网络学习嵌入空间，并依据未见查询样本与已见支持样本之间的距离或相似性进行分类，从而避免直接在少量样本上训练复杂分类器。",
+              "source_unit_id": "unit:1:1357",
+              "source_fragment_id": "unit:1:1357:native:writer:introduction:0:0",
+              "source_start": 1357,
+              "source_end": 1553,
+              "evidence_ids": [
+                "arxiv:2105.08149:page:1:block:9:claim:7cf2d36a262c"
+              ]
+            },
+            "decision": {
+              "status": "supported",
+              "reason_code": "supported",
+              "atomic": true,
+              "classification_valid": true,
+              "source_faithful": true,
+              "correct_kind": "scientific",
+              "explanation": "The cited original source confirms metric learning methods learn feature embeddings and/or distance measures, classify unseen samples based on distance to seen samples in an embedding space, and avoid overfitting to few training images, directly supporting the claim."
+            }
+          }
+        ],
+        [
+          {
+            "assertion": {
+              "claim_id": "claim_10",
+              "kind": "scientific",
+              "claim_text": "度量学习路径通过深度神经网络学习嵌入空间，并依据未见查询样本与已见支持样本之间的距离或相似性进行分类，从而避免直接在少量样本上训练复杂分类器。",
+              "source_unit_id": "unit:1:1357",
+              "source_fragment_id": "unit:1:1357:native:writer:introduction:0:0",
+              "source_start": 1357,
+              "source_end": 1553,
+              "evidence_ids": [
+                "arxiv:2105.08149:page:1:block:9:claim:7cf2d36a262c"
+              ]
+            },
+            "decision": {
+              "status": "supported",
+              "reason_code": "supported",
+              "atomic": false,
+              "classification_valid": true,
+              "source_faithful": true,
+              "correct_kind": "scientific",
+              "explanation": "度量学习路径通过深度神经网络学习嵌入空间并依据距离/相似性分类以避免过拟合的断言与 e1 对应原文一致，原文明确说明度量学习方法学习特征嵌入与距离/相似性度量，基于未见样本与已见样本的距离分类，从而避免过拟合。"
+            }
+          }
+        ]
+      ],
+      "finding": "The claim and citation are unchanged. Round2 atomic=false accompanies supported/supported and an explanation affirming original-source consistency. The source abstract itself uses one mechanism-to-overfitting causal sentence. This cannot justify a lexical and=>non-atomic rule, nor does it settle all claim qualifiers scientifically.",
+      "actual_citation": {
+        "evidence_id": "arxiv:2105.08149:page:1:block:9:claim:7cf2d36a262c",
+        "paper_id": "arxiv:2105.08149",
+        "selected_claim_text": "Metric learning methods for few-shot classification learn feature embeddings and/or distance measures (or inversely, similarity measures) and classify an unseen sample based on its distance to seen samples.",
+        "selected_supporting_text": "The biggest challenge in few-shot classification is a high risk of model overfitting to the few labeled training samples. To alleviate this problem, researchers have proposed various approaches, such as meta-learning methods, transfer learning methods, and metric learning methods. Meta-learning methods train a meta-learner on many different classification tasks to extract generalizable knowledge, which enables rapid learning on a new related task with few examples [7, 9]. Transfer learning methods presume shared knowledge between the source and target domains, and fine-tune the model trained on abundant source data to fit few labeled target samples [10, 11]. Metric learning methods learn feature embeddings [6] and/or distance measures (or inversely, similarity measures) [12] and classify an unseen sample based on its distance to",
+        "original_abstract": "Few-shot image classification is a challenging problem that aims to achieve the human level of recognition based only on a small number of training images. One main solution to few-shot image classification is deep metric learning. These methods, by classifying unseen samples according to their distances to few seen samples in an embedding space learned by powerful deep neural networks, can avoid overfitting to few training images in few-shot image classification and have achieved the state-of-the-art performance. In this paper, we provide an up-to-date review of deep metric learning methods for few-shot image classification from 2018 to 2022 and categorize them into three groups according to three stages of metric learning, namely learning feature embeddings, learning class representations, and learning distance measures. With this taxonomy, we identify the novelties of different methods and problems they face. We conclude this review with a discussion on current challenges and future trends in few-shot image classification."
+      }
+    }
+  ]
+}

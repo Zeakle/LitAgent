@@ -1,0 +1,223 @@
+{
+  "source_response_sha256": "b80ca564a0c728b29b58a3086ac6e9965b4e79ef7e13423ec4190b31f63d5134",
+  "source_contract": "native-body-summary-v3",
+  "interpretation": "Only real local contract failures; not scientific gold labels. No complete paper text.",
+  "errors": [
+    {
+      "reason_code": "strict_writing_scope_notice_invalid",
+      "section_key": "introduction",
+      "row_index": 4,
+      "wire_unit": {
+        "block_index": 0,
+        "heading": "引言",
+        "type": "paragraph",
+        "kind": "scientific",
+        "text": "本综述围绕“比较少样本图像分类中的度量学习方法”这一问题，重点比较嵌入学习、类别表示学习、距离或比较学习等机制，并把大规模迁移学习作为解释边界的参照而非把其结果直接当作度量学习排名。",
+        "scope_notice_id": "review_scope",
+        "fact_card_refs": []
+      },
+      "canonical_path": "sections.introduction.first_block.additional_sentences.3",
+      "actual_fact_card_ids": []
+    },
+    {
+      "reason_code": "strict_writing_scope_notice_invalid",
+      "section_key": "introduction",
+      "row_index": 5,
+      "wire_unit": {
+        "block_index": 0,
+        "heading": "引言",
+        "type": "paragraph",
+        "kind": "organization",
+        "text": "下文先说明分类框架，再分析代表性方法的机制，随后按数据集、设置和报告指标比较证据，最后讨论来源支持的局限与未解决问题。",
+        "scope_notice_id": "none",
+        "fact_card_refs": []
+      },
+      "canonical_path": "sections.introduction.first_block.additional_sentences.4",
+      "actual_fact_card_ids": []
+    },
+    {
+      "reason_code": "strict_writing_unit_citation_scope_ambiguous",
+      "section_key": "taxonomy",
+      "row_index": 0,
+      "wire_unit": {
+        "block_index": 0,
+        "heading": "基础概念与方法分类",
+        "type": "paragraph",
+        "kind": "scientific",
+        "text": "少样本学习文献中的一种上位分类是迁移学习与元学习：迁移学习先在上游数据集上预训练，再在不同下游任务上微调；元学习则覆盖多种通过任务经验改进少样本适应的方法。",
+        "scope_notice_id": "none",
+        "fact_card_refs": [
+          "t18"
+        ]
+      },
+      "canonical_path": "sections.taxonomy.first_block.first_sentence",
+      "actual_fact_card_ids": [
+        "f:a9fc76f170910c7a542ec6f4"
+      ]
+    },
+    {
+      "reason_code": "strict_writing_scope_notice_invalid",
+      "section_key": "taxonomy",
+      "row_index": 7,
+      "wire_unit": {
+        "block_index": 0,
+        "heading": "基础概念与方法分类",
+        "type": "paragraph",
+        "kind": "scientific",
+        "text": "本综述采用上述机制维度组织比较：表示对象是全局向量、局部子空间还是多层特征，类别原型是静态还是按查询条件化，距离函数是固定形式还是由网络学习。",
+        "scope_notice_id": "review_scope",
+        "fact_card_refs": []
+      },
+      "canonical_path": "sections.taxonomy.first_block.additional_sentences.6",
+      "actual_fact_card_ids": []
+    },
+    {
+      "reason_code": "strict_writing_passage_binding_invalid",
+      "section_key": "methods",
+      "row_index": 4,
+      "wire_unit": {
+        "block_index": 0,
+        "heading": "代表性方法分析",
+        "type": "paragraph",
+        "kind": "scientific",
+        "text": "不确定性感知少样本框架针对神经网络对不同查询—支持样本对计算出的相似性具有不同不确定性的问题，把观测到的相似性转换为概率表示并纳入损失，再用图模型联合估计查询与支持集原型之间的样本对不确定性。",
+        "scope_notice_id": "none",
+        "fact_card_refs": []
+      },
+      "canonical_path": "sections.methods.first_block.additional_sentences.3",
+      "actual_fact_card_ids": []
+    },
+    {
+      "reason_code": "strict_writing_passage_binding_invalid",
+      "section_key": "methods",
+      "row_index": 5,
+      "wire_unit": {
+        "block_index": 0,
+        "heading": "代表性方法分析",
+        "type": "paragraph",
+        "kind": "scientific",
+        "text": "面向类别表示质量的方法在每个少样本试验中根据目标图像条件化类别表示，并训练网络执行类别间比较，而不是依赖固定的静态度量。",
+        "scope_notice_id": "none",
+        "fact_card_refs": []
+      },
+      "canonical_path": "sections.methods.first_block.additional_sentences.4",
+      "actual_fact_card_ids": []
+    },
+    {
+      "reason_code": "strict_writing_passage_binding_invalid",
+      "section_key": "methods",
+      "row_index": 6,
+      "wire_unit": {
+        "block_index": 0,
+        "heading": "代表性方法分析",
+        "type": "paragraph",
+        "kind": "scientific",
+        "text": "多阶段嵌入方法使用多输出嵌入网络把样本映射到多个不同特征空间，提取不同阶段的特征向量以同时捕获全局和抽象特征，并通过自注意力细化各阶段表示及为各阶段分配可学习权重。",
+        "scope_notice_id": "none",
+        "fact_card_refs": []
+      },
+      "canonical_path": "sections.methods.first_block.additional_sentences.5",
+      "actual_fact_card_ids": []
+    },
+    {
+      "reason_code": "strict_writing_unit_citation_scope_ambiguous",
+      "section_key": "methods",
+      "row_index": 8,
+      "wire_unit": {
+        "block_index": 0,
+        "heading": "代表性方法分析",
+        "type": "paragraph",
+        "kind": "scientific",
+        "text": "作为非度量型参照，大规模迁移学习方法先在上游数据上预训练再在下游任务微调；所选证据显示BiT式精心工程化的大规模网络训练和微调可成为具有竞争力且稳健的少样本分类基线，但这一结论不能直接等同于某个度量学习组件的机制优势。",
+        "scope_notice_id": "none",
+        "fact_card_refs": [
+          "m6",
+          "m10",
+          "m21"
+        ]
+      },
+      "canonical_path": "sections.methods.first_block.additional_sentences.7",
+      "actual_fact_card_ids": [
+        "f:25addd52bc0363eab790c79d",
+        "f:5b8ef491cd668f3dea9a7334",
+        "f:d08fe138a498ba94f0c73e5d"
+      ]
+    },
+    {
+      "reason_code": "strict_writing_unit_citation_scope_ambiguous",
+      "section_key": "experiments",
+      "row_index": 5,
+      "wire_unit": {
+        "block_index": 0,
+        "heading": "综合比较与证据分析",
+        "type": "paragraph",
+        "kind": "scientific",
+        "text": "FewSAR面向少样本SAR目标图像分类建立统一基准，在相同设置下分析定量结果和运行时间后报告度量学习方法的准确率可达到最佳，而元学习方法和微调方法表现较差；该结论的适用域是SAR图像，不应直接外推到自然图像少样本分类。",
+        "scope_notice_id": "none",
+        "fact_card_refs": [
+          "e7"
+        ]
+      },
+      "canonical_path": "sections.experiments.first_block.additional_sentences.4",
+      "actual_fact_card_ids": [
+        "f:2e505b612094052dbb517227"
+      ]
+    },
+    {
+      "reason_code": "strict_writing_unit_citation_scope_ambiguous",
+      "section_key": "experiments",
+      "row_index": 6,
+      "wire_unit": {
+        "block_index": 0,
+        "heading": "综合比较与证据分析",
+        "type": "paragraph",
+        "kind": "scientific",
+        "text": "跨域少样本高光谱图像分类中的多级关系学习方法报告称，相比先进方法，类级对比学习和集合级Transformer交叉注意力等机制对高光谱任务有贡献；该证据同样属于高光谱专用域，不能与自然图像方法作无条件共同排名。",
+        "scope_notice_id": "none",
+        "fact_card_refs": [
+          "e13"
+        ]
+      },
+      "canonical_path": "sections.experiments.first_block.additional_sentences.5",
+      "actual_fact_card_ids": [
+        "f:70c103879c3ed28a93712439"
+      ]
+    },
+    {
+      "reason_code": "strict_writing_scope_notice_invalid",
+      "section_key": "experiments",
+      "row_index": 9,
+      "wire_unit": {
+        "block_index": 0,
+        "heading": "综合比较与证据分析",
+        "type": "paragraph",
+        "kind": "scientific",
+        "text": "这些研究的数据集、任务域、骨干网络、训练协议和基线并不一致，且多条证据只给出“优于”“有竞争力”或“最佳”等摘要级表述而未提供可统一换算的数值、置信区间或运行成本，因此不能把不同论文的摘要结果合并成一个全局数值排名。",
+        "scope_notice_id": "evidence_limit",
+        "fact_card_refs": []
+      },
+      "canonical_path": "sections.experiments.first_block.additional_sentences.8",
+      "actual_fact_card_ids": []
+    },
+    {
+      "reason_code": "strict_writing_scope_notice_invalid",
+      "section_key": "open_problems",
+      "row_index": 7,
+      "wire_unit": {
+        "block_index": 0,
+        "heading": "局限与开放问题",
+        "type": "paragraph",
+        "kind": "scientific",
+        "text": "所选综述明确把当前挑战和未来趋势作为讨论对象，但可用卡片没有给出这些挑战的完整细目，因此本文只保留其已由原文支持的分类和问题框架，不替原文补造结论。",
+        "scope_notice_id": "evidence_limit",
+        "fact_card_refs": [
+          "o3"
+        ]
+      },
+      "canonical_path": "sections.open_problems.first_block.additional_sentences.6",
+      "actual_fact_card_ids": [
+        "f:0f62be49eb9c977c400a60ad"
+      ]
+    }
+  ]
+}

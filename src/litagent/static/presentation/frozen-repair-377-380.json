@@ -1,0 +1,632 @@
+{
+  "id": "frozen-repair-377-380",
+  "contract": "frozen-repair-public-v1",
+  "scope": "single_few_shot_frozen_evidence_revision",
+  "human_accuracy": null,
+  "formal_benchmark": false,
+  "models": {
+    "generation": "doubao-seed-2-1-pro-260915",
+    "evaluation": "doubao-seed-2-1-lite-260915"
+  },
+  "frozen_evidence_count": 31,
+  "evidence_snapshot_sha256": "ec49c16f60b3fe048f9f5b31c4b38dd332f3b1ddbac32dd57d5c44058ec3038f",
+  "lineage_prose_repairs": 2,
+  "before": {
+    "report_sha256": "014b88dc615809fc5e3159631d0c5d89c0db2cff5c0cd7ef221d7ee89f30f259",
+    "scientific": 339,
+    "supported": 330,
+    "unsupported": 9,
+    "unverified": 0,
+    "faithfulness": null,
+    "inventory": "failed",
+    "global_check": "completed",
+    "global_input_contract": null,
+    "publishable": false,
+    "requests": 9,
+    "tokens": 183941,
+    "unknown_hold": 0
+  },
+  "after": {
+    "report_sha256": "f293dc329f2979aaeaf66808c0a73e31472a9e2f93bc161a9a5fd932b2b38f56",
+    "scientific": 398,
+    "supported": 398,
+    "unsupported": 0,
+    "unverified": 0,
+    "faithfulness": 1.0,
+    "inventory": "passed",
+    "global_check": "completed",
+    "global_input_contract": "ragas-global-unit-input-v2",
+    "publishable": true,
+    "requests": 9,
+    "tokens": 188560,
+    "unknown_hold": 0
+  },
+  "before_global_findings": [
+    {
+      "code": "missing_assertion",
+      "unit_id": "unit:12:6690",
+      "recorded_assertions": 9
+    }
+  ],
+  "checks": {
+    "core_covered": 1,
+    "core_total": 1,
+    "analysis": "passed",
+    "citation_id_validity": 1.0,
+    "internal_consistency": 1.0
+  },
+  "receipts": {
+    "377_candidate_journal_sha256": "1f34aaea697e890c1d7b33d57114995808bf753433c74443ad3146e7ff90ce33",
+    "380_candidate_journal_sha256": "ac01ab6f90b8cbba036009956b3d750c6756a54067656b8775c71499e1b2c822",
+    "377_terminal_sha256": "8332fff0eebd6b70ec8f95f9d76a06fae6a6114847ee8e4c6acba20d4c9d0529",
+    "380_terminal_sha256": "3f30b3ab8a3d11a1b622eb4cd9bea2f664b00421fa0f4f5e253a54c70749bd44",
+    "380_rounds_sha256": "0a90d70a43810f5e12ba1d79c482fc8c2b73057163ed45c84d4e396b85adae63"
+  },
+  "repairs": [
+    {
+      "unit_id": "writer:methods:4:1",
+      "before": {
+        "start": 9661,
+        "end": 9955,
+        "excerpt": "SRL与普通向量原型的可直接比较点是表示单元不同：普通向量原型把支持信息汇总为一个向量，SRL则以局部特征张成的子空间承载变化，并用WSD而不是普通欧氏距离完成比较。原文明确说明，子空间表示相对多数既有工作采用的全局向量表示，能够保留空间结构和图像内部多样性。当前材料没有进一步证明SRL在特定细粒度、姿态变化或极少shot条件下的优劣，因此不能仅凭“表示更丰富”断言子空间必然优于向量原型。",
+        "evidence_ids": [
+          "arxiv:2105.00379:abstract:claim:d46247ee1ece",
+          "arxiv:2105.00379:abstract:claim:71e0e85ff92b"
+        ],
+        "assertions": [
+          {
+            "id": "claim_105",
+            "text": "当前材料没有进一步证明SRL在特定细粒度、姿态变化或极少shot条件下的优劣。",
+            "verdict": "unsupported"
+          }
+        ]
+      },
+      "after": {
+        "start": 9732,
+        "end": 10047,
+        "excerpt": "SRL与普通向量原型的可直接比较点是表示单元不同：普通向量原型把支持信息汇总为一个向量，SRL则以局部特征张成的子空间承载变化，并用WSD而不是普通欧氏距离完成比较。原文明确说明，子空间表示相对多数既有工作采用的全局向量表示，能够保留空间结构和图像内部多样性。当前所选原文只报告其在MiniImageNet、TieredImageNet和CUB上的竞争力或优势，因此关于SRL在这些数据集之外或其他任务条件下的优劣，本文不作排名判断。",
+        "evidence_ids": [
+          "arxiv:2105.00379:abstract:claim:d46247ee1ece",
+          "arxiv:2105.00379:abstract:claim:71e0e85ff92b"
+        ],
+        "assertions": [
+          {
+            "id": "claim_164",
+            "text": "SRL与普通向量原型的可直接比较点是表示单元不同。",
+            "verdict": "supported"
+          },
+          {
+            "id": "claim_165",
+            "text": "普通向量原型把支持信息汇总为一个向量。",
+            "verdict": "supported"
+          },
+          {
+            "id": "claim_166",
+            "text": "SRL以局部特征张成的子空间承载变化。",
+            "verdict": "supported"
+          },
+          {
+            "id": "claim_167",
+            "text": "SRL使用WSD而不是普通欧氏距离完成比较。",
+            "verdict": "supported"
+          },
+          {
+            "id": "claim_168",
+            "text": "原文明确说明，子空间表示相对多数既有工作采用的全局向量表示，能够保留空间结构和图像内部多样性。",
+            "verdict": "supported"
+          },
+          {
+            "id": "claim_169",
+            "text": "当前所选原文只报告SRL在MiniImageNet、TieredImageNet和CUB上的竞争力或优势。",
+            "verdict": "supported"
+          },
+          {
+            "id": "claim_170",
+            "text": "关于SRL在这些数据集之外或其他任务条件下的优劣，本文不作排名判断。",
+            "verdict": "supported"
+          }
+        ]
+      }
+    },
+    {
+      "unit_id": "writer:methods:5:2",
+      "before": {
+        "start": 10354,
+        "end": 10623,
+        "excerpt": "该工作的直接实验证据集中在Caltech-UCSD Birds细粒度分类任务，论文称在该任务上达到当时的先进表现。当前来源只支持查询条件化类表示在所述细粒度任务和其实验设置下有效；没有提供关于模型复杂度、查询—支持组合依赖、视角覆盖或缺失信息恢复的直接证据，因此不把这些推断作为该方法的适用边界。",
+        "evidence_ids": [
+          "arxiv:1802.04376:abstract:claim:3d787afb1088",
+          "arxiv:1802.04376:section:abstract:6:77cd55156cd3:claim:8d07f3314556"
+        ],
+        "assertions": [
+          {
+            "id": "claim_120",
+            "text": "没有提供关于模型复杂度、查询—支持组合依赖、视角覆盖或缺失信息恢复的直接证据。",
+            "verdict": "unsupported"
+          }
+        ]
+      },
+      "after": {
+        "start": 10446,
+        "end": 10712,
+        "excerpt": "该工作的直接实验证据集中在Caltech-UCSD Birds细粒度分类任务，论文称在该任务上达到当时的先进表现。当前所选原文支持的适用范围是查询条件化类表示服务于所述细粒度比较任务；除四阶段结构和该任务结论外，原文没有在这些引文中报告其他适用条件或性能结论，因此本文不据此扩展其适用范围。",
+        "evidence_ids": [
+          "arxiv:1802.04376:abstract:claim:3d787afb1088",
+          "arxiv:1802.04376:section:abstract:6:77cd55156cd3:claim:8d07f3314556"
+        ],
+        "assertions": [
+          {
+            "id": "claim_181",
+            "text": "该工作的直接实验证据集中在Caltech-UCSD Birds细粒度分类任务。",
+            "verdict": "supported"
+          },
+          {
+            "id": "claim_182",
+            "text": "论文称在该任务上达到当时的先进表现。",
+            "verdict": "supported"
+          },
+          {
+            "id": "claim_183",
+            "text": "当前所选原文支持的适用范围是查询条件化类表示服务于所述细粒度比较任务。",
+            "verdict": "supported"
+          },
+          {
+            "id": "claim_184",
+            "text": "除四阶段结构和该任务结论外，原文没有在这些引文中报告其他适用条件或性能结论。",
+            "verdict": "supported"
+          },
+          {
+            "id": "claim_185",
+            "text": "因此本文不据此扩展其适用范围。",
+            "verdict": "supported"
+          }
+        ]
+      }
+    },
+    {
+      "unit_id": "writer:methods:7:1",
+      "before": {
+        "start": 11486,
+        "end": 11800,
+        "excerpt": "PABN的证据来自四个细粒度分类数据集和一个通用少样本数据集；论文称其性能优于当时的少样本细粒度方法和一般少样本方法。与RN相比，二者都学习深度比较，但PABN的贡献更集中于细粒度场景下的成对特征对齐和双线性交互；RN则提供更通用的episode式关系分数框架，并显式扩展到零样本。当前材料不支持据此判定二者之间的替代关系或统一排名。",
+        "evidence_ids": [
+          "arxiv:1904.03580:abstract:claim:bfd27c5f9dca",
+          "arxiv:1904.03580:abstract:claim:da07cf125fa9",
+          "arxiv:1711.06025:abstract:claim:9fa79b8e0317"
+        ],
+        "assertions": [
+          {
+            "id": "claim_148",
+            "text": "当前材料不支持据此判定二者之间的替代关系或统一排名。",
+            "verdict": "unsupported"
+          }
+        ]
+      },
+      "after": {
+        "start": 11575,
+        "end": 11924,
+        "excerpt": "PABN的证据来自四个细粒度分类数据集和一个通用少样本数据集；论文称其性能优于当时的少样本细粒度方法和一般少样本方法。与RN相比，二者都学习深度比较，但所选原文展示的侧重点不同：PABN集中于细粒度场景下的成对特征对齐和双线性交互，RN则提供episode式关系分数框架，并显式扩展到零样本。由于当前材料没有提供二者在相同数据集、骨干和episode协议下的直接对照，本文不判定二者的替代关系或统一排名。",
+        "evidence_ids": [
+          "arxiv:1904.03580:abstract:claim:bfd27c5f9dca",
+          "arxiv:1904.03580:abstract:claim:da07cf125fa9",
+          "arxiv:1711.06025:abstract:claim:9fa79b8e0317"
+        ],
+        "assertions": [
+          {
+            "id": "claim_205",
+            "text": "PABN的证据来自四个细粒度分类数据集和一个通用少样本数据集。",
+            "verdict": "supported"
+          },
+          {
+            "id": "claim_206",
+            "text": "论文称其性能优于当时的少样本细粒度方法和一般少样本方法。",
+            "verdict": "supported"
+          },
+          {
+            "id": "claim_207",
+            "text": "与RN相比，二者都学习深度比较。",
+            "verdict": "supported"
+          },
+          {
+            "id": "claim_208",
+            "text": "所选原文展示的侧重点不同：PABN集中于细粒度场景下的成对特征对齐和双线性交互。",
+            "verdict": "supported"
+          },
+          {
+            "id": "claim_209",
+            "text": "RN则提供episode式关系分数框架，并显式扩展到零样本。",
+            "verdict": "supported"
+          },
+          {
+            "id": "claim_210",
+            "text": "由于当前材料没有提供二者在相同数据集、骨干和episode协议下的直接对照，本文不判定二者的替代关系或统一排名。",
+            "verdict": "supported"
+          }
+        ]
+      }
+    },
+    {
+      "unit_id": "writer:methods:9:1",
+      "before": {
+        "start": 12466,
+        "end": 12856,
+        "excerpt": "这一混合设计结合了两类来源所述机制：度量学习者可适应不同类别数，优化型元学习者可为不同任务预测基础度量模型的权重。论文在标准k-shot N-way设置以及灵活类别数的单源、多源现实设置中评估该方法；这些结果支持混合机制在其设定下的有效性。当前材料没有给出“没有相似元训练任务”条件下的对照实验，因此不能据此断言任务自适应度量一定优于或劣于简单固定度量。",
+        "evidence_ids": [
+          "arxiv:1904.03014:section:unknown:1:a020d1277c90:claim:70db719159ce",
+          "arxiv:1904.03014:section:unknown:7:26bf6bb71079:claim:c75c9ffe2d08",
+          "arxiv:1904.03014:section:unknown:5:591da7ae5d13:claim:6bd4219c2633"
+        ],
+        "assertions": [
+          {
+            "id": "claim_163",
+            "text": "当前材料没有给出“没有相似元训练任务”条件下的对照实验。",
+            "verdict": "unsupported"
+          }
+        ]
+      },
+      "after": {
+        "start": 12590,
+        "end": 12992,
+        "excerpt": "这一混合设计结合了两类来源所述机制：度量学习者可适应不同类别数，优化型元学习者可为不同任务预测基础度量模型的权重。论文在标准k-shot N-way设置以及灵活类别数的单源、多源现实设置中评估该方法；这些结果支持混合机制在其报告的设置中有效。当前所选原文只给出这些评测设置和优越表现的概括，未提供可用于判断其他元训练任务分布下相对表现的对照，因此本文不把结论推广到这些设置之外。",
+        "evidence_ids": [
+          "arxiv:1904.03014:section:unknown:1:a020d1277c90:claim:70db719159ce",
+          "arxiv:1904.03014:section:unknown:7:26bf6bb71079:claim:c75c9ffe2d08",
+          "arxiv:1904.03014:section:unknown:5:591da7ae5d13:claim:6bd4219c2633"
+        ],
+        "assertions": [
+          {
+            "id": "claim_222",
+            "text": "这一混合设计结合了两类来源所述机制：度量学习者可适应不同类别数，优化型元学习者可为不同任务预测基础度量模型的权重。",
+            "verdict": "supported"
+          },
+          {
+            "id": "claim_223",
+            "text": "论文在标准k-shot N-way设置以及灵活类别数的单源、多源现实设置中评估该方法。",
+            "verdict": "supported"
+          },
+          {
+            "id": "claim_224",
+            "text": "这些结果支持混合机制在其报告的设置中有效。",
+            "verdict": "supported"
+          },
+          {
+            "id": "claim_225",
+            "text": "当前所选原文只给出这些评测设置和优越表现的概括，未提供可用于判断其他元训练任务分布下相对表现的对照。",
+            "verdict": "supported"
+          },
+          {
+            "id": "claim_226",
+            "text": "因此本文不把结论推广到这些设置之外。",
+            "verdict": "supported"
+          }
+        ]
+      }
+    },
+    {
+      "unit_id": "writer:experiments:1:0",
+      "before": {
+        "start": 14646,
+        "end": 15037,
+        "excerpt": "SRL给出的实验范围明确覆盖MiniImageNet、TieredImageNet和Caltech-UCSD Birds-200-2011（CUB）三类公开数据集。其训练与评测围绕子空间表示、WSD、prototypical subspace和discriminative subspace展开；论文只概括称结果相对先前先进方法具有竞争力或优势，当前材料没有给出具体准确率、置信区间、骨干网络规模或全部基线数值。因此可支持的结论是：SRL在这三个数据集上接受了验证，并在向量型度量之外提供了子空间方案；不能仅凭这些摘要信息断言它在所有shot设置中稳定优于原型、关系网络或嵌入损失方法。",
+        "evidence_ids": [
+          "arxiv:2105.00379:abstract:claim:d46247ee1ece",
+          "arxiv:2105.00379:abstract:claim:71e0e85ff92b"
+        ],
+        "assertions": [
+          {
+            "id": "claim_191",
+            "text": "当前材料没有给出具体准确率、置信区间、骨干网络规模或全部基线数值。",
+            "verdict": "unsupported"
+          }
+        ]
+      },
+      "after": {
+        "start": 14782,
+        "end": 15158,
+        "excerpt": "SRL给出的实验范围明确覆盖MiniImageNet、TieredImageNet和Caltech-UCSD Birds-200-2011（CUB）三类公开数据集。其训练与评测围绕子空间表示、WSD、prototypical subspace和discriminative subspace展开；论文只概括称结果相对先前先进方法具有竞争力或优势。因此可支持的结论是：SRL在这三个数据集上接受了验证，并在向量型度量之外提供了子空间方案；具体数值比较需依据论文完整结果表，而不能仅凭这些摘要信息断言它在所有shot设置中稳定优于原型、关系网络或嵌入损失方法。",
+        "evidence_ids": [
+          "arxiv:2105.00379:abstract:claim:d46247ee1ece",
+          "arxiv:2105.00379:abstract:claim:71e0e85ff92b"
+        ],
+        "assertions": [
+          {
+            "id": "claim_250",
+            "text": "SRL给出的实验范围明确覆盖MiniImageNet、TieredImageNet和Caltech-UCSD Birds-200-2011（CUB）三类公开数据集。",
+            "verdict": "supported"
+          },
+          {
+            "id": "claim_251",
+            "text": "其训练与评测围绕子空间表示、WSD、prototypical subspace和discriminative subspace展开。",
+            "verdict": "supported"
+          },
+          {
+            "id": "claim_252",
+            "text": "论文只概括称结果相对先前先进方法具有竞争力或优势。",
+            "verdict": "supported"
+          },
+          {
+            "id": "claim_253",
+            "text": "因此可支持的结论是：SRL在这三个数据集上接受了验证，并在向量型度量之外提供了子空间方案。",
+            "verdict": "supported"
+          },
+          {
+            "id": "claim_254",
+            "text": "具体数值比较需依据论文完整结果表，而不能仅凭这些摘要信息断言它在所有shot设置中稳定优于原型、关系网络或嵌入损失方法。",
+            "verdict": "supported"
+          }
+        ]
+      }
+    },
+    {
+      "unit_id": "writer:experiments:2:0",
+      "before": {
+        "start": 15039,
+        "end": 15547,
+        "excerpt": "Deep K-tuplet Network的实验设计包含同域和跨域两层。同域部分在miniImageNet上评测，论文称结果优于其他metric-based少样本方法，并与meta-based方法具有竞争力；跨域部分则用miniImageNet训练模型，再在Caltech-101、CUB-200、Stanford Dogs和Stanford Cars的新类上测试，论文称显著优于先前方法。这里的比较维度是“训练域到未见数据集的泛化”，而不是在所有目标数据集上重新进行相同的元训练。当前卡片没有提供具体准确率、shot/way数值、骨干和基线表，因此不能把“显著优于”转化为量化排名。",
+        "evidence_ids": [
+          "arxiv:1907.03123:section:abstract:6:89b66fa7fd40:claim:15daf65e8f35",
+          "arxiv:1907.03123:section:abstract:5:3ca211902e4c:claim:e0fa97e0ecae",
+          "arxiv:1907.03123:section:abstract:4:3a8a8f738565:claim:b4f8f73868a3"
+        ],
+        "assertions": [
+          {
+            "id": "claim_198",
+            "text": "当前卡片没有提供具体准确率、shot/way数值、骨干和基线表。",
+            "verdict": "unsupported"
+          }
+        ]
+      },
+      "after": {
+        "start": 15160,
+        "end": 15660,
+        "excerpt": "Deep K-tuplet Network的实验设计包含同域和跨域两层。同域部分在miniImageNet上评测，论文称结果优于其他metric-based少样本方法，并与meta-based方法具有竞争力；跨域部分则用miniImageNet训练模型，再在Caltech-101、CUB-200、Stanford Dogs和Stanford Cars的新类上测试，论文称显著优于先前方法。这里的比较维度是“训练域到未见数据集的泛化”，而不是在所有目标数据集上重新进行相同的元训练。由于所选材料只给出概括性结论，本文不作量化排名，具体分数和协议需以论文完整实验表为准。",
+        "evidence_ids": [
+          "arxiv:1907.03123:section:abstract:6:89b66fa7fd40:claim:15daf65e8f35",
+          "arxiv:1907.03123:section:abstract:5:3ca211902e4c:claim:e0fa97e0ecae",
+          "arxiv:1907.03123:section:abstract:4:3a8a8f738565:claim:b4f8f73868a3"
+        ],
+        "assertions": [
+          {
+            "id": "claim_255",
+            "text": "Deep K-tuplet Network的实验设计包含同域和跨域两层。",
+            "verdict": "supported"
+          },
+          {
+            "id": "claim_256",
+            "text": "同域部分在miniImageNet上评测，论文称结果优于其他metric-based少样本方法，并与meta-based方法具有竞争力。",
+            "verdict": "supported"
+          },
+          {
+            "id": "claim_257",
+            "text": "跨域部分则用miniImageNet训练模型，再在Caltech-101、CUB-200、Stanford Dogs和Stanford Cars的新类上测试，论文称显著优于先前方法。",
+            "verdict": "supported"
+          },
+          {
+            "id": "claim_258",
+            "text": "这里的比较维度是“训练域到未见数据集的泛化”，而不是在所有目标数据集上重新进行相同的元训练。",
+            "verdict": "supported"
+          },
+          {
+            "id": "claim_259",
+            "text": "由于所选材料只给出概括性结论，本文不作量化排名，具体分数和协议需以论文完整实验表为准。",
+            "verdict": "supported"
+          }
+        ]
+      }
+    },
+    {
+      "unit_id": "writer:experiments:4:0",
+      "before": {
+        "start": 15912,
+        "end": 16308,
+        "excerpt": "Conditional Class Representation Network的直接实验证据集中在Caltech-UCSD Birds细粒度分类任务，论文称在该任务上达到当时的state-of-the-art。其四阶段网络把特征提取、类内成对关系、查询条件化和softmax分类分开，评测的是查询参与类表示后能否改善该细粒度比较任务。当前材料没有给出它在miniImageNet或TieredImageNet上的统一实验结果，也没有给出与RN或SRL共用骨干、episode采样规则的对照，因此不能据此推断它在通用自然图像上相对RN或SRL的排名。",
+        "evidence_ids": [
+          "arxiv:1802.04376:abstract:claim:3d787afb1088",
+          "arxiv:1802.04376:section:abstract:6:77cd55156cd3:claim:8d07f3314556"
+        ],
+        "assertions": [
+          {
+            "id": "claim_210",
+            "text": "当前材料没有给出它在miniImageNet或TieredImageNet上的统一实验结果。",
+            "verdict": "unsupported"
+          },
+          {
+            "id": "claim_211",
+            "text": "也没有给出与RN或SRL共用骨干、episode采样规则的对照。",
+            "verdict": "unsupported"
+          }
+        ]
+      },
+      "after": {
+        "start": 16025,
+        "end": 16408,
+        "excerpt": "Conditional Class Representation Network的直接实验证据集中在Caltech-UCSD Birds细粒度分类任务，论文称在该任务上达到当时的state-of-the-art。其四阶段网络把特征提取、类内成对关系、查询条件化和softmax分类分开，评测的是查询参与类表示后能否改善该细粒度比较任务。所选原文没有报告miniImageNet或TieredImageNet上的结果，也没有报告与RN或SRL在相同协议下的直接对照，因此本文不据此推断它在通用自然图像上相对RN或SRL的排名。",
+        "evidence_ids": [
+          "arxiv:1802.04376:abstract:claim:3d787afb1088",
+          "arxiv:1802.04376:section:abstract:6:77cd55156cd3:claim:8d07f3314556"
+        ],
+        "assertions": [
+          {
+            "id": "claim_266",
+            "text": "Conditional Class Representation Network的直接实验证据集中在Caltech-UCSD Birds细粒度分类任务。",
+            "verdict": "supported"
+          },
+          {
+            "id": "claim_267",
+            "text": "论文称在该任务上达到当时的state-of-the-art。",
+            "verdict": "supported"
+          },
+          {
+            "id": "claim_268",
+            "text": "其四阶段网络把特征提取、类内成对关系、查询条件化和softmax分类分开。",
+            "verdict": "supported"
+          },
+          {
+            "id": "claim_269",
+            "text": "评测的是查询参与类表示后能否改善该细粒度比较任务。",
+            "verdict": "supported"
+          },
+          {
+            "id": "claim_270",
+            "text": "所选原文没有报告miniImageNet或TieredImageNet上的结果。",
+            "verdict": "supported"
+          },
+          {
+            "id": "claim_271",
+            "text": "也没有报告与RN或SRL在相同协议下的直接对照。",
+            "verdict": "supported"
+          },
+          {
+            "id": "claim_272",
+            "text": "因此本文不据此推断它在通用自然图像上相对RN或SRL的排名。",
+            "verdict": "supported"
+          }
+        ]
+      }
+    },
+    {
+      "unit_id": "writer:experiments:5:0",
+      "before": {
+        "start": 16310,
+        "end": 16784,
+        "excerpt": "Relation Network论文报告在五个benchmark上进行了广泛实验，并称该端到端框架在few-shot与zero-shot上都有效，同时比替代方案更简单、更快。可是当前来源没有给出五个benchmark的名称、各数据集准确率、运行时间的测量单位或对照实现细节；few-shot与zero-shot还分别使用图像支持样本和类别描述，输入条件不同。因此实验上只能支持“RN经过多任务验证、测试时不更新网络、可统一处理两类任务”的结论；不能把其few-shot与zero-shot分数横向比较，也不能在缺少统一计时协议和现代对照实现时推广“更快”的范围。",
+        "evidence_ids": [
+          "arxiv:1711.06025:abstract:claim:9fa79b8e0317",
+          "arxiv:1711.06025:section:abstract:4:b851ec357ca4:claim:d30c9aa72aa6",
+          "arxiv:1711.06025:section:abstract:7:e48db540b7be:claim:29bf89eda74f"
+        ],
+        "assertions": [
+          {
+            "id": "claim_216",
+            "text": "可是当前来源没有给出五个benchmark的名称、各数据集准确率、运行时间的测量单位或对照实现细节。",
+            "verdict": "unsupported"
+          }
+        ]
+      },
+      "after": {
+        "start": 16410,
+        "end": 16879,
+        "excerpt": "Relation Network论文报告在五个benchmark上进行了广泛实验，并称该端到端框架在few-shot与zero-shot上都有效，同时比替代方案更简单、更快。所选原文没有列出这些benchmark的具体名称、各数据集准确率、运行时间测量值或对照实现细节；few-shot与zero-shot还分别使用图像支持样本和类别描述，输入条件不同。因此实验上只能支持“RN经过多任务验证、测试时不更新网络、可统一处理两类任务”的结论；不能把其few-shot与zero-shot分数横向比较，也不能脱离论文计时设置扩大“更快”这一表述的适用范围。",
+        "evidence_ids": [
+          "arxiv:1711.06025:abstract:claim:9fa79b8e0317",
+          "arxiv:1711.06025:section:abstract:4:b851ec357ca4:claim:d30c9aa72aa6",
+          "arxiv:1711.06025:section:abstract:7:e48db540b7be:claim:29bf89eda74f"
+        ],
+        "assertions": [
+          {
+            "id": "claim_273",
+            "text": "Relation Network论文报告在五个benchmark上进行了广泛实验。",
+            "verdict": "supported"
+          },
+          {
+            "id": "claim_274",
+            "text": "并称该端到端框架在few-shot与zero-shot上都有效，同时比替代方案更简单、更快。",
+            "verdict": "supported"
+          },
+          {
+            "id": "claim_275",
+            "text": "所选原文没有列出这些benchmark的具体名称、各数据集准确率、运行时间测量值或对照实现细节。",
+            "verdict": "supported"
+          },
+          {
+            "id": "claim_276",
+            "text": "few-shot与zero-shot还分别使用图像支持样本和类别描述，输入条件不同。",
+            "verdict": "supported"
+          },
+          {
+            "id": "claim_277",
+            "text": "因此实验上只能支持“RN经过多任务验证、测试时不更新网络、可统一处理两类任务”的结论。",
+            "verdict": "supported"
+          },
+          {
+            "id": "claim_278",
+            "text": "不能把其few-shot与zero-shot分数横向比较。",
+            "verdict": "supported"
+          },
+          {
+            "id": "claim_279",
+            "text": "也不能脱离论文计时设置扩大“更快”这一表述的适用范围。",
+            "verdict": "supported"
+          }
+        ]
+      }
+    }
+  ],
+  "sources": {
+    "arxiv:1711.06025:abstract:claim:9fa79b8e0317": {
+      "paper_id": "arxiv:1711.06025",
+      "url": "https://arxiv.org/abs/1711.06025",
+      "content_sha256": "6201e2437d9920acc43b854490963385a98d5b8b356a8a7d1453e1f14c05f05e"
+    },
+    "arxiv:1711.06025:section:abstract:4:b851ec357ca4:claim:d30c9aa72aa6": {
+      "paper_id": "arxiv:1711.06025",
+      "url": "https://arxiv.org/abs/1711.06025",
+      "content_sha256": "8872716bd279be9f00a6593056d2f42cbbaa8a86a784d372920592d893a71c97"
+    },
+    "arxiv:1711.06025:section:abstract:7:e48db540b7be:claim:29bf89eda74f": {
+      "paper_id": "arxiv:1711.06025",
+      "url": "https://arxiv.org/abs/1711.06025",
+      "content_sha256": "6fb217e0390af7f579bd45678fd58588b5ac4009a74cbf1d70b8c0c63a649fc9"
+    },
+    "arxiv:1802.04376:abstract:claim:3d787afb1088": {
+      "paper_id": "arxiv:1802.04376",
+      "url": "https://arxiv.org/abs/1802.04376",
+      "content_sha256": "69b246f1b31c585d299a4863d3c33224be6eeb4f13d70737eacd6924620bc80d"
+    },
+    "arxiv:1802.04376:section:abstract:6:77cd55156cd3:claim:8d07f3314556": {
+      "paper_id": "arxiv:1802.04376",
+      "url": "https://arxiv.org/abs/1802.04376",
+      "content_sha256": "8fa262fe44abab0c1cfe914ad08a400d402bd75b48f2b701f2270111883d648c"
+    },
+    "arxiv:1904.03014:section:unknown:1:a020d1277c90:claim:70db719159ce": {
+      "paper_id": "arxiv:1904.03014",
+      "url": "https://arxiv.org/abs/1904.03014",
+      "content_sha256": "0489b3bf1ea298823628faaab0250a04d2ec1b04e166b4ea9113ff60be22728f"
+    },
+    "arxiv:1904.03014:section:unknown:5:591da7ae5d13:claim:6bd4219c2633": {
+      "paper_id": "arxiv:1904.03014",
+      "url": "https://arxiv.org/abs/1904.03014",
+      "content_sha256": "591da7ae5d138691d83b7be0ecdb7637ebc35d01c785fd07250d770eb816ac60"
+    },
+    "arxiv:1904.03014:section:unknown:7:26bf6bb71079:claim:c75c9ffe2d08": {
+      "paper_id": "arxiv:1904.03014",
+      "url": "https://arxiv.org/abs/1904.03014",
+      "content_sha256": "fe47f0d2e7eda001119642862da98eb4c23998b88de14f5c4e7b1d8ca936e0d6"
+    },
+    "arxiv:1904.03580:abstract:claim:bfd27c5f9dca": {
+      "paper_id": "arxiv:1904.03580",
+      "url": "https://arxiv.org/abs/1904.03580",
+      "content_sha256": "276a61f2ae78144706350c867409f06301293f007ac04ec3109a8e28f53139f3"
+    },
+    "arxiv:1904.03580:abstract:claim:da07cf125fa9": {
+      "paper_id": "arxiv:1904.03580",
+      "url": "https://arxiv.org/abs/1904.03580",
+      "content_sha256": "276a61f2ae78144706350c867409f06301293f007ac04ec3109a8e28f53139f3"
+    },
+    "arxiv:1907.03123:section:abstract:4:3a8a8f738565:claim:b4f8f73868a3": {
+      "paper_id": "arxiv:1907.03123",
+      "url": "https://arxiv.org/abs/1907.03123",
+      "content_sha256": "f3605fa1a2a645ddb8bead713002fdb94cdf2b8b1eae88da9d078e4c6981bd8e"
+    },
+    "arxiv:1907.03123:section:abstract:5:3ca211902e4c:claim:e0fa97e0ecae": {
+      "paper_id": "arxiv:1907.03123",
+      "url": "https://arxiv.org/abs/1907.03123",
+      "content_sha256": "4fe1c1cf06dc002e5e535abf3887cbe1686ccdcd15a0ff0bf1eee1052bb5d6ac"
+    },
+    "arxiv:1907.03123:section:abstract:6:89b66fa7fd40:claim:15daf65e8f35": {
+      "paper_id": "arxiv:1907.03123",
+      "url": "https://arxiv.org/abs/1907.03123",
+      "content_sha256": "2176291228ae03c67d72f5ee1cf7433367b067f28d47e5be6de2059080241774"
+    },
+    "arxiv:2105.00379:abstract:claim:71e0e85ff92b": {
+      "paper_id": "arxiv:2105.00379",
+      "url": "https://arxiv.org/abs/2105.00379",
+      "content_sha256": "17576efae2193e4672982e69013647dca735a9b22d834e7a9839d9083b7f8ab5"
+    },
+    "arxiv:2105.00379:abstract:claim:d46247ee1ece": {
+      "paper_id": "arxiv:2105.00379",
+      "url": "https://arxiv.org/abs/2105.00379",
+      "content_sha256": "17576efae2193e4672982e69013647dca735a9b22d834e7a9839d9083b7f8ab5"
+    }
+  }
+}

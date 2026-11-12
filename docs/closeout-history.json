@@ -1,0 +1,365 @@
+{
+  "publication_version": "historical-closeout-metadata-v1",
+  "scope": "Sanitized historical diagnostic metadata; not the new engineering-closeout-v1 trial and not a scientific gold standard.",
+  "suite_id": "frozen-writer-three-domain-20261103-054",
+  "manifest_identity": "72f8af3bc9d63bef34d10fbda8cb9afe928d217fe80f3742e6c6c3245657fb86",
+  "source_manifest_sha256": "0e937ef8f498da403d92e300b890560d4c6ed719d0db57e58c0d87e56e0272e2",
+  "source_result_sha256": "9867e1481ca0727ce60e62557fbbb40487dca78c6409036be7ca1b1ab62394e9",
+  "source_commit": "98abe2197ca6dd50d5dc096eb0fc950fb79a9562",
+  "source_fingerprint": "0dc1c86e4a5fa1fae33e0cb46667218ba6862568ed50636c9cc92b88fe9518e1",
+  "models": {
+    "extraction": "doubao-seed-2-1-lite-260915",
+    "generation": "doubao-seed-2-1-pro-260915",
+    "evaluation": "doubao-seed-2-1-lite-260915"
+  },
+  "thinking": {
+    "generation_thinking_mode": "disabled",
+    "reviewer_thinking_mode": "disabled",
+    "evaluation_thinking_mode": "disabled"
+  },
+  "writer_wire_contract": "flat-writer-v1",
+  "budget_policy": "planned-budget-v7",
+  "planned": 3,
+  "generated": 3,
+  "valid_complete_evaluations": 0,
+  "strict_deliveries": 0,
+  "new_usage": {
+    "requests": 85,
+    "known_tokens": 1354668,
+    "unknown_hold": 0,
+    "request_hold": 0
+  },
+  "cases": [
+    {
+      "case_id": "few-shot-metric",
+      "run_id": "frozen-writer-three-domain-20261103-054-few-shot-metric",
+      "status": "blocked",
+      "generated": true,
+      "reviewer_completed": true,
+      "evaluation": "not_complete",
+      "publishable": false,
+      "supported": 121,
+      "unsupported": 33,
+      "unverified": 10,
+      "requests": 20,
+      "known_tokens": 308020,
+      "unknown_hold": 0,
+      "usage_complete": true,
+      "elapsed_ms": 924283,
+      "failure_family": "quality",
+      "failure_code": "evaluation_assertions_unverifiable",
+      "valid_complete_evaluation": false,
+      "scientific_score": null,
+      "inventory_recoveries": 0,
+      "prose_repairs": 0,
+      "report_sha256": "cf6cc1575c18e4dffa94e0f0f58342c45b48b694180d1964e5eafb8263ff8e8b",
+      "source_archive_sha256": "2d22f305a0bb37a887e6dac77bdccefd971cffc80a303df7bf4a5515bacdf817",
+      "sources": [
+        {
+          "source_ref": "sab0c773408f534a99cbc",
+          "paper_id": "arxiv:1907.03123",
+          "source_content_sha256": "bbc803aec14ff7d89ee221236ec27f7e6938a8484773b680cc121ed4002bc5fd",
+          "url": "https://arxiv.org/abs/1907.03123"
+        },
+        {
+          "source_ref": "s8799c3886ddb7b71bb98",
+          "paper_id": "arxiv:2409.07989",
+          "source_content_sha256": "f835d7333a41c29e347d8c7201eafe5eea7e317c37a2e89e693a373053108198",
+          "url": "https://arxiv.org/abs/2409.07989"
+        },
+        {
+          "source_ref": "s2cccfe73314c7207b9c7",
+          "paper_id": "arxiv:1802.04376",
+          "source_content_sha256": "69b246f1b31c585d299a4863d3c33224be6eeb4f13d70737eacd6924620bc80d",
+          "url": "https://arxiv.org/abs/1802.04376"
+        },
+        {
+          "source_ref": "s0ebfea55de0cd8adb310",
+          "paper_id": "arxiv:2305.09062",
+          "source_content_sha256": "3b7b29b93228cfb4d0bce8af40b9a1cde49576d318595eb3973e969cfd257e44",
+          "url": "https://arxiv.org/abs/2305.09062"
+        },
+        {
+          "source_ref": "sa2f0f1e48c245c786f46",
+          "paper_id": "arxiv:1711.06025",
+          "source_content_sha256": "78d72a04eef8f36b14d10870558dbd7caa870b2707e9a21b5a311f7805296c35",
+          "url": "https://arxiv.org/abs/1711.06025"
+        },
+        {
+          "source_ref": "s3de805551ca566199635",
+          "paper_id": "arxiv:2104.02638",
+          "source_content_sha256": "b164610a74c6e6d2ce21baeb3fc9882d4347bc8ea48f07d50425029e795228bb",
+          "url": "https://arxiv.org/abs/2104.02638"
+        },
+        {
+          "source_ref": "sd8b6fd138f8d6da1fd50",
+          "paper_id": "arxiv:2105.08149",
+          "source_content_sha256": "d7a1a172794e42027ec9bec3e43b106f75cc0af60e87ac13896fde8fe8987343",
+          "url": "https://arxiv.org/abs/2105.08149"
+        },
+        {
+          "source_ref": "sc416dd24158c1b89d952",
+          "paper_id": "arxiv:2105.00379",
+          "source_content_sha256": "17576efae2193e4672982e69013647dca735a9b22d834e7a9839d9083b7f8ab5",
+          "url": "https://arxiv.org/abs/2105.00379"
+        },
+        {
+          "source_ref": "s0ae670eb54a9ee599b04",
+          "paper_id": "arxiv:2104.02638",
+          "source_content_sha256": "74eb0e8e645532de19c2ed9588b147d528e4099b81b77474e1474614a26eb9cb",
+          "url": "https://arxiv.org/abs/2104.02638"
+        },
+        {
+          "source_ref": "s9960c8dd0bd134966e18",
+          "paper_id": "arxiv:1711.06025",
+          "source_content_sha256": "8872716bd279be9f00a6593056d2f42cbbaa8a86a784d372920592d893a71c97",
+          "url": "https://arxiv.org/abs/1711.06025"
+        },
+        {
+          "source_ref": "saf31cd4515937574ccea",
+          "paper_id": "arxiv:2105.08149",
+          "source_content_sha256": "ffe84831bb4ae36f7b1dd692fc736853ab65cd1d9b14eb1fe018bc250a99b99d",
+          "url": "https://arxiv.org/abs/2105.08149"
+        },
+        {
+          "source_ref": "s1feb1c0229a125445473",
+          "paper_id": "arxiv:2010.04525",
+          "source_content_sha256": "d85cb9cf386214c553601342955c9b10d4a65aaac5f4f910580481385f85c554",
+          "url": "https://arxiv.org/abs/2010.04525"
+        }
+      ]
+    },
+    {
+      "case_id": "vit-data-efficient",
+      "run_id": "frozen-writer-three-domain-20261103-054-vit-data-efficient",
+      "status": "blocked",
+      "generated": true,
+      "reviewer_completed": true,
+      "evaluation": "not_complete",
+      "publishable": false,
+      "supported": 112,
+      "unsupported": 22,
+      "unverified": 44,
+      "requests": 49,
+      "known_tokens": 790790,
+      "unknown_hold": 0,
+      "usage_complete": true,
+      "elapsed_ms": 2432137,
+      "failure_family": "quality",
+      "failure_code": "evaluation_inventory_invalid",
+      "valid_complete_evaluation": false,
+      "scientific_score": null,
+      "inventory_recoveries": 2,
+      "prose_repairs": 0,
+      "report_sha256": "e82fb30ce25bc32ee9c8ea060e271a0b35b7479018ca1f1520f40cfda5d588f2",
+      "source_archive_sha256": "86b8594e3bec862033d4586ed1c9a30ca9cdca1aa97dca0f1bf45c48dd0af95d",
+      "sources": [
+        {
+          "source_ref": "s58556edd816b231344d1",
+          "paper_id": "arxiv:2303.02095",
+          "source_content_sha256": "52bcc164533df04fdaba82408359570608bb73ffda35f52e980f3cf4504fa298",
+          "url": "https://arxiv.org/abs/2303.02095"
+        },
+        {
+          "source_ref": "s6cec8ec633fc6c23e571",
+          "paper_id": "arxiv:2203.02358",
+          "source_content_sha256": "dbeb884fde1e817bf585d6777a013c09cde46441f345483d4e1d0e7973bc2cf5",
+          "url": "https://arxiv.org/abs/2203.02358"
+        },
+        {
+          "source_ref": "scc2ee8b3832434c2270a",
+          "paper_id": "arxiv:2408.05952",
+          "source_content_sha256": "1277a3491f6cd992804462b684db195914dc3e428cbff2769fb043128280cdfb",
+          "url": "https://arxiv.org/abs/2408.05952"
+        },
+        {
+          "source_ref": "s851dbf5c8023ff6a7c40",
+          "paper_id": "arxiv:2203.16329",
+          "source_content_sha256": "a13988f0f29778373f872be958c1c32dffdbca37ce8b7e0d8c3b9aa9b7b7e4a9",
+          "url": "https://arxiv.org/abs/2203.16329"
+        },
+        {
+          "source_ref": "s37ec36124344c4b8e6f0",
+          "paper_id": "arxiv:2208.08166",
+          "source_content_sha256": "0d4fd6e2520b120895510ac3733a1c6599543d7ba5c16bd455331b23ccd6afb9",
+          "url": "https://arxiv.org/abs/2208.08166"
+        },
+        {
+          "source_ref": "s6746a13153f1d89e51b9",
+          "paper_id": "arxiv:2012.12877",
+          "source_content_sha256": "7e3ac2c8a28a2200a0ae7cd2546e5b3b5710c276bc2e65996df2cb45ce8825ea",
+          "url": "https://arxiv.org/abs/2012.12877"
+        },
+        {
+          "source_ref": "sf519df38230b3cf5bdea",
+          "paper_id": "arxiv:2012.12877",
+          "source_content_sha256": "4d3f1bcf259b2ab9c097e1aaa991fff4bcdf1f84431d0a456ab532e8ea329824",
+          "url": "https://arxiv.org/abs/2012.12877"
+        },
+        {
+          "source_ref": "s5147b7dd3ee94e1c9817",
+          "paper_id": "arxiv:2511.03046",
+          "source_content_sha256": "ed6ba710e542a3442a0686f5b81f60cd8eddc8f47dfe58f823a7d066da92a3f4",
+          "url": "https://arxiv.org/abs/2511.03046"
+        },
+        {
+          "source_ref": "s7a7b450ad6066a92eb85",
+          "paper_id": "arxiv:2401.16304",
+          "source_content_sha256": "08cd6593c51af5869b26adf0f3a26d0c81f4419c83d99238abf0bd2d2cdf6ddd",
+          "url": "https://arxiv.org/abs/2401.16304"
+        },
+        {
+          "source_ref": "sd52e2bb8cca846fa70b7",
+          "paper_id": "arxiv:2610.08109",
+          "source_content_sha256": "26c8e0894cca0461715be1661d57ea893f8329e796f27ba27456432c30ac621e",
+          "url": "https://arxiv.org/abs/2610.08109"
+        },
+        {
+          "source_ref": "s278c5be16df4c7570d37",
+          "paper_id": "arxiv:2304.12520",
+          "source_content_sha256": "ae66a92e0301672e88cc5b7f16fe6fc22bfecf7600a25de49eda7bfe9cd3557d",
+          "url": "https://arxiv.org/abs/2304.12520"
+        },
+        {
+          "source_ref": "s92586e084d1d6146a143",
+          "paper_id": "arxiv:2302.08374",
+          "source_content_sha256": "a91fa9a62e9f921c87da76a9773068c22142efa6f93e98db11273254202cd3e0",
+          "url": "https://arxiv.org/abs/2302.08374"
+        },
+        {
+          "source_ref": "sb715c748043e05222733",
+          "paper_id": "arxiv:2506.08612",
+          "source_content_sha256": "b5a81fabbc5630c52b604cf7febef7ac23ee7608ad9a43c95024e4c2c7765132",
+          "url": "https://arxiv.org/abs/2506.08612"
+        },
+        {
+          "source_ref": "sc4a8aa81f8eea9868052",
+          "paper_id": "arxiv:2012.12877",
+          "source_content_sha256": "5b6aa431c3036f6164ed57460d7dbeddacd30613aea30fab928a170b80dd8c29",
+          "url": "https://arxiv.org/abs/2012.12877"
+        }
+      ]
+    },
+    {
+      "case_id": "nerf-foundations",
+      "run_id": "frozen-writer-three-domain-20261103-054-nerf-foundations",
+      "status": "blocked",
+      "generated": true,
+      "reviewer_completed": true,
+      "evaluation": "not_complete",
+      "publishable": false,
+      "supported": 72,
+      "unsupported": 13,
+      "unverified": 15,
+      "requests": 16,
+      "known_tokens": 255858,
+      "unknown_hold": 0,
+      "usage_complete": true,
+      "elapsed_ms": 681150,
+      "failure_family": "quality",
+      "failure_code": "evaluation_assertions_unverifiable",
+      "valid_complete_evaluation": false,
+      "scientific_score": null,
+      "inventory_recoveries": 0,
+      "prose_repairs": 0,
+      "report_sha256": "135448248b3360456119c9917015e155d99bc59a3b838817a37e2aea9a62dee9",
+      "source_archive_sha256": "3bae0be8683c5a8e9a8b57e1d4bd75826c154c225e54c861b230ebb261bd804f",
+      "sources": [
+        {
+          "source_ref": "s2d599f97d194ead5198f",
+          "paper_id": "arxiv:2311.06455",
+          "source_content_sha256": "f11ea73dd6f385a6a78e49ebe7aa1bcf2f04492af6fd74b4176fdc352475a7b5",
+          "url": "https://arxiv.org/abs/2311.06455"
+        },
+        {
+          "source_ref": "scf172f9df506d9800c62",
+          "paper_id": "arxiv:2003.08934",
+          "source_content_sha256": "c0a83e2339249acc95e0fe2c6f7f3b1b3c5a7e9baf56030ea28459dad248431d",
+          "url": "https://arxiv.org/abs/2003.08934"
+        },
+        {
+          "source_ref": "sa0adf59d2ac33e832a8b",
+          "paper_id": "arxiv:2303.17147",
+          "source_content_sha256": "bf5d3b74c42370b6023c77d919ec50e89e5784c28bc99adf23753acb02272f44",
+          "url": "https://arxiv.org/abs/2303.17147"
+        },
+        {
+          "source_ref": "s2cb716b0360da439ee1a",
+          "paper_id": "arxiv:2208.00277",
+          "source_content_sha256": "0a2346db94dde16403a286611d0ff3f24b1da6c9f51b98bb79bacc015fbff768",
+          "url": "https://arxiv.org/abs/2208.00277"
+        },
+        {
+          "source_ref": "s4c9bc4ced8a866f69678",
+          "paper_id": "arxiv:2303.12786",
+          "source_content_sha256": "ad7ad6c3a12b83914c278fcf9f6a5700c736d33e29609fee4e010d4f92493064",
+          "url": "https://arxiv.org/abs/2303.12786"
+        },
+        {
+          "source_ref": "s320e6cae595356c7c236",
+          "paper_id": "arxiv:2003.08934",
+          "source_content_sha256": "2850c17df06efdf5afe77b7b61f151e88e86eae4a9b0c883d65a7ef806489f67",
+          "url": "https://arxiv.org/abs/2003.08934"
+        },
+        {
+          "source_ref": "s4eab53231f6114311e03",
+          "paper_id": "arxiv:2501.05226",
+          "source_content_sha256": "34b934082f77e47b03f80c1dcf7f439afc57f28d8efe8fa859115d33ddf57211",
+          "url": "https://arxiv.org/abs/2501.05226"
+        },
+        {
+          "source_ref": "s4a9acad9616d151767f0",
+          "paper_id": "arxiv:2306.03000",
+          "source_content_sha256": "42ebcc89c093c89fa42e296de938d81b61e6bfd997ae6e52a6be61f3ccb77aff",
+          "url": "https://arxiv.org/abs/2306.03000"
+        },
+        {
+          "source_ref": "sd22e0559345698f30abf",
+          "paper_id": "arxiv:2410.01804",
+          "source_content_sha256": "7bd04f1120a4cd89845c0319b55ee0a1ac0fa85cb50697d81352ce600ec5ec9c",
+          "url": "https://arxiv.org/abs/2410.01804"
+        },
+        {
+          "source_ref": "seda8bf6d1ebffbb109e7",
+          "paper_id": "arxiv:2306.03000",
+          "source_content_sha256": "de572c7157601244a1ba03ccc5d3c7c1b9ea6b86a09d2c4df3b1e1ac13d88a01",
+          "url": "https://arxiv.org/abs/2306.03000"
+        },
+        {
+          "source_ref": "s6486f1c0d5ca2bbde956",
+          "paper_id": "arxiv:2310.20685",
+          "source_content_sha256": "57e427399ffe57f0ae3dd62f1e2d14ad7e3973c311ee5a0c522a0165819a41f6",
+          "url": "https://arxiv.org/abs/2310.20685"
+        },
+        {
+          "source_ref": "sdb57817d1c55b38d6343",
+          "paper_id": "arxiv:2303.09431",
+          "source_content_sha256": "6de583593283b094f4e20f8c42d5800507d3a041b9738a2ff64d2a965aa34be2",
+          "url": "https://arxiv.org/abs/2303.09431"
+        },
+        {
+          "source_ref": "sba19fb7c01f50efdfac0",
+          "paper_id": "arxiv:2003.08934",
+          "source_content_sha256": "14105010d6ee7709935066cf324ca06b60445af0add86384aecf1fc43ee48b65",
+          "url": "https://arxiv.org/abs/2003.08934"
+        },
+        {
+          "source_ref": "sf8d138de0f682ef60b99",
+          "paper_id": "arxiv:2303.09431",
+          "source_content_sha256": "de5c3965fa6db7cf168eace997173ad7b6ea08aae1f85a3e3f97d76483bb0e39",
+          "url": "https://arxiv.org/abs/2303.09431"
+        },
+        {
+          "source_ref": "sdd48257b260f76609e3d",
+          "paper_id": "arxiv:2306.03727",
+          "source_content_sha256": "20471e9b631b4378b8eaa4c4d2af60a7f72f08a661875b591e63457de575d4b4",
+          "url": "https://arxiv.org/abs/2306.03727"
+        }
+      ]
+    }
+  ],
+  "scientific_accuracy": null,
+  "interpretation": "Support counts are partial diagnostics from invalid complete evaluations. They must not be converted to a whole-report support rate. Reports, original judgments and historical costs were not modified.",
+  "source_state": "frozen_files",
+  "source_binding_note": "source_commit identifies the base checkout; source_fingerprint binds the historical frozen worktree. Historical source files remain in local evidence. This metadata is not a claim that the current checkout reproduces historical judgments."
+}

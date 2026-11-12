@@ -1,0 +1,685 @@
+{
+  "provenance": "Public generated response from stage-model-quality-20261020-002; unverified, diagnostic only",
+  "raw_response": "{\"title\":\"少样本图像分类中的度量学习方法比较\",\"sections\":{\"introduction\":[{\"heading\":\"问题背景与综述范围\",\"type\":\"paragraph\",\"sentences\":[{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:8db4020b3265a075f9f113cc\"],\"text\":\"少样本图像分类要求模型仅依据每类少量训练图像识别新类别，深度度量学习是其中的一类主要解决方案。\",\"scope_notice_id\":\"none\"},{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:bf3defdec3d38ea8b3c6d5e9\"],\"text\":\"少样本分类的核心困难是模型容易对少量有标签训练样本产生较高过拟合风险。\",\"scope_notice_id\":\"none\"},{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:51e01527f67300b2ec512e6e\"],\"text\":\"从更宽的少样本学习划分看，已有文献将方法归纳为迁移学习和元学习两大类。\",\"scope_notice_id\":\"none\"},{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:20454283a3a3985d2e20c857\",\"f:1c20752d974f2918cb29ff2e\"],\"text\":\"迁移学习依赖源域与目标域之间的共享知识并微调源数据上训练的模型，元学习则在许多不同分类任务上训练元学习器以获得可泛化知识。\",\"scope_notice_id\":\"none\"},{\"kind\":\"organization\",\"fact_card_ids\":[],\"text\":\"\",\"scope_notice_id\":\"review_scope\"}]}],\"taxonomy\":[{\"heading\":\"按度量学习环节建立比较框架\",\"type\":\"paragraph\",\"sentences\":[{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:8db4020b3265a075f9f113cc\"],\"text\":\"一篇覆盖2018年至2022年深度度量学习方法的综述，按照度量学习的三个环节将少样本图像分类方法分为学习特征嵌入、学习类别表示和学习距离度量。\",\"scope_notice_id\":\"none\"},{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:e90b7bb80f6d2574a0b72d8d\"],\"text\":\"基于度量学习的少样本方法通常根据特征相似性，在支持集中寻找与查询样本最近的原型来完成分类。\",\"scope_notice_id\":\"none\"},{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:21d0fce30e67ef65a49814f3\"],\"text\":\"SRL将传统基于向量的度量学习技术扩展到子空间表示，用局部CNN特征空间中的子空间表示图像，并以加权子空间距离衡量两幅图像的相似性。\",\"scope_notice_id\":\"none\"},{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:e10ab5275b96569d02d50eba\"],\"text\":\"面向类别比较的方法不再只依赖静态度量，而是训练网络在类别之间执行比较，使网络能够判断当前比较中各类别的哪些方面更重要。\",\"scope_notice_id\":\"none\"},{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:f1f06a0be1916554b556b5f8\"],\"text\":\"多阶段嵌入方法针对传统度量方法主要依赖查询特征与支持特征之间单一距离值的限制，将样本映射到多个不同特征空间以结合不同阶段的信息。\",\"scope_notice_id\":\"none\"}]}],\"methods\":[{\"heading\":\"代表性度量学习路径\",\"type\":\"paragraph\",\"sentences\":[{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:5a4c4bba3097529e5f009952\"],\"text\":\"关系型深度度量方法不同于学习可迁移嵌入后使用预定义固定度量的做法，它进一步学习可迁移的深度度量，以比较图像之间的关系，并可扩展到图像与类别描述之间的比较。\",\"scope_notice_id\":\"none\"},{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:21d0fce30e67ef65a49814f3\"],\"text\":\"SRL在每类有K幅图像时，通过prototypical subspace和discriminative subspace两类模板子空间聚合K-shot信息。\",\"scope_notice_id\":\"none\"},{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:21d0fce30e67ef65a49814f3\"],\"text\":\"与多数先前工作采用全局向量表示不同，SRL的子空间表示旨在保留图像内部的空间结构和多样性。\",\"scope_notice_id\":\"none\"},{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:3a09856eab9af4cc456b36dc\",\"f:0d63b009ff47e39e45658e96\"],\"text\":\"深度K-tuplet网络通过episode-training利用输入样本之间的关系学习通用表示，训练后可为未见过的新类别提取判别性特征，并可与非线性距离度量函数结合。\",\"scope_notice_id\":\"none\"},{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:e10ab5275b96569d02d50eba\"],\"text\":\"面向试验条件的类别表示架构会针对每个少样本试验并依据目标图像调整类别表示，以解决从少量样本学习高质量类别表示的问题。\",\"scope_notice_id\":\"none\"},{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:e90b7bb80f6d2574a0b72d8d\"],\"text\":\"不确定性感知框架把查询—支持对相似度转换为概率表示并纳入损失，同时用图模型联合估计查询与支持集原型之间各配对的不确定性。\",\"scope_notice_id\":\"none\"},{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:a900919f39e180ccc144fb88\"],\"text\":\"Meta-Metric-Learner由任务特定的度量型基础学习器和用于指定该基础模型的元学习器组成，目标是同时处理灵活类别数并生成跨任务更泛化的度量。\",\"scope_notice_id\":\"none\"}]}],\"experiments\":[{\"heading\":\"数据集、评价结果与可比较性\",\"type\":\"paragraph\",\"sentences\":[{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:4517a4be691be6ed9151651f\"],\"text\":\"SRL在MiniImageNet、TieredImageNet和Caltech-UCSD Birds-200-2011（CUB）三个公开基准上验证，结果相对先前最先进方法表现出竞争性或优越性。\",\"scope_notice_id\":\"none\"},{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:3a09856eab9af4cc456b36dc\"],\"text\":\"深度K-tuplet网络在miniImageNet基准上的结果优于其他基于度量的少样本分类方法。\",\"scope_notice_id\":\"none\"},{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:2ca459f700441d8c95c219f5\"],\"text\":\"使用在miniImageNet上训练的同一模型，在Caltech-101、CUB-200、Stanford Dogs和Cars这些完全不同的数据集上评价时，深度K-tuplet网络显著优于先前方法。\",\"scope_notice_id\":\"none\"},{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:3c73755713b19a81276caa91\"],\"text\":\"Proto-Triplet Loss与ICNN loss在miniImageNet基准上相对其他基于度量的少样本学习方法取得2%的准确率提升，并在Caltech CUB、Dogs和Cars等数据集上报告了竞争性泛化能力。\",\"scope_notice_id\":\"none\"},{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:41605618f8563d41c9a81eac\"],\"text\":\"在FewSAR这一少样本SAR目标图像分类基准的相同设置下，度量学习方法在准确率上取得最佳结果，而元学习方法和微调方法表现较差。\",\"scope_notice_id\":\"none\"},{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:acc2fe8160d787098f2cb9eb\",\"f:be694a40319e44155c1095ce\"],\"text\":\"作为非度量学习的对照，经过精心工程化训练和微调的大规模网络BiT是少样本分类中极具竞争性和稳健性的基线，并且可泛化到大规模、多数据集基准。\",\"scope_notice_id\":\"none\"},{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:e90b7bb80f6d2574a0b72d8d\"],\"text\":\"不确定性感知方法在强基线之上带来显著改进并达到最先进性能，但给定证据没有提供可与上述方法直接对齐的具体准确率数值。\",\"scope_notice_id\":\"none\"},{\"kind\":\"gap\",\"fact_card_ids\":[],\"text\":\"\",\"scope_notice_id\":\"evidence_limit\"}]}],\"open_problems\":[{\"heading\":\"已有方法限制与未决问题\",\"type\":\"paragraph\",\"sentences\":[{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:bf3defdec3d38ea8b3c6d5e9\"],\"text\":\"少量有标签样本造成的过拟合风险仍是少样本分类的基本约束，因此嵌入、类别表示和距离度量都需要在样本不足条件下保持泛化。\",\"scope_notice_id\":\"none\"},{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:e90b7bb80f6d2574a0b72d8d\"],\"text\":\"相似度并非完全确定，神经网络对不同配对计算出的相似度存在不同不确定性，建模这种不确定性有助于更有效地利用有限样本。\",\"scope_notice_id\":\"none\"},{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:f1f06a0be1916554b556b5f8\"],\"text\":\"传统度量型方法通常依赖查询特征与支持特征之间的单一距离值，容易忽略浅层特征的贡献。\",\"scope_notice_id\":\"none\"},{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:5a4c4bba3097529e5f009952\"],\"text\":\"早期许多少样本方法存在复杂推理机制、复杂RNN结构或需要针对目标问题微调等负担，而学习深度关系度量的路线试图以嵌入模块和关系模块中的多层非线性学习形成可泛化方案。\",\"scope_notice_id\":\"none\"},{\"kind\":\"scientific\",\"fact_card_ids\":[\"f:41605618f8563d41c9a81eac\"],\"text\":\"FewSAR结果还显示，数据集偏差可能使元学习和微调方法在少样本SAR图像上表现较差，因此自然图像基准上的结论不能直接替代SAR等专门领域的评价。\",\"scope_notice_id\":\"none\"},{\"kind\":\"gap\",\"fact_card_ids\":[],\"text\":\"\",\"scope_notice_id\":\"evidence_limit\"}]}],\"abstract\":[{\"heading\":\"\",\"type\":\"paragraph\",\"sentences\":[{\"text\":\"少样本图像分类的度量学习方法通过学习嵌入空间、类别表示或距离关系，在每类样本很少时降低直接训练分类器的过拟合风险。\",\"body_references\":[{\"section_key\":\"introduction\",\"block_index\":0,\"sentence_index\":0},{\"section_key\":\"introduction\",\"block_index\":0,\"sentence_index\":1},{\"section_key\":\"taxonomy\",\"block_index\":0,\"sentence_index\":0}]},{\"text\":\"代表性路径各有侧重：关系网络学习图像间的深度关系，SRL把向量度量扩展到加权子空间距离，深度K-tuplet网络利用样本关系学习判别性嵌入，不确定性感知框架则建模查询—支持相似度的不确定性。\",\"body_references\":[{\"section_key\":\"methods\",\"block_index\":0,\"sentence_index\":0},{\"section_key\":\"methods\",\"block_index\":0,\"sentence_index\":1},{\"section_key\":\"methods\",\"block_index\":0,\"sentence_index\":3},{\"section_key\":\"methods\",\"block_index\":0,\"sentence_index\":5}]},{\"text\":\"现有证据显示，SRL在MiniImageNet、TieredImageNet和CUB上具有竞争性或优越性，深度K-tuplet网络在miniImageNet及多个跨域数据集上优于对比方法，基于类内和类间距离的损失在miniImageNet上报告2%准确率提升。\",\"body_references\":[{\"section_key\":\"experiments\",\"block_index\":0,\"sentence_index\":0},{\"section_key\":\"experiments\",\"block_index\":0,\"sentence_index\":1},{\"section_key\":\"experiments\",\"block_index\":0,\"sentence_index\":2},{\"section_key\":\"experiments\",\"block_index\":0,\"sentence_index\":3}]},{\"text\":\"方法间比较受到数据集、任务领域和报告粒度限制；FewSAR仅在相同少样本SAR设置下支持度量学习准确率最佳，而部分方法缺少可直接对齐的数值。\",\"body_references\":[{\"section_key\":\"experiments\",\"block_index\":0,\"sentence_index\":4},{\"section_key\":\"experiments\",\"block_index\":0,\"sentence_index\":6},{\"section_key\":\"open_problems\",\"block_index\":0,\"sentence_index\":4}]}],\"conclusion\":[{\"heading\":\"\",\"type\":\"paragraph\",\"sentences\":[{\"text\":\"比较这些方法时，最清晰的分类依据是它们改进度量学习流水线的位置：特征嵌入方法增强判别性表示，类别表示方法改进少量支持样本的聚合，距离或关系方法提升查询与类别之间的比较。\",\"body_references\":[{\"section_key\":\"taxonomy\",\"block_index\":0,\"sentence_index\":0},{\"section_key\":\"taxonomy\",\"block_index\":0,\"sentence_index\":1},{\"section_key\":\"methods\",\"block_index\":0,\"sentence_index\":1},{\"section_key\":\"methods\",\"block_index\":0,\"sentence_index\":4}]},{\"text\":\"若关注跨数据集泛化，深度K-tuplet网络提供了miniImageNet训练后迁移到Caltech-101、CUB-200、Stanford Dogs和Cars的直接证据；若关注空间结构保留，SRL的子空间表示与其在三个公开基准上的竞争结果更匹配。\",\"body_references\":[{\"section_key\":\"experiments\",\"block_index\":0,\"sentence_index\":0},{\"section_key\":\"experiments\",\"block_index\":0,\"sentence_index\":2},{\"section_key\":\"methods\",\"block_index\":0,\"sentence_index\":2}]},{\"text\":\"若关注嵌入空间的类内紧凑性和类间分离，Proto-Triplet Loss与ICNN loss给出miniImageNet上2%准确率提升；若关注相似度可靠性，不确定性建模提供了另一种改进方向。\",\"body_references\":[{\"section_key\":\"experiments\",\"block_index\":0,\"sentence_index\":3},{\"section_key\":\"methods\",\"block_index\":0,\"sentence_index\":5},{\"section_key\":\"open_problems\",\"block_index\":0,\"sentence_index\":1}]},{\"text\":\"总体上，不能根据这些摘要证据给出跨所有设置的统一第一名：自然图像、跨域自然图像和SAR图像的基准条件不同，且部分结果只报告定性优势或缺少共同数值。\",\"body_references\":[{\"section_key\":\"experiments\",\"block_index\":0,\"sentence_index\":4},{\"section_key\":\"experiments\",\"block_index\":0,\"sentence_index\":6},{\"section_key\":\"open_problems\",\"block_index\":0,\"sentence_index\":4}]}]}]}}",
+  "raw_sha256": "f4f9ae41282f3b7b1440173b40ff2a5a1ceeee2f3cc716d13855c35db9c192f1",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "title": {
+        "type": "string"
+      },
+      "sections": {
+        "type": "object",
+        "properties": {
+          "introduction": {
+            "type": "object",
+            "properties": {
+              "blocks": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/b0"
+                }
+              }
+            },
+            "required": [
+              "blocks"
+            ],
+            "additionalProperties": false
+          },
+          "taxonomy": {
+            "type": "object",
+            "properties": {
+              "blocks": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/b1"
+                }
+              }
+            },
+            "required": [
+              "blocks"
+            ],
+            "additionalProperties": false
+          },
+          "methods": {
+            "type": "object",
+            "properties": {
+              "blocks": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/b2"
+                }
+              }
+            },
+            "required": [
+              "blocks"
+            ],
+            "additionalProperties": false
+          },
+          "experiments": {
+            "type": "object",
+            "properties": {
+              "blocks": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/b3"
+                }
+              }
+            },
+            "required": [
+              "blocks"
+            ],
+            "additionalProperties": false
+          },
+          "open_problems": {
+            "type": "object",
+            "properties": {
+              "blocks": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/b4"
+                }
+              }
+            },
+            "required": [
+              "blocks"
+            ],
+            "additionalProperties": false
+          },
+          "abstract": {
+            "type": "object",
+            "properties": {
+              "blocks": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/b5"
+                }
+              }
+            },
+            "required": [
+              "blocks"
+            ],
+            "additionalProperties": false
+          },
+          "conclusion": {
+            "type": "object",
+            "properties": {
+              "blocks": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/b6"
+                }
+              }
+            },
+            "required": [
+              "blocks"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "introduction",
+          "taxonomy",
+          "methods",
+          "experiments",
+          "open_problems",
+          "abstract",
+          "conclusion"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "required": [
+      "title",
+      "sections"
+    ],
+    "additionalProperties": false,
+    "$defs": {
+      "s0": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "scientific",
+              "organization",
+              "gap"
+            ]
+          },
+          "fact_card_ids": {
+            "type": "array",
+            "description": "Unique card IDs within this sentence; list each exact ID once.",
+            "items": {
+              "type": "string",
+              "enum": [
+                "f:5a4c4bba3097529e5f009952",
+                "f:21d0fce30e67ef65a49814f3",
+                "f:9577a3c703f92fd9ff57625d",
+                "f:51e01527f67300b2ec512e6e",
+                "f:20454283a3a3985d2e20c857",
+                "f:acc2fe8160d787098f2cb9eb",
+                "f:2ca459f700441d8c95c219f5",
+                "f:8db4020b3265a075f9f113cc",
+                "f:1c20752d974f2918cb29ff2e",
+                "f:e90b7bb80f6d2574a0b72d8d",
+                "f:0d63b009ff47e39e45658e96",
+                "f:2d2d17d921de894509250533"
+              ]
+            }
+          },
+          "text": {
+            "type": "string"
+          },
+          "scope_notice_id": {
+            "type": "string",
+            "enum": [
+              "none",
+              "review_scope",
+              "evidence_limit"
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "fact_card_ids",
+          "text",
+          "scope_notice_id"
+        ],
+        "additionalProperties": false
+      },
+      "b0": {
+        "type": "object",
+        "properties": {
+          "heading": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "paragraph",
+              "list"
+            ]
+          },
+          "sentences": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/s0"
+            }
+          }
+        },
+        "required": [
+          "heading",
+          "type",
+          "sentences"
+        ],
+        "additionalProperties": false
+      },
+      "s1": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "scientific",
+              "organization",
+              "gap"
+            ]
+          },
+          "fact_card_ids": {
+            "type": "array",
+            "description": "Unique card IDs within this sentence; list each exact ID once.",
+            "items": {
+              "type": "string",
+              "enum": [
+                "f:5a4c4bba3097529e5f009952",
+                "f:21d0fce30e67ef65a49814f3",
+                "f:9577a3c703f92fd9ff57625d",
+                "f:51e01527f67300b2ec512e6e",
+                "f:20454283a3a3985d2e20c857",
+                "f:acc2fe8160d787098f2cb9eb",
+                "f:be694a40319e44155c1095ce",
+                "f:8db4020b3265a075f9f113cc",
+                "f:3a09856eab9af4cc456b36dc",
+                "f:e10ab5275b96569d02d50eba",
+                "f:e90b7bb80f6d2574a0b72d8d",
+                "f:f1f06a0be1916554b556b5f8"
+              ]
+            }
+          },
+          "text": {
+            "type": "string"
+          },
+          "scope_notice_id": {
+            "type": "string",
+            "enum": [
+              "none",
+              "review_scope",
+              "evidence_limit"
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "fact_card_ids",
+          "text",
+          "scope_notice_id"
+        ],
+        "additionalProperties": false
+      },
+      "b1": {
+        "type": "object",
+        "properties": {
+          "heading": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "paragraph",
+              "list"
+            ]
+          },
+          "sentences": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/s1"
+            }
+          }
+        },
+        "required": [
+          "heading",
+          "type",
+          "sentences"
+        ],
+        "additionalProperties": false
+      },
+      "s2": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "scientific",
+              "organization",
+              "gap"
+            ]
+          },
+          "fact_card_ids": {
+            "type": "array",
+            "description": "Unique card IDs within this sentence; list each exact ID once.",
+            "items": {
+              "type": "string",
+              "enum": [
+                "f:5a4c4bba3097529e5f009952",
+                "f:21d0fce30e67ef65a49814f3",
+                "f:9577a3c703f92fd9ff57625d",
+                "f:20454283a3a3985d2e20c857",
+                "f:acc2fe8160d787098f2cb9eb",
+                "f:2ca459f700441d8c95c219f5",
+                "f:be694a40319e44155c1095ce",
+                "f:8db4020b3265a075f9f113cc",
+                "f:3a09856eab9af4cc456b36dc",
+                "f:1c20752d974f2918cb29ff2e",
+                "f:e10ab5275b96569d02d50eba",
+                "f:a900919f39e180ccc144fb88"
+              ]
+            }
+          },
+          "text": {
+            "type": "string"
+          },
+          "scope_notice_id": {
+            "type": "string",
+            "enum": [
+              "none",
+              "review_scope",
+              "evidence_limit"
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "fact_card_ids",
+          "text",
+          "scope_notice_id"
+        ],
+        "additionalProperties": false
+      },
+      "b2": {
+        "type": "object",
+        "properties": {
+          "heading": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "paragraph",
+              "list"
+            ]
+          },
+          "sentences": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/s2"
+            }
+          }
+        },
+        "required": [
+          "heading",
+          "type",
+          "sentences"
+        ],
+        "additionalProperties": false
+      },
+      "s3": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "scientific",
+              "organization",
+              "gap"
+            ]
+          },
+          "fact_card_ids": {
+            "type": "array",
+            "description": "Unique card IDs within this sentence; list each exact ID once.",
+            "items": {
+              "type": "string",
+              "enum": [
+                "f:5a4c4bba3097529e5f009952",
+                "f:21d0fce30e67ef65a49814f3",
+                "f:9577a3c703f92fd9ff57625d",
+                "f:51e01527f67300b2ec512e6e",
+                "f:acc2fe8160d787098f2cb9eb",
+                "f:2ca459f700441d8c95c219f5",
+                "f:be694a40319e44155c1095ce",
+                "f:3a09856eab9af4cc456b36dc",
+                "f:41605618f8563d41c9a81eac",
+                "f:e90b7bb80f6d2574a0b72d8d",
+                "f:3c73755713b19a81276caa91",
+                "f:4517a4be691be6ed9151651f"
+              ]
+            }
+          },
+          "text": {
+            "type": "string"
+          },
+          "scope_notice_id": {
+            "type": "string",
+            "enum": [
+              "none",
+              "review_scope",
+              "evidence_limit"
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "fact_card_ids",
+          "text",
+          "scope_notice_id"
+        ],
+        "additionalProperties": false
+      },
+      "b3": {
+        "type": "object",
+        "properties": {
+          "heading": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "paragraph",
+              "list"
+            ]
+          },
+          "sentences": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/s3"
+            }
+          }
+        },
+        "required": [
+          "heading",
+          "type",
+          "sentences"
+        ],
+        "additionalProperties": false
+      },
+      "s4": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "scientific",
+              "organization",
+              "gap"
+            ]
+          },
+          "fact_card_ids": {
+            "type": "array",
+            "description": "Unique card IDs within this sentence; list each exact ID once.",
+            "items": {
+              "type": "string",
+              "enum": [
+                "f:5a4c4bba3097529e5f009952",
+                "f:21d0fce30e67ef65a49814f3",
+                "f:9577a3c703f92fd9ff57625d",
+                "f:51e01527f67300b2ec512e6e",
+                "f:acc2fe8160d787098f2cb9eb",
+                "f:8db4020b3265a075f9f113cc",
+                "f:3a09856eab9af4cc456b36dc",
+                "f:1c20752d974f2918cb29ff2e",
+                "f:bf3defdec3d38ea8b3c6d5e9",
+                "f:e90b7bb80f6d2574a0b72d8d",
+                "f:0d63b009ff47e39e45658e96",
+                "f:2d2d17d921de894509250533"
+              ]
+            }
+          },
+          "text": {
+            "type": "string"
+          },
+          "scope_notice_id": {
+            "type": "string",
+            "enum": [
+              "none",
+              "review_scope",
+              "evidence_limit"
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "fact_card_ids",
+          "text",
+          "scope_notice_id"
+        ],
+        "additionalProperties": false
+      },
+      "b4": {
+        "type": "object",
+        "properties": {
+          "heading": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "paragraph",
+              "list"
+            ]
+          },
+          "sentences": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/s4"
+            }
+          }
+        },
+        "required": [
+          "heading",
+          "type",
+          "sentences"
+        ],
+        "additionalProperties": false
+      },
+      "s5": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "body_references": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "section_key": {
+                  "type": "string",
+                  "enum": [
+                    "introduction",
+                    "taxonomy",
+                    "methods",
+                    "experiments",
+                    "open_problems"
+                  ],
+                  "description": "Choose one real body unit. Its complete text, kind and citations are derived by the host."
+                },
+                "block_index": {
+                  "type": "integer",
+                  "description": "Use the zero-based blocks array index."
+                },
+                "sentence_index": {
+                  "type": "integer",
+                  "description": "Use the zero-based sentences array index."
+                }
+              },
+              "required": [
+                "section_key",
+                "block_index",
+                "sentence_index"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "text",
+          "body_references"
+        ],
+        "additionalProperties": false
+      },
+      "b5": {
+        "type": "object",
+        "properties": {
+          "heading": {
+            "type": "string",
+            "const": ""
+          },
+          "type": {
+            "type": "string",
+            "const": "paragraph"
+          },
+          "sentences": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/s5"
+            }
+          }
+        },
+        "required": [
+          "heading",
+          "type",
+          "sentences"
+        ],
+        "additionalProperties": false
+      },
+      "s6": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "body_references": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "section_key": {
+                  "type": "string",
+                  "enum": [
+                    "introduction",
+                    "taxonomy",
+                    "methods",
+                    "experiments",
+                    "open_problems"
+                  ],
+                  "description": "Choose one real body unit. Its complete text, kind and citations are derived by the host."
+                },
+                "block_index": {
+                  "type": "integer",
+                  "description": "Use the zero-based blocks array index."
+                },
+                "sentence_index": {
+                  "type": "integer",
+                  "description": "Use the zero-based sentences array index."
+                }
+              },
+              "required": [
+                "section_key",
+                "block_index",
+                "sentence_index"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "text",
+          "body_references"
+        ],
+        "additionalProperties": false
+      },
+      "b6": {
+        "type": "object",
+        "properties": {
+          "heading": {
+            "type": "string",
+            "const": ""
+          },
+          "type": {
+            "type": "string",
+            "const": "paragraph"
+          },
+          "sentences": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/s6"
+            }
+          }
+        },
+        "required": [
+          "heading",
+          "type",
+          "sentences"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "json_error": {
+    "position": 8299,
+    "line": 1,
+    "column": 8300
+  },
+  "known_tokens": 124448,
+  "model": "doubao-seed-2-1-pro-260915",
+  "finish_reason": "stop"
+}

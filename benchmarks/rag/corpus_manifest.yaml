@@ -1,0 +1,619 @@
+schema_version: 1
+corpus_version: v1
+papers:
+- paper_id: arxiv:1606.04080
+  arxiv_id: '1606.04080'
+  title: Matching Networks for One Shot Learning
+  authors:
+  - Oriol Vinyals
+  - Charles Blundell
+  - Timothy Lillicrap
+  - Koray Kavukcuoglu
+  - Daan Wierstra
+  year: 2016
+  abstract: Learning from a few examples remains a key challenge in machine learning. Despite recent advances
+    in important domains such as vision and language, the standard supervised deep learning paradigm does
+    not offer a satisfactory solution for learning new concepts rapidly from little data. In this work,
+    we employ ideas from metric learning based on deep neural features and from recent advances that augment
+    neural networks with external memories. Our framework learns a network that maps a small labelled
+    support set and an unlabelled example to its label, obviating the need for fine-tuning to adapt to
+    new class types. We then define one-shot learning problems on vision (using Omniglot, ImageNet) and
+    language tasks. Our algorithm improves one-shot accuracy on ImageNet from 87.6% to 93.2% and from
+    88.0% to 93.8% on Omniglot compared to competing approaches. We also demonstrate the usefulness of
+    the same model on language modeling by introducing a one-shot task on the Penn Treebank.
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/1606.04080
+- paper_id: arxiv:1703.03400
+  arxiv_id: '1703.03400'
+  title: Model-Agnostic Meta-Learning for Fast Adaptation of Deep Networks
+  authors:
+  - Chelsea Finn
+  - Pieter Abbeel
+  - Sergey Levine
+  year: 2017
+  abstract: We propose an algorithm for meta-learning that is model-agnostic, in the sense that it is
+    compatible with any model trained with gradient descent and applicable to a variety of different learning
+    problems, including classification, regression, and reinforcement learning. The goal of meta-learning
+    is to train a model on a variety of learning tasks, such that it can solve new learning tasks using
+    only a small number of training samples. In our approach, the parameters of the model are explicitly
+    trained such that a small number of gradient steps with a small amount of training data from a new
+    task will produce good generalization performance on that task. In effect, our method trains the model
+    to be easy to fine-tune. We demonstrate that this approach leads to state-of-the-art performance on
+    two few-shot image classification benchmarks, produces good results on few-shot regression, and accelerates
+    fine-tuning for policy gradient reinforcement learning with neural network policies.
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/1703.03400
+- paper_id: arxiv:1703.05175
+  arxiv_id: '1703.05175'
+  title: Prototypical Networks for Few-shot Learning
+  authors:
+  - Jake Snell
+  - Kevin Swersky
+  - Richard S. Zemel
+  year: 2017
+  abstract: We propose prototypical networks for the problem of few-shot classification, where a classifier
+    must generalize to new classes not seen in the training set, given only a small number of examples
+    of each new class. Prototypical networks learn a metric space in which classification can be performed
+    by computing distances to prototype representations of each class. Compared to recent approaches for
+    few-shot learning, they reflect a simpler inductive bias that is beneficial in this limited-data regime,
+    and achieve excellent results. We provide an analysis showing that some simple design decisions can
+    yield substantial improvements over recent approaches involving complicated architectural choices
+    and meta-learning. We further extend prototypical networks to zero-shot learning and achieve state-of-the-art
+    results on the CU-Birds dataset.
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/1703.05175
+- paper_id: arxiv:1707.09835
+  arxiv_id: '1707.09835'
+  title: 'Meta-SGD: Learning to Learn Quickly for Few-Shot Learning'
+  authors:
+  - Zhenguo Li
+  - Fengwei Zhou
+  - Fei Chen
+  - Hang Li
+  year: 2017
+  abstract: Few-shot learning is challenging for learning algorithms that learn each task in isolation
+    and from scratch. In contrast, meta-learning learns from many related tasks a meta-learner that can
+    learn a new task more accurately and faster with fewer examples, where the choice of meta-learners
+    is crucial. In this paper, we develop Meta-SGD, an SGD-like, easily trainable meta-learner that can
+    initialize and adapt any differentiable learner in just one step, on both supervised learning and
+    reinforcement learning. Compared to the popular meta-learner LSTM, Meta-SGD is conceptually simpler,
+    easier to implement, and can be learned more efficiently. Compared to the latest meta-learner MAML,
+    Meta-SGD has a much higher capacity by learning to learn not just the learner initialization, but
+    also the learner update direction and learning rate, all in a single meta-learning process. Meta-SGD
+    shows highly competitive performance for few-shot learning on regression, classification, and reinforcement
+    learning.
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/1707.09835
+- paper_id: arxiv:1711.06025
+  arxiv_id: '1711.06025'
+  title: 'Learning to Compare: Relation Network for Few-Shot Learning'
+  authors:
+  - Flood Sung
+  - Yongxin Yang
+  - Li Zhang
+  - Tao Xiang
+  - Philip H. S. Torr
+  - Timothy M. Hospedales
+  year: 2017
+  abstract: We present a conceptually simple, flexible, and general framework for few-shot learning, where
+    a classifier must learn to recognise new classes given only few examples from each. Our method, called
+    the Relation Network (RN), is trained end-to-end from scratch. During meta-learning, it learns to
+    learn a deep distance metric to compare a small number of images within episodes, each of which is
+    designed to simulate the few-shot setting. Once trained, a RN is able to classify images of new classes
+    by computing relation scores between query images and the few examples of each new class without further
+    updating the network. Besides providing improved performance on few-shot learning, our framework is
+    easily extended to zero-shot learning. Extensive experiments on five benchmarks demonstrate that our
+    simple approach provides a unified and effective approach for both of these two tasks.
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/1711.06025
+- paper_id: arxiv:1805.10123
+  arxiv_id: '1805.10123'
+  title: 'TADAM: Task dependent adaptive metric for improved few-shot learning'
+  authors:
+  - Boris N. Oreshkin
+  - Pau Rodriguez
+  - Alexandre Lacoste
+  year: 2018
+  abstract: Few-shot learning has become essential for producing models that generalize from few examples.
+    In this work, we identify that metric scaling and metric task conditioning are important to improve
+    the performance of few-shot algorithms. Our analysis reveals that simple metric scaling completely
+    changes the nature of few-shot algorithm parameter updates. Metric scaling provides improvements up
+    to 14% in accuracy for certain metrics on the mini-Imagenet 5-way 5-shot classification task. We further
+    propose a simple and effective way of conditioning a learner on the task sample set, resulting in
+    learning a task-dependent metric space. Moreover, we propose and empirically test a practical end-to-end
+    optimization procedure based on auxiliary task co-training to learn a task-dependent metric space.
+    The resulting few-shot learning model based on the task-dependent scaled metric achieves state of
+    the art on mini-Imagenet. We confirm these results on another few-shot dataset that we introduce in
+    this paper based on CIFAR100. Our code is publicly available at https://github.com/ElementAI/TADAM.
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/1805.10123
+- paper_id: arxiv:1903.03096
+  arxiv_id: '1903.03096'
+  title: 'Meta-Dataset: A Dataset of Datasets for Learning to Learn from Few Examples'
+  authors:
+  - Eleni Triantafillou
+  - Tyler Zhu
+  - Vincent Dumoulin
+  - Pascal Lamblin
+  - Utku Evci
+  - Kelvin Xu
+  - Ross Goroshin
+  - Carles Gelada
+  - Kevin Swersky
+  - Pierre-Antoine Manzagol
+  - Hugo Larochelle
+  year: 2019
+  abstract: 'Few-shot classification refers to learning a classifier for new classes given only a few
+    examples. While a plethora of models have emerged to tackle it, we find the procedure and datasets
+    that are used to assess their progress lacking. To address this limitation, we propose Meta-Dataset:
+    a new benchmark for training and evaluating models that is large-scale, consists of diverse datasets,
+    and presents more realistic tasks. We experiment with popular baselines and meta-learners on Meta-Dataset,
+    along with a competitive method that we propose. We analyze performance as a function of various characteristics
+    of test tasks and examine the models'' ability to leverage diverse training sources for improving
+    their generalization. We also propose a new set of baselines for quantifying the benefit of meta-learning
+    in Meta-Dataset. Our extensive experimentation has uncovered important research challenges and we
+    hope to inspire work in these directions.'
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/1903.03096
+- paper_id: arxiv:1904.03758
+  arxiv_id: '1904.03758'
+  title: Meta-Learning with Differentiable Convex Optimization
+  authors:
+  - Kwonjoon Lee
+  - Subhransu Maji
+  - Avinash Ravichandran
+  - Stefano Soatto
+  year: 2019
+  abstract: 'Many meta-learning approaches for few-shot learning rely on simple base learners such as
+    nearest-neighbor classifiers. However, even in the few-shot regime, discriminatively trained linear
+    predictors can offer better generalization. We propose to use these predictors as base learners to
+    learn representations for few-shot learning and show they offer better tradeoffs between feature size
+    and performance across a range of few-shot recognition benchmarks. Our objective is to learn feature
+    embeddings that generalize well under a linear classification rule for novel categories. To efficiently
+    solve the objective, we exploit two properties of linear classifiers: implicit differentiation of
+    the optimality conditions of the convex problem and the dual formulation of the optimization problem.
+    This allows us to use high-dimensional embeddings with improved generalization at a modest increase
+    in computational overhead. Our approach, named MetaOptNet, achieves state-of-the-art performance on
+    miniImageNet, tieredImageNet, CIFAR-FS, and FC100 few-shot learning benchmarks. Our code is available
+    at https://github.com/kjunelee/MetaOptNet.'
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/1904.03758
+- paper_id: arxiv:1904.04232
+  arxiv_id: '1904.04232'
+  title: A Closer Look at Few-shot Classification
+  authors:
+  - Wei-Yu Chen
+  - Yen-Cheng Liu
+  - Zsolt Kira
+  - Yu-Chiang Frank Wang
+  - Jia-Bin Huang
+  year: 2019
+  abstract: Few-shot classification aims to learn a classifier to recognize unseen classes during training
+    with limited labeled examples. While significant progress has been made, the growing complexity of
+    network designs, meta-learning algorithms, and differences in implementation details make a fair comparison
+    difficult. In this paper, we present 1) a consistent comparative analysis of several representative
+    few-shot classification algorithms, with results showing that deeper backbones significantly reduce
+    the performance differences among methods on datasets with limited domain differences, 2) a modified
+    baseline method that surprisingly achieves competitive performance when compared with the state-of-the-art
+    on both the \miniI and the CUB datasets, and 3) a new experimental setting for evaluating the cross-domain
+    generalization ability for few-shot classification algorithms. Our results reveal that reducing intra-class
+    variation is an important factor when the feature backbone is shallow, but not as critical when using
+    deeper backbones. In a realistic cross-domain evaluation setting, we show that a baseline method with
+    a standard fine-tuning practice compares favorably against other state-of-the-art few-shot learning
+    algorithms.
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/1904.04232
+- paper_id: arxiv:1911.04623
+  arxiv_id: '1911.04623'
+  title: 'SimpleShot: Revisiting Nearest-Neighbor Classification for Few-Shot Learning'
+  authors:
+  - Yan Wang
+  - Wei-Lun Chao
+  - Kilian Q. Weinberger
+  - Laurens van der Maaten
+  year: 2019
+  abstract: Few-shot learners aim to recognize new object classes based on a small number of labeled training
+    examples. To prevent overfitting, state-of-the-art few-shot learners use meta-learning on convolutional-network
+    features and perform classification using a nearest-neighbor classifier. This paper studies the accuracy
+    of nearest-neighbor baselines without meta-learning. Surprisingly, we find simple feature transformations
+    suffice to obtain competitive few-shot learning accuracies. For example, we find that a nearest-neighbor
+    classifier used in combination with mean-subtraction and L2-normalization outperforms prior results
+    in three out of five settings on the miniImageNet dataset.
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/1911.04623
+- paper_id: arxiv:2003.04390
+  arxiv_id: '2003.04390'
+  title: 'Meta-Baseline: Exploring Simple Meta-Learning for Few-Shot Learning'
+  authors:
+  - Yinbo Chen
+  - Zhuang Liu
+  - Huijuan Xu
+  - Trevor Darrell
+  - Xiaolong Wang
+  year: 2020
+  abstract: 'Meta-learning has been the most common framework for few-shot learning in recent years. It
+    learns the model from collections of few-shot classification tasks, which is believed to have a key
+    advantage of making the training objective consistent with the testing objective. However, some recent
+    works report that by training for whole-classification, i.e. classification on the whole label-set,
+    it can get comparable or even better embedding than many meta-learning algorithms. The edge between
+    these two lines of works has yet been underexplored, and the effectiveness of meta-learning in few-shot
+    learning remains unclear. In this paper, we explore a simple process: meta-learning over a whole-classification
+    pre-trained model on its evaluation metric. We observe this simple method achieves competitive performance
+    to state-of-the-art methods on standard benchmarks. Our further analysis shed some light on understanding
+    the trade-offs between the meta-learning objective and the whole-classification objective in few-shot
+    learning.'
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/2003.04390
+- paper_id: arxiv:2003.06777
+  arxiv_id: '2003.06777'
+  title: 'DeepEMD: Differentiable Earth Mover''s Distance for Few-Shot Learning'
+  authors:
+  - Chi Zhang
+  - Yujun Cai
+  - Guosheng Lin
+  - Chunhua Shen
+  year: 2020
+  abstract: In this work, we develop methods for few-shot image classification from a new perspective
+    of optimal matching between image regions. We employ the Earth Mover's Distance (EMD) as a metric
+    to compute a structural distance between dense image representations to determine image relevance.
+    The EMD generates the optimal matching flows between structural elements that have the minimum matching
+    cost, which is used to calculate the image distance for classification. To generate the important
+    weights of elements in the EMD formulation, we design a cross-reference mechanism, which can effectively
+    alleviate the adverse impact caused by the cluttered background and large intra-class appearance variations.
+    To implement k-shot classification, we propose to learn a structured fully connected layer that can
+    directly classify dense image representations with the EMD. Based on the implicit function theorem,
+    the EMD can be inserted as a layer into the network for end-to-end training. Our extensive experiments
+    validate the effectiveness of our algorithm which outperforms state-of-the-art methods by a significant
+    margin on five widely used few-shot classification benchmarks, namely, miniImageNet, tieredImageNet,
+    Fewshot-CIFAR100 (FC100), Caltech-UCSD Birds-200-2011 (CUB), and CIFAR-FewShot (CIFAR-FS). We also
+    demonstrate the effectiveness of our method on the image retrieval task in our experiments.
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/2003.06777
+- paper_id: arxiv:2003.06957
+  arxiv_id: '2003.06957'
+  title: Frustratingly Simple Few-Shot Object Detection
+  authors:
+  - Xin Wang
+  - Thomas E. Huang
+  - Trevor Darrell
+  - Joseph E. Gonzalez
+  - Fisher Yu
+  year: 2020
+  abstract: 'Detecting rare objects from a few examples is an emerging problem. Prior works show meta-learning
+    is a promising approach. But, fine-tuning techniques have drawn scant attention. We find that fine-tuning
+    only the last layer of existing detectors on rare classes is crucial to the few-shot object detection
+    task. Such a simple approach outperforms the meta-learning methods by roughly 2~20 points on current
+    benchmarks and sometimes even doubles the accuracy of the prior methods. However, the high variance
+    in the few samples often leads to the unreliability of existing benchmarks. We revise the evaluation
+    protocols by sampling multiple groups of training examples to obtain stable comparisons and build
+    new benchmarks based on three datasets: PASCAL VOC, COCO and LVIS. Again, our fine-tuning approach
+    establishes a new state of the art on the revised benchmarks. The code as well as the pretrained models
+    are available at https://github.com/ucbdrive/few-shot-object-detection.'
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/2003.06957
+- paper_id: arxiv:2003.11539
+  arxiv_id: '2003.11539'
+  title: 'Rethinking Few-Shot Image Classification: a Good Embedding Is All You Need?'
+  authors:
+  - Yonglong Tian
+  - Yue Wang
+  - Dilip Krishnan
+  - Joshua B. Tenenbaum
+  - Phillip Isola
+  year: 2020
+  abstract: 'The focus of recent meta-learning research has been on the development of learning algorithms
+    that can quickly adapt to test time tasks with limited data and low computational cost. Few-shot learning
+    is widely used as one of the standard benchmarks in meta-learning. In this work, we show that a simple
+    baseline: learning a supervised or self-supervised representation on the meta-training set, followed
+    by training a linear classifier on top of this representation, outperforms state-of-the-art few-shot
+    learning methods. An additional boost can be achieved through the use of self-distillation. This demonstrates
+    that using a good learned embedding model can be more effective than sophisticated meta-learning algorithms.
+    We believe that our findings motivate a rethinking of few-shot image classification benchmarks and
+    the associated role of meta-learning algorithms. Code is available at: http://github.com/WangYueFt/rfs/.'
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/2003.11539
+- paper_id: arxiv:2005.03819
+  arxiv_id: '2005.03819'
+  title: One-Shot Object Detection without Fine-Tuning
+  authors:
+  - Xiang Li
+  - Lin Zhang
+  - Yau Pun Chen
+  - Yu-Wing Tai
+  - Chi-Keung Tang
+  year: 2020
+  abstract: Deep learning has revolutionized object detection thanks to large-scale datasets, but their
+    object categories are still arguably very limited. In this paper, we attempt to enrich such categories
+    by addressing the one-shot object detection problem, where the number of annotated training examples
+    for learning an unseen class is limited to one. We introduce a two-stage model consisting of a first
+    stage Matching-FCOS network and a second stage Structure-Aware Relation Module, the combination of
+    which integrates metric learning with an anchor-free Faster R-CNN-style detection pipeline, eventually
+    eliminating the need to fine-tune on the support images. We also propose novel training strategies
+    that effectively improve detection performance. Extensive quantitative and qualitative evaluations
+    were performed and our method exceeds the state-of-the-art one-shot performance consistently on multiple
+    datasets.
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/2005.03819
+- paper_id: arxiv:2007.11498
+  arxiv_id: '2007.11498'
+  title: 'CrossTransformers: spatially-aware few-shot transfer'
+  authors:
+  - Carl Doersch
+  - Ankush Gupta
+  - Andrew Zisserman
+  year: 2020
+  abstract: Given new tasks with very little data$-$such as new classes in a classification problem or
+    a domain shift in the input$-$performance of modern vision systems degrades remarkably quickly. In
+    this work, we illustrate how the neural network representations which underpin modern vision systems
+    are subject to supervision collapse, whereby they lose any information that is not necessary for performing
+    the training task, including information that may be necessary for transfer to new tasks or domains.
+    We then propose two methods to mitigate this problem. First, we employ self-supervised learning to
+    encourage general-purpose features that transfer better. Second, we propose a novel Transformer based
+    neural network architecture called CrossTransformers, which can take a small number of labeled images
+    and an unlabeled query, find coarse spatial correspondence between the query and the labeled images,
+    and then infer class membership by computing distances between spatially-corresponding features. The
+    result is a classifier that is more robust to task and domain shift, which we demonstrate via state-of-the-art
+    performance on Meta-Dataset, a recent dataset for evaluating transfer from ImageNet to many other
+    vision datasets.
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/2007.11498
+- paper_id: arxiv:2008.11297
+  arxiv_id: '2008.11297'
+  title: Transductive Information Maximization For Few-Shot Learning
+  authors:
+  - Malik Boudiaf
+  - Ziko Imtiaz Masud
+  - Jérôme Rony
+  - José Dolz
+  - Pablo Piantanida
+  - Ismail Ben Ayed
+  year: 2020
+  abstract: 'We introduce Transductive Infomation Maximization (TIM) for few-shot learning. Our method
+    maximizes the mutual information between the query features and their label predictions for a given
+    few-shot task, in conjunction with a supervision loss based on the support set. Furthermore, we propose
+    a new alternating-direction solver for our mutual-information loss, which substantially speeds up
+    transductive-inference convergence over gradient-based optimization, while yielding similar accuracy.
+    TIM inference is modular: it can be used on top of any base-training feature extractor. Following
+    standard transductive few-shot settings, our comprehensive experiments demonstrate that TIM outperforms
+    state-of-the-art methods significantly across various datasets and networks, while used on top of
+    a fixed feature extractor trained with simple cross-entropy on the base classes, without resorting
+    to complex meta-learning schemes. It consistently brings between 2% and 5% improvement in accuracy
+    over the best performing method, not only on all the well-established few-shot benchmarks but also
+    on more challenging scenarios,with domain shifts and larger numbers of classes.'
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/2008.11297
+- paper_id: arxiv:2101.06395
+  arxiv_id: '2101.06395'
+  title: 'Free Lunch for Few-shot Learning: Distribution Calibration'
+  authors:
+  - Shuo Yang
+  - Lu Liu
+  - Min Xu
+  year: 2021
+  abstract: Learning from a limited number of samples is challenging since the learned model can easily
+    become overfitted based on the biased distribution formed by only a few training examples. In this
+    paper, we calibrate the distribution of these few-sample classes by transferring statistics from the
+    classes with sufficient examples, then an adequate number of examples can be sampled from the calibrated
+    distribution to expand the inputs to the classifier. We assume every dimension in the feature representation
+    follows a Gaussian distribution so that the mean and the variance of the distribution can borrow from
+    that of similar classes whose statistics are better estimated with an adequate number of samples.
+    Our method can be built on top of off-the-shelf pretrained feature extractors and classification models
+    without extra parameters. We show that a simple logistic regression classifier trained using the features
+    sampled from our calibrated distribution can outperform the state-of-the-art accuracy on two datasets
+    (~5% improvement on miniImageNet compared to the next best). The visualization of these generated
+    features demonstrates that our calibrated distribution is an accurate estimation.
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/2101.06395
+- paper_id: arxiv:2104.02638
+  arxiv_id: '2104.02638'
+  title: Comparing Transfer and Meta Learning Approaches on a Unified Few-Shot Classification Benchmark
+  authors:
+  - Vincent Dumoulin
+  - Neil Houlsby
+  - Utku Evci
+  - Xiaohua Zhai
+  - Ross Goroshin
+  - Sylvain Gelly
+  - Hugo Larochelle
+  year: 2021
+  abstract: Meta and transfer learning are two successful families of approaches to few-shot learning.
+    Despite highly related goals, state-of-the-art advances in each family are measured largely in isolation
+    of each other. As a result of diverging evaluation norms, a direct or thorough comparison of different
+    approaches is challenging. To bridge this gap, we perform a cross-family study of the best transfer
+    and meta learners on both a large-scale meta-learning benchmark (Meta-Dataset, MD), and a transfer
+    learning benchmark (Visual Task Adaptation Benchmark, VTAB). We find that, on average, large-scale
+    transfer methods (Big Transfer, BiT) outperform competing approaches on MD, even when trained only
+    on ImageNet. In contrast, meta-learning approaches struggle to compete on VTAB when trained and validated
+    on MD. However, BiT is not without limitations, and pushing for scale does not improve performance
+    on highly out-of-distribution MD tasks. In performing this study, we reveal a number of discrepancies
+    in evaluation norms and study some of these in light of the performance gap. We hope that this work
+    facilitates sharing of insights from each community, and accelerates progress on few-shot learning.
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/2104.02638
+- paper_id: arxiv:2108.09017
+  arxiv_id: '2108.09017'
+  title: 'DeFRCN: Decoupled Faster R-CNN for Few-Shot Object Detection'
+  authors:
+  - Limeng Qiao
+  - Yuxuan Zhao
+  - Zhiyuan Li
+  - Xi Qiu
+  - Jianan Wu
+  - Chi Zhang
+  year: 2021
+  abstract: Few-shot object detection, which aims at detecting novel objects rapidly from extremely few
+    annotated examples of previously unseen classes, has attracted significant research interest in the
+    community. Most existing approaches employ the Faster R-CNN as basic detection framework, yet, due
+    to the lack of tailored considerations for data-scarce scenario, their performance is often not satisfactory.
+    In this paper, we look closely into the conventional Faster R-CNN and analyze its contradictions from
+    two orthogonal perspectives, namely multi-stage (RPN vs. RCNN) and multi-task (classification vs.
+    localization). To resolve these issues, we propose a simple yet effective architecture, named Decoupled
+    Faster R-CNN (DeFRCN). To be concrete, we extend Faster R-CNN by introducing Gradient Decoupled Layer
+    for multi-stage decoupling and Prototypical Calibration Block for multi-task decoupling. The former
+    is a novel deep layer with redefining the feature-forward operation and gradient-backward operation
+    for decoupling its subsequent layer and preceding layer, and the latter is an offline prototype-based
+    classification model with taking the proposals from detector as input and boosting the original classification
+    scores with additional pairwise scores for calibration. Extensive experiments on multiple benchmarks
+    show our framework is remarkably superior to other existing approaches and establishes a new state-of-the-art
+    in few-shot literature.
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/2108.09017
+- paper_id: arxiv:2109.01134
+  arxiv_id: '2109.01134'
+  title: Learning to Prompt for Vision-Language Models
+  authors:
+  - Kaiyang Zhou
+  - Jingkang Yang
+  - Chen Change Loy
+  - Ziwei Liu
+  year: 2021
+  abstract: 'Large pre-trained vision-language models like CLIP have shown great potential in learning
+    representations that are transferable across a wide range of downstream tasks. Different from the
+    traditional representation learning that is based mostly on discretized labels, vision-language pre-training
+    aligns images and texts in a common feature space, which allows zero-shot transfer to a downstream
+    task via prompting, i.e., classification weights are synthesized from natural language describing
+    classes of interest. In this work, we show that a major challenge for deploying such models in practice
+    is prompt engineering, which requires domain expertise and is extremely time-consuming -- one needs
+    to spend a significant amount of time on words tuning since a slight change in wording could have
+    a huge impact on performance. Inspired by recent advances in prompt learning research in natural language
+    processing (NLP), we propose Context Optimization (CoOp), a simple approach specifically for adapting
+    CLIP-like vision-language models for downstream image recognition. Concretely, CoOp models a prompt''s
+    context words with learnable vectors while the entire pre-trained parameters are kept fixed. To handle
+    different image recognition tasks, we provide two implementations of CoOp: unified context and class-specific
+    context. Through extensive experiments on 11 datasets, we demonstrate that CoOp requires as few as
+    one or two shots to beat hand-crafted prompts with a decent margin and is able to gain significant
+    improvements over prompt engineering with more shots, e.g., with 16 shots the average gain is around
+    15% (with the highest reaching over 45%). Despite being a learning-based approach, CoOp achieves superb
+    domain generalization performance compared with the zero-shot model using hand-crafted prompts.'
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/2109.01134
+- paper_id: arxiv:2110.04544
+  arxiv_id: '2110.04544'
+  title: 'CLIP-Adapter: Better Vision-Language Models with Feature Adapters'
+  authors:
+  - Peng Gao
+  - Shijie Geng
+  - Renrui Zhang
+  - Teli Ma
+  - Rongyao Fang
+  - Yongfeng Zhang
+  - Hongsheng Li
+  - Yu Qiao
+  year: 2021
+  abstract: Large-scale contrastive vision-language pre-training has shown significant progress in visual
+    representation learning. Unlike traditional visual systems trained by a fixed set of discrete labels,
+    a new paradigm was introduced in \cite{radford2021learning} to directly learn to align images with
+    raw texts in an open-vocabulary setting. On downstream tasks, a carefully chosen text prompt is employed
+    to make zero-shot predictions.~To avoid non-trivial prompt engineering, context optimization \cite{zhou2021coop}
+    has been proposed to learn continuous vectors as task-specific prompts with few-shot training examples.~In
+    this paper, we show that there is an alternative path to achieve better vision-language models other
+    than prompt tuning.~While prompt tuning is for the textual inputs, we propose CLIP-Adapter to conduct
+    fine-tuning with feature adapters on either visual or language branch. Specifically, CLIP-Adapter
+    adopts an additional bottleneck layer to learn new features and performs residual-style feature blending
+    with the original pre-trained features.~As a consequence, CLIP-Adapter is able to outperform context
+    optimization while maintains a simple design. Experiments and extensive ablation studies on various
+    visual classification tasks demonstrate the effectiveness of our approach. Code is released at t https://github.com/gaopengcuhk/CLIP-Adapter.
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/2110.04544
+- paper_id: arxiv:2111.03930
+  arxiv_id: '2111.03930'
+  title: 'Tip-Adapter: Training-free CLIP-Adapter for Better Vision-Language Modeling'
+  authors:
+  - Renrui Zhang
+  - Rongyao Fang
+  - Wei Zhang
+  - Peng Gao
+  - Kunchang Li
+  - Jifeng Dai
+  - Yu Qiao
+  - Hongsheng Li
+  year: 2021
+  abstract: Contrastive Vision-Language Pre-training, known as CLIP, has provided a new paradigm for learning
+    visual representations by using large-scale contrastive image-text pairs. It shows impressive performance
+    on zero-shot knowledge transfer to downstream tasks. To further enhance CLIP's few-shot capability,
+    CLIP-Adapter proposed to fine-tune a lightweight residual feature adapter and significantly improves
+    the performance for few-shot classification. However, such a process still needs extra training and
+    computational resources. In this paper, we propose \textbf{T}raining-Free CL\textbf{IP}-\textbf{Adapter}
+    (\textbf{Tip-Adapter}), which not only inherits CLIP's training-free advantage but also performs comparably
+    or even better than CLIP-Adapter. Tip-Adapter does not require any back propagation for training the
+    adapter, but creates the weights by a key-value cache model constructed from the few-shot training
+    set. In this non-parametric manner, Tip-Adapter acquires well-performed adapter weights without any
+    training, which is both efficient and effective. Moreover, the performance of Tip-Adapter can be further
+    boosted by fine-tuning such properly initialized adapter for only a few epochs with super-fast convergence
+    speed. We conduct extensive experiments of few-shot classification on ImageNet and other 10 datasets
+    to demonstrate the superiority of proposed Tip-Adapter. The code will be released at \url{https://github.com/gaopengcuhk/Tip-Adapter}.
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/2111.03930
+- paper_id: arxiv:2203.05557
+  arxiv_id: '2203.05557'
+  title: Conditional Prompt Learning for Vision-Language Models
+  authors:
+  - Kaiyang Zhou
+  - Jingkang Yang
+  - Chen Change Loy
+  - Ziwei Liu
+  year: 2022
+  abstract: 'With the rise of powerful pre-trained vision-language models like CLIP, it becomes essential
+    to investigate ways to adapt these models to downstream datasets. A recently proposed method named
+    Context Optimization (CoOp) introduces the concept of prompt learning -- a recent trend in NLP --
+    to the vision domain for adapting pre-trained vision-language models. Specifically, CoOp turns context
+    words in a prompt into a set of learnable vectors and, with only a few labeled images for learning,
+    can achieve huge improvements over intensively-tuned manual prompts. In our study we identify a critical
+    problem of CoOp: the learned context is not generalizable to wider unseen classes within the same
+    dataset, suggesting that CoOp overfits base classes observed during training. To address the problem,
+    we propose Conditional Context Optimization (CoCoOp), which extends CoOp by further learning a lightweight
+    neural network to generate for each image an input-conditional token (vector). Compared to CoOp''s
+    static prompts, our dynamic prompts adapt to each instance and are thus less sensitive to class shift.
+    Extensive experiments show that CoCoOp generalizes much better than CoOp to unseen classes, even showing
+    promising transferability beyond a single dataset; and yields stronger domain generalization performance
+    as well. Code is available at https://github.com/KaiyangZhou/CoOp.'
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/2203.05557
+- paper_id: arxiv:2203.12119
+  arxiv_id: '2203.12119'
+  title: Visual Prompt Tuning
+  authors:
+  - Menglin Jia
+  - Luming Tang
+  - Bor-Chun Chen
+  - Claire Cardie
+  - Serge Belongie
+  - Bharath Hariharan
+  - Ser-Nam Lim
+  year: 2022
+  abstract: The current modus operandi in adapting pre-trained models involves updating all the backbone
+    parameters, ie, full fine-tuning. This paper introduces Visual Prompt Tuning (VPT) as an efficient
+    and effective alternative to full fine-tuning for large-scale Transformer models in vision. Taking
+    inspiration from recent advances in efficiently tuning large language models, VPT introduces only
+    a small amount (less than 1% of model parameters) of trainable parameters in the input space while
+    keeping the model backbone frozen. Via extensive experiments on a wide variety of downstream recognition
+    tasks, we show that VPT achieves significant performance gains compared to other parameter efficient
+    tuning protocols. Most importantly, VPT even outperforms full fine-tuning in many cases across model
+    capacities and training data scales, while reducing per-task storage cost.
+  pdf:
+    kind: arxiv_pdf
+    url: https://arxiv.org/pdf/2203.12119

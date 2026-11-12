@@ -1,0 +1,66 @@
+{
+  "origin": "052-fourth-assessment-batch",
+  "scientific_gold_verified": false,
+  "source_report_sha256": "922a7c7b54ad2e009dad29895ed4420f5af3b45d55159cea01b004fa4880cd7d",
+  "raw_response_sha256": "cc4caa0f39a340ed3b2dfa626b7749fafbfc3ea0c50e7cba8ddf30063a44a7b5",
+  "claim": {
+    "claim_id": "claim_48",
+    "kind": "scientific",
+    "claim_text": "这两种损失函数的机制目标是强化嵌入向量的排布和不同类别在潜在空间中的可分性，而不是重新定义推理时的最近邻或原型分类规则。",
+    "source_unit_id": "unit:13:4984",
+    "source_fragment_id": "unit:13:4984:native:writer:methods:2:1",
+    "source_quote": "这两种损失函数的机制目标是强化嵌入向量的排布和不同类别在潜在空间中的可分性，而不是重新定义推理时的最近邻或原型分类规则；来源报告它们在 miniImageNet 上相对其他度量学习方法带来 2% 的准确率提升，并称其在 Caltech CUB、Dogs、Cars 等其他域上具有与现有先进方法相竞争的泛化能力，但这些结论属于给定实验设置下的效果证据。 [E:arxiv:2305.09062:abstract:claim:549b9167d596] [E:arxiv:2305.09062:abstract:claim:aaed703eb739]",
+    "source_start": 5188,
+    "source_end": 5461,
+    "section": "代表性方法分析",
+    "evidence_ids": [
+      "arxiv:2305.09062:abstract:claim:549b9167d596",
+      "arxiv:2305.09062:abstract:claim:aaed703eb739"
+    ],
+    "local_error": null
+  },
+  "issue": {
+    "claim_id": "claim_48",
+    "source_unit_id": "unit:13:4984",
+    "source_fragment_id": "unit:13:4984:native:writer:methods:2:1",
+    "subreason": "negative_status_with_complete_positive_diagnostics",
+    "original_decision": {
+      "claim_id": "claim_48",
+      "correct_kind": "scientific",
+      "atomic": true,
+      "classification_valid": true,
+      "source_faithful": true,
+      "status": "unsupported",
+      "reason_code": "insufficient_support",
+      "explanation": "The claim faithfully extracts the mechanism description from its owning fragment, but the cited original s5 only states the two loss functions consider intra-class and inter-class distances to improve embedding separability; it does not explicitly state that the losses do not redefine inference-time nearest neighbor or prototype classification rules, so this negative boundary is not supported by the cited source.",
+      "support_basis": [
+        {
+          "support_id": "e6:full_original"
+        },
+        {
+          "support_id": "e12:full_original"
+        }
+      ],
+      "aspect_checks": [
+        {
+          "aspect": "predicate",
+          "supported": true,
+          "support_ids": [
+            "e6:full_original",
+            "e12:full_original"
+          ],
+          "explanation": "The cited source confirms the two loss functions target embedding vector arrangement and latent space class separability by considering intra-class and inter-class distances, matching the positive part of the predicate."
+        },
+        {
+          "aspect": "conditions",
+          "supported": true,
+          "support_ids": [
+            "e6:full_original",
+            "e12:full_original"
+          ],
+          "explanation": "The source situates these loss functions in the few-shot metric learning episodic task setting, matching the claim's conditions."
+        }
+      ]
+    }
+  }
+}

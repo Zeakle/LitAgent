@@ -1,0 +1,283 @@
+schema_version: 1
+dataset_id: cv-survey-v1
+dataset_version: "1.1.0"
+judgment_status: owner_approved_ai_assisted
+review_notes: >-
+  Codex performed an AI-assisted source audit against source-linked arXiv metadata and abstracts and
+  corrected five semantic-label issues. On 2026-08-13 the project owner accepted this audit for the
+  project baseline without claiming an independent paper-by-paper human review.
+annotation_version: "1.2.0-owner-approved-ai-assisted"
+manifest_paths:
+  - benchmarks/rag/corpus_manifest.yaml
+  - benchmarks/survey/vit_nerf_manifest.yaml
+  - benchmarks/survey/survey_additions_manifest.yaml
+corpus_paper_ids:
+  - arxiv:1606.04080
+  - arxiv:1703.03400
+  - arxiv:1703.05175
+  - arxiv:1707.09835
+  - arxiv:1711.06025
+  - arxiv:1805.10123
+  - arxiv:1903.03096
+  - arxiv:1904.03758
+  - arxiv:1904.04232
+  - arxiv:1911.04623
+  - arxiv:2003.04390
+  - arxiv:2003.06777
+  - arxiv:2108.09017
+  - arxiv:2003.11539
+  - arxiv:2007.11498
+  - arxiv:2008.11297
+  - arxiv:2101.06395
+  - arxiv:2104.02638
+  - arxiv:2210.03117
+  - arxiv:2109.01134
+  - arxiv:2110.04544
+  - arxiv:2111.03930
+  - arxiv:2203.05557
+  - arxiv:2203.12119
+  - arxiv:2010.11929
+  - arxiv:1512.03385
+  - arxiv:2201.03545
+  - arxiv:2012.12877
+  - arxiv:2101.11986
+  - arxiv:2103.14030
+  - arxiv:2102.12122
+  - arxiv:2103.15808
+  - arxiv:2104.14294
+  - arxiv:2111.06377
+  - arxiv:2104.01136
+  - arxiv:2110.02178
+  - arxiv:2206.01191
+  - arxiv:2105.01601
+  - arxiv:2105.03404
+  - arxiv:2003.08934
+  - arxiv:2201.05989
+  - arxiv:2112.05131
+  - arxiv:2111.11215
+  - arxiv:2012.02190
+  - arxiv:2102.13090
+  - arxiv:2103.15595
+  - arxiv:2103.13415
+  - arxiv:2111.12077
+  - arxiv:2010.07492
+  - arxiv:2011.13961
+  - arxiv:2011.12948
+  - arxiv:2106.13228
+  - arxiv:2308.04079
+  - arxiv:1906.07751
+distractor_paper_ids:
+  few_shot: [arxiv:2108.09017, arxiv:2203.12119]
+  vision_transformer: [arxiv:2105.01601, arxiv:2105.03404]
+  nerf: [arxiv:2308.04079, arxiv:1906.07751]
+ablation_case_ids:
+  - few-shot-metric
+  - few-shot-cross-domain
+  - vit-foundations
+  - vit-self-supervised
+  - nerf-foundations
+  - nerf-antialias-unbounded
+cases:
+  - case_id: few-shot-metric
+    domain: few_shot
+    query: Compare metric-learning approaches for few-shot image classification.
+    required_paper_ids: [arxiv:1606.04080, arxiv:1703.05175]
+    relevant_paper_ids: [arxiv:1606.04080, arxiv:1703.05175, arxiv:1711.06025, arxiv:1805.10123, arxiv:2003.06777]
+    expected_topics:
+      - {topic_id: episodic-matching, description: Matching Networks and episodic support-set prediction, source_paper_ids: [arxiv:1606.04080], required: true}
+      - {topic_id: prototypes, description: Prototype-based metric spaces and class representatives, source_paper_ids: [arxiv:1703.05175], required: true}
+      - {topic_id: relation-metrics, description: Learned or task-adaptive relation metrics, source_paper_ids: [arxiv:1711.06025, arxiv:1805.10123], required: false}
+      - {topic_id: set-distance, description: Set-level Earth Mover distance for local descriptors, source_paper_ids: [arxiv:2003.06777], required: false}
+    evidence_sources:
+      - {source_id: fs-metric-arxiv, kind: official_index, url: https://arxiv.org/abs/1703.05175, accessed_at: 2026-08-13}
+    knowledge_cutoff: 2025-12-31
+    allowed_delivery_statuses: [ready, needs_review]
+    annotation_version: "1.0"
+  - case_id: few-shot-optimization
+    domain: few_shot
+    query: Survey optimization-based meta-learning methods for few-shot visual recognition.
+    required_paper_ids: [arxiv:1703.03400, arxiv:1707.09835]
+    relevant_paper_ids: [arxiv:1703.03400, arxiv:1707.09835, arxiv:1904.03758]
+    expected_topics:
+      - {topic_id: gradient-initialization, description: Learning an initialization for rapid gradient adaptation, source_paper_ids: [arxiv:1703.03400], required: true}
+      - {topic_id: learned-update, description: Learning update direction and learning rate, source_paper_ids: [arxiv:1707.09835], required: true}
+      - {topic_id: convex-base-learner, description: Differentiable task-specific convex optimization as the few-shot base learner, source_paper_ids: [arxiv:1904.03758], required: false}
+    evidence_sources:
+      - {source_id: fs-opt-arxiv, kind: official_index, url: https://arxiv.org/abs/1703.03400, accessed_at: 2026-08-13}
+    knowledge_cutoff: 2025-12-31
+    allowed_delivery_statuses: [ready, needs_review]
+    annotation_version: "1.1"
+  - case_id: few-shot-simple-baselines
+    domain: few_shot
+    query: How competitive are simple transfer-learning baselines in few-shot image classification?
+    required_paper_ids: [arxiv:1904.04232, arxiv:2003.11539]
+    relevant_paper_ids: [arxiv:1904.04232, arxiv:2003.11539, arxiv:1911.04623, arxiv:2003.04390, arxiv:2101.06395]
+    expected_topics:
+      - {topic_id: baseline-strength, description: Strong pretrained-feature and classifier baselines, source_paper_ids: [arxiv:1904.04232, arxiv:2003.11539], required: true}
+      - {topic_id: transfer-vs-meta, description: Conditions where transfer learning rivals meta-learning, source_paper_ids: [arxiv:1911.04623, arxiv:2003.04390], required: true}
+      - {topic_id: distribution-calibration, description: Feature-distribution calibration and synthetic feature augmentation on pretrained embeddings, source_paper_ids: [arxiv:2101.06395], required: false}
+    evidence_sources:
+      - {source_id: fs-baseline-arxiv, kind: official_index, url: https://arxiv.org/abs/1904.04232, accessed_at: 2026-08-13}
+    knowledge_cutoff: 2025-12-31
+    allowed_delivery_statuses: [ready, needs_review]
+    annotation_version: "1.1"
+  - case_id: few-shot-cross-domain
+    domain: few_shot
+    query: Survey cross-domain and transductive few-shot image classification.
+    required_paper_ids: [arxiv:1903.03096, arxiv:2008.11297]
+    relevant_paper_ids: [arxiv:1903.03096, arxiv:2008.11297, arxiv:2007.11498, arxiv:2104.02638]
+    expected_topics:
+      - {topic_id: transductive-inference, description: Joint inference over unlabeled query examples, source_paper_ids: [arxiv:2008.11297], required: true}
+      - {topic_id: domain-shift, description: Performance and adaptation under source-target domain shift, source_paper_ids: [arxiv:1903.03096, arxiv:2007.11498], required: true}
+      - {topic_id: transfer-strategy, description: Practical transfer and adaptation strategies, source_paper_ids: [arxiv:2104.02638], required: false}
+    evidence_sources:
+      - {source_id: fs-domain-arxiv, kind: official_index, url: https://arxiv.org/abs/2008.11297, accessed_at: 2026-08-13}
+    knowledge_cutoff: 2025-12-31
+    allowed_delivery_statuses: [ready, needs_review]
+    annotation_version: "1.1"
+  - case_id: few-shot-vlm
+    domain: few_shot
+    query: Survey vision-language model adaptation for few-shot image recognition.
+    required_paper_ids: [arxiv:2109.01134, arxiv:2203.05557]
+    relevant_paper_ids: [arxiv:2109.01134, arxiv:2203.05557, arxiv:2110.04544, arxiv:2111.03930, arxiv:2210.03117]
+    expected_topics:
+      - {topic_id: prompt-learning, description: Learned textual or visual prompts for CLIP adaptation, source_paper_ids: [arxiv:2109.01134, arxiv:2203.05557], required: true}
+      - {topic_id: parameter-efficient-adaptation, description: Parameter-efficient alternatives to full fine-tuning, source_paper_ids: [arxiv:2110.04544, arxiv:2111.03930], required: true}
+      - {topic_id: multimodal-generalization, description: "Coupled vision-language prompts for base-to-novel, cross-dataset, and domain-shift generalization", source_paper_ids: [arxiv:2210.03117], required: false}
+    evidence_sources:
+      - {source_id: fs-vlm-arxiv, kind: official_index, url: https://arxiv.org/abs/2109.01134, accessed_at: 2026-08-13}
+      - {source_id: fs-maple-arxiv, kind: official_index, url: https://arxiv.org/abs/2210.03117, accessed_at: 2026-08-13}
+    knowledge_cutoff: 2025-12-31
+    allowed_delivery_statuses: [ready, needs_review]
+    annotation_version: "1.1"
+  - case_id: vit-foundations
+    domain: vision_transformer
+    query: Compare the original Vision Transformer with convolutional neural-network backbones.
+    required_paper_ids: [arxiv:2010.11929, arxiv:1512.03385]
+    relevant_paper_ids: [arxiv:2010.11929, arxiv:1512.03385, arxiv:2201.03545]
+    expected_topics:
+      - {topic_id: patch-transformer, description: Patch tokenization and global self-attention in ViT, source_paper_ids: [arxiv:2010.11929], required: true}
+      - {topic_id: cnn-inductive-bias, description: Residual convolutional inductive biases and optimization, source_paper_ids: [arxiv:1512.03385, arxiv:2201.03545], required: true}
+    evidence_sources:
+      - {source_id: vit-foundation-arxiv, kind: official_index, url: https://arxiv.org/abs/2010.11929, accessed_at: 2026-08-13}
+    knowledge_cutoff: 2025-12-31
+    allowed_delivery_statuses: [ready, needs_review]
+    annotation_version: "1.0"
+  - case_id: vit-data-efficient
+    domain: vision_transformer
+    query: Survey data-efficient training methods for vision transformers.
+    required_paper_ids: [arxiv:2012.12877]
+    relevant_paper_ids: [arxiv:2012.12877, arxiv:2101.11986]
+    expected_topics:
+      - {topic_id: distillation-token, description: DeiT teacher-student distillation through attention, source_paper_ids: [arxiv:2012.12877], required: true}
+      - {topic_id: token-structure, description: Progressive local token aggregation for sample efficiency, source_paper_ids: [arxiv:2101.11986], required: true}
+    evidence_sources:
+      - {source_id: vit-deit-arxiv, kind: official_index, url: https://arxiv.org/abs/2012.12877, accessed_at: 2026-08-13}
+    knowledge_cutoff: 2025-12-31
+    allowed_delivery_statuses: [ready, needs_review]
+    annotation_version: "1.0"
+  - case_id: vit-hierarchical
+    domain: vision_transformer
+    query: Compare hierarchical vision transformers for dense prediction.
+    required_paper_ids: [arxiv:2103.14030, arxiv:2102.12122]
+    relevant_paper_ids: [arxiv:2103.14030, arxiv:2102.12122, arxiv:2103.15808]
+    expected_topics:
+      - {topic_id: shifted-windows, description: Local shifted-window attention and cross-window communication, source_paper_ids: [arxiv:2103.14030], required: true}
+      - {topic_id: feature-pyramid, description: Progressive multi-scale features for dense tasks, source_paper_ids: [arxiv:2102.12122], required: true}
+      - {topic_id: convolutional-hierarchy, description: Convolutional projections and hierarchical tokens, source_paper_ids: [arxiv:2103.15808], required: false}
+    evidence_sources:
+      - {source_id: vit-hierarchy-arxiv, kind: official_index, url: https://arxiv.org/abs/2103.14030, accessed_at: 2026-08-13}
+    knowledge_cutoff: 2025-12-31
+    allowed_delivery_statuses: [ready, needs_review]
+    annotation_version: "1.0"
+  - case_id: vit-self-supervised
+    domain: vision_transformer
+    query: Survey self-supervised pretraining methods for vision transformers.
+    required_paper_ids: [arxiv:2104.14294, arxiv:2111.06377]
+    relevant_paper_ids: [arxiv:2104.14294, arxiv:2111.06377]
+    expected_topics:
+      - {topic_id: self-distillation, description: Momentum-teacher self-distillation and emergent semantics, source_paper_ids: [arxiv:2104.14294], required: true}
+      - {topic_id: masked-reconstruction, description: High-ratio masking with asymmetric reconstruction, source_paper_ids: [arxiv:2111.06377], required: true}
+    evidence_sources:
+      - {source_id: vit-ssl-arxiv, kind: official_index, url: https://arxiv.org/abs/2111.06377, accessed_at: 2026-08-13}
+    knowledge_cutoff: 2025-12-31
+    allowed_delivery_statuses: [ready, needs_review]
+    annotation_version: "1.0"
+  - case_id: vit-efficiency
+    domain: vision_transformer
+    query: Compare efficient vision transformer designs for mobile and low-latency inference.
+    required_paper_ids: [arxiv:2104.01136, arxiv:2110.02178]
+    relevant_paper_ids: [arxiv:2104.01136, arxiv:2110.02178, arxiv:2206.01191]
+    expected_topics:
+      - {topic_id: hybrid-efficiency, description: CNN-transformer hybrid designs and resolution schedules, source_paper_ids: [arxiv:2104.01136, arxiv:2110.02178], required: true}
+      - {topic_id: measured-latency, description: Hardware-aware operator design and measured mobile latency, source_paper_ids: [arxiv:2206.01191], required: true}
+    evidence_sources:
+      - {source_id: vit-efficient-arxiv, kind: official_index, url: https://arxiv.org/abs/2206.01191, accessed_at: 2026-08-13}
+    knowledge_cutoff: 2025-12-31
+    allowed_delivery_statuses: [ready, needs_review]
+    annotation_version: "1.0"
+  - case_id: nerf-foundations
+    domain: nerf
+    query: Explain the foundational NeRF representation and differentiable volume-rendering formulation.
+    required_paper_ids: [arxiv:2003.08934]
+    relevant_paper_ids: [arxiv:2003.08934]
+    expected_topics:
+      - {topic_id: radiance-field, description: Continuous density and view-dependent radiance function, source_paper_ids: [arxiv:2003.08934], required: true}
+      - {topic_id: volume-rendering, description: Differentiable ray integration from posed observations, source_paper_ids: [arxiv:2003.08934], required: true}
+    evidence_sources:
+      - {source_id: nerf-original-arxiv, kind: official_index, url: https://arxiv.org/abs/2003.08934, accessed_at: 2026-08-13}
+    knowledge_cutoff: 2025-12-31
+    allowed_delivery_statuses: [ready, needs_review]
+    annotation_version: "1.1"
+  - case_id: nerf-acceleration
+    domain: nerf
+    query: Compare methods that accelerate NeRF training and rendering.
+    required_paper_ids: [arxiv:2201.05989, arxiv:2112.05131]
+    relevant_paper_ids: [arxiv:2201.05989, arxiv:2112.05131, arxiv:2111.11215]
+    expected_topics:
+      - {topic_id: hash-encoding, description: Multiresolution hash-grid encoding and fused execution, source_paper_ids: [arxiv:2201.05989], required: true}
+      - {topic_id: explicit-grids, description: Sparse or direct voxel-grid optimization, source_paper_ids: [arxiv:2112.05131, arxiv:2111.11215], required: true}
+    evidence_sources:
+      - {source_id: nerf-fast-arxiv, kind: official_index, url: https://arxiv.org/abs/2201.05989, accessed_at: 2026-08-13}
+    knowledge_cutoff: 2025-12-31
+    allowed_delivery_statuses: [ready, needs_review]
+    annotation_version: "1.0"
+  - case_id: nerf-sparse-generalization
+    domain: nerf
+    query: Survey sparse-view and generalizable neural radiance fields.
+    required_paper_ids: [arxiv:2012.02190, arxiv:2102.13090]
+    relevant_paper_ids: [arxiv:2012.02190, arxiv:2102.13090, arxiv:2103.15595]
+    expected_topics:
+      - {topic_id: image-conditioned-field, description: Conditioning a radiance field on one or few images, source_paper_ids: [arxiv:2012.02190], required: true}
+      - {topic_id: source-view-aggregation, description: Multi-view feature aggregation and cross-scene generalization, source_paper_ids: [arxiv:2102.13090, arxiv:2103.15595], required: true}
+    evidence_sources:
+      - {source_id: nerf-general-arxiv, kind: official_index, url: https://arxiv.org/abs/2012.02190, accessed_at: 2026-08-13}
+    knowledge_cutoff: 2025-12-31
+    allowed_delivery_statuses: [ready, needs_review]
+    annotation_version: "1.0"
+  - case_id: nerf-antialias-unbounded
+    domain: nerf
+    query: Compare anti-aliasing and unbounded-scene extensions of NeRF.
+    required_paper_ids: [arxiv:2103.13415, arxiv:2111.12077]
+    relevant_paper_ids: [arxiv:2103.13415, arxiv:2111.12077, arxiv:2010.07492]
+    expected_topics:
+      - {topic_id: multiscale-cones, description: Integrated conical frustums for scale-aware anti-aliasing, source_paper_ids: [arxiv:2103.13415], required: true}
+      - {topic_id: unbounded-parameterization, description: Contracted or foreground-background representations for unbounded scenes, source_paper_ids: [arxiv:2111.12077, arxiv:2010.07492], required: true}
+    evidence_sources:
+      - {source_id: nerf-360-arxiv, kind: official_index, url: https://arxiv.org/abs/2111.12077, accessed_at: 2026-08-13}
+    knowledge_cutoff: 2025-12-31
+    allowed_delivery_statuses: [ready, needs_review]
+    annotation_version: "1.0"
+  - case_id: nerf-dynamic
+    domain: nerf
+    query: Survey neural radiance fields for dynamic and deformable scenes.
+    required_paper_ids: [arxiv:2011.13961, arxiv:2011.12948]
+    relevant_paper_ids: [arxiv:2011.13961, arxiv:2011.12948, arxiv:2106.13228]
+    expected_topics:
+      - {topic_id: canonical-deformation, description: Time-conditioned deformation into canonical space, source_paper_ids: [arxiv:2011.13961, arxiv:2011.12948], required: true}
+      - {topic_id: topology-change, description: Higher-dimensional representation for topology variation, source_paper_ids: [arxiv:2106.13228], required: true}
+    evidence_sources:
+      - {source_id: nerf-dynamic-arxiv, kind: official_index, url: https://arxiv.org/abs/2106.13228, accessed_at: 2026-08-13}
+    knowledge_cutoff: 2025-12-31
+    allowed_delivery_statuses: [ready, needs_review]
+    annotation_version: "1.0"

@@ -1,0 +1,209 @@
+{
+  "paper_id": "arxiv:2409.11644",
+  "title": "Few-Shot Learning Approach on Tuberculosis Classification Based on Chest",
+  "sources": {
+    "abstract": "Tuberculosis (TB) is caused by the bacterium Mycobacterium tuberculosis, primarily affecting the lungs. Early detection is crucial for improving treatment effectiveness and reducing transmission risk. Artificial intelligence (AI), particularly through image classification of chest X-rays, can assist in TB detection. However, class imbalance in TB chest X-ray datasets presents a challenge for accurate classification. In this paper, we propose a few-shot learning (FSL) approach using the Prototypical Network algorithm to address this issue. We compare the performance of ResNet-18, ResNet-50, and VGG16 in feature extraction from the TBX11K Chest X-ray dataset. Experimental results demonstrate classification accuracies of 98.93% for ResNet-18, 98.60% for ResNet-50, and 33.33% for VGG16. These findings indicate that the proposed method outperforms others in mitigating data imbalance, which is particularly beneficial for disease classification applications."
+  },
+  "received_v2": {
+    "claim_records": [
+      {
+        "source_quote_span": {
+          "first_token": 72,
+          "last_token": 87
+        },
+        "source_chunk_key": "abstract",
+        "confidence": 1,
+        "fact_fields": {
+          "method": {
+            "first_token": 72,
+            "last_token": 87
+          },
+          "conditions": {
+            "first_token": 48,
+            "last_token": 63
+          },
+          "dataset": null,
+          "metric": null,
+          "value": null,
+          "unit": null,
+          "qualifiers": {
+            "first_token": 48,
+            "last_token": 63
+          }
+        }
+      },
+      {
+        "source_quote_span": {
+          "first_token": 88,
+          "last_token": 111
+        },
+        "source_chunk_key": "abstract",
+        "confidence": 1,
+        "fact_fields": {
+          "method": {
+            "first_token": 88,
+            "last_token": 103
+          },
+          "conditions": null,
+          "dataset": {
+            "first_token": 104,
+            "last_token": 110
+          },
+          "metric": null,
+          "value": null,
+          "unit": null,
+          "qualifiers": {
+            "first_token": 104,
+            "last_token": 110
+          }
+        }
+      },
+      {
+        "source_quote_span": {
+          "first_token": 112,
+          "last_token": 119
+        },
+        "source_chunk_key": "abstract",
+        "confidence": 1,
+        "fact_fields": {
+          "method": {
+            "first_token": 112,
+            "last_token": 114
+          },
+          "conditions": null,
+          "dataset": null,
+          "metric": {
+            "first_token": 112,
+            "last_token": 114
+          },
+          "value": {
+            "first_token": 115,
+            "last_token": 119
+          },
+          "unit": {
+            "first_token": 118,
+            "last_token": 119
+          },
+          "qualifiers": {
+            "first_token": 115,
+            "last_token": 117
+          }
+        }
+      },
+      {
+        "source_quote_span": {
+          "first_token": 120,
+          "last_token": 127
+        },
+        "source_chunk_key": "abstract",
+        "confidence": 1,
+        "fact_fields": {
+          "method": {
+            "first_token": 120,
+            "last_token": 121
+          },
+          "conditions": null,
+          "dataset": null,
+          "metric": {
+            "first_token": 120,
+            "last_token": 121
+          },
+          "value": {
+            "first_token": 122,
+            "last_token": 127
+          },
+          "unit": {
+            "first_token": 126,
+            "last_token": 127
+          },
+          "qualifiers": {
+            "first_token": 122,
+            "last_token": 125
+          }
+        }
+      },
+      {
+        "source_quote_span": {
+          "first_token": 128,
+          "last_token": 135
+        },
+        "source_chunk_key": "abstract",
+        "confidence": 1,
+        "fact_fields": {
+          "method": {
+            "first_token": 128,
+            "last_token": 129
+          },
+          "conditions": null,
+          "dataset": null,
+          "metric": {
+            "first_token": 128,
+            "last_token": 129
+          },
+          "value": {
+            "first_token": 130,
+            "last_token": 135
+          },
+          "unit": {
+            "first_token": 134,
+            "last_token": 135
+          },
+          "qualifiers": {
+            "first_token": 130,
+            "last_token": 133
+          }
+        }
+      },
+      {
+        "source_quote_span": {
+          "first_token": 136,
+          "last_token": 159
+        },
+        "source_chunk_key": "abstract",
+        "confidence": 1,
+        "fact_fields": {
+          "method": {
+            "first_token": 136,
+            "last_token": 137
+          },
+          "conditions": {
+            "first_token": 144,
+            "last_token": 151
+          },
+          "dataset": null,
+          "metric": null,
+          "value": null,
+          "unit": null,
+          "qualifiers": {
+            "first_token": 144,
+            "last_token": 159
+          }
+        }
+      }
+    ],
+    "metrics": [
+      {
+        "name": "classification accuracy",
+        "value": "98.93%"
+      },
+      {
+        "name": "classification accuracy",
+        "value": "98.60%"
+      },
+      {
+        "name": "classification accuracy",
+        "value": "33.33%"
+      }
+    ],
+    "methods": [
+      "few-shot learning (FSL) approach using the Prototypical Network algorithm",
+      "ResNet-18",
+      "ResNet-50",
+      "VGG16"
+    ],
+    "datasets": [
+      "TBX11K Chest X-ray dataset"
+    ]
+  },
+  "scientific_status": "not_verified"
+}

@@ -1,0 +1,205 @@
+# Opt-in independent repair allowances, using the same provider request bounds.
+agent:
+  max_loops: 18
+logging:
+  level: INFO
+  format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+memory:
+  redis_url: redis://localhost:6380
+  qdrant_url: http://localhost:6333
+  working_ttl_seconds: 2160
+  pg_url: postgresql://litagent:litagent@localhost:5433/litagent
+context:
+  evidence_reranker_enabled: true
+  evidence_reranker_model: cross-encoder/ms-marco-MiniLM-L-6-v2
+  max_tokens: 39322
+  compact_threshold: 0.85
+  synthesis_evidence_max_tokens: 19200
+  synthesis_papers_max_tokens: 9600
+  evidence_top_k_per_section: 24
+  evidence_max_items: 72
+  evidence_per_paper_cap: 5
+  review_evidence_max_tokens: 19200
+  review_draft_max_tokens: 16800
+  review_feedback_max_tokens: 2400
+extractor:
+  record_identity: source_fields_v1
+  evidence_preparation_policy: null
+  max_concurrent: 6
+  enable_llm: true
+  max_papers: 60
+  max_tokens: 9831
+  thinking_mode: disabled
+  per_paper_timeout_ms: 144000
+  task_timeout_ms: 1440000
+  automatic_timeout_seconds: 252
+orchestrator:
+  timeout_ms: 10800000
+  max_concurrent: 6
+  task_timeouts_ms:
+    search: 144000
+    recall: 144000
+    dedup: 144000
+    relevance_gate: 216000
+    graph_analysis: 144000
+llm:
+  base_url: https://ark.cn-beijing.volces.com/api/v3
+  model: doubao-seed-2-1-lite-260915
+  extraction_model: doubao-seed-2-1-lite-260915
+  generation_model: doubao-seed-2-1-pro-260915
+  evaluation_model: doubao-seed-2-1-lite-260915
+  max_tokens: 29492
+  temperature: 0.1
+  request_deadline_margin_seconds: 5.0
+  request_timeouts_seconds:
+    default: 216.0
+    planning: 144.0
+    extraction: 216.0
+    synthesis: 720.0
+    summary: 360.0
+    reviewer: 360.0
+    revision: 720.0
+    repair: 720.0
+    evaluation: 360.0
+  resource_revision: operational-plus20-v1
+relevance:
+  reranker_enabled: true
+  reranker_model: cross-encoder/ms-marco-MiniLM-L-6-v2
+  max_papers: 60
+  min_papers: 10
+  cross_encoder_min_score: null
+  lexical_min_score: 0.0
+rag:
+  enabled: true
+  paper_collection: papers
+  benchmark_collection: papers_benchmark
+  claims_collection: claims
+  corpus_version: v1
+  schema_version: paper-v1
+  parser_version: pymupdf-v1
+  chunking_version: page-block-v1
+  chunk_strategy: page_block
+  chunk_size: 1200
+  chunk_overlap: 150
+  embedding_backend: sentence_transformer
+  embedding_model: all-MiniLM-L6-v2
+  embedding_document_adapter: null
+  embedding_query_adapter: null
+  content_mode: abstract
+  retrieval_mode: rrf
+  candidate_k: 48
+  top_k: 24
+  reranker_enabled: true
+  reranker_model: cross-encoder/ms-marco-MiniLM-L-6-v2
+  writeback_enabled: false
+  manifest_path: corpus/manifest.yaml
+  raw_root: artifacts/corpus/raw
+  quarantine_root: artifacts/corpus/quarantine
+  max_pdf_bytes: 62914560
+  download_timeout_seconds: 72.0
+  parser_timeout_seconds: 36.0
+  max_concurrent_parsers: 3
+  allowed_pdf_content_types:
+  - application/pdf
+  - application/octet-stream
+  parsed_root: artifacts/corpus/parsed
+  max_representative_chunks: 5
+  trusted_claim_recall_top_k: 6
+  trusted_claim_context_max_chars: 4800
+  quality:
+    max_gibberish_ratio: 0.15
+    min_text_page_ratio: 0.2
+    repeated_margin_min_pages: 2
+    margin_ratio: 0.1
+  resource_revision: operational-plus20-v1
+adversarial:
+  max_rounds: 4
+  pass_threshold: 0.8
+  review_max_tokens: 19661
+  thinking_mode: disabled
+  # Five chapters, three local repairs, summary and Reviewer fit one task deadline.
+  task_timeout_ms: 7200000
+mcp_servers: {}
+safety:
+  planned_run_limits:
+    profile: extended-repair-v1
+    syntax_policy: lossless-json-recovery-v1
+    max_tokens: 32000000
+    max_requests: 160
+    max_repairs: 11
+    context_tokens: 235930
+    max_output_tokens: 39322
+  max_cost_tokens: 600000
+  cost_warn_ratio: 0.8
+  tool_policy:
+    allowed_names:
+    - search_arxiv
+    - search_semantic_scholar
+    - search_huggingface
+    - extract_claims
+    - extract_metrics
+    - extract_methods
+    - extract_datasets
+    allowed_categories:
+    - read
+api:
+  max_concurrent_surveys: 3
+  cancellation_grace_seconds: 6.0
+resilience:
+  cb_fail_threshold: 5
+  cb_cooldown_seconds: 60
+observability:
+  enabled: true
+  langfuse_host: http://localhost:3000
+  payload_mode: full_redacted
+eval:
+  semantic_engine: ragas-cited-faithfulness-v1
+  context_tokens: 235930
+  max_tokens: 39322
+  thinking_mode: disabled
+  timeout_seconds: 360.0
+  total_timeout_seconds: 8640.0
+  faithfulness_max_evidence_items: 144
+  faithfulness_max_context_chars: 96000
+  strict_batch_size: 20
+  strict_max_batches: 10
+  strict_max_claims: 154
+  strict_context_margin: 0.1
+  rewrite:
+    max_items: 36
+    max_chars: 18000
+    min_body_length_ratio: 0.5
+    min_paragraph_ratio: 0.5
+planner:
+  decompose_enabled: true
+  max_sub_queries: 4
+  max_tokens: 19661
+  thinking_mode: disabled
+  temperature: 0.3
+  use_procedural_profiles: false
+  procedural_min_samples: 3
+report_audit:
+  enabled: true
+  judge_base_url: null
+  judge_model: null
+  judge_api_key_env: null
+  judge_response_format: json_object
+  judge_thinking_mode: disabled
+  judge_context_tokens: 157287
+  judge_input_tokens: 240000
+  jev_enabled: true
+capacity:
+  target_body_units: 48
+  max_body_units: 80
+  max_summary_units: 3
+  max_unit_characters: 2400
+  initial_assertions: 154
+  batch_size: 20
+  max_assertions: null
+  max_assessment_batches: null
+  body_json_bytes: 38400
+  summary_json_bytes: 4800
+  claim_json_bytes: 36000
+  claim_max_json_bytes: 2400
+  diagnostic_json_bytes: 14746
+  revision: operational-plus20-v1

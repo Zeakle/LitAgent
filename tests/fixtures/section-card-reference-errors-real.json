@@ -1,0 +1,140 @@
+{
+  "origin_commit": "3f84492c9b257926470da006e982745eca60e87f",
+  "original_response_sha256": "216e398a608fc3d6fd7411dcf1e4347f8e6a518d5c357d34a60bca534ebe29a5",
+  "purpose": "reference-identity regression only; no scientific gold labels",
+  "card_ids": [
+    "f:0325115a52ea86b0c42d8acb",
+    "f:0522ac114798e39100a53afd",
+    "f:0f62be49eb9c977c400a60ad",
+    "f:1df5a6fa6e58fa8c30f4fa97",
+    "f:1fbbfefb2aa56703ec380fff",
+    "f:25addd52bc0363eab790c79d",
+    "f:2e505b612094052dbb517227",
+    "f:2f4c17bd3509b53f03324d72",
+    "f:3afe8643f47b44a70d6916f1",
+    "f:5b8ef491cd668f3dea9a7334",
+    "f:5f30847627a87481a58405c1",
+    "f:683771a3ab911bdc6dc96d51",
+    "f:70c103879c3ed28a93712439",
+    "f:7de78f7fac23b4e75b21134c",
+    "f:855e9d9eb648c022bd135311",
+    "f:99a0bc4eb8ca29742bbb1185",
+    "f:a5a5b8be56235ce1cdea7b6d",
+    "f:a9fc76f170910c7a542ec6f4",
+    "f:aad686bf1be3b4ff01724a42",
+    "f:be2e7480445ad4d78b0b5eb4",
+    "f:d08fe138a498ba94f0c73e5d",
+    "f:e11d3cf02758fcf3f2a16f6c",
+    "f:f50df9a395e956d178a8f0f4",
+    "f:fdabcb9e3f851c624386a527"
+  ],
+  "section_scopes": {
+    "introduction": [
+      "f:99a0bc4eb8ca29742bbb1185",
+      "f:25addd52bc0363eab790c79d",
+      "f:5b8ef491cd668f3dea9a7334",
+      "f:d08fe138a498ba94f0c73e5d",
+      "f:a9fc76f170910c7a542ec6f4",
+      "f:0f62be49eb9c977c400a60ad",
+      "f:1df5a6fa6e58fa8c30f4fa97",
+      "f:0522ac114798e39100a53afd",
+      "f:fdabcb9e3f851c624386a527",
+      "f:2f4c17bd3509b53f03324d72",
+      "f:5f30847627a87481a58405c1",
+      "f:7de78f7fac23b4e75b21134c"
+    ],
+    "taxonomy": [
+      "f:99a0bc4eb8ca29742bbb1185",
+      "f:5b8ef491cd668f3dea9a7334",
+      "f:d08fe138a498ba94f0c73e5d",
+      "f:a9fc76f170910c7a542ec6f4",
+      "f:be2e7480445ad4d78b0b5eb4",
+      "f:0f62be49eb9c977c400a60ad",
+      "f:683771a3ab911bdc6dc96d51",
+      "f:855e9d9eb648c022bd135311",
+      "f:fdabcb9e3f851c624386a527",
+      "f:2f4c17bd3509b53f03324d72",
+      "f:0325115a52ea86b0c42d8acb",
+      "f:a5a5b8be56235ce1cdea7b6d"
+    ],
+    "methods": [
+      "f:99a0bc4eb8ca29742bbb1185",
+      "f:25addd52bc0363eab790c79d",
+      "f:5b8ef491cd668f3dea9a7334",
+      "f:d08fe138a498ba94f0c73e5d",
+      "f:be2e7480445ad4d78b0b5eb4",
+      "f:0f62be49eb9c977c400a60ad",
+      "f:1df5a6fa6e58fa8c30f4fa97",
+      "f:683771a3ab911bdc6dc96d51",
+      "f:855e9d9eb648c022bd135311",
+      "f:0522ac114798e39100a53afd",
+      "f:2f4c17bd3509b53f03324d72",
+      "f:e11d3cf02758fcf3f2a16f6c"
+    ],
+    "experiments": [
+      "f:99a0bc4eb8ca29742bbb1185",
+      "f:5b8ef491cd668f3dea9a7334",
+      "f:f50df9a395e956d178a8f0f4",
+      "f:d08fe138a498ba94f0c73e5d",
+      "f:a9fc76f170910c7a542ec6f4",
+      "f:3afe8643f47b44a70d6916f1",
+      "f:aad686bf1be3b4ff01724a42",
+      "f:70c103879c3ed28a93712439",
+      "f:e11d3cf02758fcf3f2a16f6c",
+      "f:1fbbfefb2aa56703ec380fff",
+      "f:2e505b612094052dbb517227",
+      "f:a5a5b8be56235ce1cdea7b6d"
+    ],
+    "open_problems": [
+      "f:99a0bc4eb8ca29742bbb1185",
+      "f:5b8ef491cd668f3dea9a7334",
+      "f:f50df9a395e956d178a8f0f4",
+      "f:a9fc76f170910c7a542ec6f4",
+      "f:0f62be49eb9c977c400a60ad",
+      "f:683771a3ab911bdc6dc96d51",
+      "f:855e9d9eb648c022bd135311",
+      "f:0522ac114798e39100a53afd",
+      "f:fdabcb9e3f851c624386a527",
+      "f:5f30847627a87481a58405c1",
+      "f:1fbbfefb2aa56703ec380fff",
+      "f:7de78f7fac23b4e75b21134c"
+    ]
+  },
+  "rejected_references": [
+    {
+      "path": "introduction.0.fact_card_ids.0",
+      "reason": "card_outside_section",
+      "rejected_card_id": "f:be2e7480445ad4d78b0b5eb4"
+    },
+    {
+      "path": "taxonomy.0.fact_card_ids.0",
+      "reason": "unknown_card_id",
+      "rejected_card_id": "f:a9fc76f17091498e39100a53afd"
+    },
+    {
+      "path": "methods.1.fact_card_ids.0",
+      "reason": "card_outside_section",
+      "rejected_card_id": "f:5f30847627a87481a58405c1"
+    },
+    {
+      "path": "methods.5.fact_card_ids.0",
+      "reason": "card_outside_section",
+      "rejected_card_id": "f:3afe8643f47b44a70d6916f1"
+    },
+    {
+      "path": "methods.6.fact_card_ids.0",
+      "reason": "card_outside_section",
+      "rejected_card_id": "f:7de78f7fac23b4e75b21134c"
+    },
+    {
+      "path": "methods.7.fact_card_ids.0",
+      "reason": "card_outside_section",
+      "rejected_card_id": "f:a5a5b8be56235ce1cdea7b6d"
+    },
+    {
+      "path": "open_problems.2.fact_card_ids.0",
+      "reason": "card_outside_section",
+      "rejected_card_id": "f:0325115a52ea86b0c42d8acb"
+    }
+  ]
+}

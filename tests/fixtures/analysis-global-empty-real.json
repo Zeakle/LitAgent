@@ -1,0 +1,50 @@
+{
+  "source_run_id": "body-quality-paired-20261016-001-vit-baseline",
+  "source_units": [
+    {
+      "source_unit_id": "unit:0:34"
+    },
+    {
+      "source_unit_id": "unit:1:459"
+    },
+    {
+      "source_unit_id": "unit:2:756"
+    },
+    {
+      "source_unit_id": "unit:3:1024"
+    },
+    {
+      "source_unit_id": "unit:4:1303"
+    },
+    {
+      "source_unit_id": "unit:5:1563"
+    },
+    {
+      "source_unit_id": "unit:6:1816"
+    }
+  ],
+  "coverage_requirements": [
+    {
+      "requirement_id": "question"
+    },
+    {
+      "requirement_id": "requirement:296c69c352cb"
+    },
+    {
+      "requirement_id": "requirement:e17574bacaed"
+    }
+  ],
+  "empty_response": {
+    "units": [],
+    "conflicts": [],
+    "issues": [],
+    "coverage": [],
+    "limitations": {
+      "adequate": false,
+      "claim_ids": [],
+      "explanation": ""
+    },
+    "analyses": []
+  },
+  "reason": "evaluation_global_unit_coverage_invalid"
+}

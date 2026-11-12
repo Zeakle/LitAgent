@@ -1,0 +1,115 @@
+"""Provide cross-encoder and pass-through paper rerankers."""
+
+from __future__ import annotations
+
+import math
+import os
+from typing import Any
+
+from litagent.rag.interfaces import Reranker, ScoredDoc
+from litagent.rag.models import ScoredPaperHit
+
+_DEFAULT_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+
+
+def CrossEncoder(*args, **kwargs):
+    """Avoid importing inference libraries for read-only presentation startup."""
+    from sentence_transformers import CrossEncoder as factory
+
+    return factory(*args, **kwargs)
+
+
+def build_paper_rerank_text(
+    paper: ScoredPaperHit,
+    *,
+    max_chars: int = 4000,
+) -> str:
+    """Build one bounded paper-level reranking document."""
+    parts = [paper.title.strip(), paper.abstract.strip()]
+    parts.extend(chunk.text.strip() for chunk in paper.chunks if chunk.text.strip())
+    text = "\n".join(part for part in parts if part)
+    return text[:max_chars]
+
+
+class CrossEncoderReranker(Reranker):
+    """Rerank document or parent-paper candidates with a CrossEncoder."""
+
+    def __init__(
+        self,
+        model_name: str = _DEFAULT_MODEL,
+        *,
+        model: Any | None = None,
+        max_paper_chars: int = 4000,
+    ) -> None:
+        """Initialize the cross-encoder reranker."""
+        self.model_name = model_name
+        self._model = model or CrossEncoder(
+            model_name, device=os.getenv("LITAGENT_LOCAL_MODEL_DEVICE") or None
+        )
+        if (
+            model is None
+            and os.getenv("LITAGENT_LOCAL_RERANKER_PRECISION") == "float64"
+        ):
+            self._model.model.double()
+        self._max_paper_chars = max_paper_chars
+
+    def rerank(self, query: str, docs: list[ScoredDoc]) -> list[ScoredDoc]:
+        """Rerank legacy document candidates."""
+        if not docs:
+            return docs
+        scores = self._model.predict(
+            [(query, item.doc.page_content[:1000]) for item in docs]
+        )
+        if any(not math.isfinite(float(score)) for score in scores):
+            raise ValueError("cross_encoder_nonfinite_scores")
+        rescored = [
+            ScoredDoc(doc=item.doc, score=float(score))
+            for item, score in zip(docs, scores, strict=True)
+        ]
+        return sorted(rescored, key=lambda item: item.score, reverse=True)
+
+    def rerank_papers(
+        self,
+        query: str,
+        papers: list[ScoredPaperHit],
+    ) -> list[ScoredPaperHit]:
+        """Rerank unique parent papers after chunk aggregation."""
+        if not papers:
+            return papers
+        scores = self._model.predict(
+            [
+                (
+                    query,
+                    build_paper_rerank_text(
+                        paper,
+                        max_chars=self._max_paper_chars,
+                    ),
+                )
+                for paper in papers
+            ]
+        )
+        if any(not math.isfinite(float(score)) for score in scores):
+            raise ValueError("cross_encoder_nonfinite_scores")
+        rescored = [
+            paper.model_copy(update={"score": float(score)})
+            for paper, score in zip(papers, scores, strict=True)
+        ]
+        return sorted(rescored, key=lambda item: (-item.score, item.paper_id))
+
+
+class NoopReranker(Reranker):
+    """Preserve incoming retrieval order."""
+
+    model_name = "noop"
+
+    def rerank(self, query: str, docs: list[ScoredDoc]) -> list[ScoredDoc]:
+        """Return scored documents in their existing order."""
+        return docs
+
+    def rerank_papers(
+        self,
+        query: str,
+        papers: list[ScoredPaperHit],
+    ) -> list[ScoredPaperHit]:
+        """Return scored papers in their existing order."""
+        return papers

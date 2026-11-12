@@ -1,11 +1,14 @@
-# 环境变量
+﻿# 环境变量
 .env
+.DS_Store
 
 # 开发计划文件 (本地开发使用，不上库)
 plan/
 
 # AI 协作配置
 CLAUDE.md
+AGENTS.md
+.claude/
 
 # Python
 __pycache__/
@@ -15,14 +18,36 @@ __pycache__/
 dist/
 build/
 
+# 技术知识库 (本地学习资料，不上库)
+kb/
+architecture/
+questions/
+
 # 虚拟环境
 .venv/
 venv/
 
-# 测试
+# 测试（测试文件已跟踪；只忽略缓存和覆盖率报告）
 .pytest_cache/
+.pytest-tmp-*/
+# Corpus、回放和 benchmark 都是可再生的本机运行产物。
+artifacts/
 .coverage
 
 # IDE
 .vscode/
 .idea/
+
+# Langfuse
+langfuse/
+
+# Local Corpus and persistence migration assets
+artifacts/corpus/raw/
+artifacts/corpus/parsed/
+artifacts/corpus/quarantine/
+artifacts/qdrant-migration/
+artifacts/benchmarks/runtime/
+
+# Survey 运行调试产物
+survey_run*.log
+survey_result.md

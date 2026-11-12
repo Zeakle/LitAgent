@@ -1,0 +1,1134 @@
+{
+  "provenance": {
+    "kind": "sanitized_structural_reconstruction",
+    "source_run_id": "frozen-writer-three-domain-20261101-042-few-shot-metric",
+    "source_provider_raw_sha256": "1b31ac86c4a77710baf02c49a932293cd2f2e6a1134206fdc8c8156b3b5da196",
+    "source_transport_identity": "2991020fe610092326658bba5dde942ab4a5cc63f00f3d39d28e3dc32200ef51",
+    "source_support_validation_identity": "03297dd9fe53f84cfc027d4c3000e515a5934064ba8e0065bd102749938e643c",
+    "source_reference_identity": "044e1d3757b38eac99d04baca3d3c5062c4f9fa4cf0c6f145303d93da9a29a83",
+    "note": "This is not the original response bytes or a scientific gold standard. Text and reasons are synthetic placeholders; target positions, counts and received index distribution preserve the actual failure."
+  },
+  "body": {
+    "title": "Sanitized target-local mapping fixture",
+    "introduction": [
+      {
+        "sentences": [
+          {
+            "text": "Sanitized original introduction paragraph 0 unit 0.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Sanitized original introduction paragraph 1 unit 0.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Sanitized original introduction paragraph 2 unit 0.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Sanitized original introduction paragraph 3 unit 0.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      }
+    ],
+    "taxonomy": [
+      {
+        "sentences": [
+          {
+            "text": "Sanitized original taxonomy paragraph 0 unit 0.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Sanitized original taxonomy paragraph 1 unit 0.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Sanitized original taxonomy paragraph 2 unit 0.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Sanitized original taxonomy paragraph 3 unit 0.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Sanitized original taxonomy paragraph 4 unit 0.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Sanitized original taxonomy paragraph 5 unit 0.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      }
+    ],
+    "methods": [
+      {
+        "sentences": [
+          {
+            "text": "Sanitized original methods paragraph 0 unit 0.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          },
+          {
+            "text": "Sanitized original methods paragraph 0 unit 1.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Sanitized original methods paragraph 1 unit 0.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          },
+          {
+            "text": "Sanitized original methods paragraph 1 unit 1.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Sanitized original methods paragraph 2 unit 0.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          },
+          {
+            "text": "Sanitized original methods paragraph 2 unit 1.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Sanitized original methods paragraph 3 unit 0.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          },
+          {
+            "text": "Sanitized original methods paragraph 3 unit 1.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          },
+          {
+            "text": "Sanitized original methods paragraph 3 unit 2.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Sanitized original methods paragraph 4 unit 0.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          },
+          {
+            "text": "Sanitized original methods paragraph 4 unit 1.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          },
+          {
+            "text": "Sanitized original methods paragraph 4 unit 2.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Sanitized original methods paragraph 5 unit 0.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          },
+          {
+            "text": "Sanitized original methods paragraph 5 unit 1.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          },
+          {
+            "text": "Sanitized original methods paragraph 5 unit 2.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Sanitized original methods paragraph 6 unit 0.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          },
+          {
+            "text": "Sanitized original methods paragraph 6 unit 1.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Sanitized original methods paragraph 7 unit 0.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      }
+    ],
+    "experiments": [
+      {
+        "sentences": [
+          {
+            "text": "Sanitized original experiments paragraph 0 unit 0.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Sanitized original experiments paragraph 1 unit 0.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Sanitized original experiments paragraph 2 unit 0.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Sanitized original experiments paragraph 3 unit 0.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Sanitized original experiments paragraph 4 unit 0.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Sanitized original experiments paragraph 5 unit 0.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Sanitized original experiments paragraph 6 unit 0.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Sanitized original experiments paragraph 7 unit 0.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Sanitized original experiments paragraph 8 unit 0.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Sanitized original experiments paragraph 9 unit 0.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      }
+    ],
+    "open_problems": [
+      {
+        "sentences": [
+          {
+            "text": "Sanitized original open_problems paragraph 0 unit 0.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Sanitized original open_problems paragraph 1 unit 0.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Sanitized original open_problems paragraph 2 unit 0.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Sanitized original open_problems paragraph 3 unit 0.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Sanitized original open_problems paragraph 4 unit 0.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Sanitized original open_problems paragraph 5 unit 0.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Sanitized original open_problems paragraph 6 unit 0.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Sanitized original open_problems paragraph 7 unit 0.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Sanitized original open_problems paragraph 8 unit 0.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Sanitized original open_problems paragraph 9 unit 0.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "maximum": 66,
+  "target_original_counts": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    2,
+    2,
+    2,
+    3,
+    3,
+    3,
+    2,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1
+  ],
+  "raw_response": {
+    "outcome": "patched",
+    "explanation": "Sanitized reconstruction of global ordinals incorrectly used as target-local indexes.",
+    "patches": [
+      {
+        "target_id": "r1",
+        "text": "Sanitized replacement for introduction paragraph 0.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r2",
+        "text": "Sanitized replacement for introduction paragraph 1.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r3",
+        "text": "Sanitized replacement for introduction paragraph 2.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r4",
+        "text": "Sanitized replacement for introduction paragraph 3.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r5",
+        "text": "Sanitized replacement for taxonomy paragraph 0.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r6",
+        "text": "Sanitized replacement for taxonomy paragraph 1.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r7",
+        "text": "Sanitized replacement for taxonomy paragraph 2.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r8",
+        "text": "Sanitized replacement for taxonomy paragraph 3.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r9",
+        "text": "Sanitized replacement for taxonomy paragraph 4.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r10",
+        "text": "Sanitized replacement for taxonomy paragraph 5.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r11",
+        "text": "Sanitized replacement for methods paragraph 0.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r12",
+        "text": "Sanitized replacement for methods paragraph 1.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r13",
+        "text": "Sanitized replacement for methods paragraph 2.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r14",
+        "text": "Sanitized replacement for methods paragraph 3.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r15",
+        "text": "Sanitized replacement for methods paragraph 4.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r16",
+        "text": "Sanitized replacement for methods paragraph 5.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r17",
+        "text": "Sanitized replacement for methods paragraph 6.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r18",
+        "text": "Sanitized replacement for methods paragraph 7.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r19",
+        "text": "Sanitized replacement for experiments paragraph 0.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r20",
+        "text": "Sanitized replacement for experiments paragraph 1.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r21",
+        "text": "Sanitized replacement for experiments paragraph 2.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r22",
+        "text": "Sanitized replacement for experiments paragraph 3.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r23",
+        "text": "Sanitized replacement for experiments paragraph 4.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r24",
+        "text": "Sanitized replacement for experiments paragraph 5.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r25",
+        "text": "Sanitized replacement for experiments paragraph 6.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r26",
+        "text": "Sanitized replacement for experiments paragraph 7.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r27",
+        "text": "Sanitized replacement for experiments paragraph 8.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r28",
+        "text": "Sanitized replacement for experiments paragraph 9.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r29",
+        "text": "Sanitized replacement for open_problems paragraph 0.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r30",
+        "text": "Sanitized replacement for open_problems paragraph 1.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r31",
+        "text": "Sanitized replacement for open_problems paragraph 2.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r32",
+        "text": "Sanitized replacement for open_problems paragraph 3.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r33",
+        "text": "Sanitized replacement for open_problems paragraph 4.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r34",
+        "text": "Sanitized replacement for open_problems paragraph 5.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r35",
+        "text": "Sanitized replacement for open_problems paragraph 6.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r36",
+        "text": "Sanitized replacement for open_problems paragraph 7.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r37",
+        "text": "Sanitized replacement for open_problems paragraph 8.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r38",
+        "text": "Sanitized replacement for open_problems paragraph 9.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      }
+    ],
+    "edit_records": [
+      {
+        "unit_id": "writer:introduction:0:0",
+        "reason": "Sanitized structural mapping; no scientific judgment.",
+        "replacement_indexes": [
+          0
+        ]
+      },
+      {
+        "unit_id": "writer:introduction:1:0",
+        "reason": "Sanitized structural mapping; no scientific judgment.",
+        "replacement_indexes": [
+          1
+        ]
+      },
+      {
+        "unit_id": "writer:introduction:2:0",
+        "reason": "Sanitized structural mapping; no scientific judgment.",
+        "replacement_indexes": [
+          2
+        ]
+      },
+      {
+        "unit_id": "writer:introduction:3:0",
+        "reason": "Sanitized structural mapping; no scientific judgment.",
+        "replacement_indexes": [
+          3
+        ]
+      },
+      {
+        "unit_id": "writer:taxonomy:0:0",
+        "reason": "Sanitized structural mapping; no scientific judgment.",
+        "replacement_indexes": [
+          4
+        ]
+      },
+      {
+        "unit_id": "writer:taxonomy:1:0",
+        "reason": "Sanitized structural mapping; no scientific judgment.",
+        "replacement_indexes": [
+          5
+        ]
+      },
+      {
+        "unit_id": "writer:taxonomy:2:0",
+        "reason": "Sanitized structural mapping; no scientific judgment.",
+        "replacement_indexes": [
+          6
+        ]
+      },
+      {
+        "unit_id": "writer:taxonomy:3:0",
+        "reason": "Sanitized structural mapping; no scientific judgment.",
+        "replacement_indexes": [
+          7
+        ]
+      },
+      {
+        "unit_id": "writer:taxonomy:4:0",
+        "reason": "Sanitized structural mapping; no scientific judgment.",
+        "replacement_indexes": [
+          8
+        ]
+      },
+      {
+        "unit_id": "writer:taxonomy:5:0",
+        "reason": "Sanitized structural mapping; no scientific judgment.",
+        "replacement_indexes": [
+          9
+        ]
+      },
+      {
+        "unit_id": "writer:methods:0:0",
+        "reason": "Sanitized structural mapping; no scientific judgment.",
+        "replacement_indexes": [
+          10
+        ]
+      },
+      {
+        "unit_id": "writer:methods:0:1",
+        "reason": "Sanitized structural mapping; no scientific judgment.",
+        "replacement_indexes": [
+          10
+        ]
+      },
+      {
+        "unit_id": "writer:methods:1:0",
+        "reason": "Sanitized structural mapping; no scientific judgment.",
+        "replacement_indexes": [
+          11
+        ]
+      },
+      {
+        "unit_id": "writer:methods:1:1",
+        "reason": "Sanitized structural mapping; no scientific judgment.",
+        "replacement_indexes": [
+          11
+        ]
+      },
+      {
+        "unit_id": "writer:methods:2:0",
+        "reason": "Sanitized structural mapping; no scientific judgment.",
+        "replacement_indexes": [
+          12
+        ]
+      },
+      {
+        "unit_id": "writer:methods:2:1",
+        "reason": "Sanitized structural mapping; no scientific judgment.",
+        "replacement_indexes": [
+          12
+        ]
+      },
+      {
+        "unit_id": "writer:methods:3:0",
+        "reason": "Sanitized structural mapping; no scientific judgment.",
+        "replacement_indexes": [
+          13
+        ]
+      },
+      {
+        "unit_id": "writer:methods:3:1",
+        "reason": "Sanitized structural mapping; no scientific judgment.",
+        "replacement_indexes": [
+          13
+        ]
+      },
+      {
+        "unit_id": "writer:methods:3:2",
+        "reason": "Sanitized structural mapping; no scientific judgment.",
+        "replacement_indexes": [
+          13
+        ]
+      },
+      {
+        "unit_id": "writer:methods:4:0",
+        "reason": "Sanitized structural mapping; no scientific judgment.",
+        "replacement_indexes": [
+          14
+        ]
+      },
+      {
+        "unit_id": "writer:methods:4:1",
+        "reason": "Sanitized structural mapping; no scientific judgment.",
+        "replacement_indexes": [
+          14
+        ]
+      },
+      {
+        "unit_id": "writer:methods:4:2",
+        "reason": "Sanitized structural mapping; no scientific judgment.",
+        "replacement_indexes": [
+          14
+        ]
+      },
+      {
+        "unit_id": "writer:methods:5:0",
+        "reason": "Sanitized structural mapping; no scientific judgment.",
+        "replacement_indexes": [
+          15
+        ]
+      },
+      {
+        "unit_id": "writer:methods:5:1",
+        "reason": "Sanitized structural mapping; no scientific judgment.",
+        "replacement_indexes": [
+          15
+        ]
+      },
+      {
+        "unit_id": "writer:methods:5:2",
+        "reason": "Sanitized structural mapping; no scientific judgment.",
+        "replacement_indexes": [
+          15
+        ]
+      },
+      {
+        "unit_id": "writer:methods:6:0",
+        "reason": "Sanitized structural mapping; no scientific judgment.",
+        "replacement_indexes": [
+          16
+        ]
+      },
+      {
+        "unit_id": "writer:methods:6:1",
+        "reason": "Sanitized structural mapping; no scientific judgment.",
+        "replacement_indexes": [
+          16
+        ]
+      },
+      {
+        "unit_id": "writer:methods:7:0",
+        "reason": "Sanitized structural mapping; no scientific judgment.",
+        "replacement_indexes": [
+          17
+        ]
+      },
+      {
+        "unit_id": "writer:experiments:0:0",
+        "reason": "Sanitized structural mapping; no scientific judgment.",
+        "replacement_indexes": [
+          18
+        ]
+      },
+      {
+        "unit_id": "writer:experiments:1:0",
+        "reason": "Sanitized structural mapping; no scientific judgment.",
+        "replacement_indexes": [
+          19
+        ]
+      },
+      {
+        "unit_id": "writer:experiments:2:0",
+        "reason": "Sanitized structural mapping; no scientific judgment.",
+        "replacement_indexes": [
+          20
+        ]
+      },
+      {
+        "unit_id": "writer:experiments:3:0",
+        "reason": "Sanitized structural mapping; no scientific judgment.",
+        "replacement_indexes": [
+          21
+        ]
+      },
+      {
+        "unit_id": "writer:experiments:4:0",
+        "reason": "Sanitized structural mapping; no scientific judgment.",
+        "replacement_indexes": [
+          22
+        ]
+      },
+      {
+        "unit_id": "writer:experiments:5:0",
+        "reason": "Sanitized structural mapping; no scientific judgment.",
+        "replacement_indexes": [
+          23
+        ]
+      },
+      {
+        "unit_id": "writer:experiments:6:0",
+        "reason": "Sanitized structural mapping; no scientific judgment.",
+        "replacement_indexes": [
+          24
+        ]
+      },
+      {
+        "unit_id": "writer:experiments:7:0",
+        "reason": "Sanitized structural mapping; no scientific judgment.",
+        "replacement_indexes": [
+          25
+        ]
+      },
+      {
+        "unit_id": "writer:experiments:8:0",
+        "reason": "Sanitized structural mapping; no scientific judgment.",
+        "replacement_indexes": [
+          26
+        ]
+      },
+      {
+        "unit_id": "writer:experiments:9:0",
+        "reason": "Sanitized structural mapping; no scientific judgment.",
+        "replacement_indexes": [
+          27
+        ]
+      },
+      {
+        "unit_id": "writer:open_problems:0:0",
+        "reason": "Sanitized structural mapping; no scientific judgment.",
+        "replacement_indexes": [
+          28
+        ]
+      },
+      {
+        "unit_id": "writer:open_problems:1:0",
+        "reason": "Sanitized structural mapping; no scientific judgment.",
+        "replacement_indexes": [
+          29
+        ]
+      },
+      {
+        "unit_id": "writer:open_problems:2:0",
+        "reason": "Sanitized structural mapping; no scientific judgment.",
+        "replacement_indexes": [
+          30
+        ]
+      },
+      {
+        "unit_id": "writer:open_problems:3:0",
+        "reason": "Sanitized structural mapping; no scientific judgment.",
+        "replacement_indexes": [
+          31
+        ]
+      },
+      {
+        "unit_id": "writer:open_problems:4:0",
+        "reason": "Sanitized structural mapping; no scientific judgment.",
+        "replacement_indexes": [
+          32
+        ]
+      },
+      {
+        "unit_id": "writer:open_problems:5:0",
+        "reason": "Sanitized structural mapping; no scientific judgment.",
+        "replacement_indexes": [
+          33
+        ]
+      },
+      {
+        "unit_id": "writer:open_problems:6:0",
+        "reason": "Sanitized structural mapping; no scientific judgment.",
+        "replacement_indexes": [
+          34
+        ]
+      },
+      {
+        "unit_id": "writer:open_problems:7:0",
+        "reason": "Sanitized structural mapping; no scientific judgment.",
+        "replacement_indexes": [
+          35
+        ]
+      },
+      {
+        "unit_id": "writer:open_problems:8:0",
+        "reason": "Sanitized structural mapping; no scientific judgment.",
+        "replacement_indexes": [
+          36
+        ]
+      },
+      {
+        "unit_id": "writer:open_problems:9:0",
+        "reason": "Sanitized structural mapping; no scientific judgment.",
+        "replacement_indexes": [
+          37
+        ]
+      }
+    ]
+  },
+  "expected": {
+    "targets": 38,
+    "original_units": 48,
+    "edit_records": 48,
+    "replacement_units_per_target": 1,
+    "invalid_records": 47,
+    "first_invalid": {
+      "record_index": 1,
+      "unit_id": "writer:introduction:1:0",
+      "target_id": "r2",
+      "received_replacement_indexes": [
+        1
+      ],
+      "legal_indexes": [
+        0
+      ]
+    },
+    "guard_error": "writer_capacity_edit_position_invalid"
+  }
+}

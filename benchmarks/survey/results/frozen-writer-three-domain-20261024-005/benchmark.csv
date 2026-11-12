@@ -1,0 +1,4 @@
+case_id,run_id,status,generated,evaluation,publishable,supported,unsupported,unverified,requests,known_tokens,unknown_hold,elapsed_ms,report_sha256,failure_family,failure_code,evaluation_reason,expected_assertions,processed_assertions,underlying_phase,underlying_reason,reviewer_reservation,reviewer_context_limit,reviewer_request_sent
+few-shot-metric,frozen-writer-three-domain-20261024-005-few-shot-metric,blocked,True,not_complete,False,,,,6,76146,0,181064,,protocol,writer_final_output_unavailable,writer_final_output_unavailable,,,reviewer_preflight,evaluation_context_budget_exceeded,151731,117964,false
+vit-data-efficient,,not_run,False,not_run,False,,,,0,0,0,,,,not_started_after_stop,not_started_after_stop,,,,,,,
+nerf-foundations,,not_run,False,not_run,False,,,,0,0,0,,,,not_started_after_stop,not_started_after_stop,,,,,,,

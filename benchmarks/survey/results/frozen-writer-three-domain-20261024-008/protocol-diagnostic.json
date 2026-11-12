@@ -1,0 +1,48 @@
+{
+  "suite": "frozen-writer-three-domain-20261024-008",
+  "identity": "c2b4862ea3a191769ab5d6deb759a425b97277f64131ffc4cdfaf0be273f47be",
+  "source_commit": "edfbc13088d84d021268c27877f10f857132dc9a",
+  "failure_code": "writer_output_truncated",
+  "failed_stage": "body:taxonomy",
+  "calls": [
+    {
+      "call": "body:introduction",
+      "model": "doubao-seed-2-1-pro-260915",
+      "finish_reason": "stop",
+      "output_limit_parameter": "max_completion_tokens",
+      "maximum_completion_tokens": 20000,
+      "prompt_tokens": 9206,
+      "completion_tokens": 11652,
+      "returned_content_characters": 2568,
+      "returned_reasoning_characters": 12978,
+      "reasoning_tokens_persisted": false,
+      "elapsed_ms": 253541,
+      "response_sha256": "71a2d879b62bb4cb4580c6e0960cb508657027a6bc8d5b1e9e65093c9a2cb522"
+    },
+    {
+      "call": "body:taxonomy",
+      "model": "doubao-seed-2-1-pro-260915",
+      "finish_reason": "length",
+      "output_limit_parameter": "max_completion_tokens",
+      "maximum_completion_tokens": 20000,
+      "prompt_tokens": 10518,
+      "completion_tokens": 20000,
+      "returned_content_characters": 0,
+      "returned_reasoning_characters": 8956,
+      "reasoning_tokens_persisted": false,
+      "elapsed_ms": 260625,
+      "response_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "requests": 2,
+  "known_tokens": 51376,
+  "new_unknown_hold": 0,
+  "retries": 0,
+  "generated_final_report": false,
+  "reviewer_completed": false,
+  "evaluation_completed": false,
+  "strict_passed": 0,
+  "planned": 3,
+  "not_run": 2,
+  "note": "Reasoning character counts are not billing tokens; the original normalized usage omitted the optional reasoning-token breakdown. No final report or scientific score exists."
+}

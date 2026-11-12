@@ -1,0 +1,194 @@
+{
+  "source_run_id": "body-quality-paired-20261016-004-vit-baseline",
+  "source_units": [
+    {
+      "source_unit_id": "unit:0:34",
+      "scope_context": "# 视觉Transformer数据高效训练方法综述\n\n## 摘要\n\n",
+      "citation_aliases": [
+        "e1",
+        "e2",
+        "e3"
+      ],
+      "source_fragments": [
+        {
+          "source_fragment_id": "unit:0:34:fragment:0",
+          "text": "视觉Transformer（Vision Transformer, ViT）在计算机视觉任务中展现出优异性能，但其训练依赖大规模数据与计算资源，限制了在资源受限场景的应用，因此数据高效训练方法成为该领域的核心研究方向 [E:e1]。",
+          "citation_aliases": [
+            "e1"
+          ]
+        },
+        {
+          "source_fragment_id": "unit:0:34:fragment:1",
+          "text": "Kronecker Adaptation（KAdaptation）是一种参数高效的模型适配方法，通过选择子模块并将其投影到子空间进行分解，在准确率与参数效率的权衡中表现最优 [E:e2]。",
+          "citation_aliases": [
+            "e2"
+          ]
+        },
+        {
+          "source_fragment_id": "unit:0:34:fragment:2",
+          "text": "Hint-Aug方法在Pet数据集上，使用50%更少的训练数据时，准确率比当前最优数据增强方法高出2.22%，验证了其在数据高效场景下的有效性 [E:e3]。",
+          "citation_aliases": [
+            "e3"
+          ]
+        }
+      ]
+    },
+    {
+      "source_unit_id": "unit:1:460",
+      "scope_context": "former, ViT）在计算机视觉任务中展现出优异性能，但其训练依赖大规模数据与计算资源，限制了在资源受限场景的应用，因此数据高效训练方法成为该领域的核心研究方向 [E:arxiv:2203.16329:abstract:claim:962805bb71de]。 Kronecker Adaptation（KAdaptation）是一种参数高效的模型适配方法，通过选择子模块并将其投影到子空间进行分解，在准确率与参数效率的权衡中表现最优 [E:arxiv:2203.16329:abstract:claim:aa6b7e7ffcb8]。 Hint-Aug方法在Pet数据集上，使用50%更少的训练数据时，准确率比当前最优数据增强方法高出2.22%，验证了其在数据高效场景下的有效性 [E:arxiv:2304.12520:abstract:claim:eca2d6aa6c29]。\n\n## 引言\n\n",
+      "citation_aliases": [
+        "e1",
+        "e4"
+      ],
+      "source_fragments": [
+        {
+          "source_fragment_id": "unit:1:460:fragment:0",
+          "text": "视觉Transformer（Vision Transformer, ViT）在计算机视觉任务中展现出优异性能，但其训练依赖大规模数据与计算资源，限制了在资源受限场景的应用，因此数据高效训练方法成为该领域的核心研究方向 [E:e1]。",
+          "citation_aliases": [
+            "e1"
+          ]
+        },
+        {
+          "source_fragment_id": "unit:1:460:fragment:1",
+          "text": "传统视觉Transformer的训练通常需要在ImageNet等大规模数据集上进行，且依赖大量计算资源，导致其在数据量有限的场景下应用受限 [E:e4]。",
+          "citation_aliases": [
+            "e4"
+          ]
+        }
+      ]
+    },
+    {
+      "source_unit_id": "unit:2:777",
+      "scope_context": "高出2.22%，验证了其在数据高效场景下的有效性 [E:arxiv:2304.12520:abstract:claim:eca2d6aa6c29]。\n\n## 引言\n\n视觉Transformer（Vision Transformer, ViT）在计算机视觉任务中展现出优异性能，但其训练依赖大规模数据与计算资源，限制了在资源受限场景的应用，因此数据高效训练方法成为该领域的核心研究方向 [E:arxiv:2203.16329:abstract:claim:962805bb71de]。 传统视觉Transformer的训练通常需要在ImageNet等大规模数据集上进行，且依赖大量计算资源，导致其在数据量有限的场景下应用受限 [E:arxiv:2012.12877:section:abstract:0:02f08a3062e5:claim:9314af6914fc]。\n\n## 基础概念与方法分类\n\n",
+      "citation_aliases": [
+        "e5",
+        "e6"
+      ],
+      "source_fragments": [
+        {
+          "source_fragment_id": "unit:2:777:fragment:0",
+          "text": "视觉Transformer的数据高效训练方法可分为知识蒸馏、参数高效微调、数据增强等类别，其中数据自由知识蒸馏是一种无需额外训练数据即可提升模型效率的有效方法 [E:e5]。",
+          "citation_aliases": [
+            "e5"
+          ]
+        },
+        {
+          "source_fragment_id": "unit:2:777:fragment:1",
+          "text": "多焦点注意力偏差方法通过约束视觉Transformer的自注意力机制，使其具备多尺度局部感受野，从而降低模型对训练数据量的需求 [E:e6]。",
+          "citation_aliases": [
+            "e6"
+          ]
+        }
+      ]
+    },
+    {
+      "source_unit_id": "unit:3:1034",
+      "scope_context": "的训练通常需要在ImageNet等大规模数据集上进行，且依赖大量计算资源，导致其在数据量有限的场景下应用受限 [E:arxiv:2012.12877:section:abstract:0:02f08a3062e5:claim:9314af6914fc]。\n\n## 基础概念与方法分类\n\n视觉Transformer的数据高效训练方法可分为知识蒸馏、参数高效微调、数据增强等类别，其中数据自由知识蒸馏是一种无需额外训练数据即可提升模型效率的有效方法 [E:arxiv:2408.05952:abstract:claim:e6fc19b60f3b]。 多焦点注意力偏差方法通过约束视觉Transformer的自注意力机制，使其具备多尺度局部感受野，从而降低模型对训练数据量的需求 [E:arxiv:2203.02358:abstract:claim:635ee9f11c53]。\n\n## 代表性方法分析\n\n",
+      "citation_aliases": [
+        "e2",
+        "e7"
+      ],
+      "source_fragments": [
+        {
+          "source_fragment_id": "unit:3:1034:fragment:0",
+          "text": "Kronecker Adaptation（KAdaptation）是一种参数高效的模型适配方法，通过选择子模块并将其投影到子空间进行分解，在准确率与参数效率的权衡中表现最优 [E:e2]。",
+          "citation_aliases": [
+            "e2"
+          ]
+        },
+        {
+          "source_fragment_id": "unit:3:1034:fragment:1",
+          "text": "基于预训练视觉基础模型的参数高效微调方法，通过整合冻结与参数高效适配的视觉编码器，可在数据有限的场景下提升模型性能 [E:e7]。",
+          "citation_aliases": [
+            "e7"
+          ]
+        }
+      ]
+    },
+    {
+      "source_unit_id": "unit:4:1294",
+      "scope_context": "fc19b60f3b]。 多焦点注意力偏差方法通过约束视觉Transformer的自注意力机制，使其具备多尺度局部感受野，从而降低模型对训练数据量的需求 [E:arxiv:2203.02358:abstract:claim:635ee9f11c53]。\n\n## 代表性方法分析\n\nKronecker Adaptation（KAdaptation）是一种参数高效的模型适配方法，通过选择子模块并将其投影到子空间进行分解，在准确率与参数效率的权衡中表现最优 [E:arxiv:2203.16329:abstract:claim:aa6b7e7ffcb8]。 基于预训练视觉基础模型的参数高效微调方法，通过整合冻结与参数高效适配的视觉编码器，可在数据有限的场景下提升模型性能 [E:arxiv:2610.08109:abstract:claim:593317f2de12]。\n\n## 综合比较与证据分析\n\n",
+      "citation_aliases": [
+        "e3",
+        "e8"
+      ],
+      "source_fragments": [
+        {
+          "source_fragment_id": "unit:4:1294:fragment:0",
+          "text": "Hint-Aug方法在Pet数据集上，使用50%更少的训练数据时，准确率比当前最优数据增强方法高出2.22%，验证了其在数据高效场景下的有效性 [E:e3]。",
+          "citation_aliases": [
+            "e3"
+          ]
+        },
+        {
+          "source_fragment_id": "unit:4:1294:fragment:1",
+          "text": "DeiT（Data-efficient image Transformers）在合理规模的数据集上训练时，其分类性能优于传统视觉Transformer，体现了数据高效训练的优势 [E:e8]。",
+          "citation_aliases": [
+            "e8"
+          ]
+        }
+      ]
+    },
+    {
+      "source_unit_id": "unit:5:1568",
+      "scope_context": "]。 基于预训练视觉基础模型的参数高效微调方法，通过整合冻结与参数高效适配的视觉编码器，可在数据有限的场景下提升模型性能 [E:arxiv:2610.08109:abstract:claim:593317f2de12]。\n\n## 综合比较与证据分析\n\nHint-Aug方法在Pet数据集上，使用50%更少的训练数据时，准确率比当前最优数据增强方法高出2.22%，验证了其在数据高效场景下的有效性 [E:arxiv:2304.12520:abstract:claim:eca2d6aa6c29]。 DeiT（Data-efficient image Transformers）在合理规模的数据集上训练时，其分类性能优于传统视觉Transformer，体现了数据高效训练的优势 [E:arxiv:2208.08166:abstract:claim:8af587d54c8b]。\n\n## 局限与开放问题\n\n",
+      "citation_aliases": [
+        "e9",
+        "e10"
+      ],
+      "source_fragments": [
+        {
+          "source_fragment_id": "unit:5:1568:fragment:0",
+          "text": "现有针对Transformer的核心集选择方法仅在特定场景下表现稳定，在无预训练或使用非自然图像（如医学图像）时，Transformer的性能可能弱于卷积神经网络 [E:e9]。",
+          "citation_aliases": [
+            "e9"
+          ]
+        },
+        {
+          "source_fragment_id": "unit:5:1568:fragment:1",
+          "text": "数据高效训练方法在跨领域、跨数据集的泛化性仍需进一步验证，尤其是在医学等数据获取成本较高的领域，相关研究仍存在不足 [E:e10]。",
+          "citation_aliases": [
+            "e10"
+          ]
+        }
+      ]
+    },
+    {
+      "source_unit_id": "unit:6:1816",
+      "scope_context": "DeiT（Data-efficient image Transformers）在合理规模的数据集上训练时，其分类性能优于传统视觉Transformer，体现了数据高效训练的优势 [E:arxiv:2208.08166:abstract:claim:8af587d54c8b]。\n\n## 局限与开放问题\n\n现有针对Transformer的核心集选择方法仅在特定场景下表现稳定，在无预训练或使用非自然图像（如医学图像）时，Transformer的性能可能弱于卷积神经网络 [E:arxiv:2303.02095:abstract:claim:ad8a2b304fa2]。 数据高效训练方法在跨领域、跨数据集的泛化性仍需进一步验证，尤其是在医学等数据获取成本较高的领域，相关研究仍存在不足 [E:arxiv:2506.08612:abstract:claim:95800934074d]。\n\n## 结论\n\n",
+      "citation_aliases": [
+        "e2",
+        "e3",
+        "e9"
+      ],
+      "source_fragments": [
+        {
+          "source_fragment_id": "unit:6:1816:fragment:0",
+          "text": "Kronecker Adaptation（KAdaptation）是一种参数高效的模型适配方法，通过选择子模块并将其投影到子空间进行分解，在准确率与参数效率的权衡中表现最优 [E:e2]。",
+          "citation_aliases": [
+            "e2"
+          ]
+        },
+        {
+          "source_fragment_id": "unit:6:1816:fragment:1",
+          "text": "Hint-Aug方法在Pet数据集上，使用50%更少的训练数据时，准确率比当前最优数据增强方法高出2.22%，验证了其在数据高效场景下的有效性 [E:e3]。",
+          "citation_aliases": [
+            "e3"
+          ]
+        },
+        {
+          "source_fragment_id": "unit:6:1816:fragment:2",
+          "text": "现有针对Transformer的核心集选择方法仅在特定场景下表现稳定，在无预训练或使用非自然图像（如医学图像）时，Transformer的性能可能弱于卷积神经网络 [E:e9]。",
+          "citation_aliases": [
+            "e9"
+          ]
+        }
+      ]
+    }
+  ],
+  "response": "{\"units\": {\"unit:0:34\": {\"unit:0:34:fragment:0\": {\"assertions\": [{\"kind\": \"scientific\", \"claim_text\": \"视觉Transformer在计算机视觉任务中展现出优异性能，但其训练依赖大规模数据与计算资源，限制了在资源受限场景的应用，因此数据高效训练方法成为该领域的核心研究方向\"}], \"exclusion_reason\": \"\"}, \"unit:0:34:fragment:1\": {\"assertions\": [{\"kind\": \"scientific\", \"claim_text\": \"Kronecker Adaptation是一种参数高效的模型适配方法，通过选择子模块并将其投影到子空间进行分解，在准确率与参数效率的权衡中表现最优\"}], \"exclusion_reason\": \"\"}, \"unit:0:34:fragment:2\": {\"assertions\": [{\"kind\": \"scientific\", \"claim_text\": \"Hint-Aug方法在Pet数据集上，使用50%更少的训练数据时，准确率比当前最优数据增强方法高出2.22%，验证了其在数据高效场景下的有效性\"}], \"exclusion_reason\": \"\"}}, \"unit:1:460\": {\"unit:1:460:fragment:0\": {\"assertions\": [{\"kind\": \"scientific\", \"claim_text\": \"视觉Transformer在计算机视觉任务中展现出优异性能，但其训练依赖大规模数据与计算资源，限制了在资源受限场景的应用，因此数据高效训练方法成为该领域的核心研究方向\"}], \"exclusion_reason\": \"\"}, \"unit:1:460:fragment:1\": {\"assertions\": [{\"kind\": \"scientific\", \"claim_text\": \"传统视觉Transformer的训练通常需要在ImageNet等大规模数据集上进行，且依赖大量计算资源，导致其在数据量有限的场景下应用受限\"}], \"exclusion_reason\": \"\"}}, \"unit:2:777\": {\"unit:2:777:fragment:0\": {\"assertions\": [{\"kind\": \"scientific\", \"claim_text\": \"视觉Transformer的数据高效训练方法可分为知识蒸馏、参数高效微调、数据增强等类别其中数据自由知识蒸馏是一种无需额外训练数据即可提升模型效率的有效方法\"}], \"exclusion_reason\": \"\"}, \"unit:2:777:fragment:1\": {\"assertions\": [{\"kind\": \"scientific\", \"claim_text\"                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              ",
+  "finish_reason": "",
+  "completion_tokens": 1033,
+  "max_tokens": 16384,
+  "raw_event_sha256": "14533fbdb20dd40d45f2311b0cf0588d9322dbc34c395e22f602729276044d40"
+}

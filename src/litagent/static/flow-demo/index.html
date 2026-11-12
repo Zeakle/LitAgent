@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>LitAgent Research Workbench</title>
+  <link rel="stylesheet" href="/static/flow-demo/styles.css?v=15.10.6.409-loops">
+</head>
+<body>
+  <div class="app-shell">
+    <aside id="run-sidebar" class="run-sidebar" aria-label="Run history">
+      <div class="brand-block"><span class="brand-mark" aria-hidden="true">LA</span><div><strong>LitAgent</strong><small>Research Workbench</small></div></div>
+      <button id="open-new-run" class="new-run-button" type="button"><span aria-hidden="true">＋</span><span data-i18n="newResearch">新建研究</span></button>
+      <label class="history-search"><span class="sr-only" data-i18n="searchRuns">搜索运行</span><span aria-hidden="true">⌕</span><input id="run-search" type="search" data-i18n-placeholder="searchRuns" placeholder="搜索运行"></label>
+      <div class="sidebar-heading"><span data-i18n="runs">运行历史</span><output id="run-count">0</output></div>
+      <button id="load-run-history" class="quiet-button" type="button" data-i18n="loadHistory">加载其他运行记录</button>
+      <div id="run-list" class="run-list"></div>
+      <div class="sidebar-footer"><span id="runtime-mode" class="runtime-mode">offline</span><a href="/presentation" class="quiet-button" target="_blank" rel="noopener">Benchmark / 演示</a><button id="locale-toggle" class="quiet-button" type="button" aria-label="Switch UI language">EN</button></div>
+    </aside>
+
+    <main class="workspace">
+      <header class="command-bar">
+        <button id="sidebar-toggle" class="icon-command mobile-only" type="button" aria-label="Open run history" aria-controls="run-sidebar" aria-expanded="false">☰</button>
+        <button id="history-collapse" class="icon-command desktop-only" type="button" title="Toggle run history" aria-label="Toggle run history">☷</button>
+        <div class="run-heading"><p id="run-source-label" class="run-kicker">LITAGENT</p><h1 id="run-query" data-i18n="noRun">选择一条运行查看结果</h1></div>
+        <div class="command-actions">
+          <a id="trace-link" class="quiet-button" href="#" target="_blank" rel="noopener noreferrer" hidden data-i18n="trace">打开 Trace</a>
+          <button id="download-artifact" class="quiet-button" type="button" hidden data-i18n="download">下载 Artifact</button>
+          <button id="cancel-run" class="danger-button" type="button" hidden data-i18n="cancel">取消运行</button>
+          <label class="version-control" hidden><span class="sr-only">Report version</span><select id="version-select" aria-label="Report version"></select></label>
+          <label id="citation-control" class="citation-control" hidden><span data-i18n="citationStyle">引用与参考文献样式</span><select id="export-style"><option value="ieee">IEEE</option><option value="apa7">APA 7</option><option value="gbt7714_2025_numeric">GB/T 7714-2025 · [1]</option><option value="gbt7714_2025_author_date" data-i18n="gbtAuthorDate">GB/T 7714-2025 · 著者—出版年</option><option value="numbered" data-i18n="numberedCitations">简单编号</option><option value="evidence" data-i18n="evidenceCitations">原始证据</option></select></label>
+          <div id="export-menu" class="export-menu" hidden><button class="quiet-button" type="button" data-i18n="export">导出</button><div class="export-options"><span class="export-group" data-i18n="reportFiles">报告文件</span><button type="button" data-format="md">Markdown</button><button type="button" data-format="pdf">PDF</button><button type="button" data-format="docx">Word</button><span class="export-group" data-i18n="bibliographyFiles">文献数据</span><button type="button" data-bibliography="bibtex">BibTeX</button><button type="button" data-bibliography="ris">RIS</button><button type="button" data-bibliography="csl_json">CSL JSON</button></div></div>
+        </div>
+      </header>
+
+      <section id="run-summary" class="run-summary" aria-label="Run summary">
+        <span><small data-i18n="executionStatus">执行状态</small><strong id="summary-status">—</strong></span>
+        <span><small data-i18n="delivery">交付</small><strong id="summary-delivery">—</strong></span>
+        <span><small data-i18n="quality">质量</small><strong id="summary-quality">—</strong></span>
+        <span><small data-i18n="tokens">Tokens</small><strong id="summary-tokens">—</strong></span>
+        <span><small data-i18n="elapsed">耗时</small><strong id="summary-elapsed">—</strong></span>
+        <span><small>Run ID</small><strong id="summary-run-id">—</strong></span>
+      </section>
+      <p id="format-warning" class="format-warning" role="status" hidden></p>
+      <div id="notice" class="notice" role="status" hidden></div>
+
+      <nav class="section-tabs" aria-label="Workbench sections">
+        <button type="button" data-section="report" aria-current="page" data-i18n="report">报告</button>
+        <button type="button" data-section="execution" data-i18n="execution">执行</button>
+        <button id="review-tab" type="button" data-section="review" data-i18n="review">人工审核</button>
+        <button type="button" data-section="evidence" data-i18n="evidence">证据</button>
+        <button type="button" data-section="quality" data-i18n="quality">质量</button>
+        <button type="button" data-section="benchmark" data-i18n="benchmark">Benchmark</button>
+      </nav>
+
+      <div class="section-stage">
+        <section id="section-benchmark" class="workbench-section benchmark-section" hidden>
+          <header class="benchmark-heading"><div><span class="section-eyebrow">BENCHMARK</span><h2 data-i18n="benchmarkResults">Survey 基准结果</h2></div><button id="benchmark-refresh" class="quiet-button" type="button" data-i18n="refresh">刷新</button></header>
+          <p><a href="/static/presentation/frozen-repair-377-380.html" data-i18n="benchmarkFrozenRepair">真实修订案例 · 377 → 380</a></p>
+          <div class="benchmark-layout"><aside class="benchmark-list-pane"><h3 data-i18n="benchmarkArchives">结果归档</h3><div id="benchmark-list"></div></aside><div id="benchmark-detail" class="benchmark-detail" aria-live="polite"></div></div>
+        </section>
+        <section id="section-report" class="workbench-section report-section">
+          <aside class="report-outline-pane"><h2 data-i18n="outline">目录</h2><nav id="report-outline" class="report-outline" aria-label="Report outline"></nav></aside>
+          <div><article id="report-document" class="report-document" tabindex="-1"></article><section id="audit-panel" class="audit-panel" hidden><header><h2 id="audit-title">历史独立核验</h2></header><p id="audit-scope"></p><div id="audit-results" aria-live="polite"></div></section><small class="citation-attribution"><a href="https://citationstyles.org/" target="_blank" rel="noopener">citeproc-js implements the Citation Style Language</a> · © Frank Bennett</small></div>
+        </section>
+
+        <section id="section-execution" class="workbench-section execution-section" hidden>
+          <header class="execution-toolbar">
+            <div><span class="section-eyebrow">EXECUTION</span><h2 data-i18n="executionFlow">Agent 执行流程</h2></div>
+            <div id="execution-mode" class="segmented-control" role="group" aria-label="Execution view" data-i18n-label="executionView">
+              <button type="button" data-execution-mode="overview" aria-pressed="true" data-i18n="stageOverview">阶段总览</button>
+              <button type="button" data-execution-mode="dag" aria-pressed="false" data-i18n="taskDag">任务 DAG</button>
+              <button type="button" data-execution-mode="timeline" aria-pressed="false" data-i18n="callTimeline">调用时间轴</button>
+            </div>
+            <div id="graph-tools" class="graph-tools" hidden>
+              <button id="graph-zoom-out" class="icon-command" type="button" title="Zoom out" aria-label="Zoom out" data-i18n-label="zoomOut">−</button>
+              <output id="graph-scale" aria-live="polite">100%</output>
+              <button id="graph-zoom-in" class="icon-command" type="button" title="Zoom in" aria-label="Zoom in" data-i18n-label="zoomIn">＋</button>
+              <button id="graph-fit" class="icon-command" type="button" title="Fit graph" aria-label="Fit graph" data-i18n-label="fitGraph">⊙</button>
+              <button id="graph-focus" class="icon-command" type="button" title="Focus selected node" aria-label="Focus selected node" data-i18n-label="focusSelected">⌖</button>
+              <button id="graph-fullscreen" class="icon-command" type="button" title="Toggle full screen" aria-label="Toggle full screen" data-i18n-label="toggleFullscreen">⛶</button>
+            </div>
+            <label id="timeline-filter-control" class="timeline-filter-control" hidden><span class="sr-only" data-i18n="eventCategory">事件类别</span><select id="timeline-filter" aria-label="Timeline category" data-i18n-label="timelineCategory"><option value="all" data-i18n="allEvents">全部事件</option><option value="worker">Worker</option><option value="llm">LLM</option><option value="tool">Tool</option><option value="rag">RAG</option><option value="memory">Memory</option><option value="evaluation">Evaluation</option><option value="rewrite">Rewrite</option><option value="error">Error</option></select></label>
+          </header>
+          <div id="graph-diagnostic" class="graph-diagnostic" hidden></div>
+          <div class="execution-panels">
+            <div id="stage-overview" class="stage-overview"></div>
+            <div id="execution-graph" class="execution-graph" tabindex="0" aria-label="Agent task dependency graph" hidden></div>
+            <div id="execution-timeline" class="execution-timeline" hidden><div id="timeline" class="timeline"></div></div>
+          </div>
+        </section>
+
+        <section id="section-review" class="workbench-section review-section" hidden><header class="section-header"><div><span class="section-eyebrow">HUMAN-IN-THE-LOOP</span><h2 data-i18n="review">人工审核</h2></div><span id="review-stage"></span></header><div id="review-content" class="review-content"></div></section>
+        <section id="section-evidence" class="workbench-section evidence-section" hidden><header class="section-header"><div><span class="section-eyebrow">LEDGER</span><h2 data-i18n="evidence">证据</h2></div><output id="evidence-count">0</output></header><section id="search-records" class="search-records" aria-live="polite"></section><div id="evidence-list" class="evidence-list"></div></section>
+        <section id="section-quality" class="workbench-section quality-section" hidden><header class="section-header"><div><span class="section-eyebrow">EVALUATION</span><h2 data-i18n="quality">质量</h2></div></header><div id="quality-content" class="quality-content"></div></section>
+      </div>
+    </main>
+
+    <aside id="inspector-drawer" class="inspector-drawer" aria-label="Inspector" aria-hidden="true"><header><div><span class="section-eyebrow" data-i18n="inspect">检查详情</span><h2 id="inspector-title">—</h2></div><button id="close-inspector" class="icon-command" type="button" aria-label="Close inspector">×</button></header><div id="inspector-content" class="inspector-content"></div></aside>
+  </div>
+
+  <dialog id="new-run-dialog" class="new-run-dialog">
+    <form method="dialog" id="new-run-form">
+      <header><div><span class="section-eyebrow">NEW SURVEY</span><h2 data-i18n="newResearch">新建研究</h2></div><button id="dismiss-new-run" class="icon-command" type="button" aria-label="Close" data-i18n-label="close">×</button></header>
+      <label><span data-i18n="question">研究问题</span><textarea id="query-input" rows="5" maxlength="4000" required data-i18n-placeholder="queryPlaceholder"></textarea></label>
+      <div class="form-row"><label><span data-i18n="reviewStructure">综述结构</span><select id="review-structure"><option value="academic_v2" selected data-i18n="academicStructureV2">学术综述 · 检索记录附录（推荐）</option><option value="academic_v1" data-i18n="academicStructure">通用学术综述</option><option value="method_transparent_v1" data-i18n="methodStructure">方法透明综述</option></select></label><label><span data-i18n="citationStyle">引用与参考文献样式</span><select id="new-citation-style"><option value="ieee">IEEE</option><option value="apa7">APA 7</option><option value="gbt7714_2025_numeric">GB/T 7714-2025 · [1]</option><option value="gbt7714_2025_author_date" data-i18n="gbtAuthorDate">GB/T 7714-2025 · 著者—出版年</option><option value="numbered" data-i18n="numberedCitations">简单编号</option><option value="evidence" data-i18n="evidenceCitations">原始证据</option></select></label></div>
+      <p class="form-help" data-i18n="formatHelp">结构影响生成；引用样式可在生成后切换。方法透明结构不代表完整 PRISMA 合规。</p>
+      <fieldset id="optional-verification"><legend data-i18n="optionalVerification">可选复核</legend><label class="toggle-field"><input id="verification-jev" type="checkbox" checked><span data-i18n="optionalJev">Jev · 写作前提取核验</span></label></fieldset>
+      <p id="auto-audit-budget-note" class="form-help" aria-live="polite"></p>
+      <p id="auto-audit-capabilities" class="form-note" aria-live="polite" hidden></p>
+      <label><span data-i18n="qualityPolicy">质量策略</span><select id="quality-policy"><option value="strict_auto_v2" selected data-i18n="strictAutoExtraction">严格自动验收</option><option value="strict_v1" data-i18n="strictQuality">严格核验＋人工确认（推荐）</option><option value="legacy" data-i18n="legacyQuality">历史兼容策略</option></select></label>
+      <p id="body-analysis-help" class="form-help" data-i18n="bodyAnalysisHelp">正文围绕方法机制、实验条件、比较与局限展开；摘要和结论归纳正文已有发现。</p>
+      <p class="form-help" data-i18n="strictQualityHelp">严格策略要求所有科学断言获实际引用支持、核心问题覆盖完整，再由人工确认；证据或预算不足会保留未通过草稿。</p>
+      <div class="form-row"><label><span data-i18n="language">报告语言</span><select id="report-language"><option value="zh-CN">简体中文</option><option value="en">English</option></select></label><label class="toggle-field"><input id="human-review" type="checkbox" disabled><span data-i18n="humanReview">人工审核</span></label></div>
+      <p id="live-warning" class="form-note"></p>
+      <footer><button class="quiet-button" value="cancel" type="button" id="close-new-run" data-i18n="cancelDialog">取消</button><button class="primary-command" value="default" type="submit" data-i18n="start">开始运行</button></footer>
+    </form>
+  </dialog>
+  <div id="sidebar-scrim" class="sidebar-scrim" hidden></div>
+  <script type="module" src="/static/flow-demo/app.js?v=15.10.6.409-loops"></script>
+</body>
+</html>

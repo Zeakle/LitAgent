@@ -1,0 +1,85 @@
+{
+  "run_id": "flat-body-protocol-20261021-001",
+  "source_commit": "3f84492c9b257926470da006e982745eca60e87f",
+  "binding": "08386f0aad55de12041eba7493bca82787200a0372976009442ce1277102ac4d",
+  "contract": "native-body-summary-v2",
+  "parent_archive_sha256": "00cd4968220fc2608d2a52edf0abf77bf99232b0ddecd2f47c04c16b1d596730",
+  "raw_response_sha256": "216e398a608fc3d6fd7411dcf1e4347f8e6a518d5c357d34a60bca534ebe29a5",
+  "raw_json_valid": true,
+  "native_schema_passed": false,
+  "identified_schema_errors": 7,
+  "outside_section_cards": 6,
+  "unknown_card_ids": 1,
+  "diagnostics": [
+    {
+      "path": "introduction.0.fact_card_ids.0",
+      "reason": "card_outside_section",
+      "rejected_card_id": "f:be2e7480445ad4d78b0b5eb4"
+    },
+    {
+      "path": "taxonomy.0.fact_card_ids.0",
+      "reason": "unknown_card_id",
+      "rejected_card_id": "f:a9fc76f17091498e39100a53afd"
+    },
+    {
+      "path": "methods.1.fact_card_ids.0",
+      "reason": "card_outside_section",
+      "rejected_card_id": "f:5f30847627a87481a58405c1"
+    },
+    {
+      "path": "methods.5.fact_card_ids.0",
+      "reason": "card_outside_section",
+      "rejected_card_id": "f:3afe8643f47b44a70d6916f1"
+    },
+    {
+      "path": "methods.6.fact_card_ids.0",
+      "reason": "card_outside_section",
+      "rejected_card_id": "f:7de78f7fac23b4e75b21134c"
+    },
+    {
+      "path": "methods.7.fact_card_ids.0",
+      "reason": "card_outside_section",
+      "rejected_card_id": "f:a5a5b8be56235ce1cdea7b6d"
+    },
+    {
+      "path": "open_problems.2.fact_card_ids.0",
+      "reason": "card_outside_section",
+      "rejected_card_id": "f:0325115a52ea86b0c42d8acb"
+    }
+  ],
+  "summary_request_sent": false,
+  "local_report_compile": "not_run",
+  "evaluation": "not_run",
+  "scientific_verdict": "not_evaluated",
+  "publishable": false,
+  "model": "doubao-seed-2-1-pro-260915",
+  "prompt_tokens": 24382,
+  "completion_tokens": 3848,
+  "total_tokens": 28230,
+  "requests": 1,
+  "usage_complete": true,
+  "finish_reason": "stop",
+  "new_allowance": {
+    "tokens": 120000,
+    "requests": 2,
+    "retries": 0
+  },
+  "parent_plus_probe": {
+    "tokens": 154253,
+    "requests": 28
+  },
+  "cumulative": {
+    "initial_generation_rounds": 31,
+    "model_requests": 610,
+    "model_known_tokens": 3252174,
+    "model_unknown_conservative_tokens": 1003467,
+    "jev_requests": 67,
+    "jev_conservative_input_tokens": 756769,
+    "judge_requests": 0,
+    "jev_usage_complete": false
+  },
+  "human_calibration": "unverified",
+  "interpretation": "One observed JSON success is not a complete protocol or scientific pass.",
+  "trace_lifecycle_complete": false,
+  "trace_generation_tokens": 28230
+}

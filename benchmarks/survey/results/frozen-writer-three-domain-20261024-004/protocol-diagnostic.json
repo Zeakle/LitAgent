@@ -1,0 +1,20 @@
+{
+  "source_commit": "6be1eeb6ebd42e91f4a6a643c3d626dc191d1a61",
+  "source_files_unchanged": 467,
+  "exports_same_data": true,
+  "run": 1,
+  "not_run": 2,
+  "passed": 0,
+  "requests": 1,
+  "known_tokens": 13179,
+  "unknown_hold": 0,
+  "raw_characters": 4913,
+  "raw_sha256": "fa4b2ecdb5f4b4ba39486366d14b44c4c7b42a496ecfb0e1f18bdebf37bbc4cd",
+  "finish_reason": "stop",
+  "trace_generations": 1,
+  "generation_scientific_io_empty": true,
+  "full_trace_tree_verified": false,
+  "cumulative_model_requests": 732,
+  "cumulative_known_tokens": 3956467,
+  "historical_unknown_unchanged": 1030414
+}

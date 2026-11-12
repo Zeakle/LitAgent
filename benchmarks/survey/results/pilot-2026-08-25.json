@@ -1,0 +1,102 @@
+{
+  "schema_version": 1,
+  "result_kind": "sanitized_live_pilot_summary",
+  "date": "2026-08-25",
+  "source_git_sha": "c49f549",
+  "status": "partial",
+  "stage": "pilot",
+  "formal_eligible": false,
+  "generation_model": "deepseek-v4-flash",
+  "judge_model": "deepseek-v4-flash",
+  "self_judged": true,
+  "judge_thinking_enabled": false,
+  "judgment_status": "owner_approved_ai_assisted",
+  "case_ids": [
+    "few-shot-metric",
+    "vit-foundations",
+    "nerf-foundations"
+  ],
+  "profile_ids": [
+    "external-only",
+    "external-abstract",
+    "external-fulltext"
+  ],
+  "run_count": 9,
+  "completed_observation_count": 9,
+  "partial_observation_count": 1,
+  "completed_judge_count": 9,
+  "verified_run_artifact_count": 9,
+  "verified_langfuse_trace_count": 18,
+  "comparable_profile_pair_count": 0,
+  "product_tokens": 1856260,
+  "judge_tokens": 105126,
+  "total_tokens": 1961386,
+  "summed_elapsed_ms": 4585233,
+  "runtime_evaluation": {
+    "faithfulness_skipped_count": 9,
+    "ragas_incomplete_output_count": 8,
+    "missing_evidence_context_count": 1,
+    "citation_evaluator_parse_failure_count": 2
+  },
+  "profiles": [
+    {
+      "profile_id": "external-only",
+      "case_count": 3,
+      "evidence_coverage": 0.0,
+      "citation_recall": 0.0,
+      "citation_precision": null,
+      "judge_faithfulness": 1.0,
+      "judge_topic_coverage": 0.3333333333333333,
+      "delivery_accuracy": 1.0,
+      "delivery_distribution": {
+        "needs_review": 3
+      },
+      "product_tokens": 652282,
+      "judge_tokens": 37584,
+      "latency_p95_ms": 591951.3
+    },
+    {
+      "profile_id": "external-abstract",
+      "case_count": 3,
+      "evidence_coverage": 0.6666666666666666,
+      "citation_recall": 0.0,
+      "citation_precision": null,
+      "judge_faithfulness": 1.0,
+      "judge_topic_coverage": 0.3333333333333333,
+      "delivery_accuracy": 1.0,
+      "delivery_distribution": {
+        "needs_review": 3
+      },
+      "product_tokens": 655565,
+      "judge_tokens": 38328,
+      "latency_p95_ms": 620462.8
+    },
+    {
+      "profile_id": "external-fulltext",
+      "case_count": 3,
+      "evidence_coverage": 0.3333333333333333,
+      "citation_recall": 0.0,
+      "citation_precision": null,
+      "judge_faithfulness": 1.0,
+      "judge_topic_coverage": 0.0,
+      "delivery_accuracy": 0.6666666666666666,
+      "delivery_distribution": {
+        "needs_review": 2,
+        "partial": 1
+      },
+      "product_tokens": 548413,
+      "judge_tokens": 29214,
+      "latency_p95_ms": 544898.9,
+      "caveat": "The lower token total includes one early synthesis failure and is not an efficiency gain."
+    }
+  ],
+  "reason_codes": [
+    "non_comparable_external_inputs",
+    "self_judged",
+    "owner_approved_ai_assisted_ground_truth",
+    "pilot_small_sample_no_repetitions",
+    "partial_fulltext_observation",
+    "runtime_evaluation_incomplete"
+  ],
+  "conclusion": "The pilot validates persistence and observability but does not establish a winning RAG profile or a formal quality baseline."
+}

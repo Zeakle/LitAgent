@@ -1,0 +1,29 @@
+# 三域冻结正文验收
+
+计划3题，运行1题，生成0题，Evaluation完成0题，严格交付0/3。状态：stopped。
+
+源码 `6be1eeb6ebd42e91f4a6a643c3d626dc191d1a61`，协议 `grounded-writer-v1`；Lite审阅/评估，Pro写作，Judge/Jev关闭。固定证据到交付，不包含新检索或提取，不是端到端检索Benchmark。人工校准未验证，不报告科学准确率。
+
+|题目|生成|Evaluation|严格交付|支持/不支持/未核验|原因|
+|---|---|---|---|---|---|
+|few-shot-metric|No|not_complete|No|—/—/—|writer_json_invalid|
+|vit-data-efficient|No|not_run|No|—/—/—|not_started_after_stop|
+|nerf-foundations|No|not_run|No|—/—/—|not_started_after_stop|
+
+新增已知用量13179 tokens，未知保守占用0，1请求。历史用量独立保留，不重复计算提取费用。失败和未运行题不移出分母，不追加到通过。
+
+[JSON](benchmark.json) · [CSV](benchmark.csv) · [HTML](benchmark.html)
+
+## 协议诊断与解释边界
+
+固定源码 `6be1eeb`，`grounded-writer-execution-v5` / `grounded-writer-content-v1`，首个 Pro 请求已用 `json_schema`、`strict=true`、thinking disabled、20,000 输出上限、零重试。响应 `finish_reason=stop`，实际 10,799 输入＋2,380 输出＝13,179 tokens；原文 4,913 字符，在 offset 4,913／column 4,914 拒绝。
+
+原始响应 SHA：`fa4b2ecdb5f4b4ba39486366d14b44c4c7b42a496ecfb0e1f18bdebf37bbc4cd`。词法只读检查发现 taxonomy 在 offset 523 已嵌入 introduction 容器，后续章节也未保持 root sibling；不能把末尾位置解释为只缺几个括号，也不能通过补括号接受。未修改或公开原始科学内容。
+
+这次没有可用最终科学正文；生成、Reviewer、Evaluation 和修复均未完成，不计算科学支持率。ViT／NeRF 未请求，仍保留在三题计划分母。共享内容约束的真实质量效果本次无法判断，不能从一次协议失败推导模型科学能力低。
+
+供应商的[结构化输出 beta 官方说明](https://docs.volcengine.com/docs/ark/structured-output-beta?lang=zh)要求使用受支持 schema，并提醒复杂任务仍可能输出错误。该说明不证明本次具体远端根因。既有单次原包观察曾排除该响应的 SDK 内容改写；本次普通请求没有另存 HTTP 原包，不能将旧结论泛化到本次。
+
+467 份执行源码副本、12 个当前保护路径及旧账本不变；四格式同源核对通过。LangFuse 读回 1 个 generation、13,179 tokens，模型科学 I/O 为空；不声称完整 trace 树已核验。
+
+新增1请求后累计732模型请求／3,956,467已知tokens，历史未知用量保守占用1,030,414继续单列；历史Jev67请求、Judge0，本轮未调用两者。本次终态不重启、不在组内改源码，也不追加样本直到通过。Phase14.5保持in_progress。

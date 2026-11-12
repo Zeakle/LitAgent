@@ -1,0 +1,68 @@
+{
+  "identity": "a9b8527024b7d31591d4c7f6b36b7fd9ba83e489a5a53ec1c68e596c991c8452",
+  "status": "blocked",
+  "failure": {
+    "family": "protocol",
+    "code": "writer_json_invalid"
+  },
+  "known_tokens": 12537,
+  "requests": 1,
+  "unknown_hold": 0,
+  "usage_complete": true,
+  "elapsed_ms": 69221,
+  "trace_url": "http://localhost:3000/project/litagent-local-project/traces/6f20e8fe5be71d3af9d8d77cc98ffec5",
+  "raw_sha256": "0c126776cfa94127ce595b8eeae931153124f27a59b9697aa96c9937da9d41c9",
+  "finish_reason": "stop",
+  "provider_schema_contract": "ark-structured-schema-v1",
+  "source_commit": "9c95e52fe3c0b5680e0f9c6450d6957230106a5b",
+  "changed_request_fields": [
+    "response_format.json_schema.schema"
+  ],
+  "limits": {
+    "tokens": 120000,
+    "requests": 1,
+    "output_tokens": 20000,
+    "retries": 0
+  },
+  "input_binding_sha256": "1fbe8e4fe0901f048a7311a3a51f36be0a8ae98c0e7ba1dc1e3dc9766225c53c",
+  "evaluation": "not_run",
+  "publishable": false,
+  "scientific_score": null,
+  "judge": "disabled",
+  "jev": "disabled",
+  "verification": {
+    "http_status": 200,
+    "wire_content_matches_sdk": true,
+    "request_matches_frozen": true,
+    "only_schema_changed": true,
+    "local_schema_unchanged": true,
+    "raw_characters": 5759,
+    "history_requests": 726,
+    "history_known_tokens": 3841217,
+    "cumulative_requests": 727,
+    "cumulative_known_tokens": 3853754,
+    "historical_unknown": 1030414,
+    "frozen_sources_unchanged": 463,
+    "protected_files_unchanged": 7,
+    "trace": {
+      "generation_count": 1,
+      "known_tokens": 12537,
+      "generation_io_empty": true,
+      "full_raw_and_messages_absent": true,
+      "full_trace_tree_verified": false
+    }
+  },
+  "kind": "protocol_observation",
+  "model": "doubao-seed-2-1-pro-260915",
+  "offline": {
+    "passed": 4211,
+    "deselected": 25,
+    "warnings": 8
+  },
+  "reservation_tokens": 56457,
+  "parse_error": {
+    "offset": 5759,
+    "line": 1,
+    "column": 5760
+  }
+}

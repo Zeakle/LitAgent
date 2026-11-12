@@ -1,0 +1,22 @@
+check,status,paths
+body_json,passed,
+body_schema,passed,
+summaries_json,not_run,
+summaries_schema,not_run,
+body_host_validation,failed,
+full_local_compile,not_run,
+evaluation,not_run,
+scientific_acceptance,not_evaluated,
+delivery,blocked,
+host_diagnostic,failed,strict_writing_scope_notice_invalid; sections.introduction.first_block.additional_sentences.3
+host_diagnostic,failed,strict_writing_scope_notice_invalid; sections.introduction.first_block.additional_sentences.4
+host_diagnostic,failed,strict_writing_unit_citation_scope_ambiguous; sections.taxonomy.first_block.first_sentence
+host_diagnostic,failed,strict_writing_scope_notice_invalid; sections.taxonomy.first_block.additional_sentences.6
+host_diagnostic,failed,strict_writing_passage_binding_invalid; sections.methods.first_block.additional_sentences.3
+host_diagnostic,failed,strict_writing_passage_binding_invalid; sections.methods.first_block.additional_sentences.4
+host_diagnostic,failed,strict_writing_passage_binding_invalid; sections.methods.first_block.additional_sentences.5
+host_diagnostic,failed,strict_writing_unit_citation_scope_ambiguous; sections.methods.first_block.additional_sentences.7
+host_diagnostic,failed,strict_writing_unit_citation_scope_ambiguous; sections.experiments.first_block.additional_sentences.4
+host_diagnostic,failed,strict_writing_unit_citation_scope_ambiguous; sections.experiments.first_block.additional_sentences.5
+host_diagnostic,failed,strict_writing_scope_notice_invalid; sections.experiments.first_block.additional_sentences.8
+host_diagnostic,failed,strict_writing_scope_notice_invalid; sections.open_problems.first_block.additional_sentences.6

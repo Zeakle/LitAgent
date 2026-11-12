@@ -1,0 +1,75 @@
+{
+  "origin": "frozen-writer-three-domain-20261105-063",
+  "report_sha256": "61b130c8f06f6da2d6a1f4dd45eec93d52f7201cd861011c2fe782502c5c4570",
+  "scientific_gold_standard": false,
+  "decisions": [
+    {
+      "claim_id": "claim_117",
+      "correct_kind": "scientific",
+      "atomic": true,
+      "classification_valid": true,
+      "source_faithful": true,
+      "status": "supported",
+      "reason_code": "supported",
+      "explanation": "The assertion faithfully extracts the study description from fragment f3: large-scale transfer-learning evidence comes from applying the established Meta-Dataset few-shot evaluation protocol to large-scale, high-capacity transfer learners.",
+      "support_basis": [
+        {
+          "support_id": "e16:full_original"
+        }
+      ],
+      "aspect_checks": [
+        {
+          "aspect": "predicate",
+          "supported": true,
+          "support_ids": [
+            "e16:full_original"
+          ],
+          "explanation": "p10 explicitly states that the work applies an established few-shot classification evaluation protocol, Meta-Dataset, to large-scale transfer learners in terms of both data and capacity."
+        },
+        {
+          "aspect": "conditions",
+          "supported": true,
+          "support_ids": [
+            "e16:full_original",
+            "e18:full_original"
+          ],
+          "explanation": "p10 establishes the Meta-Dataset protocol and large-scale transfer learners; p12 establishes the transfer-learning setup of upstream pretraining followed by downstream fine-tuning."
+        }
+      ]
+    },
+    {
+      "claim_id": "claim_118",
+      "correct_kind": "scientific",
+      "atomic": true,
+      "classification_valid": true,
+      "source_faithful": true,
+      "status": "supported",
+      "reason_code": "supported",
+      "explanation": "The assertion faithfully extracts the study's findings from fragment f3: well-tuned transfer-learning baselines can compete with more complex few-shot classification methods, and the evaluation reveals limitations of episodic approaches as well as where transfer learning falls short.",
+      "support_basis": [
+        {
+          "support_id": "e16:full_original"
+        }
+      ],
+      "aspect_checks": [
+        {
+          "aspect": "predicate",
+          "supported": true,
+          "support_ids": [
+            "e16:full_original"
+          ],
+          "explanation": "p10 states that well-tuned transfer-learning baselines are competitive with more complex few-shot classification approaches, and that applying Meta-Dataset highlights limitations of episodic approaches and reveals where transfer learning falls short."
+        },
+        {
+          "aspect": "conditions",
+          "supported": true,
+          "support_ids": [
+            "e16:full_original",
+            "e18:full_original"
+          ],
+          "explanation": "The cited passages establish the Meta-Dataset evaluation context and the transfer-learning setup of upstream pretraining and downstream tasks, under which these findings are reported."
+        }
+      ]
+    }
+  ]
+}

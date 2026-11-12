@@ -1,0 +1,1285 @@
+{
+  "source_report_sha256": "6ca325ac65fbe2a85caf45330755a94aef63f2acfd4afec888cb8871d7eca5db",
+  "scope": "Public-paper original text and offline diagnostics; not a manual gold standard.",
+  "cases": [
+    {
+      "claim_id": "claim_0",
+      "claim_text": "少样本图像分类的度量学习方法可按其改造查询—支持比较链路的位置区分：深度K-tuplet、Proto-Triplet与ICNN主要约束嵌入空间，SRL把向量原型扩展为子空间，关系网络和不确定性框架改造比较或相似性建模，MSENet则联合多层特征、自注意力与阶段权重。",
+      "source_quote": "少样本图像分类的度量学习方法可按其改造查询—支持比较链路的位置区分：深度K-tuplet、Proto-Triplet与ICNN主要约束嵌入空间，SRL把向量原型扩展为子空间，关系网络和不确定性框架改造比较或相似性建模，MSENet则联合多层特征、自注意力与阶段权重。现有摘要证据显示，K-tuplet在miniImageNet报告优于其他度量方法，并在miniImageNet训练后跨域测试于Caltech-101、CUB-200、Stanford Dogs和Stanford Cars；Proto-Triplet/ICNN在miniImageNet报告约2个百分点提升，并有CUB、Dogs、Cars等域的竞争力。 [E:arxiv:1907.03123:abstract:claim:5a36249bbf1e] [E:arxiv:1907.03123:abstract:claim:998fb93b2a24] [E:arxiv:2305.09062:abstract:claim:549b9167d596] [E:arxiv:2409.07989:abstract:claim:5ed923dac68f] [E:arxiv:2105.00379:abstract:claim:38498384e907] [E:arxiv:1802.04376:abstract:claim:50a611de7d64] [E:arxiv:2010.04525:abstract:claim:7178a9c4f03f] [E:arxiv:1907.03123:abstract:claim:b4d49aba47c5] [E:arxiv:2305.09062:abstract:claim:aaed703eb739]",
+      "source_start": 38,
+      "source_end": 787,
+      "evidence_ids": [
+        "arxiv:1907.03123:abstract:claim:5a36249bbf1e",
+        "arxiv:1907.03123:abstract:claim:998fb93b2a24",
+        "arxiv:2305.09062:abstract:claim:549b9167d596",
+        "arxiv:2409.07989:abstract:claim:5ed923dac68f",
+        "arxiv:2105.00379:abstract:claim:38498384e907",
+        "arxiv:1802.04376:abstract:claim:50a611de7d64",
+        "arxiv:2010.04525:abstract:claim:7178a9c4f03f",
+        "arxiv:1907.03123:abstract:claim:b4d49aba47c5",
+        "arxiv:2305.09062:abstract:claim:aaed703eb739"
+      ],
+      "local_error": "evaluation_atomic_classification_unverified",
+      "atomic": false,
+      "source_faithful": true,
+      "classification_valid": true,
+      "support_basis": [],
+      "aspect_checks": [
+        {
+          "aspect": "predicate",
+          "supported": false,
+          "support_ids": [],
+          "explanation": "The full multi-method classification predicate is not entailed by the cited materials; relation network and uncertainty framework characterizations lack supporting evidence."
+        },
+        {
+          "aspect": "conditions",
+          "supported": false,
+          "support_ids": [],
+          "explanation": "The combined condition set across all seven methods is not fully established by the cited evidence."
+        }
+      ]
+    },
+    {
+      "claim_id": "claim_2",
+      "claim_text": "现有摘要证据显示，Proto-Triplet/ICNN在miniImageNet报告约2个百分点提升，并有CUB、Dogs、Cars等域的竞争力。",
+      "source_quote": "少样本图像分类的度量学习方法可按其改造查询—支持比较链路的位置区分：深度K-tuplet、Proto-Triplet与ICNN主要约束嵌入空间，SRL把向量原型扩展为子空间，关系网络和不确定性框架改造比较或相似性建模，MSENet则联合多层特征、自注意力与阶段权重。现有摘要证据显示，K-tuplet在miniImageNet报告优于其他度量方法，并在miniImageNet训练后跨域测试于Caltech-101、CUB-200、Stanford Dogs和Stanford Cars；Proto-Triplet/ICNN在miniImageNet报告约2个百分点提升，并有CUB、Dogs、Cars等域的竞争力。 [E:arxiv:1907.03123:abstract:claim:5a36249bbf1e] [E:arxiv:1907.03123:abstract:claim:998fb93b2a24] [E:arxiv:2305.09062:abstract:claim:549b9167d596] [E:arxiv:2409.07989:abstract:claim:5ed923dac68f] [E:arxiv:2105.00379:abstract:claim:38498384e907] [E:arxiv:1802.04376:abstract:claim:50a611de7d64] [E:arxiv:2010.04525:abstract:claim:7178a9c4f03f] [E:arxiv:1907.03123:abstract:claim:b4d49aba47c5] [E:arxiv:2305.09062:abstract:claim:aaed703eb739]",
+      "source_start": 38,
+      "source_end": 787,
+      "evidence_ids": [
+        "arxiv:1907.03123:abstract:claim:5a36249bbf1e",
+        "arxiv:1907.03123:abstract:claim:998fb93b2a24",
+        "arxiv:2305.09062:abstract:claim:549b9167d596",
+        "arxiv:2409.07989:abstract:claim:5ed923dac68f",
+        "arxiv:2105.00379:abstract:claim:38498384e907",
+        "arxiv:1802.04376:abstract:claim:50a611de7d64",
+        "arxiv:2010.04525:abstract:claim:7178a9c4f03f",
+        "arxiv:1907.03123:abstract:claim:b4d49aba47c5",
+        "arxiv:2305.09062:abstract:claim:aaed703eb739"
+      ],
+      "local_error": "support_entity_unverified",
+      "atomic": true,
+      "source_faithful": true,
+      "classification_valid": true,
+      "support_basis": [
+        {
+          "support_id": "e3:full_original"
+        }
+      ],
+      "aspect_checks": [
+        {
+          "aspect": "predicate",
+          "supported": true,
+          "support_ids": [
+            "e3:full_original"
+          ],
+          "explanation": "The paper states the proposed losses improve miniImageNet accuracy over other metric-based few-shot methods."
+        },
+        {
+          "aspect": "conditions",
+          "supported": true,
+          "support_ids": [
+            "e3:full_original"
+          ],
+          "explanation": "The paper specifies competitive generalization to CUB, Dogs and Cars datasets."
+        },
+        {
+          "aspect": "quantities",
+          "supported": true,
+          "support_ids": [
+            "e3:full_original"
+          ],
+          "explanation": "The paper explicitly reports a 2% margin of improvement on miniImageNet."
+        }
+      ]
+    },
+    {
+      "claim_id": "claim_5",
+      "claim_text": "关系网络证据集中于CUB细粒度分类。",
+      "source_quote": "这些结果的解释必须绑定协议：MSENet覆盖miniImageNet、FC100的5-way 1-shot/5-shot和八个跨域基准，SRL覆盖MiniImageNet、TieredImageNet与CUB，关系网络证据集中于CUB细粒度分类；由于way/shot、骨干网络、上游数据、训练预算和具体数值不对齐，不能合并为单一总排名。 [E:arxiv:2409.07989:abstract:claim:5ed923dac68f] [E:arxiv:2105.00379:abstract:claim:38498384e907] [E:arxiv:2105.00379:abstract:claim:e2d40a72c0d6] [E:arxiv:1802.04376:abstract:claim:50a611de7d64] [E:arxiv:1907.03123:abstract:claim:998fb93b2a24] [E:arxiv:2305.09062:abstract:claim:549b9167d596] [E:arxiv:1907.03123:abstract:claim:b4d49aba47c5] [E:arxiv:2305.09062:abstract:claim:aaed703eb739] [E:arxiv:2104.02638:section:abstract:9:1354132472a1:claim:3fb7cfd2fbdb]",
+      "source_start": 789,
+      "source_end": 1421,
+      "evidence_ids": [
+        "arxiv:2409.07989:abstract:claim:5ed923dac68f",
+        "arxiv:2105.00379:abstract:claim:38498384e907",
+        "arxiv:2105.00379:abstract:claim:e2d40a72c0d6",
+        "arxiv:1802.04376:abstract:claim:50a611de7d64",
+        "arxiv:1907.03123:abstract:claim:998fb93b2a24",
+        "arxiv:2305.09062:abstract:claim:549b9167d596",
+        "arxiv:1907.03123:abstract:claim:b4d49aba47c5",
+        "arxiv:2305.09062:abstract:claim:aaed703eb739",
+        "arxiv:2104.02638:section:abstract:9:1354132472a1:claim:3fb7cfd2fbdb"
+      ],
+      "local_error": "support_entity_unverified",
+      "atomic": true,
+      "source_faithful": true,
+      "classification_valid": true,
+      "support_basis": [
+        {
+          "support_id": "e6:full_original"
+        }
+      ],
+      "aspect_checks": [
+        {
+          "aspect": "predicate",
+          "supported": true,
+          "support_ids": [
+            "e6:full_original"
+          ],
+          "explanation": "The cited paper's reported evidence is centered on CUB fine-grained classification."
+        },
+        {
+          "aspect": "conditions",
+          "supported": true,
+          "support_ids": [
+            "e6:full_original"
+          ],
+          "explanation": "The paper specifies the Caltech-UCSD birds fine-grained classification task as its reported evaluation setting."
+        }
+      ]
+    },
+    {
+      "claim_id": "claim_8",
+      "claim_text": "深度度量学习通过神经网络学习嵌入空间中的相似性或距离，使查询样本依据其与支持样本或类原型的关系完成分类，从而避免直接在少量样本上训练复杂分类器而导致过拟合。",
+      "source_quote": "少样本图像分类要解决的核心问题，是在每个新类别只有少量带标签样本的条件下识别未见过的视觉概念；深度度量学习通过神经网络学习嵌入空间中的相似性或距离，使查询样本依据其与支持样本或类原型的关系完成分类，从而避免直接在少量样本上训练复杂分类器而导致过拟合。 [E:arxiv:2105.08149:page:1:block:9:claim:7cf2d36a262c] [E:arxiv:2010.04525:abstract:claim:7178a9c4f03f]",
+      "source_start": 1430,
+      "source_end": 1659,
+      "evidence_ids": [
+        "arxiv:2105.08149:page:1:block:9:claim:7cf2d36a262c",
+        "arxiv:2010.04525:abstract:claim:7178a9c4f03f"
+      ],
+      "local_error": "support_basis_ownership_invalid",
+      "atomic": true,
+      "source_faithful": true,
+      "classification_valid": true,
+      "support_basis": [
+        {
+          "support_id": "e13:full_original"
+        }
+      ],
+      "aspect_checks": [
+        {
+          "aspect": "predicate",
+          "supported": true,
+          "support_ids": [
+            "e13:full_original"
+          ],
+          "explanation": "The cited review confirms deep metric learning uses neural-network-learned embedding similarity/distance for query classification."
+        },
+        {
+          "aspect": "conditions",
+          "supported": true,
+          "support_ids": [
+            "e13:full_original"
+          ],
+          "explanation": "The cited review specifies classification based on relation to support samples or prototypes in the embedding space."
+        },
+        {
+          "aspect": "causal_relation",
+          "supported": true,
+          "support_ids": [
+            "e13:full_original"
+          ],
+          "explanation": "The cited review states this approach avoids overfitting to few training images."
+        }
+      ]
+    },
+    {
+      "claim_id": "claim_16",
+      "claim_text": "另一类通过 Proto-Triplet Loss 与 ICNN loss 显式约束类内和类间距离，报告在 miniImageNet 上相对其他度量学习方法有约 2% 的准确率提升，并在 CUB、Dogs、Cars 等域上具有竞争力。",
+      "source_quote": "现有结果显示，改进嵌入空间仍是度量学习比较中的关键切入点：一类深度 K-tuplet 方法利用训练样本间关系进行 episodic 表示学习，并报告在 miniImageNet 上优于其他度量方法且能跨域迁移到 Caltech-101、CUB-200、Stanford Dogs 和 Stanford Cars；另一类通过 Proto-Triplet Loss 与 ICNN loss 显式约束类内和类间距离，报告在 miniImageNet 上相对其他度量学习方法有约 2% 的准确率提升，并在 CUB、Dogs、Cars 等域上具有竞争力。这些摘要层面的结果说明比较必须同时考察表示学习、距离约束和跨域泛化，而不能只依据单一基准排名。 [E:arxiv:1907.03123:abstract:claim:998fb93b2a24] [E:arxiv:1907.03123:abstract:claim:b4d49aba47c5] [E:arxiv:2305.09062:abstract:claim:549b9167d596] [E:arxiv:2305.09062:abstract:claim:aaed703eb739]",
+      "source_start": 2355,
+      "source_end": 2870,
+      "evidence_ids": [
+        "arxiv:1907.03123:abstract:claim:998fb93b2a24",
+        "arxiv:1907.03123:abstract:claim:b4d49aba47c5",
+        "arxiv:2305.09062:abstract:claim:549b9167d596",
+        "arxiv:2305.09062:abstract:claim:aaed703eb739"
+      ],
+      "local_error": "support_entity_unverified",
+      "atomic": true,
+      "source_faithful": true,
+      "classification_valid": true,
+      "support_basis": [
+        {
+          "support_id": "e3:full_original"
+        },
+        {
+          "support_id": "e9:full_original"
+        }
+      ],
+      "aspect_checks": [
+        {
+          "aspect": "predicate",
+          "supported": true,
+          "support_ids": [
+            "e3:full_original",
+            "e9:full_original"
+          ],
+          "explanation": "s2 explicitly introduces Proto-Triplet Loss and ICNN loss and states they consider intra-class and inter-class distance, matching the asserted predicate."
+        },
+        {
+          "aspect": "conditions",
+          "supported": true,
+          "support_ids": [
+            "e3:full_original",
+            "e9:full_original"
+          ],
+          "explanation": "s2 specifies the miniImageNet benchmark and cross-domain evaluation on Caltech CUB, Dogs, and Cars, matching the asserted conditions."
+        },
+        {
+          "aspect": "quantities",
+          "supported": true,
+          "support_ids": [
+            "e3:full_original",
+            "e9:full_original"
+          ],
+          "explanation": "s2 reports a 2% accuracy improvement margin on miniImageNet compared to other metric-based few-shot learning methods, matching the asserted quantity."
+        },
+        {
+          "aspect": "causal_relation",
+          "supported": true,
+          "support_ids": [
+            "e3:full_original",
+            "e9:full_original"
+          ],
+          "explanation": "s2 attributes the accuracy improvement and competitive cross-domain generalization to the two proposed loss functions, matching the asserted causal relation."
+        }
+      ]
+    },
+    {
+      "claim_id": "claim_48",
+      "claim_text": "这两种损失的证据边界在于，摘要明确支持它们在miniImageNet上相对其他度量学习方法取得约2%准确率提升，并在Caltech CUB、Dogs和Cars等跨域设置中表现出有竞争力的泛化。",
+      "source_quote": "这两种损失的证据边界在于，摘要明确支持它们在miniImageNet上相对其他度量学习方法取得约2%准确率提升，并在Caltech CUB、Dogs和Cars等跨域设置中表现出有竞争力的泛化；但摘要未给出逐基线的训练轮数、骨干网络或置信区间，因此不能把该2%差值外推为任意协议下的稳定优势。 [E:arxiv:2305.09062:abstract:claim:549b9167d596] [E:arxiv:2305.09062:abstract:claim:aaed703eb739]",
+      "source_start": 5834,
+      "source_end": 6077,
+      "evidence_ids": [
+        "arxiv:2305.09062:abstract:claim:549b9167d596",
+        "arxiv:2305.09062:abstract:claim:aaed703eb739"
+      ],
+      "local_error": "support_entity_unverified",
+      "atomic": true,
+      "source_faithful": true,
+      "classification_valid": true,
+      "support_basis": [
+        {
+          "support_id": "e3:full_original"
+        },
+        {
+          "support_id": "e9:full_original"
+        }
+      ],
+      "aspect_checks": [
+        {
+          "aspect": "predicate",
+          "supported": true,
+          "support_ids": [
+            "e3:full_original",
+            "e9:full_original"
+          ],
+          "explanation": "The original support states that the two proposed loss functions improve accuracy on miniImageNet and show competitive generalization to Caltech CUB, Dogs, and Cars."
+        },
+        {
+          "aspect": "conditions",
+          "supported": true,
+          "support_ids": [
+            "e3:full_original",
+            "e9:full_original"
+          ],
+          "explanation": "The result is tied to the miniImageNet benchmark and cross-domain datasets Caltech CUB, Dogs, and Cars, matching the assertion's conditions."
+        },
+        {
+          "aspect": "quantities",
+          "supported": true,
+          "support_ids": [
+            "e3:full_original",
+            "e9:full_original"
+          ],
+          "explanation": "The original support explicitly reports a 2% margin of accuracy improvement over other metric-based few-shot learning methods on miniImageNet."
+        }
+      ]
+    },
+    {
+      "claim_id": "claim_75",
+      "claim_text": "当大模型或大规模上游数据被采用时，成绩可能来自表示预训练和模型容量，而不是episodic度量模块。",
+      "source_quote": "迁移学习不属于上述度量函数设计本身，但其强基线身份会影响方法解释：典型流程是先在ImageNet等上游数据集预训练，再在不同下游任务上微调，并依赖源域与目标域共享知识；当大模型或大规模上游数据被采用时，成绩可能来自表示预训练和模型容量，而不是episodic度量模块。 [E:arxiv:2104.02638:section:abstract:2:c92e388de5e0:claim:1a6b9a5336b7] [E:arxiv:2105.08149:page:1:block:9:claim:e0be331540fc] [E:arxiv:2104.02638:section:abstract:9:1354132472a1:claim:1453b845fef7]",
+      "source_start": 8469,
+      "source_end": 8802,
+      "evidence_ids": [
+        "arxiv:2104.02638:section:abstract:2:c92e388de5e0:claim:1a6b9a5336b7",
+        "arxiv:2105.08149:page:1:block:9:claim:e0be331540fc",
+        "arxiv:2104.02638:section:abstract:9:1354132472a1:claim:1453b845fef7"
+      ],
+      "local_error": "support_basis_ownership_invalid",
+      "atomic": true,
+      "source_faithful": true,
+      "classification_valid": true,
+      "support_basis": [
+        {
+          "support_id": "e11:full_original"
+        },
+        {
+          "support_id": "e15:full_original"
+        }
+      ],
+      "aspect_checks": [
+        {
+          "aspect": "predicate",
+          "supported": true,
+          "support_ids": [
+            "e11:full_original",
+            "e15:full_original"
+          ],
+          "explanation": "The source notes large vision models transfer well to classification benchmarks, and well-tuned transfer learning baselines are competitive with more complex few-shot approaches, supporting the claim that performance may stem from pretraining and model capacity rather than episodic metric modules."
+        },
+        {
+          "aspect": "conditions",
+          "supported": true,
+          "support_ids": [
+            "e11:full_original",
+            "e15:full_original"
+          ],
+          "explanation": "The claim is bounded to scenarios using large models or large-scale upstream data, consistent with the source's discussion of large-scale transfer learners."
+        }
+      ]
+    },
+    {
+      "claim_id": "claim_76",
+      "claim_text": "因此，比较这些度量学习方法时应把机制贡献和评估条件分开：K-tuplet与两类新损失主要改变嵌入约束，SRL改变类表示的几何形态，关系网络和不确定性框架改变比较或相似性建模，MSENet同时改变多层嵌入与阶段加权。",
+      "source_quote": "因此，比较这些度量学习方法时应把机制贡献和评估条件分开：K-tuplet与两类新损失主要改变嵌入约束，SRL改变类表示的几何形态，关系网络和不确定性框架改变比较或相似性建模，MSENet同时改变多层嵌入与阶段加权；若骨干网络、上游数据、shot数或跨域数据集不一致，机制差异不能单独支持总体排名。 [E:arxiv:1907.03123:abstract:claim:5a36249bbf1e] [E:arxiv:2305.09062:abstract:claim:549b9167d596] [E:arxiv:2105.00379:abstract:claim:38498384e907] [E:arxiv:2409.07989:abstract:claim:5ed923dac68f] [E:arxiv:1802.04376:abstract:claim:50a611de7d64] [E:arxiv:2010.04525:abstract:claim:7178a9c4f03f]",
+      "source_start": 8803,
+      "source_end": 9245,
+      "evidence_ids": [
+        "arxiv:1907.03123:abstract:claim:5a36249bbf1e",
+        "arxiv:2305.09062:abstract:claim:549b9167d596",
+        "arxiv:2105.00379:abstract:claim:38498384e907",
+        "arxiv:2409.07989:abstract:claim:5ed923dac68f",
+        "arxiv:1802.04376:abstract:claim:50a611de7d64",
+        "arxiv:2010.04525:abstract:claim:7178a9c4f03f"
+      ],
+      "local_error": "evaluation_atomic_classification_unverified",
+      "atomic": false,
+      "source_faithful": true,
+      "classification_valid": true,
+      "support_basis": [],
+      "aspect_checks": [
+        {
+          "aspect": "predicate",
+          "supported": false,
+          "support_ids": [],
+          "explanation": "The compound claim combines mechanism descriptions for five different method groups, and the cited materials do not collectively support the full set of summarized mechanism labels as a single assertion."
+        },
+        {
+          "aspect": "conditions",
+          "supported": false,
+          "support_ids": [],
+          "explanation": "The claim's framing of separating mechanism contributions from evaluation conditions is a report-level interpretive statement not directly supported by the cited paper sources as a unified assertion."
+        },
+        {
+          "aspect": "causal_relation",
+          "supported": false,
+          "support_ids": [],
+          "explanation": "The causal link between separating mechanism contributions and evaluation conditions is not established by the cited paper materials."
+        }
+      ]
+    },
+    {
+      "claim_id": "claim_79",
+      "claim_text": "现有材料明确给出的协议包括miniImageNet上的度量学习比较、miniImageNet与FC100上的5-way 1-shot和5-way 5-shot评估、MiniImageNet/TieredImageNet/CUB三基准评估，以及Meta-Dataset上的大规模迁移学习评估。",
+      "source_quote": "实验比较首先按可核验的评估协议分组，而不是把所有论文的准确率合并排名：现有材料明确给出的协议包括miniImageNet上的度量学习比较、miniImageNet与FC100上的5-way 1-shot和5-way 5-shot评估、MiniImageNet/TieredImageNet/CUB三基准评估，以及Meta-Dataset上的大规模迁移学习评估。 [E:arxiv:2305.09062:abstract:claim:549b9167d596] [E:arxiv:2409.07989:abstract:claim:5ed923dac68f] [E:arxiv:2105.00379:abstract:claim:38498384e907] [E:arxiv:2105.00379:abstract:claim:e2d40a72c0d6] [E:arxiv:2104.02638:section:abstract:9:1354132472a1:claim:3fb7cfd2fbdb]",
+      "source_start": 9261,
+      "source_end": 9709,
+      "evidence_ids": [
+        "arxiv:2305.09062:abstract:claim:549b9167d596",
+        "arxiv:2409.07989:abstract:claim:5ed923dac68f",
+        "arxiv:2105.00379:abstract:claim:38498384e907",
+        "arxiv:2105.00379:abstract:claim:e2d40a72c0d6",
+        "arxiv:2104.02638:section:abstract:9:1354132472a1:claim:3fb7cfd2fbdb"
+      ],
+      "local_error": "support_basis_ownership_invalid",
+      "atomic": true,
+      "source_faithful": true,
+      "classification_valid": true,
+      "support_basis": [
+        {
+          "support_id": "e1:full_original"
+        },
+        {
+          "support_id": "e4:full_original"
+        },
+        {
+          "support_id": "e5:full_original"
+        },
+        {
+          "support_id": "e11:full_original"
+        }
+      ],
+      "aspect_checks": [
+        {
+          "aspect": "predicate",
+          "supported": true,
+          "support_ids": [
+            "e1:full_original",
+            "e4:full_original",
+            "e5:full_original",
+            "e11:full_original"
+          ],
+          "explanation": "The cited sources confirm: K-tuplet reports results on miniImageNet, MSENet evaluates on MiniImageNet and FC100 in 5-way 1-shot and 5-way 5-shot settings, SRL evaluates on MiniImageNet, TieredImageNet, and CUB, and the transfer learning work uses Meta-Dataset for large-scale evaluation, matching the enumerated protocols."
+        },
+        {
+          "aspect": "conditions",
+          "supported": true,
+          "support_ids": [
+            "e1:full_original",
+            "e4:full_original",
+            "e5:full_original",
+            "e11:full_original"
+          ],
+          "explanation": "Each protocol is tied to its corresponding dataset and evaluation setting as stated in the claim, consistent with the source materials."
+        },
+        {
+          "aspect": "quantities",
+          "supported": true,
+          "support_ids": [
+            "e4:full_original"
+          ],
+          "explanation": "The claim includes the 5-way 1-shot and 5-way 5-shot shot counts, which are explicitly stated in the MSENet source, matching the claimed quantities."
+        }
+      ]
+    },
+    {
+      "claim_id": "claim_82",
+      "claim_text": "同样以miniImageNet为基准，Proto-Triplet Loss与ICNN loss报告相对其他度量学习方法有约2个百分点的准确率提升。",
+      "source_quote": "同样以miniImageNet为基准，Proto-Triplet Loss与ICNN loss报告相对其他度量学习方法有约2个百分点的准确率提升；该2%差值的比较对象是其他metric-based few-shot learning方法，但材料未说明具体基线名单、way/shot、骨干网络和统计显著性，所以不能与K-tuplet的“优于其他方法”声明直接排出先后。 [E:arxiv:2305.09062:abstract:claim:549b9167d596] [E:arxiv:1907.03123:abstract:claim:998fb93b2a24]",
+      "source_start": 9888,
+      "source_end": 10169,
+      "evidence_ids": [
+        "arxiv:2305.09062:abstract:claim:549b9167d596",
+        "arxiv:1907.03123:abstract:claim:998fb93b2a24"
+      ],
+      "local_error": "support_entity_unverified",
+      "atomic": true,
+      "source_faithful": true,
+      "classification_valid": true,
+      "support_basis": [
+        {
+          "support_id": "e3:full_original"
+        }
+      ],
+      "aspect_checks": [
+        {
+          "aspect": "predicate",
+          "supported": true,
+          "support_ids": [
+            "e3:full_original"
+          ],
+          "explanation": "s2原文明确表述Our results...show a significant improvement in accuracy in the miniImagenNet benchmark compared to other metric-based few-shot learning methods by a margin of 2%，与断言的谓词一致。"
+        },
+        {
+          "aspect": "conditions",
+          "supported": true,
+          "support_ids": [
+            "e3:full_original"
+          ],
+          "explanation": "s2明确限定该结果的基准为miniImageNet，比较对象为其他metric-based few-shot learning方法，与断言条件一致。"
+        },
+        {
+          "aspect": "quantities",
+          "supported": true,
+          "support_ids": [
+            "e3:full_original"
+          ],
+          "explanation": "s2明确给出准确率提升幅度为2%，与断言的约2个百分点的数值一致。"
+        }
+      ]
+    },
+    {
+      "claim_id": "claim_83",
+      "claim_text": "该2%差值的比较对象是其他metric-based few-shot learning方法，但材料未说明具体基线名单、way/shot、骨干网络和统计显著性，所以不能与K-tuplet的“优于其他方法”声明直接排出先后。",
+      "source_quote": "同样以miniImageNet为基准，Proto-Triplet Loss与ICNN loss报告相对其他度量学习方法有约2个百分点的准确率提升；该2%差值的比较对象是其他metric-based few-shot learning方法，但材料未说明具体基线名单、way/shot、骨干网络和统计显著性，所以不能与K-tuplet的“优于其他方法”声明直接排出先后。 [E:arxiv:2305.09062:abstract:claim:549b9167d596] [E:arxiv:1907.03123:abstract:claim:998fb93b2a24]",
+      "source_start": 9888,
+      "source_end": 10169,
+      "evidence_ids": [
+        "arxiv:2305.09062:abstract:claim:549b9167d596",
+        "arxiv:1907.03123:abstract:claim:998fb93b2a24"
+      ],
+      "local_error": "support_entity_unverified",
+      "atomic": true,
+      "source_faithful": true,
+      "classification_valid": true,
+      "support_basis": [
+        {
+          "support_id": "e3:full_original"
+        }
+      ],
+      "aspect_checks": [
+        {
+          "aspect": "predicate",
+          "supported": true,
+          "support_ids": [
+            "e3:full_original"
+          ],
+          "explanation": "s2原文仅给出2%的提升幅度，未提供具体基线名单、way/shot、骨干网络和统计显著性，与断言的材料缺失描述一致。"
+        },
+        {
+          "aspect": "conditions",
+          "supported": true,
+          "support_ids": [
+            "e3:full_original"
+          ],
+          "explanation": "s2未提供可用于与K-tuplet声明直接排序的具体实验参数，符合断言中无法直接排出先后的条件。"
+        },
+        {
+          "aspect": "quantities",
+          "supported": true,
+          "support_ids": [
+            "e3:full_original"
+          ],
+          "explanation": "s2仅给出2%的提升幅度，未提供其他可用于跨方法排名的量化指标，与断言的数值边界一致。"
+        }
+      ]
+    },
+    {
+      "claim_id": "claim_87",
+      "claim_text": "但其摘要没有给出Caltech-101，也没有提供各域准确率或训练—测试协议，因而不能据此断言它与K-tuplet在四个相同数据集、相同划分下等价或更优。",
+      "source_quote": "Proto-Triplet Loss与ICNN loss也报告在Caltech CUB、Dogs和Cars等其他域上相对先进方法具有竞争力的泛化能力；但其摘要没有给出Caltech-101，也没有提供各域准确率或训练—测试协议，因而不能据此断言它与K-tuplet在四个相同数据集、相同划分下等价或更优。 [E:arxiv:2305.09062:abstract:claim:aaed703eb739] [E:arxiv:1907.03123:abstract:claim:b4d49aba47c5]",
+      "source_start": 10358,
+      "source_end": 10608,
+      "evidence_ids": [
+        "arxiv:2305.09062:abstract:claim:aaed703eb739",
+        "arxiv:1907.03123:abstract:claim:b4d49aba47c5"
+      ],
+      "local_error": "support_entity_unverified",
+      "atomic": true,
+      "source_faithful": true,
+      "classification_valid": true,
+      "support_basis": [
+        {
+          "support_id": "e9:full_original"
+        }
+      ],
+      "aspect_checks": [
+        {
+          "aspect": "predicate",
+          "supported": true,
+          "support_ids": [
+            "e9:full_original"
+          ],
+          "explanation": "s2原文未提及Caltech-101，也未提供各域准确率或训练-测试协议，与断言的材料缺失描述一致。"
+        },
+        {
+          "aspect": "conditions",
+          "supported": true,
+          "support_ids": [
+            "e9:full_original"
+          ],
+          "explanation": "s2未提供可用于与K-tuplet在四个相同数据集、相同划分下比较的实验参数，符合断言中无法判定等价或更优的条件。"
+        },
+        {
+          "aspect": "causal_relation",
+          "supported": true,
+          "support_ids": [
+            "e9:full_original"
+          ],
+          "explanation": "由于材料缺失Caltech-101相关结果与各域实验协议，无法据此断言其与K-tuplet在相同设置下等价或更优，因果关系成立。"
+        }
+      ]
+    },
+    {
+      "claim_id": "claim_89",
+      "claim_text": "由于所选材料只报告“高准确率”和相对先进方法有效，而未列出具体百分比，本章不能把它与K-tuplet或Proto-Triplet/ICNN按准确率数值比较。",
+      "source_quote": "MSENet的实验边界最明确：它在MiniImageNet和FC100的5-way 1-shot与5-way 5-shot场景中评估，并在八个基准数据集构成的跨域任务中测试；由于所选材料只报告“高准确率”和相对先进方法有效，而未列出具体百分比，本章不能把它与K-tuplet或Proto-Triplet/ICNN按准确率数值比较。 [E:arxiv:2409.07989:abstract:claim:5ed923dac68f]",
+      "source_start": 10610,
+      "source_end": 10824,
+      "evidence_ids": [
+        "arxiv:2409.07989:abstract:claim:5ed923dac68f"
+      ],
+      "local_error": "support_entity_unverified",
+      "atomic": true,
+      "source_faithful": true,
+      "classification_valid": true,
+      "support_basis": [
+        {
+          "support_id": "e4:full_original"
+        }
+      ],
+      "aspect_checks": [
+        {
+          "aspect": "predicate",
+          "supported": true,
+          "support_ids": [
+            "e4:full_original"
+          ],
+          "explanation": "s3原文仅表述achieving high accuracy in the testing domains...demonstrate the efficacy of our proposed method in comparison to state-of-the-art approaches，未列出具体百分比，与断言的材料缺失描述一致。"
+        },
+        {
+          "aspect": "conditions",
+          "supported": true,
+          "support_ids": [
+            "e4:full_original"
+          ],
+          "explanation": "s3未提供具体准确率数值，符合断言中无法按准确率数值比较的条件。"
+        },
+        {
+          "aspect": "causal_relation",
+          "supported": true,
+          "support_ids": [
+            "e4:full_original"
+          ],
+          "explanation": "由于材料仅报告定性的高准确率与有效性，未列出具体百分比，因此无法将其与其他方法按准确率数值比较，因果关系成立。"
+        }
+      ]
+    },
+    {
+      "claim_id": "claim_91",
+      "claim_text": "但材料没有给出各基准的5-way准确率、shot数或被超越的基线，因此“competitive/superior”不能被细化为统一数值排名。",
+      "source_quote": "SRL在MiniImageNet、TieredImageNet和Caltech-UCSD Birds-200-2011三个公开基准上评估，摘要报告其相对既往先进方法具有竞争或优越表现；但材料没有给出各基准的5-way准确率、shot数或被超越的基线，因此“competitive/superior”不能被细化为统一数值排名。 [E:arxiv:2105.00379:abstract:claim:38498384e907] [E:arxiv:2105.00379:abstract:claim:e2d40a72c0d6]",
+      "source_start": 10826,
+      "source_end": 11086,
+      "evidence_ids": [
+        "arxiv:2105.00379:abstract:claim:38498384e907",
+        "arxiv:2105.00379:abstract:claim:e2d40a72c0d6"
+      ],
+      "local_error": "support_number_unverified",
+      "atomic": true,
+      "source_faithful": true,
+      "classification_valid": true,
+      "support_basis": [
+        {
+          "support_id": "e5:full_original"
+        }
+      ],
+      "aspect_checks": [
+        {
+          "aspect": "predicate",
+          "supported": true,
+          "support_ids": [
+            "e5:full_original"
+          ],
+          "explanation": "s4原文仅给出定性的competitive/superior表现描述，未提供各基准的5-way准确率、shot数或被超越的基线，与断言的材料缺失描述一致。"
+        },
+        {
+          "aspect": "conditions",
+          "supported": true,
+          "support_ids": [
+            "e5:full_original"
+          ],
+          "explanation": "s4未提供可用于细化为统一数值排名的具体实验参数，符合断言中无法细化排名的条件。"
+        },
+        {
+          "aspect": "quantities",
+          "supported": true,
+          "support_ids": [
+            "e5:full_original"
+          ],
+          "explanation": "s4未提供各基准的具体准确率数值、shot数等量化指标，与断言的数值边界一致。"
+        },
+        {
+          "aspect": "causal_relation",
+          "supported": true,
+          "support_ids": [
+            "e5:full_original"
+          ],
+          "explanation": "由于材料缺失各基准的具体准确率、shot数与被超越基线，因此competitive/superior不能被细化为统一数值排名，因果关系成立。"
+        }
+      ]
+    },
+    {
+      "claim_id": "claim_93",
+      "claim_text": "这与SRL包含CUB的三基准评估在数据集上有交集，但材料未说明二者是否使用相同CUB划分、shot数、骨干网络和训练轮数，因此只能比较任务适配方向，不能判定二者在CUB上的高低。",
+      "source_quote": "关系网络的实验证据集中在Caltech-UCSD Birds细粒度分类任务，摘要称其达到当时先进水平；这与SRL包含CUB的三基准评估在数据集上有交集，但材料未说明二者是否使用相同CUB划分、shot数、骨干网络和训练轮数，因此只能比较任务适配方向，不能判定二者在CUB上的高低。 [E:arxiv:1802.04376:abstract:claim:50a611de7d64] [E:arxiv:2105.00379:abstract:claim:e2d40a72c0d6]",
+      "source_start": 11088,
+      "source_end": 11326,
+      "evidence_ids": [
+        "arxiv:1802.04376:abstract:claim:50a611de7d64",
+        "arxiv:2105.00379:abstract:claim:e2d40a72c0d6"
+      ],
+      "local_error": "support_entity_unverified",
+      "atomic": true,
+      "source_faithful": true,
+      "classification_valid": true,
+      "support_basis": [
+        {
+          "support_id": "e6:full_original"
+        }
+      ],
+      "aspect_checks": [
+        {
+          "aspect": "predicate",
+          "supported": true,
+          "support_ids": [
+            "e6:full_original"
+          ],
+          "explanation": "s5原文仅给出在CUB细粒度分类任务上达到先进水平的结论，未说明与SRL的实验设置是否一致，与断言的材料缺失描述一致。"
+        },
+        {
+          "aspect": "conditions",
+          "supported": true,
+          "support_ids": [
+            "e6:full_original"
+          ],
+          "explanation": "s5未提供可用于与SRL在CUB上比较的划分、shot数、骨干网络和训练轮数等参数，符合断言中无法判定高低的条件。"
+        },
+        {
+          "aspect": "causal_relation",
+          "supported": true,
+          "support_ids": [
+            "e6:full_original"
+          ],
+          "explanation": "由于材料未说明二者是否使用相同CUB实验设置，因此只能比较任务适配方向，不能判定二者在CUB上的高低，因果关系成立。"
+        }
+      ]
+    },
+    {
+      "claim_id": "claim_95",
+      "claim_text": "这不是在同一骨干和训练预算下对K-tuplet、SRL、MSENet等度量模块的直接对照。",
+      "source_quote": "大规模迁移学习证据应作为不同评估族处理：相关研究把既有的少样本分类协议Meta-Dataset应用于大规模数据和大容量迁移学习器，指出这既暴露episodic方法的局限，也显示迁移学习自身不足；这不是在同一骨干和训练预算下对K-tuplet、SRL、MSENet等度量模块的直接对照。 [E:arxiv:2104.02638:section:abstract:9:1354132472a1:claim:3fb7cfd2fbdb]",
+      "source_start": 11328,
+      "source_end": 11542,
+      "evidence_ids": [
+        "arxiv:2104.02638:section:abstract:9:1354132472a1:claim:3fb7cfd2fbdb"
+      ],
+      "local_error": "support_entity_unverified",
+      "atomic": true,
+      "source_faithful": true,
+      "classification_valid": true,
+      "support_basis": [
+        {
+          "support_id": "e11:full_original"
+        }
+      ],
+      "aspect_checks": [
+        {
+          "aspect": "predicate",
+          "supported": true,
+          "support_ids": [
+            "e11:full_original"
+          ],
+          "explanation": "s7原文的研究对象为大规模迁移学习器与episodic方法的对比，未涉及K-tuplet、SRL、MSENet等度量模块的同骨干同预算直接对照，与断言的谓词一致。"
+        },
+        {
+          "aspect": "conditions",
+          "supported": true,
+          "support_ids": [
+            "e11:full_original"
+          ],
+          "explanation": "s7明确限定该研究为Meta-Dataset协议下的大规模迁移学习评估，与其他度量模块的评估设置不同，符合断言的条件。"
+        }
+      ]
+    },
+    {
+      "claim_id": "claim_96",
+      "claim_text": "综合可直接支持的实验结论是：K-tuplet和Proto-Triplet/ICNN均在miniImageNet摘要比较中报告优势，其中后者给出约2%准确率提升。",
+      "source_quote": "综合可直接支持的实验结论是：K-tuplet和Proto-Triplet/ICNN均在miniImageNet摘要比较中报告优势，其中后者给出约2%准确率提升；K-tuplet还报告四个跨域数据集上的显著优势，MSENet覆盖MiniImageNet、FC100和八个跨域任务，SRL覆盖三个基准，关系网络集中于CUB细粒度任务。由于数据集组合、way/shot、骨干网络、训练数据规模和具体数值在材料中不对齐，这些结果不能合并为单一总排名，只能在各自协议内解释。 [E:arxiv:1907.03123:abstract:claim:998fb93b2a24] [E:arxiv:2305.09062:abstract:claim:549b9167d596] [E:arxiv:1907.03123:abstract:claim:b4d49aba47c5] [E:arxiv:2305.09062:abstract:claim:aaed703eb739] [E:arxiv:2409.07989:abstract:claim:5ed923dac68f] [E:arxiv:2105.00379:abstract:claim:38498384e907] [E:arxiv:2105.00379:abstract:claim:e2d40a72c0d6] [E:arxiv:1802.04376:abstract:claim:50a611de7d64] [E:arxiv:2104.02638:section:abstract:9:1354132472a1:claim:3fb7cfd2fbdb]",
+      "source_start": 11544,
+      "source_end": 12240,
+      "evidence_ids": [
+        "arxiv:1907.03123:abstract:claim:998fb93b2a24",
+        "arxiv:2305.09062:abstract:claim:549b9167d596",
+        "arxiv:1907.03123:abstract:claim:b4d49aba47c5",
+        "arxiv:2305.09062:abstract:claim:aaed703eb739",
+        "arxiv:2409.07989:abstract:claim:5ed923dac68f",
+        "arxiv:2105.00379:abstract:claim:38498384e907",
+        "arxiv:2105.00379:abstract:claim:e2d40a72c0d6",
+        "arxiv:1802.04376:abstract:claim:50a611de7d64",
+        "arxiv:2104.02638:section:abstract:9:1354132472a1:claim:3fb7cfd2fbdb"
+      ],
+      "local_error": "evaluation_atomic_classification_unverified",
+      "atomic": false,
+      "source_faithful": true,
+      "classification_valid": true,
+      "support_basis": [
+        {
+          "support_id": "e2:full_original"
+        },
+        {
+          "support_id": "e3:full_original"
+        }
+      ],
+      "aspect_checks": [
+        {
+          "aspect": "predicate",
+          "supported": true,
+          "support_ids": [
+            "e2:full_original",
+            "e3:full_original"
+          ],
+          "explanation": "p1明确K-tuplet在miniImageNet上优于其他度量方法，p2明确Proto-Triplet/ICNN在miniImageNet上较其他度量方法有2%准确率提升，与断言的谓词一致。"
+        },
+        {
+          "aspect": "conditions",
+          "supported": true,
+          "support_ids": [
+            "e2:full_original",
+            "e3:full_original"
+          ],
+          "explanation": "两个结果均限定在miniImageNet基准、与其他基于度量的少样本分类方法比较的条件下，与断言的摘要比较场景一致。"
+        },
+        {
+          "aspect": "quantities",
+          "supported": true,
+          "support_ids": [
+            "e3:full_original"
+          ],
+          "explanation": "p2明确给出2%的准确率提升幅度，与断言中的约2%数值一致。"
+        }
+      ]
+    },
+    {
+      "claim_id": "claim_97",
+      "claim_text": "K-tuplet还报告四个跨域数据集上的显著优势，MSENet覆盖MiniImageNet、FC100和八个跨域任务，SRL覆盖三个基准，关系网络集中于CUB细粒度任务。",
+      "source_quote": "综合可直接支持的实验结论是：K-tuplet和Proto-Triplet/ICNN均在miniImageNet摘要比较中报告优势，其中后者给出约2%准确率提升；K-tuplet还报告四个跨域数据集上的显著优势，MSENet覆盖MiniImageNet、FC100和八个跨域任务，SRL覆盖三个基准，关系网络集中于CUB细粒度任务。由于数据集组合、way/shot、骨干网络、训练数据规模和具体数值在材料中不对齐，这些结果不能合并为单一总排名，只能在各自协议内解释。 [E:arxiv:1907.03123:abstract:claim:998fb93b2a24] [E:arxiv:2305.09062:abstract:claim:549b9167d596] [E:arxiv:1907.03123:abstract:claim:b4d49aba47c5] [E:arxiv:2305.09062:abstract:claim:aaed703eb739] [E:arxiv:2409.07989:abstract:claim:5ed923dac68f] [E:arxiv:2105.00379:abstract:claim:38498384e907] [E:arxiv:2105.00379:abstract:claim:e2d40a72c0d6] [E:arxiv:1802.04376:abstract:claim:50a611de7d64] [E:arxiv:2104.02638:section:abstract:9:1354132472a1:claim:3fb7cfd2fbdb]",
+      "source_start": 11544,
+      "source_end": 12240,
+      "evidence_ids": [
+        "arxiv:1907.03123:abstract:claim:998fb93b2a24",
+        "arxiv:2305.09062:abstract:claim:549b9167d596",
+        "arxiv:1907.03123:abstract:claim:b4d49aba47c5",
+        "arxiv:2305.09062:abstract:claim:aaed703eb739",
+        "arxiv:2409.07989:abstract:claim:5ed923dac68f",
+        "arxiv:2105.00379:abstract:claim:38498384e907",
+        "arxiv:2105.00379:abstract:claim:e2d40a72c0d6",
+        "arxiv:1802.04376:abstract:claim:50a611de7d64",
+        "arxiv:2104.02638:section:abstract:9:1354132472a1:claim:3fb7cfd2fbdb"
+      ],
+      "local_error": "evaluation_atomic_classification_unverified",
+      "atomic": false,
+      "source_faithful": true,
+      "classification_valid": true,
+      "support_basis": [
+        {
+          "support_id": "e8:full_original"
+        },
+        {
+          "support_id": "e4:full_original"
+        },
+        {
+          "support_id": "e10:full_original"
+        },
+        {
+          "support_id": "e6:full_original"
+        }
+      ],
+      "aspect_checks": [
+        {
+          "aspect": "predicate",
+          "supported": true,
+          "support_ids": [
+            "e8:full_original",
+            "e4:full_original",
+            "e10:full_original",
+            "e6:full_original"
+          ],
+          "explanation": "p6明确K-tuplet在四个跨域数据集上显著优于先前方法，p3明确MSENet在MiniImageNet、FC100及八个跨域基准评估，p8明确SRL在三个基准上表现有竞争力或优越，p5明确关系网络在CUB细粒度分类任务上达到SOTA，与断言各谓词一致。"
+        },
+        {
+          "aspect": "conditions",
+          "supported": true,
+          "support_ids": [
+            "e8:full_original",
+            "e4:full_original",
+            "e10:full_original",
+            "e6:full_original"
+          ],
+          "explanation": "各方法的评估数据集、任务类型均与断言描述一致：K-tuplet为miniImageNet训练后跨域测试，MSENet为5-way 1-shot/5-shot及跨域，SRL为三个公开基准，关系网络为CUB细粒度任务。"
+        }
+      ]
+    },
+    {
+      "claim_id": "claim_99",
+      "claim_text": "开放问题首先来自评估协议不可直接合并：Meta-Dataset研究把既有少样本分类协议用于大规模数据和大容量迁移学习器后，既指出episodic方法存在局限，也显示迁移学习仍有不足。",
+      "source_quote": "开放问题首先来自评估协议不可直接合并：Meta-Dataset研究把既有少样本分类协议用于大规模数据和大容量迁移学习器后，既指出episodic方法存在局限，也显示迁移学习仍有不足；这意味着度量学习方法若与不同上游数据规模、模型容量或微调流程比较，所得成绩不能被单独归因于嵌入、类表示或距离模块。 [E:arxiv:2104.02638:section:abstract:9:1354132472a1:claim:3fb7cfd2fbdb] [E:arxiv:2104.02638:section:abstract:2:c92e388de5e0:claim:1a6b9a5336b7] [E:arxiv:2105.08149:page:1:block:9:claim:e0be331540fc]",
+      "source_start": 12254,
+      "source_end": 12601,
+      "evidence_ids": [
+        "arxiv:2104.02638:section:abstract:9:1354132472a1:claim:3fb7cfd2fbdb",
+        "arxiv:2104.02638:section:abstract:2:c92e388de5e0:claim:1a6b9a5336b7",
+        "arxiv:2105.08149:page:1:block:9:claim:e0be331540fc"
+      ],
+      "local_error": "evaluation_atomic_classification_unverified",
+      "atomic": false,
+      "source_faithful": true,
+      "classification_valid": true,
+      "support_basis": [
+        {
+          "support_id": "e11:full_original"
+        }
+      ],
+      "aspect_checks": [
+        {
+          "aspect": "predicate",
+          "supported": true,
+          "support_ids": [
+            "e11:full_original"
+          ],
+          "explanation": "p9明确指出将Meta-Dataset协议应用于大规模迁移学习器后，既以新方式暴露了episodic方法的局限，也揭示了迁移学习的不足，与断言谓词一致。"
+        },
+        {
+          "aspect": "conditions",
+          "supported": true,
+          "support_ids": [
+            "e11:full_original"
+          ],
+          "explanation": "条件是将既有少样本分类协议Meta-Dataset用于大规模数据和大容量迁移学习器，与p9描述的实验设置完全一致。"
+        }
+      ]
+    },
+    {
+      "claim_id": "claim_101",
+      "claim_text": "固定欧氏距离等静态度量的主要权衡，是比较规则简单且易于迁移，但难以根据查询和类别差异调整关注内容。",
+      "source_quote": "固定欧氏距离等静态度量的主要权衡，是比较规则简单且易于迁移，但难以根据查询和类别差异调整关注内容；关系网络正是针对这一限制，把固定度量替换为可学习、非线性的类别比较函数。其含义是，静态度量在细粒度或查询相关差异明显的任务中可能表达力不足，而学习型度量又需要通过训练数据学会稳定的比较规则。 [E:arxiv:1711.06025:section:abstract:4:b851ec357ca4:claim:3868df819471] [E:arxiv:1711.06025:section:abstract:12:43376954155c:claim:71df1568e996] [E:arxiv:1802.04376:abstract:claim:50a611de7d64]",
+      "source_start": 12602,
+      "source_end": 12940,
+      "evidence_ids": [
+        "arxiv:1711.06025:section:abstract:4:b851ec357ca4:claim:3868df819471",
+        "arxiv:1711.06025:section:abstract:12:43376954155c:claim:71df1568e996",
+        "arxiv:1802.04376:abstract:claim:50a611de7d64"
+      ],
+      "local_error": "evaluation_atomic_classification_unverified",
+      "atomic": false,
+      "source_faithful": true,
+      "classification_valid": true,
+      "support_basis": [
+        {
+          "support_id": "e19:full_original"
+        }
+      ],
+      "aspect_checks": [
+        {
+          "aspect": "predicate",
+          "supported": true,
+          "support_ids": [
+            "e19:full_original"
+          ],
+          "explanation": "p13指出先前方法预定义固定度量（如欧氏距离），而关系网络学习可迁移的深度度量进行比较，间接体现固定度量简单但缺乏自适应能力的权衡，与断言谓词一致。"
+        },
+        {
+          "aspect": "conditions",
+          "supported": true,
+          "support_ids": [
+            "e19:full_original"
+          ],
+          "explanation": "条件是固定欧氏距离等静态度量用于少样本分类的类别比较，与p13描述的传统度量方法设置一致。"
+        }
+      ]
+    },
+    {
+      "claim_id": "claim_103",
+      "claim_text": "其含义是，静态度量在细粒度或查询相关差异明显的任务中可能表达力不足，而学习型度量又需要通过训练数据学会稳定的比较规则。",
+      "source_quote": "固定欧氏距离等静态度量的主要权衡，是比较规则简单且易于迁移，但难以根据查询和类别差异调整关注内容；关系网络正是针对这一限制，把固定度量替换为可学习、非线性的类别比较函数。其含义是，静态度量在细粒度或查询相关差异明显的任务中可能表达力不足，而学习型度量又需要通过训练数据学会稳定的比较规则。 [E:arxiv:1711.06025:section:abstract:4:b851ec357ca4:claim:3868df819471] [E:arxiv:1711.06025:section:abstract:12:43376954155c:claim:71df1568e996] [E:arxiv:1802.04376:abstract:claim:50a611de7d64]",
+      "source_start": 12602,
+      "source_end": 12940,
+      "evidence_ids": [
+        "arxiv:1711.06025:section:abstract:4:b851ec357ca4:claim:3868df819471",
+        "arxiv:1711.06025:section:abstract:12:43376954155c:claim:71df1568e996",
+        "arxiv:1802.04376:abstract:claim:50a611de7d64"
+      ],
+      "local_error": "evaluation_atomic_classification_unverified",
+      "atomic": false,
+      "source_faithful": true,
+      "classification_valid": true,
+      "support_basis": [],
+      "aspect_checks": [
+        {
+          "aspect": "predicate",
+          "supported": false,
+          "support_ids": [],
+          "explanation": "断言的核心是静态度量在细粒度或查询相关差异明显的任务中可能表达力不足，以及学习型度量需要训练数据学会稳定比较规则；引用论文仅描述关系网络的设计，未直接论证静态度量在细粒度任务中的表达力不足问题。"
+        },
+        {
+          "aspect": "conditions",
+          "supported": false,
+          "support_ids": [],
+          "explanation": "断言的条件是细粒度或查询相关差异明显的任务，该条件下静态度量的表现缺乏直接实验证据支持。"
+        },
+        {
+          "aspect": "causal_relation",
+          "supported": false,
+          "support_ids": [],
+          "explanation": "断言的因果关系是静态度量的固定性导致其在细粒度任务中表达力不足，学习型度量的可学习性要求其通过训练获得稳定比较规则，该因果推论缺乏引用材料的直接证据。"
+        }
+      ]
+    },
+    {
+      "claim_id": "claim_104",
+      "claim_text": "嵌入空间约束仍面临少样本信号不足的问题：Proto-Triplet Loss与ICNN loss通过类内、类间距离和最近邻结构改善可分性，并报告在miniImageNet上相对其他度量方法约2%的准确率提升。",
+      "source_quote": "嵌入空间约束仍面临少样本信号不足的问题：Proto-Triplet Loss与ICNN loss通过类内、类间距离和最近邻结构改善可分性，并报告在miniImageNet上相对其他度量方法约2%的准确率提升；但现有材料没有给出逐项基线、way/shot、骨干网络和统计显著性，因此该提升不能被解释为跨协议、跨数据集的稳定增益。 [E:arxiv:2305.09062:abstract:claim:549b9167d596]",
+      "source_start": 12941,
+      "source_end": 13153,
+      "evidence_ids": [
+        "arxiv:2305.09062:abstract:claim:549b9167d596"
+      ],
+      "local_error": "evaluation_atomic_classification_unverified",
+      "atomic": false,
+      "source_faithful": true,
+      "classification_valid": true,
+      "support_basis": [
+        {
+          "support_id": "e3:full_original"
+        }
+      ],
+      "aspect_checks": [
+        {
+          "aspect": "predicate",
+          "supported": true,
+          "support_ids": [
+            "e3:full_original"
+          ],
+          "explanation": "p2明确提出Proto-Triplet Loss和ICNN loss，分别基于三元组修改和类内类间最近邻分数，以改善嵌入的可分性，并在miniImageNet上较其他度量方法有2%准确率提升，与断言谓词一致。"
+        },
+        {
+          "aspect": "conditions",
+          "supported": true,
+          "support_ids": [
+            "e3:full_original"
+          ],
+          "explanation": "条件是少样本图像分类、miniImageNet基准、与其他基于度量的少样本方法比较，与p2描述的实验设置一致。"
+        },
+        {
+          "aspect": "quantities",
+          "supported": true,
+          "support_ids": [
+            "e3:full_original"
+          ],
+          "explanation": "p2明确给出2%的准确率提升幅度，与断言中的约2%数值一致。"
+        },
+        {
+          "aspect": "causal_relation",
+          "supported": true,
+          "support_ids": [
+            "e3:full_original"
+          ],
+          "explanation": "p2明确将类内类间距离和最近邻结构的损失设计与miniImageNet上的准确率提升关联，因果关系成立。"
+        }
+      ]
+    },
+    {
+      "claim_id": "claim_106",
+      "claim_text": "跨域泛化证据也不能简化为单一排名：深度K-tuplet在miniImageNet训练后于Caltech-101、CUB-200、Stanford Dogs和Stanford Cars上测试并报告显著优势，而Proto-Triplet/ICNN只在材料中报告CUB、Dogs、Cars等域具有竞争力。",
+      "source_quote": "跨域泛化证据也不能简化为单一排名：深度K-tuplet在miniImageNet训练后于Caltech-101、CUB-200、Stanford Dogs和Stanford Cars上测试并报告显著优势，而Proto-Triplet/ICNN只在材料中报告CUB、Dogs、Cars等域具有竞争力；数据集集合和协议不完全重合，因此不能由这些摘要结果判定二者在相同跨域设置下的高低。 [E:arxiv:1907.03123:abstract:claim:b4d49aba47c5] [E:arxiv:2305.09062:abstract:claim:aaed703eb739]",
+      "source_start": 13154,
+      "source_end": 13442,
+      "evidence_ids": [
+        "arxiv:1907.03123:abstract:claim:b4d49aba47c5",
+        "arxiv:2305.09062:abstract:claim:aaed703eb739"
+      ],
+      "local_error": "evaluation_atomic_classification_unverified",
+      "atomic": false,
+      "source_faithful": true,
+      "classification_valid": true,
+      "support_basis": [
+        {
+          "support_id": "e8:full_original"
+        },
+        {
+          "support_id": "e9:full_original"
+        }
+      ],
+      "aspect_checks": [
+        {
+          "aspect": "predicate",
+          "supported": true,
+          "support_ids": [
+            "e8:full_original",
+            "e9:full_original"
+          ],
+          "explanation": "p6明确K-tuplet在miniImageNet训练后于Caltech-101、CUB-200、Stanford Dogs和Cars上显著优于先前方法，p7明确Proto-Triplet/ICNN在CUB、Dogs和Cars数据集上具有竞争力的泛化能力，与断言谓词一致。"
+        },
+        {
+          "aspect": "conditions",
+          "supported": true,
+          "support_ids": [
+            "e8:full_original",
+            "e9:full_original"
+          ],
+          "explanation": "条件是跨域泛化评估，K-tuplet为miniImageNet训练后在四个跨域数据集测试，Proto-Triplet/ICNN为在CUB、Dogs、Cars等域测试，与p6、p7描述的实验设置一致。"
+        }
+      ]
+    },
+    {
+      "claim_id": "claim_111",
+      "claim_text": "多阶段表示方法同样存在信息整合的权衡：MSENet利用不同网络阶段的特征、自注意力精炼和可学习阶段权重，以弥补传统度量只依赖单一距离值并忽略浅层特征的问题。",
+      "source_quote": "多阶段表示方法同样存在信息整合的权衡：MSENet利用不同网络阶段的特征、自注意力精炼和可学习阶段权重，以弥补传统度量只依赖单一距离值并忽略浅层特征的问题；但这些可学习权重和注意力模块增加了需要训练的整合成分，所给材料只明确其在MiniImageNet、FC100的5-way 1-shot/5-shot以及八个跨域基准上评估，未提供可据以判断计算开销或普遍优势的数值。 [E:arxiv:2409.07989:abstract:claim:5ed923dac68f]",
+      "source_start": 13707,
+      "source_end": 13941,
+      "evidence_ids": [
+        "arxiv:2409.07989:abstract:claim:5ed923dac68f"
+      ],
+      "local_error": "evaluation_atomic_classification_unverified",
+      "atomic": false,
+      "source_faithful": true,
+      "classification_valid": true,
+      "support_basis": [
+        {
+          "support_id": "e4:full_original"
+        }
+      ],
+      "aspect_checks": [
+        {
+          "aspect": "predicate",
+          "supported": true,
+          "support_ids": [
+            "e4:full_original"
+          ],
+          "explanation": "p3明确MSENet利用多输出嵌入网络提取不同阶段的特征，采用自注意力机制精炼各阶段特征，并为每个阶段分配可学习权重，以弥补传统度量方法仅依赖单一距离值、忽略浅层特征的问题，与断言谓词一致。"
+        },
+        {
+          "aspect": "conditions",
+          "supported": true,
+          "support_ids": [
+            "e4:full_original"
+          ],
+          "explanation": "条件是少样本图像分类、多阶段表示、自注意力精炼和可学习阶段权重，与p3描述的MSENet设计设置一致。"
+        }
+      ]
+    },
+    {
+      "claim_id": "claim_112",
+      "claim_text": "但这些可学习权重和注意力模块增加了需要训练的整合成分，所给材料只明确其在MiniImageNet、FC100的5-way 1-shot/5-shot以及八个跨域基准上评估，未提供可据以判断计算开销或普遍优势的数值。",
+      "source_quote": "多阶段表示方法同样存在信息整合的权衡：MSENet利用不同网络阶段的特征、自注意力精炼和可学习阶段权重，以弥补传统度量只依赖单一距离值并忽略浅层特征的问题；但这些可学习权重和注意力模块增加了需要训练的整合成分，所给材料只明确其在MiniImageNet、FC100的5-way 1-shot/5-shot以及八个跨域基准上评估，未提供可据以判断计算开销或普遍优势的数值。 [E:arxiv:2409.07989:abstract:claim:5ed923dac68f]",
+      "source_start": 13707,
+      "source_end": 13941,
+      "evidence_ids": [
+        "arxiv:2409.07989:abstract:claim:5ed923dac68f"
+      ],
+      "local_error": "support_direction_unverified",
+      "atomic": true,
+      "source_faithful": true,
+      "classification_valid": true,
+      "support_basis": [
+        {
+          "support_id": "e4:full_original"
+        }
+      ],
+      "aspect_checks": [
+        {
+          "aspect": "predicate",
+          "supported": true,
+          "support_ids": [
+            "e4:full_original"
+          ],
+          "explanation": "The cited original confirms MSENet uses features from different network stages, self-attention refinement, and learnable stage weights, which constitute additional trainable integration components beyond a single distance metric."
+        },
+        {
+          "aspect": "conditions",
+          "supported": true,
+          "support_ids": [
+            "e4:full_original"
+          ],
+          "explanation": "The cited original explicitly states evaluations on MiniImageNet and FC100 in 5-way 1-shot and 5-way 5-shot scenarios, plus cross-domain tasks across eight benchmark datasets, matching the stated evaluation scope."
+        },
+        {
+          "aspect": "quantities",
+          "supported": true,
+          "support_ids": [
+            "e4:full_original"
+          ],
+          "explanation": "The cited original contains no numerical data for computational overhead or general advantage, supporting the assertion that such numbers are not provided; the stated 5-way 1-shot/5-shot and eight cross-domain benchmarks are also confirmed."
+        }
+      ]
+    }
+  ],
+  "sources": {
+    "arxiv:1907.03123:abstract:claim:5a36249bbf1e": {
+      "paper_id": "arxiv:1907.03123",
+      "paper_title": "Revisiting Metric Learning for Few-Shot Image Classification",
+      "supporting_text": "The goal of few-shot learning is to recognize new visual concepts with just a few amount of labeled samples in each class. Recent effective metric-based few-shot approaches employ neural networks to learn a feature similarity comparison between query and support examples. However, the importance of feature embedding, i.e., exploring the relationship among training samples, is neglected. In this work, we present a simple yet powerful baseline for few-shot classification by emphasizing the importance of feature embedding. Specifically, we revisit the classical triplet network from deep metric learning, and extend it into a deep K-tuplet network for few-shot learning, utilizing the relationship among the input samples to learn a general representation learning via episode-training. Once trained, our network is able to extract discriminative features for unseen novel categories and can be seamlessly incorporated with a non-linear distance metric function to facilitate the few-shot classification. Our result on the miniImageNet benchmark outperforms other metric-based few-shot classification methods. More importantly, when evaluated on completely different datasets (Caltech-101, CUB-200, Stanford Dogs and Cars) using the model trained with miniImageNet, our method significantly outperforms prior methods, demonstrating its superior capability to generalize to unseen classes.",
+      "sha256": "bbc803aec14ff7d89ee221236ec27f7e6938a8484773b680cc121ed4002bc5fd"
+    },
+    "arxiv:1907.03123:abstract:claim:998fb93b2a24": {
+      "paper_id": "arxiv:1907.03123",
+      "paper_title": "Revisiting Metric Learning for Few-Shot Image Classification",
+      "supporting_text": "The goal of few-shot learning is to recognize new visual concepts with just a few amount of labeled samples in each class. Recent effective metric-based few-shot approaches employ neural networks to learn a feature similarity comparison between query and support examples. However, the importance of feature embedding, i.e., exploring the relationship among training samples, is neglected. In this work, we present a simple yet powerful baseline for few-shot classification by emphasizing the importance of feature embedding. Specifically, we revisit the classical triplet network from deep metric learning, and extend it into a deep K-tuplet network for few-shot learning, utilizing the relationship among the input samples to learn a general representation learning via episode-training. Once trained, our network is able to extract discriminative features for unseen novel categories and can be seamlessly incorporated with a non-linear distance metric function to facilitate the few-shot classification. Our result on the miniImageNet benchmark outperforms other metric-based few-shot classification methods. More importantly, when evaluated on completely different datasets (Caltech-101, CUB-200, Stanford Dogs and Cars) using the model trained with miniImageNet, our method significantly outperforms prior methods, demonstrating its superior capability to generalize to unseen classes.",
+      "sha256": "bbc803aec14ff7d89ee221236ec27f7e6938a8484773b680cc121ed4002bc5fd"
+    },
+    "arxiv:2305.09062:abstract:claim:549b9167d596": {
+      "paper_id": "arxiv:2305.09062",
+      "paper_title": "SuSana Distancia is all you need: Enforcing class separability in metric\n  learning via two novel distance-based loss functions for few-shot image\n  classification",
+      "supporting_text": "Few-shot learning is a challenging area of research that aims to learn new concepts with only a few labeled samples of data. Recent works based on metric-learning approaches leverage the meta-learning approach, which is encompassed by episodic tasks that make use a support (training) and query set (test) with the objective of learning a similarity comparison metric between those sets. Due to the lack of data, the learning process of the embedding network becomes an important part of the few-shot task. Previous works have addressed this problem using metric learning approaches, but the properties of the underlying latent space and the separability of the difference classes on it was not entirely enforced. In this work, we propose two different loss functions which consider the importance of the embedding vectors by looking at the intra-class and inter-class distance between the few data. The first loss function is the Proto-Triplet Loss, which is based on the original triplet loss with the modifications needed to better work on few-shot scenarios. The second loss function, which we dub ICNN loss is based on an inter and intra class nearest neighbors score, which help us to assess the quality of embeddings obtained from the trained network. Our results, obtained from a extensive experimental setup show a significant improvement in accuracy in the miniImagenNet benchmark compared to other metric-based few-shot learning methods by a margin of 2%, demonstrating the capability of these loss functions to allow the network to generalize better to previously unseen classes. In our experiments, we demonstrate competitive generalization capabilities to other domains, such as the Caltech CUB, Dogs and Cars datasets compared with the state of the art.",
+      "sha256": "3b7b29b93228cfb4d0bce8af40b9a1cde49576d318595eb3973e969cfd257e44"
+    },
+    "arxiv:2409.07989:abstract:claim:5ed923dac68f": {
+      "paper_id": "arxiv:2409.07989",
+      "paper_title": "Enhancing Few-Shot Image Classification through Learnable Multi-Scale Embedding and Attention Mechanisms",
+      "supporting_text": "In the context of few-shot classification, the goal is to train a classifier using a limited number of samples while maintaining satisfactory performance. However, traditional metric-based methods exhibit certain limitations in achieving this objective. These methods typically rely on a single distance value between the query feature and support feature, thereby overlooking the contribution of shallow features. To overcome this challenge, we propose a novel approach in this paper. Our approach involves utilizing a multi-output embedding network that maps samples into distinct feature spaces. The proposed method extracts feature vectors at different stages, enabling the model to capture both global and abstract features. By utilizing these diverse feature spaces, our model enhances its performance. Moreover, employing a self-attention mechanism improves the refinement of features at each stage, leading to even more robust representations and improved overall performance. Furthermore, assigning learnable weights to each stage significantly improved performance and results. We conducted comprehensive evaluations on the MiniImageNet and FC100 datasets, specifically in the 5-way 1-shot and 5-way 5-shot scenarios. Additionally, we performed cross-domain tasks across eight benchmark datasets, achieving high accuracy in the testing domains. These evaluations demonstrate the efficacy of our proposed method in comparison to state-of-the-art approaches. https://github.com/FatemehAskari/MSENet",
+      "sha256": "f835d7333a41c29e347d8c7201eafe5eea7e317c37a2e89e693a373053108198"
+    },
+    "arxiv:2105.00379:abstract:claim:38498384e907": {
+      "paper_id": "arxiv:2105.00379",
+      "paper_title": "Subspace Representation Learning for Few-shot Image Classification",
+      "supporting_text": "In this paper, we propose a subspace representation learning (SRL) framework to tackle few-shot image classification tasks. It exploits a subspace in local CNN feature space to represent an image, and measures the similarity between two images according to a weighted subspace distance (WSD). When K images are available for each class, we develop two types of template subspaces to aggregate K-shot information: the prototypical subspace (PS) and the discriminative subspace (DS). Based on the SRL framework, we extend metric learning based techniques from vector to subspace representation. While most previous works adopted global vector representation, using subspace representation can effectively preserve the spatial structure, and diversity within an image. We demonstrate the effectiveness of the SRL framework on three public benchmark datasets: MiniImageNet, TieredImageNet and Caltech-UCSD Birds-200-2011 (CUB), and the experimental results illustrate competitive/superior performance of our method compared to the previous state-of-the-art.",
+      "sha256": "17576efae2193e4672982e69013647dca735a9b22d834e7a9839d9083b7f8ab5"
+    },
+    "arxiv:1802.04376:abstract:claim:50a611de7d64": {
+      "paper_id": "arxiv:1802.04376",
+      "paper_title": "Few-Shot Learning with Metric-Agnostic Conditional Embeddings",
+      "supporting_text": "Learning high quality class representations from few examples is a key problem in metric-learning approaches to few-shot learning. To accomplish this, we introduce a novel architecture where class representations are conditioned for each few-shot trial based on a target image. We also deviate from traditional metric-learning approaches by training a network to perform comparisons between classes rather than relying on a static metric comparison. This allows the network to decide what aspects of each class are important for the comparison at hand. We find that this flexible architecture works well in practice, achieving state-of-the-art performance on the Caltech-UCSD birds fine-grained classification task.",
+      "sha256": "69b246f1b31c585d299a4863d3c33224be6eeb4f13d70737eacd6924620bc80d"
+    },
+    "arxiv:2010.04525:abstract:claim:7178a9c4f03f": {
+      "paper_id": "arxiv:2010.04525",
+      "paper_title": "Uncertainty-Aware Few-Shot Image Classification",
+      "supporting_text": "Few-shot image classification learns to recognize new categories from limited labelled data. Metric learning based approaches have been widely investigated, where a query sample is classified by finding the nearest prototype from the support set based on their feature similarities. A neural network has different uncertainties on its calculated similarities of different pairs. Understanding and modeling the uncertainty on the similarity could promote the exploitation of limited samples in few-shot optimization. In this work, we propose Uncertainty-Aware Few-Shot framework for image classification by modeling uncertainty of the similarities of query-support pairs and performing uncertainty-aware optimization. Particularly, we exploit such uncertainty by converting observed similarities to probabilistic representations and incorporate them to the loss for more effective optimization. In order to jointly consider the similarities between a query and the prototypes in a support set, a graph-based model is utilized to estimate the uncertainty of the pairs. Extensive experiments show our proposed method brings significant improvements on top of a strong baseline and achieves the state-of-the-art performance.",
+      "sha256": "d85cb9cf386214c553601342955c9b10d4a65aaac5f4f910580481385f85c554"
+    },
+    "arxiv:1907.03123:abstract:claim:b4d49aba47c5": {
+      "paper_id": "arxiv:1907.03123",
+      "paper_title": "Revisiting Metric Learning for Few-Shot Image Classification",
+      "supporting_text": "The goal of few-shot learning is to recognize new visual concepts with just a few amount of labeled samples in each class. Recent effective metric-based few-shot approaches employ neural networks to learn a feature similarity comparison between query and support examples. However, the importance of feature embedding, i.e., exploring the relationship among training samples, is neglected. In this work, we present a simple yet powerful baseline for few-shot classification by emphasizing the importance of feature embedding. Specifically, we revisit the classical triplet network from deep metric learning, and extend it into a deep K-tuplet network for few-shot learning, utilizing the relationship among the input samples to learn a general representation learning via episode-training. Once trained, our network is able to extract discriminative features for unseen novel categories and can be seamlessly incorporated with a non-linear distance metric function to facilitate the few-shot classification. Our result on the miniImageNet benchmark outperforms other metric-based few-shot classification methods. More importantly, when evaluated on completely different datasets (Caltech-101, CUB-200, Stanford Dogs and Cars) using the model trained with miniImageNet, our method significantly outperforms prior methods, demonstrating its superior capability to generalize to unseen classes.",
+      "sha256": "bbc803aec14ff7d89ee221236ec27f7e6938a8484773b680cc121ed4002bc5fd"
+    },
+    "arxiv:2305.09062:abstract:claim:aaed703eb739": {
+      "paper_id": "arxiv:2305.09062",
+      "paper_title": "SuSana Distancia is all you need: Enforcing class separability in metric\n  learning via two novel distance-based loss functions for few-shot image\n  classification",
+      "supporting_text": "Few-shot learning is a challenging area of research that aims to learn new concepts with only a few labeled samples of data. Recent works based on metric-learning approaches leverage the meta-learning approach, which is encompassed by episodic tasks that make use a support (training) and query set (test) with the objective of learning a similarity comparison metric between those sets. Due to the lack of data, the learning process of the embedding network becomes an important part of the few-shot task. Previous works have addressed this problem using metric learning approaches, but the properties of the underlying latent space and the separability of the difference classes on it was not entirely enforced. In this work, we propose two different loss functions which consider the importance of the embedding vectors by looking at the intra-class and inter-class distance between the few data. The first loss function is the Proto-Triplet Loss, which is based on the original triplet loss with the modifications needed to better work on few-shot scenarios. The second loss function, which we dub ICNN loss is based on an inter and intra class nearest neighbors score, which help us to assess the quality of embeddings obtained from the trained network. Our results, obtained from a extensive experimental setup show a significant improvement in accuracy in the miniImagenNet benchmark compared to other metric-based few-shot learning methods by a margin of 2%, demonstrating the capability of these loss functions to allow the network to generalize better to previously unseen classes. In our experiments, we demonstrate competitive generalization capabilities to other domains, such as the Caltech CUB, Dogs and Cars datasets compared with the state of the art.",
+      "sha256": "3b7b29b93228cfb4d0bce8af40b9a1cde49576d318595eb3973e969cfd257e44"
+    },
+    "arxiv:2105.00379:abstract:claim:e2d40a72c0d6": {
+      "paper_id": "arxiv:2105.00379",
+      "paper_title": "Subspace Representation Learning for Few-shot Image Classification",
+      "supporting_text": "In this paper, we propose a subspace representation learning (SRL) framework to tackle few-shot image classification tasks. It exploits a subspace in local CNN feature space to represent an image, and measures the similarity between two images according to a weighted subspace distance (WSD). When K images are available for each class, we develop two types of template subspaces to aggregate K-shot information: the prototypical subspace (PS) and the discriminative subspace (DS). Based on the SRL framework, we extend metric learning based techniques from vector to subspace representation. While most previous works adopted global vector representation, using subspace representation can effectively preserve the spatial structure, and diversity within an image. We demonstrate the effectiveness of the SRL framework on three public benchmark datasets: MiniImageNet, TieredImageNet and Caltech-UCSD Birds-200-2011 (CUB), and the experimental results illustrate competitive/superior performance of our method compared to the previous state-of-the-art.",
+      "sha256": "17576efae2193e4672982e69013647dca735a9b22d834e7a9839d9083b7f8ab5"
+    },
+    "arxiv:2104.02638:section:abstract:9:1354132472a1:claim:3fb7cfd2fbdb": {
+      "paper_id": "arxiv:2104.02638",
+      "paper_title": "Comparing Transfer and Meta Learning Approaches on a Unified Few-Shot Classification Benchmark",
+      "supporting_text": "ns-fer with few datapoints. In computer vision, learning with few datapoints is, perhaps, more commonly addressed with semi-supervised learning (e.g. (Sohn et al., 2020)), how-ever (Kolesnikov et al., 2020) show that large vision models transfer well to popular classification benchmarks (Ima-geNet, CIFAR, etc.) and VTAB-1k. Several recent papers report that well-tuned transfer learn-ing baselines are competitive with more complex few-shot classification approaches (Chen et al., 2019; Dhillon et al., 2020; Chen et al., 2020b; Tian et al., 2020). Our work adds to these observations by applying an established few-shot classification evaluation protocol (Meta-Dataset) to large scale (both in terms of data and capacity) transfer learners. Doing so highlights some limitations of episodic approaches in a new way, and also reveals where transfer learning falls short. 2.2. Episodic approaches to few-shot classification",
+      "sha256": "b164610a74c6e6d2ce21baeb3fc9882d4347bc8ea48f07d50425029e795228bb"
+    },
+    "arxiv:2105.08149:page:1:block:9:claim:7cf2d36a262c": {
+      "paper_id": "arxiv:2105.08149",
+      "paper_title": "Deep Metric Learning for Few-Shot Image Classification: A Review of Recent Developments",
+      "supporting_text": "The biggest challenge in few-shot classification is a high risk of model overfitting to the few labeled training samples. To alleviate this problem, researchers have proposed various approaches, such as meta-learning methods, transfer learning methods, and metric learning methods. Meta-learning methods train a meta-learner on many different classification tasks to extract generalizable knowledge, which enables rapid learning on a new related task with few examples [7, 9]. Transfer learning methods presume shared knowledge between the source and target domains, and fine-tune the model trained on abundant source data to fit few labeled target samples [10, 11]. Metric learning methods learn feature embeddings [6] and/or distance measures (or inversely, similarity measures) [12] and classify an unseen sample based on its distance to",
+      "sha256": "ffe84831bb4ae36f7b1dd692fc736853ab65cd1d9b14eb1fe018bc250a99b99d"
+    },
+    "arxiv:2104.02638:section:abstract:2:c92e388de5e0:claim:1a6b9a5336b7": {
+      "paper_id": "arxiv:2104.02638",
+      "paper_title": "Comparing Transfer and Meta Learning Approaches on a Unified Few-Shot Classification Benchmark",
+      "supporting_text": "a collection and labeling is often time-consuming or expensive, and as a result, not all learning problems afford large quantities of training data. Few-shot learning approaches can be grouped into two main categories: transfer learning and meta-learning1. For trans-fer learning, a model is firstly pre-trained on an “upstream” dataset (e.g. ImageNet (Deng et al., 2009)), and later fine-tuned on different downstream tasks. Transfer learning approaches (Pan & Yang, 2009) are best exemplified when less downstream data is available. Typical downstream tasks have thousands or more training examples, but transfer may in principle be applied to few-shot classification.",
+      "sha256": "74eb0e8e645532de19c2ed9588b147d528e4099b81b77474e1474614a26eb9cb"
+    },
+    "arxiv:2105.08149:page:1:block:9:claim:e0be331540fc": {
+      "paper_id": "arxiv:2105.08149",
+      "paper_title": "Deep Metric Learning for Few-Shot Image Classification: A Review of Recent Developments",
+      "supporting_text": "The biggest challenge in few-shot classification is a high risk of model overfitting to the few labeled training samples. To alleviate this problem, researchers have proposed various approaches, such as meta-learning methods, transfer learning methods, and metric learning methods. Meta-learning methods train a meta-learner on many different classification tasks to extract generalizable knowledge, which enables rapid learning on a new related task with few examples [7, 9]. Transfer learning methods presume shared knowledge between the source and target domains, and fine-tune the model trained on abundant source data to fit few labeled target samples [10, 11]. Metric learning methods learn feature embeddings [6] and/or distance measures (or inversely, similarity measures) [12] and classify an unseen sample based on its distance to",
+      "sha256": "ffe84831bb4ae36f7b1dd692fc736853ab65cd1d9b14eb1fe018bc250a99b99d"
+    },
+    "arxiv:2104.02638:section:abstract:9:1354132472a1:claim:1453b845fef7": {
+      "paper_id": "arxiv:2104.02638",
+      "paper_title": "Comparing Transfer and Meta Learning Approaches on a Unified Few-Shot Classification Benchmark",
+      "supporting_text": "ns-fer with few datapoints. In computer vision, learning with few datapoints is, perhaps, more commonly addressed with semi-supervised learning (e.g. (Sohn et al., 2020)), how-ever (Kolesnikov et al., 2020) show that large vision models transfer well to popular classification benchmarks (Ima-geNet, CIFAR, etc.) and VTAB-1k. Several recent papers report that well-tuned transfer learn-ing baselines are competitive with more complex few-shot classification approaches (Chen et al., 2019; Dhillon et al., 2020; Chen et al., 2020b; Tian et al., 2020). Our work adds to these observations by applying an established few-shot classification evaluation protocol (Meta-Dataset) to large scale (both in terms of data and capacity) transfer learners. Doing so highlights some limitations of episodic approaches in a new way, and also reveals where transfer learning falls short. 2.2. Episodic approaches to few-shot classification",
+      "sha256": "b164610a74c6e6d2ce21baeb3fc9882d4347bc8ea48f07d50425029e795228bb"
+    },
+    "arxiv:1711.06025:section:abstract:4:b851ec357ca4:claim:3868df819471": {
+      "paper_id": "arxiv:1711.06025",
+      "paper_title": "Learning to Compare: Relation Network for Few-Shot Learning",
+      "supporting_text": "le in the form of a class de-scription (c.f., single exemplar image in one-shot), making data insufficiency for gradient-based learning a challenge. While promising, most existing few-shot learning ap-proaches either require complex inference mechanisms [23, 9], complex recurrent neural network (RNN) architectures [39, 32], or fine-tuning the target problem [10, 29]. Our approach is most related to others that aim to train an effec-tive metric for one-shot learning [39, 36, 20]. Where they focus on the learning of the transferrable embedding and pre-define a fixed metric (e.g., as Euclidean [36]), we fur-ther aim to learn a transferrable deep metric for comparing the relation between images (few-shot learning), or between images and class descriptions (zero-shot learning). By ex-pressing the inductive bias of a deeper solution (multiple non-linear learned stages at both embedding and relation modules), we make it easier to learn a generalisable solu-tion to the problem.",
+      "sha256": "8872716bd279be9f00a6593056d2f42cbbaa8a86a784d372920592d893a71c97"
+    },
+    "arxiv:1711.06025:section:abstract:12:43376954155c:claim:71df1568e996": {
+      "paper_id": "arxiv:1711.06025",
+      "paper_title": "Learning to Compare: Relation Network for Few-Shot Learning",
+      "supporting_text": "ent problem.). Compared to [20, 36], this can be seen as providing a learnable rather than fixed metric, or non-linear rather than linear classifier. Compared to [20] we benefit from an episodic training strat-egy with an end-to-end manner from scratch, and compared to [32] we avoid the complexity of set-to-set RNN embed-ding of the sample-set, and simply rely on pooling [33]. Zero-Shot Learning Our approach is designed for few- shot learning, but elegantly spans the space into zero-shot learning (ZSL) by modifying the sample branch to input a single category description rather than single training im-age. When applied to ZSL our architecture is related to methods that learn to align images and category embed-dings and perform recognition by predicting if an image and category embedding pair match [11, 3, 43, 46]. Sim-ilarly to the case with the prior metric-based few-shot ap-proaches, most of these apply a fixed manually defined sim-ilarity metric or linear classifier after combining the image and category embedding.",
+      "sha256": "78d72a04eef8f36b14d10870558dbd7caa870b2707e9a21b5a311f7805296c35"
+    }
+  }
+}

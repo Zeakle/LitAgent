@@ -1,0 +1,6 @@
+{
+  "fixture_kind": "sanitized_protocol_structure_not_scientific_evidence",
+  "source_suite": "frozen-writer-three-domain-20261024-006",
+  "source_response_sha256": "118ddea9168f879c488e1934c49e87b3dc6f563a1ea3815281503e0006b7c326",
+  "raw": "{\"abstract\":[{\"sentences\":[{\"text\":\"示例陈述\",\"body_unit_refs\":[\"u1\",\"u2\",\"u3\"]},{\"text\":\"示例陈述\",\"body_unit_refs\":[\"u7\",\"u49\"]},{\"text\":\"示例陈述\",\"body_unit_refs\":[\"u8\",\"u53\",\"u70\"]}]},{\"conclusion\":[{\"sentences\":[{\"text\":\"示例陈述\",\"body_unit_refs\":[\"u4\",\"u5\",\"u20\",\"u22\"]},{\"text\":\"示例陈述\",\"body_unit_refs\":[\"u54\",\"u55\",\"u60\",\"u62\",\"u64\",\"u66\",\"u69\"]},{\"text\":\"示例陈述\",\"body_unit_refs\":[\"u50\",\"u65\",\"u70\"]},{\"text\":\"示例陈述\",\"body_unit_refs\":[\"u71\",\"u81\",\"u86\"]}]}"
+}

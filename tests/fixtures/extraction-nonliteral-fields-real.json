@@ -1,0 +1,400 @@
+{
+  "scientific_status": "not_verified",
+  "batches": [
+    {
+      "input": {
+        "contract": "source-field-paper-batch-v1",
+        "papers": {
+          "p0": {
+            "paper_id": "arxiv:1907.03123",
+            "source_context": "Title: Revisiting Metric Learning for Few-Shot Image Classification\n\n[CHUNK:abstract] section=abstract\nThe goal of few-shot learning is to recognize new visual concepts with just a few amount of labeled samples in each class. Recent effective metric-based few-shot approaches employ neural networks to learn a feature similarity comparison between query and support examples. However, the importance of feature embedding, i.e., exploring the relationship among training samples, is neglected. In this work, we present a simple yet powerful baseline for few-shot classification by emphasizing the importance of feature embedding. Specifically, we revisit the classical triplet network from deep metric learning, and extend it into a deep K-tuplet network for few-shot learning, utilizing the relationship among the input samples to learn a general representation learning via episode-training. Once trained, our network is able to extract discriminative features for unseen novel categories and can be seamlessly incorporated with a non-linear distance metric function to facilitate the few-shot classification. Our result on the miniImageNet benchmark outperforms other metric-based few-shot classification methods. More importantly, when evaluated on completely different datasets (Caltech-101, CUB-200, Stanford Dogs and Cars) using the model trained with miniImageNet, our method significantly outperforms prior methods, demonstrating its superior capability to generalize to unseen classes.\n\n[CHUNK:page:1:block:6] section=abstract\nThe goal of few-shot learning is to recognize new visual concepts with just a few amount of labeled samples in each class. Recent effective metric-based few-shot ap-proaches employ neural networks to learn a feature similarity comparison between query and support examples. However, the importance of feature embedding, i.e., ex-ploring the relationship among training samples, is neglected. In this work, we present a simple yet powerful baseline for few-shot classification by emphasizing the impor-tance of feature embedding. Specifically, we revisit the classical triplet network from deep metric learning, and extend it into a deep K-tuplet network for few-shot learning, utilizing the relationship among the input samples to learn a general representation learning via episode-training. Once trained, our network is able to extract discrimi-native features for unseen novel categories and can be seamlessly incorporated with a non-linear distance metric function to facilitate the few-shot classification. Our re-sult on the miniImageNet benchmark outperforms other metric-based few-shot classi-fication methods. More importantly, when evaluated on completely different datasets (Caltech-101, CUB-200, Stanford Dogs and Cars) using the model trained with mini-ImageNet, our method significantly outperforms prior methods, demonstrating its su-perior capability to generalize to unseen classes.\n\n[CHUNK:page:1:block:7] section=abstract\nKeywords: Few-shot learning, metric learning, feature representation, deep learning.\n\n[CHUNK:page:1:block:8] section=abstract\n1. Introduction",
+            "allowed_source_chunk_keys": [
+              "abstract",
+              "page:1:block:6",
+              "page:1:block:7",
+              "page:1:block:8"
+            ]
+          },
+          "p1": {
+            "paper_id": "arxiv:2305.09062",
+            "source_context": "Title: SuSana Distancia is all you need: Enforcing class separability in metric\n  learning via two novel distance-based loss functions for few-shot image\n  classification\n\n[CHUNK:abstract] section=abstract\nFew-shot learning is a challenging area of research that aims to learn new concepts with only a few labeled samples of data. Recent works based on metric-learning approaches leverage the meta-learning approach, which is encompassed by episodic tasks that make use a support (training) and query set (test) with the objective of learning a similarity comparison metric between those sets. Due to the lack of data, the learning process of the embedding network becomes an important part of the few-shot task. Previous works have addressed this problem using metric learning approaches, but the properties of the underlying latent space and the separability of the difference classes on it was not entirely enforced. In this work, we propose two different loss functions which consider the importance of the embedding vectors by looking at the intra-class and inter-class distance between the few data. The first loss function is the Proto-Triplet Loss, which is based on the original triplet loss with the modifications needed to better work on few-shot scenarios. The second loss function, which we dub ICNN loss is based on an inter and intra class nearest neighbors score, which help us to assess the quality of embeddings obtained from the trained network. Our results, obtained from a extensive experimental setup show a significant improvement in accuracy in the miniImagenNet benchmark compared to other metric-based few-shot learning methods by a margin of 2%, demonstrating the capability of these loss functions to allow the network to generalize better to previously unseen classes. In our experiments, we demonstrate competitive generalization capabilities to other domains, such as the Caltech CUB, Dogs and Cars datasets compared with the state of the art.",
+            "allowed_source_chunk_keys": [
+              "abstract"
+            ]
+          }
+        }
+      },
+      "response": {
+        "papers": {
+          "p0": {
+            "claim_records": [
+              {
+                "text": "Specifically, we revisit the classical triplet network from deep metric learning, and extend it into a deep K-tuplet network for few-shot learning, utilizing the relationship among the input samples to learn a general representation learning via episode-training.",
+                "source_chunk_key": "abstract",
+                "confidence": 1.0,
+                "fact_fields": {
+                  "method": "deep K-tuplet network",
+                  "conditions": null,
+                  "dataset": null,
+                  "metric": null,
+                  "value": null,
+                  "unit": null,
+                  "qualifiers": "revisit the classical triplet network from deep metric learning, utilizing the relationship among the input samples to learn a general representation learning via episode-training"
+                }
+              },
+              {
+                "text": "Once trained, our network is able to extract discriminative features for unseen novel categories and can be seamlessly incorporated with a non-linear distance metric function to facilitate the few-shot classification.",
+                "source_chunk_key": "abstract",
+                "confidence": 1.0,
+                "fact_fields": {
+                  "method": "deep K-tuplet network",
+                  "conditions": "Once trained",
+                  "dataset": null,
+                  "metric": null,
+                  "value": null,
+                  "unit": null,
+                  "qualifiers": "extract discriminative features for unseen novel categories, seamlessly incorporated with a non-linear distance metric function to facilitate the few-shot classification"
+                }
+              },
+              {
+                "text": "Our result on the miniImageNet benchmark outperforms other metric-based few-shot classification methods.",
+                "source_chunk_key": "abstract",
+                "confidence": 1.0,
+                "fact_fields": {
+                  "method": "deep K-tuplet network",
+                  "conditions": null,
+                  "dataset": "miniImageNet",
+                  "metric": null,
+                  "value": null,
+                  "unit": null,
+                  "qualifiers": "outperforms other metric-based few-shot classification methods"
+                }
+              },
+              {
+                "text": "More importantly, when evaluated on completely different datasets (Caltech-101, CUB-200, Stanford Dogs and Cars) using the model trained with miniImageNet, our method significantly outperforms prior methods, demonstrating its superior capability to generalize to unseen classes.",
+                "source_chunk_key": "abstract",
+                "confidence": 1.0,
+                "fact_fields": {
+                  "method": "deep K-tuplet network",
+                  "conditions": "using the model trained with miniImageNet",
+                  "dataset": "Caltech-101, CUB-200, Stanford Dogs and Cars",
+                  "metric": null,
+                  "value": null,
+                  "unit": null,
+                  "qualifiers": "significantly outperforms prior methods, demonstrating its superior capability to generalize to unseen classes"
+                }
+              }
+            ],
+            "metrics": {},
+            "methods": [
+              "deep K-tuplet network",
+              "triplet network",
+              "non-linear distance metric function"
+            ],
+            "datasets": [
+              "miniImageNet",
+              "Caltech-101",
+              "CUB-200",
+              "Stanford Dogs",
+              "Cars"
+            ]
+          },
+          "p1": {
+            "claim_records": [
+              {
+                "text": "The first loss function is the Proto-Triplet Loss, which is based on the original triplet loss with the modifications needed to better work on few-shot scenarios.",
+                "source_chunk_key": "abstract",
+                "confidence": 1.0,
+                "fact_fields": {
+                  "method": "Proto-Triplet Loss",
+                  "conditions": "few-shot scenarios",
+                  "dataset": null,
+                  "metric": null,
+                  "value": null,
+                  "unit": null,
+                  "qualifiers": "based on the original triplet loss with the modifications needed to better work on few-shot scenarios"
+                }
+              },
+              {
+                "text": "The second loss function, which we dub ICNN loss is based on an inter and intra class nearest neighbors score, which help us to assess the quality of embeddings obtained from the trained network.",
+                "source_chunk_key": "abstract",
+                "confidence": 1.0,
+                "fact_fields": {
+                  "method": "ICNN loss",
+                  "conditions": null,
+                  "dataset": null,
+                  "metric": null,
+                  "value": null,
+                  "unit": null,
+                  "qualifiers": "based on an inter and intra class nearest neighbors score, which help us to assess the quality of embeddings obtained from the trained network"
+                }
+              },
+              {
+                "text": "Our results, obtained from a extensive experimental setup show a significant improvement in accuracy in the miniImagenNet benchmark compared to other metric-based few-shot learning methods by a margin of 2%, demonstrating the capability of these loss functions to allow the network to generalize better to previously unseen classes.",
+                "source_chunk_key": "abstract",
+                "confidence": 1.0,
+                "fact_fields": {
+                  "method": "Proto-Triplet Loss and ICNN loss",
+                  "conditions": "extensive experimental setup",
+                  "dataset": "miniImagenNet",
+                  "metric": "accuracy",
+                  "value": "2%",
+                  "unit": "%",
+                  "qualifiers": "significant improvement in accuracy compared to other metric-based few-shot learning methods by a margin of 2%, demonstrating the capability of these loss functions to allow the network to generalize better to previously unseen classes"
+                }
+              },
+              {
+                "text": "In our experiments, we demonstrate competitive generalization capabilities to other domains, such as the Caltech CUB, Dogs and Cars datasets compared with the state of the art.",
+                "source_chunk_key": "abstract",
+                "confidence": 1.0,
+                "fact_fields": {
+                  "method": "Proto-Triplet Loss and ICNN loss",
+                  "conditions": null,
+                  "dataset": "Caltech CUB, Dogs and Cars",
+                  "metric": null,
+                  "value": null,
+                  "unit": null,
+                  "qualifiers": "competitive generalization capabilities to other domains compared with the state of the art"
+                }
+              }
+            ],
+            "metrics": {
+              "accuracy": "2% margin over other metric-based few-shot learning methods on miniImagenNet"
+            },
+            "methods": [
+              "Proto-Triplet Loss",
+              "ICNN loss"
+            ],
+            "datasets": [
+              "miniImagenNet",
+              "Caltech CUB",
+              "Dogs",
+              "Cars"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "input": {
+        "contract": "source-field-paper-batch-v1",
+        "papers": {
+          "p0": {
+            "paper_id": "arxiv:1802.04376",
+            "source_context": "Title: Few-Shot Learning with Metric-Agnostic Conditional Embeddings\n\n[CHUNK:abstract] section=abstract\nLearning high quality class representations from few examples is a key problem in metric-learning approaches to few-shot learning. To accomplish this, we introduce a novel architecture where class representations are conditioned for each few-shot trial based on a target image. We also deviate from traditional metric-learning approaches by training a network to perform comparisons between classes rather than relying on a static metric comparison. This allows the network to decide what aspects of each class are important for the comparison at hand. We find that this flexible architecture works well in practice, achieving state-of-the-art performance on the Caltech-UCSD birds fine-grained classification task.",
+            "allowed_source_chunk_keys": [
+              "abstract"
+            ]
+          },
+          "p1": {
+            "paper_id": "arxiv:1904.03014",
+            "source_context": "Title: A Hybrid Approach with Optimization and Metric-based Meta-Learner for Few-Shot Learning\n\n[CHUNK:abstract] section=abstract\nFew-shot learning aims to learn classifiers for new classes with only a few training examples per class. Most existing few-shot learning approaches belong to either metric-based meta-learning or optimization-based meta-learning category, both of which have achieved successes in the simplified \"$k$-shot $N$-way\" image classification settings. Specifically, the optimization-based approaches train a meta-learner to predict the parameters of the task-specific classifiers. The task-specific classifiers are required to be homogeneous-structured to ease the parameter prediction, so the meta-learning approaches could only handle few-shot learning problems where the tasks share a uniform number of classes. The metric-based approaches learn one task-invariant metric for all the tasks. Even though the metric-learning approaches allow different numbers of classes, they require the tasks all coming from a similar domain such that there exists a uniform metric that could work across tasks. In this work, we propose a hybrid meta-learning model called Meta-Metric-Learner which combines the merits of both optimization- and metric-based approaches. Our meta-metric-learning approach consists of two components, a task-specific metric-based learner as a base model, and a meta-learner that learns and specifies the base model. Thus our model is able to handle flexible numbers of classes as well as generate more generalized metrics for classification across tasks. We test our approach in the standard \"$k$-shot $N$-way\" few-shot learning setting following previous works and a new realistic few-shot setting with flexible class numbers in both single-source form and multi-source forms. Experiments show that our approach can obtain superior performance in all settings.",
+            "allowed_source_chunk_keys": [
+              "abstract"
+            ]
+          }
+        }
+      },
+      "response": {
+        "papers": {
+          "p0": {
+            "claim_records": [
+              {
+                "text": "To accomplish this, we introduce a novel architecture where class representations are conditioned for each few-shot trial based on a target image.",
+                "source_chunk_key": "abstract",
+                "confidence": 0.95,
+                "fact_fields": {
+                  "method": "novel architecture",
+                  "conditions": "few-shot trial",
+                  "dataset": null,
+                  "metric": null,
+                  "value": null,
+                  "unit": null,
+                  "qualifiers": "class representations are conditioned based on a target image"
+                }
+              },
+              {
+                "text": "We also deviate from traditional metric-learning approaches by training a network to perform comparisons between classes rather than relying on a static metric comparison.",
+                "source_chunk_key": "abstract",
+                "confidence": 0.95,
+                "fact_fields": {
+                  "method": "network trained to perform comparisons between classes",
+                  "conditions": null,
+                  "dataset": null,
+                  "metric": null,
+                  "value": null,
+                  "unit": null,
+                  "qualifiers": "deviates from traditional metric-learning approaches; rather than relying on a static metric comparison"
+                }
+              },
+              {
+                "text": "We find that this flexible architecture works well in practice, achieving state-of-the-art performance on the Caltech-UCSD birds fine-grained classification task.",
+                "source_chunk_key": "abstract",
+                "confidence": 0.95,
+                "fact_fields": {
+                  "method": "flexible architecture",
+                  "conditions": null,
+                  "dataset": "Caltech-UCSD birds",
+                  "metric": null,
+                  "value": "state-of-the-art performance",
+                  "unit": null,
+                  "qualifiers": "fine-grained classification task"
+                }
+              }
+            ],
+            "metrics": {
+              "performance": "state-of-the-art"
+            },
+            "methods": [
+              "novel architecture with target-image-conditioned class representations",
+              "network trained to perform comparisons between classes"
+            ],
+            "datasets": [
+              "Caltech-UCSD birds"
+            ]
+          },
+          "p1": {
+            "claim_records": [
+              {
+                "text": "the optimization-based approaches train a meta-learner to predict the parameters of the task-specific classifiers.",
+                "source_chunk_key": "abstract",
+                "confidence": 0.95,
+                "fact_fields": {
+                  "method": "optimization-based approaches",
+                  "conditions": null,
+                  "dataset": null,
+                  "metric": null,
+                  "value": null,
+                  "unit": null,
+                  "qualifiers": "train a meta-learner to predict the parameters of the task-specific classifiers"
+                }
+              },
+              {
+                "text": "The task-specific classifiers are required to be homogeneous-structured to ease the parameter prediction, so the meta-learning approaches could only handle few-shot learning problems where the tasks share a uniform number of classes.",
+                "source_chunk_key": "abstract",
+                "confidence": 0.95,
+                "fact_fields": {
+                  "method": "meta-learning approaches",
+                  "conditions": "task-specific classifiers are required to be homogeneous-structured to ease the parameter prediction",
+                  "dataset": null,
+                  "metric": null,
+                  "value": null,
+                  "unit": null,
+                  "qualifiers": "could only handle few-shot learning problems where the tasks share a uniform number of classes"
+                }
+              },
+              {
+                "text": "The metric-based approaches learn one task-invariant metric for all the tasks.",
+                "source_chunk_key": "abstract",
+                "confidence": 0.95,
+                "fact_fields": {
+                  "method": "metric-based approaches",
+                  "conditions": null,
+                  "dataset": null,
+                  "metric": null,
+                  "value": null,
+                  "unit": null,
+                  "qualifiers": "learn one task-invariant metric for all the tasks"
+                }
+              },
+              {
+                "text": "Even though the metric-learning approaches allow different numbers of classes, they require the tasks all coming from a similar domain such that there exists a uniform metric that could work across tasks.",
+                "source_chunk_key": "abstract",
+                "confidence": 0.95,
+                "fact_fields": {
+                  "method": "metric-learning approaches",
+                  "conditions": "tasks all coming from a similar domain",
+                  "dataset": null,
+                  "metric": null,
+                  "value": null,
+                  "unit": null,
+                  "qualifiers": "allow different numbers of classes; there exists a uniform metric that could work across tasks"
+                }
+              },
+              {
+                "text": "In this work, we propose a hybrid meta-learning model called Meta-Metric-Learner which combines the merits of both optimization- and metric-based approaches.",
+                "source_chunk_key": "abstract",
+                "confidence": 0.95,
+                "fact_fields": {
+                  "method": "Meta-Metric-Learner",
+                  "conditions": null,
+                  "dataset": null,
+                  "metric": null,
+                  "value": null,
+                  "unit": null,
+                  "qualifiers": "hybrid meta-learning model; combines the merits of both optimization- and metric-based approaches"
+                }
+              },
+              {
+                "text": "Our meta-metric-learning approach consists of two components, a task-specific metric-based learner as a base model, and a meta-learner that learns and specifies the base model.",
+                "source_chunk_key": "abstract",
+                "confidence": 0.95,
+                "fact_fields": {
+                  "method": "meta-metric-learning approach",
+                  "conditions": null,
+                  "dataset": null,
+                  "metric": null,
+                  "value": null,
+                  "unit": null,
+                  "qualifiers": "consists of two components, a task-specific metric-based learner as a base model, and a meta-learner that learns and specifies the base model"
+                }
+              },
+              {
+                "text": "Thus our model is able to handle flexible numbers of classes as well as generate more generalized metrics for classification across tasks.",
+                "source_chunk_key": "abstract",
+                "confidence": 0.95,
+                "fact_fields": {
+                  "method": "our model",
+                  "conditions": null,
+                  "dataset": null,
+                  "metric": null,
+                  "value": null,
+                  "unit": null,
+                  "qualifiers": "able to handle flexible numbers of classes as well as generate more generalized metrics for classification across tasks"
+                }
+              },
+              {
+                "text": "We test our approach in the standard \"$k$-shot $N$-way\" few-shot learning setting following previous works and a new realistic few-shot setting with flexible class numbers in both single-source form and multi-source forms.",
+                "source_chunk_key": "abstract",
+                "confidence": 0.95,
+                "fact_fields": {
+                  "method": "our approach",
+                  "conditions": "standard \"$k$-shot $N$-way\" few-shot learning setting following previous works and a new realistic few-shot setting with flexible class numbers in both single-source form and multi-source forms",
+                  "dataset": null,
+                  "metric": null,
+                  "value": null,
+                  "unit": null,
+                  "qualifiers": null
+                }
+              },
+              {
+                "text": "Experiments show that our approach can obtain superior performance in all settings.",
+                "source_chunk_key": "abstract",
+                "confidence": 0.95,
+                "fact_fields": {
+                  "method": "our approach",
+                  "conditions": "all settings",
+                  "dataset": null,
+                  "metric": null,
+                  "value": "superior performance",
+                  "unit": null,
+                  "qualifiers": null
+                }
+              }
+            ],
+            "metrics": {
+              "performance": "superior"
+            },
+            "methods": [
+              "optimization-based meta-learning",
+              "metric-based meta-learning",
+              "Meta-Metric-Learner",
+              "meta-metric-learning approach"
+            ],
+            "datasets": []
+          }
+        }
+      }
+    }
+  ]
+}

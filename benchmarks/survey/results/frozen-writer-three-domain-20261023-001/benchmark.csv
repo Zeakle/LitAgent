@@ -1,0 +1,4 @@
+case_id,run_id,status,generated,evaluation,publishable,supported,unsupported,unverified,requests,known_tokens,unknown_hold,elapsed_ms,report_sha256,failure_family,failure_code
+few-shot-metric,frozen-writer-three-domain-20261023-001-few-shot-metric,blocked,False,not_complete,False,,,,1,12477,0,70209,,protocol,writer_json_invalid
+vit-data-efficient,,not_run,False,not_run,False,,,,0,0,0,,,,not_started_after_stop
+nerf-foundations,,not_run,False,not_run,False,,,,0,0,0,,,,not_started_after_stop

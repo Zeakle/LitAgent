@@ -1,0 +1,233 @@
+{
+  "run_id": "short-card-protocol-20261021-001",
+  "source_commit": "519e433302eeacccf7a8598a50b24833547a98ef",
+  "binding": "5df8df0fd55e5f06f4725133b3eec2a84c04126001e337d7f41bd3bc6d5da4d6",
+  "contract": "native-body-summary-v3",
+  "card_reference_contract": "section-card-refs-v1",
+  "accounting_predecessor_binding": "08386f0aad55de12041eba7493bca82787200a0372976009442ce1277102ac4d",
+  "status": "failed_no_replay",
+  "scientific_verdict": "not_evaluated",
+  "publishable": false,
+  "checks": [
+    {
+      "check": "body_json",
+      "status": "passed",
+      "paths": []
+    },
+    {
+      "check": "body_schema",
+      "status": "passed",
+      "paths": []
+    },
+    {
+      "check": "summaries_json",
+      "status": "not_run",
+      "paths": []
+    },
+    {
+      "check": "summaries_schema",
+      "status": "not_run",
+      "paths": []
+    },
+    {
+      "check": "body_host_validation",
+      "status": "failed",
+      "paths": []
+    },
+    {
+      "check": "full_local_compile",
+      "status": "not_run",
+      "paths": []
+    },
+    {
+      "check": "evaluation",
+      "status": "not_run",
+      "paths": []
+    },
+    {
+      "check": "scientific_acceptance",
+      "status": "not_evaluated",
+      "paths": []
+    },
+    {
+      "check": "delivery",
+      "status": "blocked",
+      "paths": []
+    },
+    {
+      "check": "host_diagnostic",
+      "status": "failed",
+      "paths": [
+        "strict_writing_scope_notice_invalid",
+        "sections.introduction.first_block.additional_sentences.3"
+      ]
+    },
+    {
+      "check": "host_diagnostic",
+      "status": "failed",
+      "paths": [
+        "strict_writing_scope_notice_invalid",
+        "sections.introduction.first_block.additional_sentences.4"
+      ]
+    },
+    {
+      "check": "host_diagnostic",
+      "status": "failed",
+      "paths": [
+        "strict_writing_unit_citation_scope_ambiguous",
+        "sections.taxonomy.first_block.first_sentence"
+      ]
+    },
+    {
+      "check": "host_diagnostic",
+      "status": "failed",
+      "paths": [
+        "strict_writing_scope_notice_invalid",
+        "sections.taxonomy.first_block.additional_sentences.6"
+      ]
+    },
+    {
+      "check": "host_diagnostic",
+      "status": "failed",
+      "paths": [
+        "strict_writing_passage_binding_invalid",
+        "sections.methods.first_block.additional_sentences.3"
+      ]
+    },
+    {
+      "check": "host_diagnostic",
+      "status": "failed",
+      "paths": [
+        "strict_writing_passage_binding_invalid",
+        "sections.methods.first_block.additional_sentences.4"
+      ]
+    },
+    {
+      "check": "host_diagnostic",
+      "status": "failed",
+      "paths": [
+        "strict_writing_passage_binding_invalid",
+        "sections.methods.first_block.additional_sentences.5"
+      ]
+    },
+    {
+      "check": "host_diagnostic",
+      "status": "failed",
+      "paths": [
+        "strict_writing_unit_citation_scope_ambiguous",
+        "sections.methods.first_block.additional_sentences.7"
+      ]
+    },
+    {
+      "check": "host_diagnostic",
+      "status": "failed",
+      "paths": [
+        "strict_writing_unit_citation_scope_ambiguous",
+        "sections.experiments.first_block.additional_sentences.4"
+      ]
+    },
+    {
+      "check": "host_diagnostic",
+      "status": "failed",
+      "paths": [
+        "strict_writing_unit_citation_scope_ambiguous",
+        "sections.experiments.first_block.additional_sentences.5"
+      ]
+    },
+    {
+      "check": "host_diagnostic",
+      "status": "failed",
+      "paths": [
+        "strict_writing_scope_notice_invalid",
+        "sections.experiments.first_block.additional_sentences.8"
+      ]
+    },
+    {
+      "check": "host_diagnostic",
+      "status": "failed",
+      "paths": [
+        "strict_writing_scope_notice_invalid",
+        "sections.open_problems.first_block.additional_sentences.6"
+      ]
+    }
+  ],
+  "stage_raw_sha256": {
+    "body": "b80ca564a0c728b29b58a3086ac6e9965b4e79ef7e13423ec4190b31f63d5134",
+    "summaries": null
+  },
+  "host_diagnostic_counts": {
+    "strict_writing_passage_binding_invalid": 3,
+    "strict_writing_scope_notice_invalid": 5,
+    "strict_writing_unit_citation_scope_ambiguous": 4
+  },
+  "requests": 1,
+  "tokens": 22470,
+  "unknown_hold": 0,
+  "usage": [
+    {
+      "model": "doubao-seed-2-1-pro-260915",
+      "actual_model": "doubao-seed-2-1-pro-260915",
+      "prompt_tokens": 18682,
+      "completion_tokens": 3788,
+      "total_tokens": 22470,
+      "usage_available": true,
+      "finish_reason": "stop",
+      "elapsed_ms": 96166
+    }
+  ],
+  "parent_plus_probe": {
+    "schema_version": 1,
+    "max_tokens": 500000,
+    "warn_ratio": 0.8,
+    "used_tokens": 176723,
+    "call_count": 29,
+    "warned": false,
+    "strict_policy": "staged-budget-v1",
+    "strict_phase": 1,
+    "requests_sent": 29,
+    "phase_usage": [
+      98267,
+      78456,
+      0
+    ],
+    "usage_uncertain": false,
+    "halt_on_unknown_usage": true,
+    "stop_reason": null
+  },
+  "cumulative": {
+    "initial_generation_rounds": 31,
+    "model_requests": 611,
+    "model_known_tokens": 3274644,
+    "model_unknown_conservative_tokens": 1003467,
+    "jev_requests": 67,
+    "jev_conservative_input_tokens": 756769,
+    "judge_requests": 0,
+    "jev_usage_complete": false
+  },
+  "new_allowance": {
+    "tokens": 120000,
+    "requests": 2,
+    "output_per_call": 20000,
+    "retries": 0
+  },
+  "trace_readback": {
+    "trace_id": "011de784d05ea3811c766a0a0091a721",
+    "observations": 2,
+    "generations": 1,
+    "generation_io_empty": true,
+    "generation_tokens": 22470,
+    "root_observation_count": 1,
+    "root_output": {
+      "rounds": 0,
+      "accepted": false,
+      "quality_status": "unverified",
+      "total_tokens": 22470,
+      "delivery_status": "not_delivered"
+    },
+    "complete_lifecycle": true,
+    "long_source_strings_checked": 17,
+    "long_source_strings_absent": true
+  },
+  "human_calibration": "unverified",
+  "interpretation": "Protocol checks do not establish scientific support or Survey reliability."
+}

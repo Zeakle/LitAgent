@@ -1,0 +1,1102 @@
+{
+  "contract": "source-unit-map-044-structural-v1",
+  "science_gold_standard": false,
+  "contains_original_scientific_text": false,
+  "provenance": {
+    "source_run_id": "frozen-writer-three-domain-20261101-044-few-shot-metric",
+    "original_response_sha256": "96ee16062001e90fba87673e7ef90737a7dd474cdd5fd22d4ed1b464ec25d073",
+    "original_journal_sha256": "c3bdb53804a62ede1aa16e00cb6e3c2bdc8916f5e5d65608befccb0c619fc4e2",
+    "original_call": "repair_0",
+    "preserved_fields": [
+      "target_id",
+      "unit_id",
+      "replacement_indexes",
+      "original unit/target ordering"
+    ],
+    "redacted_fields": [
+      "report title",
+      "body text",
+      "replacement text",
+      "fact_card_refs",
+      "explanation",
+      "reason"
+    ],
+    "projection_is_original_raw_response": false
+  },
+  "body": {
+    "title": "Sanitized044 structural mapping fixture",
+    "introduction": [
+      {
+        "sentences": [
+          {
+            "text": "Structural source premise 1.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Structural source premise 2.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Structural source premise 3.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Structural source premise 4.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      }
+    ],
+    "taxonomy": [
+      {
+        "sentences": [
+          {
+            "text": "Structural source premise 5.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Structural source premise 6.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Structural source premise 7.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Structural source premise 8.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Structural source premise 9.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Structural source premise 10.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      }
+    ],
+    "methods": [
+      {
+        "sentences": [
+          {
+            "text": "Structural source premise 11.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          },
+          {
+            "text": "Structural source premise 12.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Structural source premise 13.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          },
+          {
+            "text": "Structural source premise 14.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Structural source premise 15.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          },
+          {
+            "text": "Structural source premise 16.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Structural source premise 17.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Structural source premise 18.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          },
+          {
+            "text": "Structural source premise 19.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Structural source premise 20.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          },
+          {
+            "text": "Structural source premise 21.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Structural source premise 22.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          },
+          {
+            "text": "Structural source premise 23.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Structural source premise 24.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Structural source premise 25.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      }
+    ],
+    "experiments": [
+      {
+        "sentences": [
+          {
+            "text": "Structural source premise 26.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Structural source premise 27.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Structural source premise 28.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Structural source premise 29.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Structural source premise 30.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Structural source premise 31.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Structural source premise 32.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Structural source premise 33.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Structural source premise 34.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Structural source premise 35.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      }
+    ],
+    "open_problems": [
+      {
+        "sentences": [
+          {
+            "text": "Structural source premise 36.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Structural source premise 37.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Structural source premise 38.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Structural source premise 39.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Structural source premise 40.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Structural source premise 41.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Structural source premise 42.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Structural source premise 43.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Structural source premise 44.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      {
+        "sentences": [
+          {
+            "text": "Structural source premise 45.",
+            "fact_card_refs": [
+              "c1"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "raw_response": {
+    "outcome": "patched",
+    "explanation": "Sanitized original relation addresses; not a scientific judgment.",
+    "patches": [
+      {
+        "target_id": "r1",
+        "text": "Structural replacement 1.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r2",
+        "text": "Structural replacement 2.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r3",
+        "text": "Structural replacement 3.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r4",
+        "text": "Structural replacement 4.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r5",
+        "text": "Structural replacement 5.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r6",
+        "text": "Structural replacement 6.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r7",
+        "text": "Structural replacement 7.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r8",
+        "text": "Structural replacement 8.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r9",
+        "text": "Structural replacement 9.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r10",
+        "text": "Structural replacement 10.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r11",
+        "text": "Structural replacement 11.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r12",
+        "text": "Structural replacement 12.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r13",
+        "text": "Structural replacement 13.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r14",
+        "text": "Structural replacement 14.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r15",
+        "text": "Structural replacement 15.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r16",
+        "text": "Structural replacement 16.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r17",
+        "text": "Structural replacement 17.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r18",
+        "text": "Structural replacement 18.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r19",
+        "text": "Structural replacement 19.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r20",
+        "text": "Structural replacement 20.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r21",
+        "text": "Structural replacement 21.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r22",
+        "text": "Structural replacement 22.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r23",
+        "text": "Structural replacement 23.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r24",
+        "text": "Structural replacement 24.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r25",
+        "text": "Structural replacement 25.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r26",
+        "text": "Structural replacement 26.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r27",
+        "text": "Structural replacement 27.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r28",
+        "text": "Structural replacement 28.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r29",
+        "text": "Structural replacement 29.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r30",
+        "text": "Structural replacement 30.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r31",
+        "text": "Structural replacement 31.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r32",
+        "text": "Structural replacement 32.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r33",
+        "text": "Structural replacement 33.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r34",
+        "text": "Structural replacement 34.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r35",
+        "text": "Structural replacement 35.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r36",
+        "text": "Structural replacement 36.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r37",
+        "text": "Structural replacement 37.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r38",
+        "text": "Structural replacement 38.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      },
+      {
+        "target_id": "r39",
+        "text": "Structural replacement 39.",
+        "fact_card_refs": [
+          "c1"
+        ]
+      }
+    ],
+    "edit_records": [
+      {
+        "unit_id": "writer:introduction:0:0",
+        "reason": "Original provider relation 1; structural replay only.",
+        "replacement_indexes": [
+          0
+        ]
+      },
+      {
+        "unit_id": "writer:introduction:1:0",
+        "reason": "Original provider relation 2; structural replay only.",
+        "replacement_indexes": [
+          1
+        ]
+      },
+      {
+        "unit_id": "writer:introduction:2:0",
+        "reason": "Original provider relation 3; structural replay only.",
+        "replacement_indexes": [
+          2
+        ]
+      },
+      {
+        "unit_id": "writer:introduction:3:0",
+        "reason": "Original provider relation 4; structural replay only.",
+        "replacement_indexes": [
+          3
+        ]
+      },
+      {
+        "unit_id": "writer:taxonomy:0:0",
+        "reason": "Original provider relation 5; structural replay only.",
+        "replacement_indexes": [
+          4
+        ]
+      },
+      {
+        "unit_id": "writer:taxonomy:1:0",
+        "reason": "Original provider relation 6; structural replay only.",
+        "replacement_indexes": [
+          5
+        ]
+      },
+      {
+        "unit_id": "writer:taxonomy:2:0",
+        "reason": "Original provider relation 7; structural replay only.",
+        "replacement_indexes": [
+          6
+        ]
+      },
+      {
+        "unit_id": "writer:taxonomy:3:0",
+        "reason": "Original provider relation 8; structural replay only.",
+        "replacement_indexes": [
+          7
+        ]
+      },
+      {
+        "unit_id": "writer:taxonomy:4:0",
+        "reason": "Original provider relation 9; structural replay only.",
+        "replacement_indexes": [
+          8
+        ]
+      },
+      {
+        "unit_id": "writer:taxonomy:5:0",
+        "reason": "Original provider relation 10; structural replay only.",
+        "replacement_indexes": [
+          9
+        ]
+      },
+      {
+        "unit_id": "writer:methods:0:0",
+        "reason": "Original provider relation 11; structural replay only.",
+        "replacement_indexes": [
+          10
+        ]
+      },
+      {
+        "unit_id": "writer:methods:0:1",
+        "reason": "Original provider relation 12; structural replay only.",
+        "replacement_indexes": [
+          11
+        ]
+      },
+      {
+        "unit_id": "writer:methods:1:0",
+        "reason": "Original provider relation 13; structural replay only.",
+        "replacement_indexes": [
+          12
+        ]
+      },
+      {
+        "unit_id": "writer:methods:1:1",
+        "reason": "Original provider relation 14; structural replay only.",
+        "replacement_indexes": [
+          13
+        ]
+      },
+      {
+        "unit_id": "writer:methods:2:0",
+        "reason": "Original provider relation 15; structural replay only.",
+        "replacement_indexes": [
+          14
+        ]
+      },
+      {
+        "unit_id": "writer:methods:2:1",
+        "reason": "Original provider relation 16; structural replay only.",
+        "replacement_indexes": [
+          15
+        ]
+      },
+      {
+        "unit_id": "writer:methods:3:0",
+        "reason": "Original provider relation 17; structural replay only.",
+        "replacement_indexes": [
+          16
+        ]
+      },
+      {
+        "unit_id": "writer:methods:4:0",
+        "reason": "Original provider relation 18; structural replay only.",
+        "replacement_indexes": [
+          17
+        ]
+      },
+      {
+        "unit_id": "writer:methods:4:1",
+        "reason": "Original provider relation 19; structural replay only.",
+        "replacement_indexes": [
+          18
+        ]
+      },
+      {
+        "unit_id": "writer:methods:5:0",
+        "reason": "Original provider relation 20; structural replay only.",
+        "replacement_indexes": [
+          19
+        ]
+      },
+      {
+        "unit_id": "writer:methods:5:1",
+        "reason": "Original provider relation 21; structural replay only.",
+        "replacement_indexes": [
+          20
+        ]
+      },
+      {
+        "unit_id": "writer:methods:6:0",
+        "reason": "Original provider relation 22; structural replay only.",
+        "replacement_indexes": [
+          21
+        ]
+      },
+      {
+        "unit_id": "writer:methods:6:1",
+        "reason": "Original provider relation 23; structural replay only.",
+        "replacement_indexes": [
+          22
+        ]
+      },
+      {
+        "unit_id": "writer:methods:7:0",
+        "reason": "Original provider relation 24; structural replay only.",
+        "replacement_indexes": [
+          23
+        ]
+      },
+      {
+        "unit_id": "writer:methods:8:0",
+        "reason": "Original provider relation 25; structural replay only.",
+        "replacement_indexes": [
+          24
+        ]
+      },
+      {
+        "unit_id": "writer:experiments:0:0",
+        "reason": "Original provider relation 26; structural replay only.",
+        "replacement_indexes": [
+          25
+        ]
+      },
+      {
+        "unit_id": "writer:experiments:1:0",
+        "reason": "Original provider relation 27; structural replay only.",
+        "replacement_indexes": [
+          26
+        ]
+      },
+      {
+        "unit_id": "writer:experiments:2:0",
+        "reason": "Original provider relation 28; structural replay only.",
+        "replacement_indexes": [
+          27
+        ]
+      },
+      {
+        "unit_id": "writer:experiments:3:0",
+        "reason": "Original provider relation 29; structural replay only.",
+        "replacement_indexes": [
+          28
+        ]
+      },
+      {
+        "unit_id": "writer:experiments:4:0",
+        "reason": "Original provider relation 30; structural replay only.",
+        "replacement_indexes": [
+          29
+        ]
+      },
+      {
+        "unit_id": "writer:experiments:5:0",
+        "reason": "Original provider relation 31; structural replay only.",
+        "replacement_indexes": [
+          30
+        ]
+      },
+      {
+        "unit_id": "writer:experiments:6:0",
+        "reason": "Original provider relation 32; structural replay only.",
+        "replacement_indexes": [
+          31
+        ]
+      },
+      {
+        "unit_id": "writer:experiments:7:0",
+        "reason": "Original provider relation 33; structural replay only.",
+        "replacement_indexes": [
+          32
+        ]
+      },
+      {
+        "unit_id": "writer:experiments:8:0",
+        "reason": "Original provider relation 34; structural replay only.",
+        "replacement_indexes": [
+          33
+        ]
+      },
+      {
+        "unit_id": "writer:experiments:9:0",
+        "reason": "Original provider relation 35; structural replay only.",
+        "replacement_indexes": [
+          34
+        ]
+      },
+      {
+        "unit_id": "writer:open_problems:0:0",
+        "reason": "Original provider relation 36; structural replay only.",
+        "replacement_indexes": [
+          35
+        ]
+      },
+      {
+        "unit_id": "writer:open_problems:1:0",
+        "reason": "Original provider relation 37; structural replay only.",
+        "replacement_indexes": [
+          36
+        ]
+      },
+      {
+        "unit_id": "writer:open_problems:2:0",
+        "reason": "Original provider relation 38; structural replay only.",
+        "replacement_indexes": [
+          37
+        ]
+      },
+      {
+        "unit_id": "writer:open_problems:3:0",
+        "reason": "Original provider relation 39; structural replay only.",
+        "replacement_indexes": [
+          38
+        ]
+      },
+      {
+        "unit_id": "writer:open_problems:4:0",
+        "reason": "Original provider relation 40; structural replay only.",
+        "replacement_indexes": [
+          38
+        ]
+      },
+      {
+        "unit_id": "writer:open_problems:5:0",
+        "reason": "Original provider relation 41; structural replay only.",
+        "replacement_indexes": []
+      },
+      {
+        "unit_id": "writer:open_problems:6:0",
+        "reason": "Original provider relation 42; structural replay only.",
+        "replacement_indexes": []
+      },
+      {
+        "unit_id": "writer:open_problems:7:0",
+        "reason": "Original provider relation 43; structural replay only.",
+        "replacement_indexes": []
+      },
+      {
+        "unit_id": "writer:open_problems:8:0",
+        "reason": "Original provider relation 44; structural replay only.",
+        "replacement_indexes": []
+      },
+      {
+        "unit_id": "writer:open_problems:9:0",
+        "reason": "Original provider relation 45; structural replay only.",
+        "replacement_indexes": []
+      }
+    ]
+  },
+  "target_original_counts": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    2,
+    2,
+    2,
+    1,
+    2,
+    2,
+    2,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1
+  ],
+  "expected": {
+    "targets": 39,
+    "original_units": 45,
+    "patches": 39,
+    "records": 45,
+    "mapped_records": 40,
+    "deleted_records": 5,
+    "invalid_local_index_records": 39,
+    "global_interpretation_cross_target_records": 29
+  }
+}

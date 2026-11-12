@@ -1,0 +1,5 @@
+{
+  "fixture_kind": "sanitized_protocol_structure_not_scientific_evidence",
+  "source_response_sha256": "d8296703e1ab2203140f673c7703ea173a202a2a6a72a36c15c2131128b6790b",
+  "raw": "{\"open_problems\":{\"sentences\":[{\"text\":\"示例陈述\",\"fact_card_refs\":[\"c8\",\"c13\"]},{\"text\":\"示例陈述\",\"fact_card_refs\":[\"c4\",\"c19\"]},{\"text\":\"示例陈述\",\"fact_card_refs\":[\"c2\"]},{\"text\":\"示例陈述\",\"fact_card_refs\":[\"c9\",\"c11\"]},{\"text\":\"示例陈述\",\"fact_card_refs\":[\"c3\"]},{\"text\":\"示例陈述\",\"fact_card_refs\":[\"c5\",\"c14\"]},{\"text\":\"示例陈述\",\"fact_card_refs\":[\"c18\"]},{\"text\":\"示例陈述\",\"fact_card_refs\":[\"c12\",\"c6\",\"c16\"]},{\"text\":\"示例陈述\",\"fact_card_refs\":[\"c13\",\"c19\",\"c2\"]},{\"text\":\"示例陈述\",\"fact_card_refs\":[\"c7\",\"c8\",\"c4\",\"c11\",\"c2\",\"c3\",\"c5\",\"c9\",\"c18\",\"c12\"]}]}"
+}

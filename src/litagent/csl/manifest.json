@@ -1,0 +1,42 @@
+{
+  "processor": "citeproc-js 1.4.63 (npm citeproc 2.4.63)",
+  "retrieved": "2026-10-01",
+  "files": {
+    "citeproc.js": {
+      "source": "https://raw.githubusercontent.com/Juris-M/citeproc-js/master/citeproc_commonjs.js",
+      "sha256": "2c659319b3b133c0204d60eba3e5daa566e1457e36b19cb6bfe4c8b1b4662650"
+    },
+    "PROCESSOR-LICENSE": {
+      "source": "https://raw.githubusercontent.com/Juris-M/citeproc-js/master/LICENSE",
+      "sha256": "b96ca8e1716f93449b480083c7510c18d129fa9afa4644d62c6347c06177ce30"
+    },
+    "CPAL": {
+      "source": "https://raw.githubusercontent.com/Juris-M/citeproc-js/master/CPAL",
+      "sha256": "a953615139d8c767eb5e95f14215bf5c356ea23397a15137f6e119babf3fe69b"
+    },
+    "ieee.csl": {
+      "source": "https://raw.githubusercontent.com/citation-style-language/styles/master/ieee.csl",
+      "sha256": "b4c7619fc16c45a31e4cc3271eab94ffe83192d3b4c7fc729470a3b459448de3"
+    },
+    "apa7.csl": {
+      "source": "https://raw.githubusercontent.com/citation-style-language/styles/master/apa.csl",
+      "sha256": "1ece4fb3c295e66d04b4394e295aa58a87741ceeef1658192437eb9953c2f13e"
+    },
+    "gbt7714_2025_numeric.csl": {
+      "source": "https://raw.githubusercontent.com/citation-style-language/styles/master/china-national-standard-gb-t-7714-2025-numeric.csl",
+      "sha256": "3b5ab6249ce23b57954c9a4a67e0df422d8759b0573cae7e7de2f2ef94895faf"
+    },
+    "gbt7714_2025_author_date.csl": {
+      "source": "https://raw.githubusercontent.com/citation-style-language/styles/master/china-national-standard-gb-t-7714-2025-author-date.csl",
+      "sha256": "499b234519c2f0f7b56d201137a4df5f19b993c5fa4ceb3ad8b870fef82d0132"
+    },
+    "locales-en-US.xml": {
+      "source": "https://raw.githubusercontent.com/citation-style-language/locales/master/locales-en-US.xml",
+      "sha256": "ac864c7c21166b4390d82c31792cdc509400727fa0060b43d8aa17e07f9cb079"
+    },
+    "locales-zh-CN.xml": {
+      "source": "https://raw.githubusercontent.com/citation-style-language/locales/master/locales-zh-CN.xml",
+      "sha256": "95cebc667f2da8fb5b9864e49941e3f867d59f79feba929bc58e8ed6bfd4d582"
+    }
+  }
+}

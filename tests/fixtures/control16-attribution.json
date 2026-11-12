@@ -1,0 +1,13 @@
+{
+  "contract": "offline-attribution-regression-v1",
+  "source_run_id": "quality-auto-20261011-control16-pilot-few-shot-metric",
+  "source_report_sha256": "dc21c306b55b2c710bfa715914b4d6343d3ae07b6ab1fc6d097b21a8f7860fed",
+  "claim_text": "针对胸部X射线的少样本分类任务，原型网络算法在TBX11K数据集上表现出良好的分类性能，ResNet-18的准确率达到98.93%",
+  "evidence_id": "arxiv:2411.06363:abstract:claim:07a555305e77",
+  "paper_id": "arxiv:2411.06363",
+  "source_quote": "In Few-Shot Learning (FSL), traditional metric-based approaches often rely on global metrics to compute similarity. However, in natural scenes, the spatial arrangement of key instances is often inconsistent across images. This spatial misalignment can result in mismatched semantic pixels, leading to inaccurate similarity measurements. To address this issue, we propose a novel method called the Layer-Wise Features Metric of Semantic-Pixel Matching (LWFM-SPM) to make finer comparisons. Our method enhances model performance through two key modules: (1) the Layer-Wise Embedding (LWE) Module, which refines the cross-correlation of image pairs to generate well-focused feature maps for each layer; (2)the Semantic-Pixel Matching (SPM) Module, which aligns critical pixels based on semantic embeddings using an assignment algorithm. We conducted extensive experiments to evaluate our method on four widely used few-shot classification benchmarks: miniImageNet, tieredImageNet, CUB-200-2011, and CIFAR-FS. The results indicate that LWFM-SPM achieves competitive performance across these benchmarks. Our code will be publicly available on https://github.com/Halo2Tang/Code-for-LWFM-SPM.",
+  "extracted_candidate": "LWFM-SPM achieves competitive performance across the four evaluated few-shot classification benchmarks",
+  "source_quote_sha256": "e01e2a7ce6e239b775f1ffc36e75652a0d67a61a89f9661865057634fbcd3cce",
+  "semantic_status": "not_live_verified",
+  "human_gold_standard": false
+}

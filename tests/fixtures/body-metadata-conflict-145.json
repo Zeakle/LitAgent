@@ -1,0 +1,429 @@
+{
+  "source_response_sha256": "4cb2122c4e6951dcf27524601e821d0228a6095c6d029007670062884af43aba",
+  "projection": "redacted_structure_only_not_scientific_gold",
+  "redacted_flat_rows": {
+    "title": "脱敏结构回归",
+    "introduction": [
+      {
+        "block_index": 0,
+        "heading": "引言",
+        "type": "paragraph",
+        "kind": "scientific",
+        "text": "脱敏科学单元 introduction:0",
+        "scope_notice_id": "none",
+        "fact_card_ids": [
+          "fixture-card-0"
+        ]
+      },
+      {
+        "block_index": 0,
+        "heading": "引言",
+        "type": "paragraph",
+        "kind": "scientific",
+        "text": "脱敏科学单元 introduction:1",
+        "scope_notice_id": "none",
+        "fact_card_ids": [
+          "fixture-card-0",
+          "fixture-card-1"
+        ]
+      },
+      {
+        "block_index": 0,
+        "heading": "引言",
+        "type": "paragraph",
+        "kind": "scientific",
+        "text": "脱敏科学单元 introduction:2",
+        "scope_notice_id": "none",
+        "fact_card_ids": [
+          "fixture-card-0"
+        ]
+      },
+      {
+        "block_index": 0,
+        "heading": "引言",
+        "type": "paragraph",
+        "kind": "scientific",
+        "text": "脱敏科学单元 introduction:3",
+        "scope_notice_id": "none",
+        "fact_card_ids": [
+          "fixture-card-0",
+          "fixture-card-1",
+          "fixture-card-2",
+          "fixture-card-3"
+        ]
+      },
+      {
+        "block_index": 0,
+        "heading": "引言",
+        "type": "paragraph",
+        "text": "",
+        "kind": "organization",
+        "scope_notice_id": "review_scope",
+        "fact_card_ids": []
+      }
+    ],
+    "taxonomy": [
+      {
+        "block_index": 0,
+        "heading": "基础概念与方法分类",
+        "type": "paragraph",
+        "kind": "scientific",
+        "text": "脱敏科学单元 taxonomy:0",
+        "scope_notice_id": "none",
+        "fact_card_ids": [
+          "fixture-card-0"
+        ]
+      },
+      {
+        "block_index": 0,
+        "heading": "基础概念与方法分类",
+        "type": "paragraph",
+        "kind": "scientific",
+        "text": "脱敏科学单元 taxonomy:1",
+        "scope_notice_id": "none",
+        "fact_card_ids": [
+          "fixture-card-0"
+        ]
+      },
+      {
+        "block_index": 1,
+        "heading": "基础概念与方法分类",
+        "type": "paragraph",
+        "kind": "scientific",
+        "text": "脱敏科学单元 taxonomy:2",
+        "scope_notice_id": "none",
+        "fact_card_ids": [
+          "fixture-card-0",
+          "fixture-card-1"
+        ]
+      },
+      {
+        "block_index": 1,
+        "heading": "基础概念与方法分类",
+        "type": "paragraph",
+        "kind": "scientific",
+        "text": "脱敏科学单元 taxonomy:3",
+        "scope_notice_id": "none",
+        "fact_card_ids": [
+          "fixture-card-0",
+          "fixture-card-1"
+        ]
+      },
+      {
+        "block_index": 1,
+        "heading": "基础概念与方法分类",
+        "type": "paragraph",
+        "kind": "scientific",
+        "text": "脱敏科学单元 taxonomy:4",
+        "scope_notice_id": "none",
+        "fact_card_ids": [
+          "fixture-card-0"
+        ]
+      },
+      {
+        "block_index": 1,
+        "heading": "基础概念与方法分类",
+        "type": "paragraph",
+        "kind": "scientific",
+        "text": "脱敏科学单元 taxonomy:5",
+        "scope_notice_id": "none",
+        "fact_card_ids": [
+          "fixture-card-0"
+        ]
+      }
+    ],
+    "methods": [
+      {
+        "block_index": 0,
+        "heading": "代表性方法分析",
+        "type": "paragraph",
+        "kind": "scientific",
+        "text": "脱敏科学单元 methods:0",
+        "scope_notice_id": "none",
+        "fact_card_ids": [
+          "fixture-card-0",
+          "fixture-card-1",
+          "fixture-card-2"
+        ]
+      },
+      {
+        "block_index": 0,
+        "heading": "基础概念与方法分类",
+        "type": "paragraph",
+        "kind": "scientific",
+        "text": "脱敏科学单元 methods:1",
+        "scope_notice_id": "none",
+        "fact_card_ids": [
+          "fixture-card-0",
+          "fixture-card-1"
+        ]
+      },
+      {
+        "block_index": 1,
+        "heading": "代表性方法分析",
+        "type": "paragraph",
+        "kind": "scientific",
+        "text": "脱敏科学单元 methods:2",
+        "scope_notice_id": "none",
+        "fact_card_ids": [
+          "fixture-card-0"
+        ]
+      },
+      {
+        "block_index": 1,
+        "heading": "代表性方法分析",
+        "type": "paragraph",
+        "kind": "scientific",
+        "text": "脱敏科学单元 methods:3",
+        "scope_notice_id": "none",
+        "fact_card_ids": [
+          "fixture-card-0"
+        ]
+      },
+      {
+        "block_index": 2,
+        "heading": "代表性方法分析",
+        "type": "paragraph",
+        "kind": "scientific",
+        "text": "脱敏科学单元 methods:4",
+        "scope_notice_id": "none",
+        "fact_card_ids": [
+          "fixture-card-0"
+        ]
+      },
+      {
+        "block_index": 2,
+        "heading": "代表性方法分析",
+        "type": "paragraph",
+        "kind": "scientific",
+        "text": "脱敏科学单元 methods:5",
+        "scope_notice_id": "none",
+        "fact_card_ids": [
+          "fixture-card-0"
+        ]
+      },
+      {
+        "block_index": 3,
+        "heading": "代表性方法分析",
+        "type": "paragraph",
+        "kind": "scientific",
+        "text": "脱敏科学单元 methods:6",
+        "scope_notice_id": "none",
+        "fact_card_ids": [
+          "fixture-card-0",
+          "fixture-card-1"
+        ]
+      }
+    ],
+    "experiments": [
+      {
+        "block_index": 0,
+        "heading": "综合比较与证据分析",
+        "type": "paragraph",
+        "kind": "scientific",
+        "text": "脱敏科学单元 experiments:0",
+        "scope_notice_id": "none",
+        "fact_card_ids": [
+          "fixture-card-0",
+          "fixture-card-1"
+        ]
+      },
+      {
+        "block_index": 0,
+        "heading": "综合比较与证据分析",
+        "type": "paragraph",
+        "kind": "scientific",
+        "text": "脱敏科学单元 experiments:1",
+        "scope_notice_id": "none",
+        "fact_card_ids": [
+          "fixture-card-0"
+        ]
+      },
+      {
+        "block_index": 0,
+        "heading": "综合比较与证据分析",
+        "type": "paragraph",
+        "kind": "scientific",
+        "text": "脱敏科学单元 experiments:2",
+        "scope_notice_id": "none",
+        "fact_card_ids": [
+          "fixture-card-0"
+        ]
+      },
+      {
+        "block_index": 1,
+        "heading": "综合比较与证据分析",
+        "type": "paragraph",
+        "kind": "scientific",
+        "text": "脱敏科学单元 experiments:3",
+        "scope_notice_id": "none",
+        "fact_card_ids": [
+          "fixture-card-0",
+          "fixture-card-1",
+          "fixture-card-2"
+        ]
+      },
+      {
+        "block_index": 1,
+        "heading": "综合比较与证据分析",
+        "type": "paragraph",
+        "kind": "scientific",
+        "text": "脱敏科学单元 experiments:4",
+        "scope_notice_id": "none",
+        "fact_card_ids": [
+          "fixture-card-0",
+          "fixture-card-1"
+        ]
+      },
+      {
+        "block_index": 1,
+        "heading": "综合比较与证据分析",
+        "type": "paragraph",
+        "kind": "scientific",
+        "text": "脱敏科学单元 experiments:5",
+        "scope_notice_id": "none",
+        "fact_card_ids": [
+          "fixture-card-0"
+        ]
+      },
+      {
+        "block_index": 2,
+        "heading": "综合比较与证据分析",
+        "type": "paragraph",
+        "kind": "scientific",
+        "text": "脱敏科学单元 experiments:6",
+        "scope_notice_id": "none",
+        "fact_card_ids": [
+          "fixture-card-0"
+        ]
+      },
+      {
+        "block_index": 2,
+        "heading": "综合比较与证据分析",
+        "type": "paragraph",
+        "kind": "scientific",
+        "text": "脱敏科学单元 experiments:7",
+        "scope_notice_id": "none",
+        "fact_card_ids": [
+          "fixture-card-0",
+          "fixture-card-1"
+        ]
+      },
+      {
+        "block_index": 2,
+        "heading": "综合比较与证据分析",
+        "type": "paragraph",
+        "kind": "scientific",
+        "text": "脱敏科学单元 experiments:8",
+        "scope_notice_id": "none",
+        "fact_card_ids": [
+          "fixture-card-0"
+        ]
+      },
+      {
+        "block_index": 2,
+        "heading": "综合比较与证据分析",
+        "type": "paragraph",
+        "text": "",
+        "kind": "gap",
+        "scope_notice_id": "evidence_limit",
+        "fact_card_ids": []
+      }
+    ],
+    "open_problems": [
+      {
+        "block_index": 0,
+        "heading": "局限与开放问题",
+        "type": "paragraph",
+        "kind": "scientific",
+        "text": "脱敏科学单元 open_problems:0",
+        "scope_notice_id": "none",
+        "fact_card_ids": [
+          "fixture-card-0",
+          "fixture-card-1",
+          "fixture-card-2"
+        ]
+      },
+      {
+        "block_index": 0,
+        "heading": "局限与开放问题",
+        "type": "paragraph",
+        "kind": "scientific",
+        "text": "脱敏科学单元 open_problems:1",
+        "scope_notice_id": "none",
+        "fact_card_ids": [
+          "fixture-card-0"
+        ]
+      },
+      {
+        "block_index": 1,
+        "heading": "局限与开放问题",
+        "type": "paragraph",
+        "kind": "scientific",
+        "text": "脱敏科学单元 open_problems:2",
+        "scope_notice_id": "none",
+        "fact_card_ids": [
+          "fixture-card-0"
+        ]
+      },
+      {
+        "block_index": 1,
+        "heading": "局限与开放问题",
+        "type": "paragraph",
+        "kind": "scientific",
+        "text": "脱敏科学单元 open_problems:3",
+        "scope_notice_id": "none",
+        "fact_card_ids": [
+          "fixture-card-0",
+          "fixture-card-1",
+          "fixture-card-2"
+        ]
+      },
+      {
+        "block_index": 2,
+        "heading": "局限与开放问题",
+        "type": "paragraph",
+        "kind": "scientific",
+        "text": "脱敏科学单元 open_problems:4",
+        "scope_notice_id": "none",
+        "fact_card_ids": [
+          "fixture-card-0",
+          "fixture-card-1"
+        ]
+      },
+      {
+        "block_index": 2,
+        "heading": "局限与开放问题",
+        "type": "paragraph",
+        "kind": "scientific",
+        "text": "脱敏科学单元 open_problems:5",
+        "scope_notice_id": "none",
+        "fact_card_ids": [
+          "fixture-card-0"
+        ]
+      },
+      {
+        "block_index": 3,
+        "heading": "局限与开放问题",
+        "type": "paragraph",
+        "kind": "scientific",
+        "text": "脱敏科学单元 open_problems:6",
+        "scope_notice_id": "none",
+        "fact_card_ids": [
+          "fixture-card-0"
+        ]
+      },
+      {
+        "block_index": 3,
+        "heading": "局限与开放问题",
+        "type": "paragraph",
+        "kind": "scientific",
+        "text": "脱敏科学单元 open_problems:7",
+        "scope_notice_id": "none",
+        "fact_card_ids": [
+          "fixture-card-0"
+        ]
+      }
+    ]
+  }
+}

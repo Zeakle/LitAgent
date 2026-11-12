@@ -1,0 +1,490 @@
+{
+  "suite_id": "survey-reliability-20261022-004",
+  "run_id": "survey-reliability-20261022-004-pilot-few-shot-metric",
+  "source_commit": "eb675a424af69a5eafa68b80c136d9ed66eb3b82",
+  "contract": "native-body-summary-v11",
+  "binding": "0e34842044ce1d61264c30f20f907bbe69a05f7c0cd5d0d231f9c5818836ffb8",
+  "status": "blocked",
+  "publishable": false,
+  "evaluation_execution": "not_run",
+  "counts": {
+    "supported_count": null,
+    "unsupported_count": null,
+    "unverified_count": null
+  },
+  "faithfulness": null,
+  "failure_codes": [
+    "final_report_unavailable",
+    "evaluation_not_passed",
+    "automatic_inventory_missing",
+    "automatic_report_partial"
+  ],
+  "technical_failure": "strict_worker_failed",
+  "error_code": "body_reference_repair_unavailable",
+  "error_type": "ValueError",
+  "error_phase": "body_repair_refs_0",
+  "json_path": null,
+  "roles": [
+    {
+      "model": "doubao-seed-2-1-lite-260915",
+      "requests": 26,
+      "tokens": 96352
+    },
+    {
+      "model": "doubao-seed-2-1-pro-260915",
+      "requests": 2,
+      "tokens": 36244
+    }
+  ],
+  "requests": 28,
+  "tokens": 132596,
+  "known_tokens": 132596,
+  "unknown_request_count": 0,
+  "unknown_token_hold": 0,
+  "usage_complete": true,
+  "usage_uncertain": false,
+  "elapsed_ms": 359298,
+  "stages": [
+    {
+      "stage": "preparation",
+      "status": "completed"
+    },
+    {
+      "stage": "body_response",
+      "status": "completed"
+    },
+    {
+      "stage": "reference_repair",
+      "status": "failed"
+    },
+    {
+      "stage": "body_compile",
+      "status": "failed"
+    },
+    {
+      "stage": "summary",
+      "status": "not_run"
+    },
+    {
+      "stage": "reviewer",
+      "status": "not_run"
+    },
+    {
+      "stage": "evaluation",
+      "status": "not_run"
+    },
+    {
+      "stage": "judge",
+      "status": "not_requested"
+    },
+    {
+      "stage": "jev",
+      "status": "not_requested"
+    },
+    {
+      "stage": "delivery",
+      "status": "blocked"
+    }
+  ],
+  "responses": [
+    {
+      "schema": "json_object",
+      "model": "doubao-seed-2-1-lite-260915",
+      "task_id": "query_decomposition",
+      "raw_response_sha256": "8f49438368b216f59ace542069188d2f66f3800d4e91fb441b12e8edd20c4436",
+      "finish_reason": "stop",
+      "json_status": "passed",
+      "schema_status": "not_provided",
+      "schema_error_paths": []
+    },
+    {
+      "schema": "host_grounded_claims_v1",
+      "model": "doubao-seed-2-1-lite-260915",
+      "task_id": "extract",
+      "raw_response_sha256": "5c0d19308ccceb80c109c3277171e56885aa3c5d94086b0f93c0ddcaefcd4ea7",
+      "finish_reason": "stop",
+      "json_status": "passed",
+      "schema_status": "passed",
+      "schema_error_paths": []
+    },
+    {
+      "schema": "host_grounded_claims_v1",
+      "model": "doubao-seed-2-1-lite-260915",
+      "task_id": "extract",
+      "raw_response_sha256": "de79d0693255377adb578338b069cd980c83230cba34d88d4c7e544a5e790b69",
+      "finish_reason": "stop",
+      "json_status": "passed",
+      "schema_status": "passed",
+      "schema_error_paths": []
+    },
+    {
+      "schema": "host_grounded_claims_v1",
+      "model": "doubao-seed-2-1-lite-260915",
+      "task_id": "extract",
+      "raw_response_sha256": "afa3303f0ddff5beedd629248290eeb773dbbf5ca83124f9a3c0c95209354e72",
+      "finish_reason": "stop",
+      "json_status": "passed",
+      "schema_status": "passed",
+      "schema_error_paths": []
+    },
+    {
+      "schema": "host_grounded_claims_v1",
+      "model": "doubao-seed-2-1-lite-260915",
+      "task_id": "extract",
+      "raw_response_sha256": "36fd7ec65d6edaf85822016379b81d496becda3254e70a5c988ad4f225004f22",
+      "finish_reason": "stop",
+      "json_status": "passed",
+      "schema_status": "passed",
+      "schema_error_paths": []
+    },
+    {
+      "schema": "host_grounded_claims_v1",
+      "model": "doubao-seed-2-1-lite-260915",
+      "task_id": "extract",
+      "raw_response_sha256": "dcfc6793b5957c5c41b2854b21a1f19ae1b57482f968187d40c4b8090db14224",
+      "finish_reason": "stop",
+      "json_status": "passed",
+      "schema_status": "passed",
+      "schema_error_paths": []
+    },
+    {
+      "schema": "host_grounded_claims_v1",
+      "model": "doubao-seed-2-1-lite-260915",
+      "task_id": "extract",
+      "raw_response_sha256": "31ee75e62a3ab5faa15de2b22db8c127e76d8dbfa115f1bd3f9485ef4cf63d8d",
+      "finish_reason": "stop",
+      "json_status": "passed",
+      "schema_status": "passed",
+      "schema_error_paths": []
+    },
+    {
+      "schema": "host_grounded_claims_v1",
+      "model": "doubao-seed-2-1-lite-260915",
+      "task_id": "extract",
+      "raw_response_sha256": "8450dd442a4fca777ec9c76ccf904168eb9c321a6202384849fe3ef423767dea",
+      "finish_reason": "stop",
+      "json_status": "passed",
+      "schema_status": "passed",
+      "schema_error_paths": []
+    },
+    {
+      "schema": "host_grounded_claims_v1",
+      "model": "doubao-seed-2-1-lite-260915",
+      "task_id": "extract",
+      "raw_response_sha256": "a60496e7d611c36454703d9d3dbb5fbd50f271a0ddd93ae615965fcaee497702",
+      "finish_reason": "stop",
+      "json_status": "passed",
+      "schema_status": "passed",
+      "schema_error_paths": []
+    },
+    {
+      "schema": "host_grounded_claims_v1",
+      "model": "doubao-seed-2-1-lite-260915",
+      "task_id": "extract",
+      "raw_response_sha256": "df480312d2861cf36e2a306fb87f596661f8e9d7e596f210d4c2c04c844d2437",
+      "finish_reason": "stop",
+      "json_status": "passed",
+      "schema_status": "passed",
+      "schema_error_paths": []
+    },
+    {
+      "schema": "host_grounded_claims_v1",
+      "model": "doubao-seed-2-1-lite-260915",
+      "task_id": "extract",
+      "raw_response_sha256": "37ba09852535ff4615cd3f1dcffdf47313138c5391dfcf10efe799db605ed465",
+      "finish_reason": "stop",
+      "json_status": "passed",
+      "schema_status": "passed",
+      "schema_error_paths": []
+    },
+    {
+      "schema": "host_grounded_claims_v1",
+      "model": "doubao-seed-2-1-lite-260915",
+      "task_id": "extract",
+      "raw_response_sha256": "bb703d2c586a5687ecce1d6e2562fdb2984913497a1714cdd5d2aeeba4ca969d",
+      "finish_reason": "stop",
+      "json_status": "passed",
+      "schema_status": "passed",
+      "schema_error_paths": []
+    },
+    {
+      "schema": "host_grounded_claims_v1",
+      "model": "doubao-seed-2-1-lite-260915",
+      "task_id": "extract",
+      "raw_response_sha256": "e47ba66d861c74f6a75389a7ed3e8edca7cc3f94435887df585d68ddd40e1b5a",
+      "finish_reason": "stop",
+      "json_status": "passed",
+      "schema_status": "passed",
+      "schema_error_paths": []
+    },
+    {
+      "schema": "host_grounded_claims_v1",
+      "model": "doubao-seed-2-1-lite-260915",
+      "task_id": "extract",
+      "raw_response_sha256": "f8d36b2aa9b86142d8d6c1f6fdb9f9fd0d93646d77c36452df177ee0ea87829b",
+      "finish_reason": "stop",
+      "json_status": "passed",
+      "schema_status": "passed",
+      "schema_error_paths": []
+    },
+    {
+      "schema": "host_grounded_claims_v1",
+      "model": "doubao-seed-2-1-lite-260915",
+      "task_id": "extract",
+      "raw_response_sha256": "ff874c8424aebaec9f5157f1b3b705d1b012ef39e83151b2847184ca018e5b6f",
+      "finish_reason": "stop",
+      "json_status": "passed",
+      "schema_status": "passed",
+      "schema_error_paths": []
+    },
+    {
+      "schema": "host_grounded_claims_v1",
+      "model": "doubao-seed-2-1-lite-260915",
+      "task_id": "extract",
+      "raw_response_sha256": "9dbf380d11238b34e73019916e78a6cc44ab42a83127d4b274217ed81044217c",
+      "finish_reason": "stop",
+      "json_status": "passed",
+      "schema_status": "passed",
+      "schema_error_paths": []
+    },
+    {
+      "schema": "host_grounded_claims_v1",
+      "model": "doubao-seed-2-1-lite-260915",
+      "task_id": "extract",
+      "raw_response_sha256": "e619887f94249085c67dad0dd10a8a7fe544b0befa9564d265d5fb0dd103e1b9",
+      "finish_reason": "stop",
+      "json_status": "passed",
+      "schema_status": "passed",
+      "schema_error_paths": []
+    },
+    {
+      "schema": "host_grounded_claims_v1",
+      "model": "doubao-seed-2-1-lite-260915",
+      "task_id": "extract",
+      "raw_response_sha256": "281338ba488da8cc29a7a64d78b63a9a854792c430dbb42b8d542e71d646fe4c",
+      "finish_reason": "stop",
+      "json_status": "passed",
+      "schema_status": "passed",
+      "schema_error_paths": []
+    },
+    {
+      "schema": "host_grounded_claims_v1",
+      "model": "doubao-seed-2-1-lite-260915",
+      "task_id": "extract",
+      "raw_response_sha256": "c6a717ac057a96e368287475323fcfcf615138b3c278f3e4278be4029bab4d55",
+      "finish_reason": "stop",
+      "json_status": "passed",
+      "schema_status": "passed",
+      "schema_error_paths": []
+    },
+    {
+      "schema": "host_grounded_claims_v1",
+      "model": "doubao-seed-2-1-lite-260915",
+      "task_id": "extract",
+      "raw_response_sha256": "17f2cdc6684f18c1a28fa36bc451fabfd9bbea54a1d16350658268e6300b0cb6",
+      "finish_reason": "stop",
+      "json_status": "passed",
+      "schema_status": "passed",
+      "schema_error_paths": []
+    },
+    {
+      "schema": "host_grounded_claims_v1",
+      "model": "doubao-seed-2-1-lite-260915",
+      "task_id": "extract",
+      "raw_response_sha256": "d71e852062438f4391d76acdad253fe92df6df991c1480edad0797c337422749",
+      "finish_reason": "stop",
+      "json_status": "passed",
+      "schema_status": "passed",
+      "schema_error_paths": []
+    },
+    {
+      "schema": "host_grounded_claims_v1",
+      "model": "doubao-seed-2-1-lite-260915",
+      "task_id": "extract",
+      "raw_response_sha256": "367683b0c7c19fc08f9cdfec48102e73956af2a7b3009314dea45d9b0f5e86b5",
+      "finish_reason": "stop",
+      "json_status": "passed",
+      "schema_status": "passed",
+      "schema_error_paths": []
+    },
+    {
+      "schema": "host_grounded_claims_v1",
+      "model": "doubao-seed-2-1-lite-260915",
+      "task_id": "extract",
+      "raw_response_sha256": "c1d37ae2d20191635313dba81300e624a5d95f6dc4d5c0ebf934e107f3bf1415",
+      "finish_reason": "stop",
+      "json_status": "passed",
+      "schema_status": "passed",
+      "schema_error_paths": []
+    },
+    {
+      "schema": "host_grounded_claims_v1",
+      "model": "doubao-seed-2-1-lite-260915",
+      "task_id": "extract",
+      "raw_response_sha256": "daba6b92c4d0b9628615aedf4ab9acfb4092a8bfa528e9e37145cb295c178123",
+      "finish_reason": "stop",
+      "json_status": "passed",
+      "schema_status": "passed",
+      "schema_error_paths": []
+    },
+    {
+      "schema": "host_grounded_claims_v1",
+      "model": "doubao-seed-2-1-lite-260915",
+      "task_id": "extract",
+      "raw_response_sha256": "79f8aa1e0e91b74e738d6d834186672ac4816df62ab251a0fbc9378ae4c4c070",
+      "finish_reason": "stop",
+      "json_status": "passed",
+      "schema_status": "passed",
+      "schema_error_paths": []
+    },
+    {
+      "schema": "host_grounded_claims_v1",
+      "model": "doubao-seed-2-1-lite-260915",
+      "task_id": "extract",
+      "raw_response_sha256": "6eee6ed35cc59647fb84778e069ac1b0d9a699f0874a0d86c2fc82722fdf6d84",
+      "finish_reason": "stop",
+      "json_status": "passed",
+      "schema_status": "passed",
+      "schema_error_paths": []
+    },
+    {
+      "schema": "grounded_body_v5_blocks",
+      "model": "doubao-seed-2-1-pro-260915",
+      "task_id": "adversarial_review:synthesis:r1",
+      "raw_response_sha256": "c1049c1e3b34a6f0d3e98329db41f04b2936ae51fee8ecec8684077d23c8a394",
+      "finish_reason": "stop",
+      "json_status": "passed",
+      "schema_status": "failed",
+      "schema_error_paths": [
+        [
+          "methods",
+          4,
+          "fact_card_refs",
+          0
+        ],
+        [
+          "experiments",
+          1,
+          "fact_card_refs",
+          1
+        ],
+        [
+          "experiments",
+          4,
+          "fact_card_refs",
+          0
+        ],
+        [
+          "open_problems",
+          5,
+          "fact_card_refs",
+          0
+        ],
+        [
+          "open_problems",
+          5,
+          "fact_card_refs",
+          1
+        ]
+      ]
+    },
+    {
+      "schema": "body_reference_repair_v1",
+      "model": "doubao-seed-2-1-pro-260915",
+      "task_id": "adversarial_review:synthesis:r1",
+      "raw_response_sha256": "20825450427e04c6d184f0a14813f89d58dd5f1f72bf63b3dc8b608685830ae3",
+      "finish_reason": "stop",
+      "json_status": "passed",
+      "schema_status": "passed",
+      "schema_error_paths": []
+    }
+  ],
+  "report_sha256": null,
+  "archive_sha256": "fd8557b63ecc3dc5dfc2570f0409dcb0cba04f1e18874a145ffc27ed2495e6d3",
+  "journal_sha256": "9dc7517ed35d90ff74c9256a992b4bb3ac98783d349cd8505e4a29cc8ef40636",
+  "trace_url": "http://localhost:3000/project/litagent-local-project/traces/0801e15fb9ea7c8334b3c10416927793",
+  "cumulative": {
+    "initial_generation_rounds": 35,
+    "model_requests": 723,
+    "model_known_tokens": 3801740,
+    "model_unknown_conservative_tokens": 1030414,
+    "jev_requests": 67,
+    "jev_conservative_input_tokens": 756769,
+    "judge_requests": 0,
+    "jev_usage_complete": false
+  },
+  "scientific_verdict": "not_evaluated",
+  "reference_error_count": 5,
+  "reference_target_count": 4,
+  "reference_repair_declined": true,
+  "repair_attempts": [
+    {
+      "index": 0,
+      "stage": "native_initial",
+      "status": "failed",
+      "error_code": "ValueError"
+    }
+  ],
+  "reference_repair_completed": false,
+  "reference_error_paths": [
+    [
+      "methods",
+      4,
+      "fact_card_refs",
+      0
+    ],
+    [
+      "experiments",
+      1,
+      "fact_card_refs",
+      1
+    ],
+    [
+      "experiments",
+      4,
+      "fact_card_refs",
+      0
+    ],
+    [
+      "open_problems",
+      5,
+      "fact_card_refs",
+      0
+    ],
+    [
+      "open_problems",
+      5,
+      "fact_card_refs",
+      1
+    ]
+  ],
+  "extracted_papers": 50,
+  "body_elapsed_ms": 54140,
+  "timeout_errors": 0,
+  "suite_charged_tokens": 132596,
+  "schema_version": "single-survey-observation-v4",
+  "observed_date": "2026-10-23",
+  "authorized_cases": 1,
+  "run_cases": 1,
+  "other_engine_slots_not_authorized": 17,
+  "formal_run": 0,
+  "models": {
+    "extraction": "doubao-seed-2-1-lite-260915",
+    "generation": "doubao-seed-2-1-pro-260915",
+    "evaluation": "doubao-seed-2-1-lite-260915"
+  },
+  "limits": {
+    "tokens": 500000,
+    "requests": 64,
+    "retries": 0,
+    "shared_repairs": 2
+  },
+  "verification": {
+    "judge": false,
+    "jev": false
+  },
+  "human_calibration": "not_validated",
+  "self_judged": false,
+  "workbench_url": "http://127.0.0.1:8000/flow-demo?run=archive%3Asurvey-reliability-20261022-004-pilot-few-shot-metric&view=quality",
+  "previous_result_url": "http://127.0.0.1:8009/benchmark.html"
+}

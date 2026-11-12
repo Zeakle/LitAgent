@@ -1,0 +1,162 @@
+{
+  "provenance": {
+    "source_run_id": "quality-auto-20261012-recovery-v3-pilot-nerf-foundations",
+    "source_artifact_sha256": "e5a9867cca4c62df17556243f3555a1b25697b155ebb5e26ef210d22d7cc8e91",
+    "source_scores_not_recomputed": true,
+    "purpose": "local contract regressions, not a human gold standard"
+  },
+  "cases": [
+    {
+      "claim": {
+        "claim_id": "claim_0",
+        "claim_text": "NeRF是一种基于深度学习的三维场景表示与 novel view synthesis 技术，其核心是将场景建模为连续的5D神经辐射场，并通过可微体渲染公式实现从二维图像的端到端优化",
+        "evidence_ids": [
+          "arxiv:2306.03000:abstract:claim:9477fb187841",
+          "arxiv:2003.08934:section:unknown:6:45bbf170163b:claim:80023d6c6e99"
+        ]
+      },
+      "aliases": {
+        "arxiv:2306.03000:abstract:claim:9477fb187841": "e1",
+        "arxiv:2003.08934:section:unknown:6:45bbf170163b:claim:80023d6c6e99": "e2"
+      },
+      "ledger": {
+        "arxiv:2306.03000:abstract:claim:9477fb187841": {
+          "paper_id": "arxiv:2306.03000",
+          "text": "Unverified compressed extraction",
+          "supporting_text": "Neural rendering combines ideas from classical computer graphics and machine learning to synthesize images from real-world observations. NeRF, short for Neural Radiance Fields, is a recent innovation that uses AI algorithms to create 3D objects from 2D images. By leveraging an interpolation approach, NeRF can produce new 3D reconstructed views of complicated scenes. Rather than directly restoring the whole 3D scene geometry, NeRF generates a volumetric representation called a ``radiance field,'' which is capable of creating color and density for every point within the relevant 3D space. The broad appeal and notoriety of NeRF make it imperative to examine the existing research on the topic comprehensively. While previous surveys on 3D rendering have primarily focused on traditional computer vision-based or deep learning-based approaches, only a handful of them discuss the potential of NeRF. However, such surveys have predominantly focused on NeRF's early contributions and have not explored its full potential. NeRF is a relatively new technique continuously being investigated for its capabilities and limitations. This survey reviews recent advances in NeRF and categorizes them according to their architectural designs, especially in the field of novel view synthesis."
+        },
+        "arxiv:2003.08934:section:unknown:6:45bbf170163b:claim:80023d6c6e99": {
+          "paper_id": "arxiv:2003.08934",
+          "text": "Unverified compressed extraction",
+          "supporting_text": "scenes at high-resolutions. In summary, our technical contributions are: – An approach for representing continuous scenes with complex geometry and materials as 5D neural radiance fields, parameterized as basic MLP networks. – A differentiable rendering procedure based on classical volume rendering tech- niques, which we use to optimize these representations from standard RGB images. This includes a hierarchical sampling strategy to allocate the MLP’s capacity towards space with visible scene content. NeRF: Representing Scenes as Neural Radiance Fields for View Synthesis 3 – A positional encoding to map each input 5D coordinate into a higher dimen-"
+        }
+      },
+      "old_decision": {
+        "claim_id": "claim_0",
+        "correct_kind": "scientific",
+        "atomic": true,
+        "classification_valid": true,
+        "source_faithful": true,
+        "status": "unverifiable",
+        "reason_code": "unverifiable",
+        "explanation": "Host support validation: support_aspect_unverified",
+        "support_basis": [
+          {
+            "support_id": "e1:full_original"
+          },
+          {
+            "support_id": "e2:full_original"
+          }
+        ],
+        "aspect_checks": [
+          {
+            "aspect": "predicate",
+            "supported": true,
+            "support_ids": [
+              "e1:full_original",
+              "e2:full_original"
+            ],
+            "explanation": "The predicate (NeRF is a deep learning-based 3D scene representation and novel view synthesis technique with a 5D neural radiance field and differentiable volume rendering for end-to-end optimization) is confirmed by the evidence."
+          },
+          {
+            "aspect": "quantities",
+            "supported": false,
+            "support_ids": [],
+            "explanation": "No numerical quantities are present in the assertion or evidence."
+          },
+          {
+            "aspect": "causal_relation",
+            "supported": true,
+            "support_ids": [
+              "e1:full_original",
+              "e2:full_original"
+            ],
+            "explanation": "The causal relation (the core of NeRF is the 5D neural radiance field and differentiable volume rendering enabling end-to-end optimization) is confirmed by the evidence."
+          }
+        ]
+      }
+    },
+    {
+      "claim": {
+        "claim_id": "claim_10",
+        "claim_text": "在大规模场景实验中，UE4-NeRF等方法通过分块与细节层次技术实现了4K分辨率下的实时渲染，达到约43 FPS的帧率",
+        "evidence_ids": [
+          "arxiv:2505.19175:abstract:claim:10d72f80d23f",
+          "arxiv:2410.01804:abstract:claim:b302b01d8686"
+        ]
+      },
+      "aliases": {
+        "arxiv:2505.19175:abstract:claim:10d72f80d23f": "e1",
+        "arxiv:2410.01804:abstract:claim:b302b01d8686": "e2"
+      },
+      "ledger": {
+        "arxiv:2505.19175:abstract:claim:10d72f80d23f": {
+          "paper_id": "arxiv:2505.19175",
+          "text": "Unverified compressed extraction",
+          "supporting_text": "The field of computer graphics was revolutionized by models such as Neural Radiance Fields and 3D Gaussian Splatting, displacing triangles as the dominant representation for photogrammetry. In this paper, we argue for a triangle comeback. We develop a differentiable renderer that directly optimizes triangles via end-to-end gradients. We achieve this by rendering each triangle as differentiable splats, combining the efficiency of triangles with the adaptive density of representations based on independent primitives. Compared to popular 2D and 3D Gaussian Splatting methods, our approach achieves higher visual fidelity, faster convergence, and increased rendering throughput. On the Mip-NeRF360 dataset, our method outperforms concurrent non-volumetric primitives in visual fidelity and achieves higher perceptual quality than the state-of-the-art Zip-NeRF on indoor scenes. Triangles are simple, compatible with standard graphics stacks and GPU hardware, and highly efficient: for the Garden scene, we achieve over 2,400 FPS at 1280x720 resolution using an off-the-shelf mesh renderer. These results highlight the efficiency and effectiveness of triangle-based representations for high-quality novel view synthesis. Triangles bring us closer to mesh-based optimization by combining classical computer graphics with modern differentiable rendering frameworks. The project page is https://trianglesplatting.github.io/"
+        },
+        "arxiv:2410.01804:abstract:claim:b302b01d8686": {
+          "paper_id": "arxiv:2410.01804",
+          "text": "Unverified compressed extraction",
+          "supporting_text": "We present Exact Volumetric Ellipsoid Rendering (EVER), a method for real-time differentiable emission-only volume rendering. Unlike recent rasterization based approach by 3D Gaussian Splatting (3DGS), our primitive based representation allows for exact volume rendering, rather than alpha compositing 3D Gaussian billboards. As such, unlike 3DGS our formulation does not suffer from popping artifacts and view dependent density, but still achieves frame rates of $\\sim\\!30$ FPS at 720p on an NVIDIA RTX4090. Since our approach is built upon ray tracing it enables effects such as defocus blur and camera distortion (e.g. such as from fisheye cameras), which are difficult to achieve by rasterization. We show that our method is more accurate with fewer blending issues than 3DGS and follow-up work on view-consistent rendering, especially on the challenging large-scale scenes from the Zip-NeRF dataset where it achieves sharpest results among real-time techniques."
+        }
+      },
+      "old_decision": {
+        "claim_id": "claim_10",
+        "correct_kind": "scientific",
+        "atomic": true,
+        "classification_valid": true,
+        "source_faithful": true,
+        "status": "unverifiable",
+        "reason_code": "unverifiable",
+        "explanation": "Host support validation: support_entity_unverified",
+        "support_basis": [
+          {
+            "support_id": "e15:full_original"
+          },
+          {
+            "support_id": "e16:full_original"
+          }
+        ],
+        "aspect_checks": [
+          {
+            "aspect": "predicate",
+            "supported": true,
+            "support_ids": [
+              "e15:full_original",
+              "e16:full_original"
+            ],
+            "explanation": "The predicate (UE4-NeRF achieves 4K real-time rendering at ~43 FPS for large scenes) is confirmed by the evidence."
+          },
+          {
+            "aspect": "conditions",
+            "supported": true,
+            "support_ids": [
+              "e15:full_original",
+              "e16:full_original"
+            ],
+            "explanation": "The conditions (large scenes, 4K resolution) are confirmed by the evidence."
+          },
+          {
+            "aspect": "quantities",
+            "supported": true,
+            "support_ids": [
+              "e15:full_original",
+              "e16:full_original"
+            ],
+            "explanation": "The quantity (~43 FPS) is confirmed by the evidence."
+          },
+          {
+            "aspect": "causal_relation",
+            "supported": true,
+            "support_ids": [
+              "e15:full_original",
+              "e16:full_original"
+            ],
+            "explanation": "The causal relation (分块与细节层次技术 enable real-time rendering) is confirmed by the evidence."
+          }
+        ]
+      }
+    }
+  ]
+}

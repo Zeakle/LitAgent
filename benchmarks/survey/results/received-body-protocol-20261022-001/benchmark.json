@@ -1,0 +1,195 @@
+{
+  "run_id": "received-body-protocol-20261022-001",
+  "source_commit": "1d5838382ec1eb08161d880a5cca2e11b7001fdc",
+  "binding": "98acf828d08d7e6ed068ca5ce0a6933375c9e01064175554a4d4b7675f2e0218",
+  "contract": "native-body-summary-v5",
+  "execution_contract": "frozen-received-body-protocol-v1",
+  "accounting_predecessor_binding": "f044739e43c28a7b076a40cd8c616460a9a3f9ba9da95341979bea82a21df3cb",
+  "received_body": {
+    "contract": "received-typed-body-v1",
+    "raw_response_sha256": "80f8ca0b1643074889caf0148590bcb03a0d512713792da807fe02d408ef59da",
+    "source_binding": "f044739e43c28a7b076a40cd8c616460a9a3f9ba9da95341979bea82a21df3cb",
+    "source_journal_sha256": "a38ecf302c583ff7fe299ed1d8cfe5310e4cb70be9d8692098bdece7b9833253",
+    "reference_binding_sha256": "46df09aeed844022a83e0f7c1ba66420f036900ed8d1e05c9a581e96a60d5265",
+    "sha256": "086bbbc4da8e2ea8df9a350c161f8293292af086eb7c5d2daa3e71a730c486e0"
+  },
+  "status": "failed_no_replay",
+  "error_type": "JSONDecodeError",
+  "error_code": "stage_contract_invalid",
+  "error_phase": "summaries",
+  "json_error": {
+    "offset": 2854,
+    "line": 1,
+    "column": 2855
+  },
+  "scientific_verdict": "not_evaluated",
+  "publishable": false,
+  "checks": [
+    {
+      "check": "received_body_identity",
+      "status": "passed",
+      "paths": [
+        "80f8ca0b1643074889caf0148590bcb03a0d512713792da807fe02d408ef59da"
+      ]
+    },
+    {
+      "check": "initial_body_host_validation",
+      "status": "failed",
+      "paths": [
+        "7 historical citation-scope diagnostics; this is not a scientific verdict"
+      ]
+    },
+    {
+      "check": "body_repair_0_json",
+      "status": "passed",
+      "paths": []
+    },
+    {
+      "check": "body_repair_0_schema",
+      "status": "passed",
+      "paths": []
+    },
+    {
+      "check": "summaries_json",
+      "status": "failed",
+      "paths": [
+        "line:1,column:2855,offset:2854,eof:True"
+      ]
+    },
+    {
+      "check": "repair_0_host",
+      "status": "passed",
+      "paths": []
+    },
+    {
+      "check": "repaired_body_host_validation",
+      "status": "passed",
+      "paths": []
+    },
+    {
+      "check": "full_local_compile",
+      "status": "not_completed",
+      "paths": []
+    },
+    {
+      "check": "reviewer",
+      "status": "not_run",
+      "paths": []
+    },
+    {
+      "check": "evaluation",
+      "status": "not_run",
+      "paths": []
+    },
+    {
+      "check": "judge",
+      "status": "not_run",
+      "paths": []
+    },
+    {
+      "check": "jev",
+      "status": "not_run",
+      "paths": []
+    },
+    {
+      "check": "scientific_acceptance",
+      "status": "not_evaluated",
+      "paths": []
+    },
+    {
+      "check": "delivery",
+      "status": "blocked",
+      "paths": []
+    }
+  ],
+  "initial_host_diagnostic_counts": {
+    "strict_writing_unit_citation_scope_ambiguous": 7
+  },
+  "final_host_diagnostic_counts": {},
+  "stage_raw_sha256": {
+    "body_repair_0": "072f0e93e23fba87248db0ffc5b6d28aaad3000814411e005b2036663d790f08",
+    "summaries": "f69a74db0f1ac419f0384ce373bff6ba041233ee7f0a36394b8b3b8549f01b0b"
+  },
+  "repair_attempts": [
+    {
+      "index": 0,
+      "status": "completed",
+      "input_sha256": "64a4455405ee3dbba154c231a3207e89e284a26adf391040f64cb1a227564bb0"
+    }
+  ],
+  "requests": 2,
+  "tokens": 33273,
+  "unknown_hold": 0,
+  "usage": [
+    {
+      "model": "doubao-seed-2-1-pro-260915",
+      "actual_model": "doubao-seed-2-1-pro-260915",
+      "prompt_tokens": 17858,
+      "completion_tokens": 1018,
+      "total_tokens": 18876,
+      "usage_available": true,
+      "finish_reason": "stop",
+      "elapsed_ms": 15050
+    },
+    {
+      "model": "doubao-seed-2-1-pro-260915",
+      "actual_model": "doubao-seed-2-1-pro-260915",
+      "prompt_tokens": 13424,
+      "completion_tokens": 973,
+      "total_tokens": 14397,
+      "usage_available": true,
+      "finish_reason": "stop",
+      "elapsed_ms": 20161
+    }
+  ],
+  "parent_plus_probe": {
+    "schema_version": 1,
+    "max_tokens": 500000,
+    "warn_ratio": 0.8,
+    "used_tokens": 232424,
+    "call_count": 32,
+    "warned": false,
+    "strict_policy": "staged-budget-v1",
+    "strict_phase": 1,
+    "requests_sent": 32,
+    "phase_usage": [
+      98267,
+      134157,
+      0
+    ],
+    "usage_uncertain": false,
+    "halt_on_unknown_usage": true,
+    "stop_reason": null
+  },
+  "cumulative": {
+    "initial_generation_rounds": 31,
+    "model_requests": 614,
+    "model_known_tokens": 3330345,
+    "model_unknown_conservative_tokens": 1003467,
+    "jev_requests": 67,
+    "jev_conservative_input_tokens": 756769,
+    "judge_requests": 0,
+    "jev_usage_complete": false
+  },
+  "new_allowance": {
+    "tokens": 120000,
+    "requests": 2,
+    "output_per_call": 20000,
+    "retries": 0
+  },
+  "no_initial_body_request": true,
+  "human_calibration": "unverified",
+  "interpretation": "Protocol validation only; no Reviewer or Evaluation, no scientific delivery claim.",
+  "trace_readback": {
+    "trace_id": "ce4e999a13ae7a94d1382e8338b7fce1",
+    "observations": 3,
+    "generations": 2,
+    "known_tokens": 33273,
+    "generation_io_empty": true,
+    "survey_lifecycle_recorded": true,
+    "survey_parent_in_readback": false,
+    "whole_trace_tree_verified": false,
+    "scientific_verdict": "not_evaluated",
+    "trace_url": "http://localhost:3000/project/litagent-local-project/traces/ce4e999a13ae7a94d1382e8338b7fce1"
+  }
+}

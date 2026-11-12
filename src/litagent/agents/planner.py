@@ -1,0 +1,463 @@
+"""Classify survey queries and build the worker task graph."""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import unicodedata
+from enum import Enum
+from typing import Callable, Sequence
+
+from litagent.config import OrchestratorConfig, PlannerConfig, RAGConfig
+from litagent.context.templates import wrap_xml
+from litagent.exceptions import SafetyError
+from litagent.llm.client import BaseLLMClient, chat_with_timeout
+from litagent.logging import get_logger
+from litagent.observability.context import reset_task_id, set_task_id
+from litagent.orchestrator.task_graph import SubTask, TaskGraph
+from litagent.safety.injection import InjectionDetector, InjectionRisk
+
+logger = get_logger("agents.planner")
+
+
+class QueryIntent(str, Enum):
+    """Identify the supported survey-query input forms."""
+
+    TOPIC = "topic"
+    ARXIV_ID = "arxiv_id"
+    DOI = "doi"
+    URL = "url"
+
+
+_ARXIV_NEW_RE = re.compile(r"^(arxiv:)?\d{4}\.\d{4,5}(v\d+)?$", re.IGNORECASE)
+_ARXIV_LEGACY_RE = re.compile(
+    r"^(arxiv:)?[a-z-]+(\.[a-z]{2})?/\d{7}(v\d+)?$", re.IGNORECASE
+)
+_DOI_RE = re.compile(r"^(doi:)?10\.\d{4,9}/\S+$", re.IGNORECASE)
+
+
+def classify_query_intent(query: str) -> QueryIntent:
+    """Classify a query as a topic, arXiv ID, DOI, or URL."""
+    q = (query or "").strip()
+    if q.lower().startswith(("http://", "https://")):
+        return QueryIntent.URL
+    if _ARXIV_NEW_RE.match(q) or _ARXIV_LEGACY_RE.match(q):
+        return QueryIntent.ARXIV_ID
+    if _DOI_RE.match(q):
+        return QueryIntent.DOI
+    return QueryIntent.TOPIC
+
+
+_DECOMPOSE_SYSTEM = """You are a query planning assistant for an academic \
+literature survey system.
+Given a research survey topic, expand it into 2-3 focused sub-queries that \
+together broaden literature coverage (different angles, subtopics, or \
+methodological facets of the SAME topic).
+Do NOT drift to unrelated topics. Keep each sub-query concise \
+(a search-engine query, not a sentence).
+
+Provide one broad short query and focused queries covering explicitly named methods.
+Focused discovery queries should name one method at a time, not require every
+original paper to discuss all compared methods. Avoid filler such as 'representative
+methods', 'experimental comparison' and 'open problems' in discovery queries.
+For foundational methods, prefer distinctive original-paper title terms when known.
+An acronym alone often retrieves derivatives instead of the original method paper.
+Use OR between known acronym/title alternatives, never AND between those aliases.
+Title terms are discovery hypotheses; retrieved records must establish identity.
+Do not return the full long user request as a search query. Do not invent paper IDs.
+When several named methods are compared, also provide original_paper_queries with
+one original-paper title discovery query per known method. Use distinctive quoted
+title terms, not an acronym that predominantly retrieves derivative papers. Omit
+unknown titles rather than guessing an identifier. These queries are hypotheses,
+not accepted source records, and share the same existing sub-query limit.
+Also return coverage_constraints: literal substrings from the user's question that
+specify core questions, comparison dimensions or required experimental conditions.
+Do not omit explicit requirements or invent new ones.
+Respond ONLY with JSON: {"sub_queries": ["...", "..."], "named_methods": ["literal method name from the user request"], "coverage_constraints": ["literal user requirement"], "original_paper_queries": [{"method": "the same named method", "query": "quoted original-title terms"}]}"""
+
+
+def _method_key(value: str) -> str:
+    """Match literal method names across typographic parenthesis variants."""
+    value = unicodedata.normalize("NFKC", value).casefold()
+    return re.sub(r"\s*([()])\s*", r"\1", value).strip()
+
+
+def _independent_method_query(name: str) -> str:
+    """Treat a parenthetical acronym as an alternative, not an AND requirement."""
+    match = re.fullmatch(r"(.+?)\s*[（(]([A-Za-z][A-Za-z0-9 -]*)[）)]", name)
+    if match:
+        return f'"{match[1].strip()}" OR "{match[2].strip()}"'
+    return name
+
+
+class SurveyPlanner:
+    """Build survey task graphs with optional topic decomposition."""
+
+    def __init__(
+        self,
+        llm: BaseLLMClient | None = None,
+        config: PlannerConfig | None = None,
+        trace_hook: Callable[[str, dict], None] | None = None,
+        memory_manager: "MemoryManager | None" = None,
+        rag_config: RAGConfig | None = None,
+        adversarial_timeout_ms: int = 720000,
+        decomposition_override: Sequence[str] | None = None,
+        replay_fingerprint: str | None = None,
+        task_timeouts_ms: dict[str, int] | None = None,
+        extractor_timeout_ms: int = 300000,
+    ) -> None:
+        """Initialize the survey planner."""
+        if adversarial_timeout_ms <= 0:
+            raise ValueError("adversarial_timeout_ms must be positive")
+        self._llm = llm
+        self._config = config or PlannerConfig()
+        self._rag_config = rag_config or RAGConfig()
+        self._trace_hook = trace_hook
+        self._memory = memory_manager
+        self._adversarial_timeout_ms = adversarial_timeout_ms
+        self._task_timeouts_ms = OrchestratorConfig(
+            task_timeouts_ms=task_timeouts_ms or {}
+        ).task_timeouts_ms
+        if type(extractor_timeout_ms) is not int or extractor_timeout_ms <= 0:
+            raise ValueError("extractor_timeout_ms must be positive")
+        self._extractor_timeout_ms = extractor_timeout_ms
+        self._decomposition_override = (
+            tuple(decomposition_override)
+            if decomposition_override is not None
+            else None
+        )
+        self._replay_fingerprint = replay_fingerprint
+        if self._decomposition_override is not None and (
+            not self._decomposition_override
+            or not all(
+                isinstance(item, str) and item.strip()
+                for item in self._decomposition_override
+            )
+        ):
+            raise ValueError("decomposition_override must contain non-empty strings")
+
+    def _emit(self, event: str, data: dict) -> None:
+        """Emit a trace event."""
+        if self._trace_hook:
+            try:
+                self._trace_hook(event, data)
+            except Exception as e:
+                logger.debug(f"Trace hook failed for {event} : {e}")
+
+    async def plan(self, query: str) -> TaskGraph:
+        """Create a task graph for the survey query."""
+        detector = InjectionDetector()
+        result = detector.scan(query)
+        if result.risk == InjectionRisk.HIGH:
+            raise SafetyError(f"Query rejected: injection detected {result.matched}")
+
+        self._named_methods = []
+        self._coverage_constraints = []
+        graph = TaskGraph()
+
+        intent = classify_query_intent(query)
+        if intent == QueryIntent.TOPIC and self._decomposition_override is not None:
+            sub_queries = await self._decompose_traced(query)
+        elif (
+            intent == QueryIntent.TOPIC and self._config.decompose_enabled and self._llm
+        ):
+            sub_queries = await self._decompose_traced(query)
+        else:
+            sub_queries = [query]
+
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for q in sub_queries:
+            qs = q.strip()
+            k = qs.lower()
+            if qs and k not in seen:
+                seen.add(k)
+                normalized.append(qs)
+        sub_queries = normalized or [query]
+
+        sources = ["arxiv", "huggingface"]
+        if os.environ.get("SEMANTIC_SCHOLAR_API_KEY"):
+            sources.append("semantic_scholar")
+
+        if self._config.use_procedural_profiles and self._memory:
+            try:
+                sources = await self._memory.rank_search_sources(
+                    sources,
+                    min_samples=self._config.procedural_min_samples,
+                )
+            except Exception as e:
+                logger.warning(f"Procedural ranking failed, keeping default order: {e}")
+
+        search_ids: list[str] = []
+        for rank_idx, source in enumerate(sources):
+            for i, sub_query in enumerate(sub_queries):
+                tid = f"search_{source}_q{i}"
+                graph.add_task(
+                    SubTask(
+                        task_id=tid,
+                        description=f"Search {source} for: {sub_query}",
+                        agent_type="search",
+                        priority=rank_idx,
+                        timeout_ms=self._task_timeouts_ms.get("search", 120000),
+                        input_data={
+                            "mode": "external",
+                            "source": source,
+                            "query": sub_query,
+                        },
+                    )
+                )
+                search_ids.append(tid)
+
+        recall_ids: list[str] = []
+        for index, sub_query in enumerate(sub_queries):
+            task_id = f"recall_q{index}"
+            graph.add_task(
+                SubTask(
+                    task_id=task_id,
+                    description=f"RAG recall for: {sub_query}",
+                    agent_type="recall",
+                    timeout_ms=self._task_timeouts_ms.get("recall", 120000),
+                    input_data={
+                        "query": sub_query,
+                        "query_index": index,
+                        "top_k": self._rag_config.top_k,
+                        "candidate_k": self._rag_config.candidate_k,
+                        "max_representative_chunks": (
+                            self._rag_config.max_representative_chunks
+                        ),
+                        "retrieval_mode": self._rag_config.retrieval_mode.value,
+                    },
+                )
+            )
+            recall_ids.append(task_id)
+
+        graph.add_task(
+            SubTask(
+                task_id="dedup",
+                description="Deduplicate search results",
+                agent_type="dedup",
+                timeout_ms=self._task_timeouts_ms.get("dedup", 120000),
+                input_data={"query": query},
+            ),
+            depends_on=search_ids + recall_ids,
+        )
+
+        graph.add_task(
+            SubTask(
+                task_id="relevance_gate",
+                description="Rank papers by relevance to query",
+                agent_type="relevance_gate",
+                timeout_ms=self._task_timeouts_ms.get("relevance_gate", 120000),
+                input_data={"query": query},
+            ),
+            depends_on=["dedup"],
+        )
+
+        graph.add_task(
+            SubTask(
+                task_id="extract",
+                description="Extract structure info from papers",
+                agent_type="extractor",
+                input_data={"query": query},
+                timeout_ms=self._extractor_timeout_ms,
+                max_retries=0,
+            ),
+            depends_on=["relevance_gate"],
+        )
+
+        graph.add_task(
+            SubTask(
+                task_id="graph_analysis",
+                description="Analyze citation network",
+                agent_type="graph",
+                timeout_ms=self._task_timeouts_ms.get("graph_analysis", 120000),
+                input_data={"query": query},
+            ),
+            depends_on=["relevance_gate"],
+        )
+
+        # The worker owns its revision loop, so scheduler retries would duplicate work.
+        graph.add_task(
+            SubTask(
+                task_id="adversarial_review",
+                description="Adversarial synthesis + review loop",
+                agent_type="adversarial_review",
+                input_data={
+                    "query": query,
+                    "requested_methods": getattr(self, "_named_methods", []),
+                    "coverage_constraints": getattr(self, "_coverage_constraints", []),
+                },
+                timeout_ms=self._adversarial_timeout_ms,
+                max_retries=0,
+            ),
+            depends_on=["extract", "graph_analysis"],
+        )
+        logger.info(f"Planned {len(graph.tasks)} tasks for query {query}")
+        return graph
+
+    async def _decompose(self, query: str) -> list[str]:
+        """Decompose a survey query into focused subqueries."""
+        fallback = [query]
+        self._named_methods = []
+        self._coverage_constraints = []
+        if not self._llm or not self._config.decompose_enabled:
+            return fallback
+
+        try:
+            kwargs = {}
+            if self._config.thinking_mode not in (None, "provider_default"):
+                kwargs["extra_body"] = {
+                    "thinking": {"type": self._config.thinking_mode}
+                }
+            resp = await chat_with_timeout(
+                self._llm,
+                [
+                    {
+                        "role": "system",
+                        "content": (
+                            _DECOMPOSE_SYSTEM.replace(
+                                "2-3 focused",
+                                f"2-{self._config.max_sub_queries} focused",
+                            )
+                            if self._config.max_sub_queries > 3
+                            else _DECOMPOSE_SYSTEM
+                        ),
+                    },
+                    {"role": "user", "content": wrap_xml("topic", query)},
+                ],
+                response_format={"type": "json_object"},
+                stage="planning",
+                max_tokens=self._config.max_tokens,
+                temperature=self._config.temperature,
+                **kwargs,
+            )
+
+            content = (resp.content or "").strip()
+
+            if not content:
+                logger.warning("Decompose: empty content, degrade to single query")
+                return fallback
+
+            parsed = json.loads(content)
+            constraints = parsed.get("coverage_constraints", [])
+            self._coverage_constraints = (
+                [
+                    v
+                    for v in constraints
+                    if isinstance(v, str)
+                    and v.strip()
+                    and v.casefold() in query.casefold()
+                ]
+                if isinstance(constraints, list)
+                else []
+            )
+            raw = parsed.get("sub_queries")
+            names = parsed.get("named_methods")
+            self._named_methods = list(
+                dict.fromkeys(
+                    x.strip()
+                    for x in (names if isinstance(names, list) else [])
+                    if isinstance(x, str)
+                    and x.strip()
+                    and _method_key(x) in _method_key(query)
+                )
+            )[:12]
+            if not isinstance(raw, list):
+                logger.warning("Decompose: 'sub_queries' not a list, degrade")
+                return fallback
+
+            subs = [s.strip() for s in raw if isinstance(s, str) and s.strip()]
+
+            merged, seen = [], set()
+            for q in subs:
+                k = q.lower()
+                if k not in seen:
+                    seen.add(k)
+                    merged.append(q)
+
+            if (
+                len(self._named_methods) > 1
+                and merged
+                and all(
+                    sum(name.casefold() in q.casefold() for name in self._named_methods)
+                    > 1
+                    and not re.search(r"\bOR\b", q)
+                    for q in merged
+                )
+            ):
+                # arXiv ANDs plain terms; joint queries miss individual source papers.
+                # Preserve the existing query/call cap and the original downstream topic.
+                original_queries = {}
+                raw_original = parsed.get("original_paper_queries")
+                for item in raw_original if isinstance(raw_original, list) else []:
+                    if not isinstance(item, dict):
+                        continue
+                    name, original = item.get("method"), item.get("query")
+                    if (
+                        isinstance(name, str)
+                        and isinstance(original, str)
+                        and 0 < len(original.strip()) <= 300
+                    ):
+                        key = _method_key(name)
+                        if any(
+                            _method_key(method) == key for method in self._named_methods
+                        ):
+                            original_queries.setdefault(key, original.strip())
+                merged = [
+                    original_queries.get(
+                        _method_key(name), _independent_method_query(name)
+                    )
+                    for name in self._named_methods
+                ]
+            elif (
+                len(self._named_methods) == 1
+                and merged
+                and all(
+                    _method_key(q) == _method_key(self._named_methods[0])
+                    for q in merged
+                )
+            ):
+                merged = [_independent_method_query(self._named_methods[0])]
+            clamped = merged[: self._config.max_sub_queries] or fallback
+            logger.info(f"Decompose: {query!r} -> {len(clamped)} sub-queries")
+            return clamped
+        except Exception as e:
+            logger.warning(f"Decompose failed ({e}), degrade to single query")
+            return fallback
+
+    async def _decompose_traced(self, query: str) -> list[str]:
+        """Decompose a query while emitting LLM lifecycle events."""
+        self._emit(
+            "subspan.start",
+            {
+                "task_id": "query_decomposition",
+                "parent_task_id": "",
+                "name": "planner.query_decomposition",
+                "round": 0,
+            },
+        )
+        token = set_task_id("query_decomposition")
+        sub_queries = [query]
+        try:
+            if self._decomposition_override is not None:
+                sub_queries = list(self._decomposition_override)
+                self._emit(
+                    "benchmark.external_inputs.replayed",
+                    {
+                        "component": "planner",
+                        "snapshot_fingerprint": self._replay_fingerprint,
+                    },
+                )
+            else:
+                sub_queries = await self._decompose(query)
+            return sub_queries
+        finally:
+            reset_task_id(token)
+            self._emit(
+                "subspan.end",
+                {
+                    "task_id": "query_decomposition",
+                    "output": {"sub_queries": sub_queries},
+                },
+            )

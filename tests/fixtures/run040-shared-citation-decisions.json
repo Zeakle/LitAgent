@@ -1,0 +1,534 @@
+{
+  "contract": "040-shared-citation-decisions-v1",
+  "science_gold_standard": false,
+  "provenance": {
+    "replay_sha256": "5df0cac68edb769dc61ba48a0cd564d368a0d561ecebbd221f01c2183c7a8d83",
+    "source_report_sha256": "b03443c33948f5faa6d14711b7ecd6ee3aea2a2bfc0b5c8d722f68fdc2331566",
+    "source_positions": "original Unicode character offsets; the full report is intentionally not included"
+  },
+  "fragments": {
+    "f1": {
+      "source_fragment_id": "f1",
+      "prose": "本综述比较面向少样本图像分类的深度度量学习方法，核心是在新类别仅有少量标注样本时，通过可迁移嵌入、支持集类别表征和查询—类别相似性完成分类。按机制可分为三类：以深度K-tuplet、Proto-Triplet Loss和ICNN loss强化嵌入关系与类间几何；以条件化关系架构、SRL子空间表征改进类别表示或比较对象；以关系网络、MSENet多阶段加权特征和不确定性感知框架改造距离、相似性或其可靠性。现有证据显示，Proto-Triplet/ICNN在miniImageNet上报告相对其他度量学习方法2%的准确率提升，K-tuplet覆盖miniImageNet到Caltech-101、CUB-200、Stanford Dogs和Cars的迁移评估，SRL、MSENet等分别在TieredImageNet、FC100、CUB及跨域基准上报告竞争性或有效性；但这些结果来自不同论文、骨干和协议，不能合并为统一排名。",
+      "citation_aliases": [
+        "e1",
+        "e2",
+        "e3",
+        "e4",
+        "e5",
+        "e6",
+        "e7",
+        "e8",
+        "e9",
+        "e10",
+        "e11",
+        "e12",
+        "e13",
+        "e14",
+        "e15"
+      ],
+      "source_unit_id": "unit:0:28",
+      "native_source_fragment_id": "unit:0:28:native:writer:abstract:0:0"
+    },
+    "f5": {
+      "source_fragment_id": "f5",
+      "prose": "比较的经验问题不是简单判断哪一种网络结构普遍最优，而是考察不同方法在固定或可学习度量、原型或其他类别表征、嵌入约束、跨域泛化等维度上的证据；例如，所引Proto-Triplet Loss与ICNN loss工作报告其在miniImageNet上相对其他度量学习方法有2%的准确率提升，而深度K-tuplet网络则报告在miniImageNet训练后可迁移到Caltech-101、CUB-200、Stanford Dogs和Cars等数据集。由于这些结果来自不同论文和设置，后续实验比较将保留各自数据集、任务设定与限定条件，不在引言中据此作总排名。",
+      "citation_aliases": [
+        "e5",
+        "e11",
+        "e12",
+        "e13"
+      ],
+      "source_unit_id": "unit:3:2112",
+      "native_source_fragment_id": "unit:3:2112:native:writer:introduction:2:0"
+    }
+  },
+  "aliases": {
+    "arxiv:2105.08149:page:1:block:9:claim:7cf2d36a262c": "e1",
+    "arxiv:2010.04525:abstract:claim:7178a9c4f03f": "e2",
+    "arxiv:2105.08149:abstract:claim:ae8bdfee0e05": "e3",
+    "arxiv:1907.03123:abstract:claim:5a36249bbf1e": "e4",
+    "arxiv:2305.09062:abstract:claim:549b9167d596": "e5",
+    "arxiv:1802.04376:abstract:claim:50a611de7d64": "e6",
+    "arxiv:2105.00379:abstract:claim:38498384e907": "e7",
+    "arxiv:2409.07989:abstract:claim:5ed923dac68f": "e8",
+    "arxiv:1711.06025:section:abstract:12:43376954155c:claim:71df1568e996": "e9",
+    "arxiv:1711.06025:section:abstract:4:b851ec357ca4:claim:3868df819471": "e10",
+    "arxiv:1907.03123:abstract:claim:998fb93b2a24": "e11",
+    "arxiv:1907.03123:abstract:claim:b4d49aba47c5": "e12",
+    "arxiv:2305.09062:abstract:claim:aaed703eb739": "e13",
+    "arxiv:2105.00379:abstract:claim:e2d40a72c0d6": "e14",
+    "arxiv:2104.02638:section:abstract:9:1354132472a1:claim:3fb7cfd2fbdb": "e15"
+  },
+  "cited_materials": {
+    "e1": {
+      "paper_title": "Deep Metric Learning for Few-Shot Image Classification: A Review of Recent Developments",
+      "original_support_ref": "s1"
+    },
+    "e2": {
+      "paper_title": "Uncertainty-Aware Few-Shot Image Classification",
+      "original_support_ref": "s2"
+    },
+    "e3": {
+      "paper_title": "Deep Metric Learning for Few-Shot Image Classification: A Review of Recent Developments",
+      "original_support_ref": "s3"
+    },
+    "e4": {
+      "paper_title": "Revisiting Metric Learning for Few-Shot Image Classification",
+      "original_support_ref": "s4"
+    },
+    "e5": {
+      "paper_title": "SuSana Distancia is all you need: Enforcing class separability in metric\n  learning via two novel distance-based loss functions for few-shot image\n  classification",
+      "original_support_ref": "s5"
+    },
+    "e6": {
+      "paper_title": "Few-Shot Learning with Metric-Agnostic Conditional Embeddings",
+      "original_support_ref": "s6"
+    },
+    "e7": {
+      "paper_title": "Subspace Representation Learning for Few-shot Image Classification",
+      "original_support_ref": "s7"
+    },
+    "e8": {
+      "paper_title": "Enhancing Few-Shot Image Classification through Learnable Multi-Scale Embedding and Attention Mechanisms",
+      "original_support_ref": "s8"
+    },
+    "e9": {
+      "paper_title": "Learning to Compare: Relation Network for Few-Shot Learning",
+      "original_support_ref": "s9"
+    },
+    "e10": {
+      "paper_title": "Learning to Compare: Relation Network for Few-Shot Learning",
+      "original_support_ref": "s10"
+    },
+    "e11": {
+      "paper_title": "Revisiting Metric Learning for Few-Shot Image Classification",
+      "original_support_ref": "s4"
+    },
+    "e12": {
+      "paper_title": "Revisiting Metric Learning for Few-Shot Image Classification",
+      "original_support_ref": "s4"
+    },
+    "e13": {
+      "paper_title": "SuSana Distancia is all you need: Enforcing class separability in metric\n  learning via two novel distance-based loss functions for few-shot image\n  classification",
+      "original_support_ref": "s5"
+    },
+    "e14": {
+      "paper_title": "Subspace Representation Learning for Few-shot Image Classification",
+      "original_support_ref": "s7"
+    },
+    "e15": {
+      "paper_title": "Comparing Transfer and Meta Learning Approaches on a Unified Few-Shot Classification Benchmark",
+      "original_support_ref": "s11"
+    }
+  },
+  "original_supports": {
+    "s1": {
+      "paper_id": "arxiv:2105.08149",
+      "text": "The biggest challenge in few-shot classification is a high risk of model overfitting to the few labeled training samples. To alleviate this problem, researchers have proposed various approaches, such as meta-learning methods, transfer learning methods, and metric learning methods. Meta-learning methods train a meta-learner on many different classification tasks to extract generalizable knowledge, which enables rapid learning on a new related task with few examples [7, 9]. Transfer learning methods presume shared knowledge between the source and target domains, and fine-tune the model trained on abundant source data to fit few labeled target samples [10, 11]. Metric learning methods learn feature embeddings [6] and/or distance measures (or inversely, similarity measures) [12] and classify an unseen sample based on its distance to"
+    },
+    "s2": {
+      "paper_id": "arxiv:2010.04525",
+      "text": "Few-shot image classification learns to recognize new categories from limited labelled data. Metric learning based approaches have been widely investigated, where a query sample is classified by finding the nearest prototype from the support set based on their feature similarities. A neural network has different uncertainties on its calculated similarities of different pairs. Understanding and modeling the uncertainty on the similarity could promote the exploitation of limited samples in few-shot optimization. In this work, we propose Uncertainty-Aware Few-Shot framework for image classification by modeling uncertainty of the similarities of query-support pairs and performing uncertainty-aware optimization. Particularly, we exploit such uncertainty by converting observed similarities to probabilistic representations and incorporate them to the loss for more effective optimization. In order to jointly consider the similarities between a query and the prototypes in a support set, a graph-based model is utilized to estimate the uncertainty of the pairs. Extensive experiments show our proposed method brings significant improvements on top of a strong baseline and achieves the state-of-the-art performance."
+    },
+    "s3": {
+      "paper_id": "arxiv:2105.08149",
+      "text": "Few-shot image classification is a challenging problem that aims to achieve the human level of recognition based only on a small number of training images. One main solution to few-shot image classification is deep metric learning. These methods, by classifying unseen samples according to their distances to few seen samples in an embedding space learned by powerful deep neural networks, can avoid overfitting to few training images in few-shot image classification and have achieved the state-of-the-art performance. In this paper, we provide an up-to-date review of deep metric learning methods for few-shot image classification from 2018 to 2022 and categorize them into three groups according to three stages of metric learning, namely learning feature embeddings, learning class representations, and learning distance measures. With this taxonomy, we identify the novelties of different methods and problems they face. We conclude this review with a discussion on current challenges and future trends in few-shot image classification."
+    },
+    "s4": {
+      "paper_id": "arxiv:1907.03123",
+      "text": "The goal of few-shot learning is to recognize new visual concepts with just a few amount of labeled samples in each class. Recent effective metric-based few-shot approaches employ neural networks to learn a feature similarity comparison between query and support examples. However, the importance of feature embedding, i.e., exploring the relationship among training samples, is neglected. In this work, we present a simple yet powerful baseline for few-shot classification by emphasizing the importance of feature embedding. Specifically, we revisit the classical triplet network from deep metric learning, and extend it into a deep K-tuplet network for few-shot learning, utilizing the relationship among the input samples to learn a general representation learning via episode-training. Once trained, our network is able to extract discriminative features for unseen novel categories and can be seamlessly incorporated with a non-linear distance metric function to facilitate the few-shot classification. Our result on the miniImageNet benchmark outperforms other metric-based few-shot classification methods. More importantly, when evaluated on completely different datasets (Caltech-101, CUB-200, Stanford Dogs and Cars) using the model trained with miniImageNet, our method significantly outperforms prior methods, demonstrating its superior capability to generalize to unseen classes."
+    },
+    "s5": {
+      "paper_id": "arxiv:2305.09062",
+      "text": "Few-shot learning is a challenging area of research that aims to learn new concepts with only a few labeled samples of data. Recent works based on metric-learning approaches leverage the meta-learning approach, which is encompassed by episodic tasks that make use a support (training) and query set (test) with the objective of learning a similarity comparison metric between those sets. Due to the lack of data, the learning process of the embedding network becomes an important part of the few-shot task. Previous works have addressed this problem using metric learning approaches, but the properties of the underlying latent space and the separability of the difference classes on it was not entirely enforced. In this work, we propose two different loss functions which consider the importance of the embedding vectors by looking at the intra-class and inter-class distance between the few data. The first loss function is the Proto-Triplet Loss, which is based on the original triplet loss with the modifications needed to better work on few-shot scenarios. The second loss function, which we dub ICNN loss is based on an inter and intra class nearest neighbors score, which help us to assess the quality of embeddings obtained from the trained network. Our results, obtained from a extensive experimental setup show a significant improvement in accuracy in the miniImagenNet benchmark compared to other metric-based few-shot learning methods by a margin of 2%, demonstrating the capability of these loss functions to allow the network to generalize better to previously unseen classes. In our experiments, we demonstrate competitive generalization capabilities to other domains, such as the Caltech CUB, Dogs and Cars datasets compared with the state of the art."
+    },
+    "s6": {
+      "paper_id": "arxiv:1802.04376",
+      "text": "Learning high quality class representations from few examples is a key problem in metric-learning approaches to few-shot learning. To accomplish this, we introduce a novel architecture where class representations are conditioned for each few-shot trial based on a target image. We also deviate from traditional metric-learning approaches by training a network to perform comparisons between classes rather than relying on a static metric comparison. This allows the network to decide what aspects of each class are important for the comparison at hand. We find that this flexible architecture works well in practice, achieving state-of-the-art performance on the Caltech-UCSD birds fine-grained classification task."
+    },
+    "s7": {
+      "paper_id": "arxiv:2105.00379",
+      "text": "In this paper, we propose a subspace representation learning (SRL) framework to tackle few-shot image classification tasks. It exploits a subspace in local CNN feature space to represent an image, and measures the similarity between two images according to a weighted subspace distance (WSD). When K images are available for each class, we develop two types of template subspaces to aggregate K-shot information: the prototypical subspace (PS) and the discriminative subspace (DS). Based on the SRL framework, we extend metric learning based techniques from vector to subspace representation. While most previous works adopted global vector representation, using subspace representation can effectively preserve the spatial structure, and diversity within an image. We demonstrate the effectiveness of the SRL framework on three public benchmark datasets: MiniImageNet, TieredImageNet and Caltech-UCSD Birds-200-2011 (CUB), and the experimental results illustrate competitive/superior performance of our method compared to the previous state-of-the-art."
+    },
+    "s8": {
+      "paper_id": "arxiv:2409.07989",
+      "text": "In the context of few-shot classification, the goal is to train a classifier using a limited number of samples while maintaining satisfactory performance. However, traditional metric-based methods exhibit certain limitations in achieving this objective. These methods typically rely on a single distance value between the query feature and support feature, thereby overlooking the contribution of shallow features. To overcome this challenge, we propose a novel approach in this paper. Our approach involves utilizing a multi-output embedding network that maps samples into distinct feature spaces. The proposed method extracts feature vectors at different stages, enabling the model to capture both global and abstract features. By utilizing these diverse feature spaces, our model enhances its performance. Moreover, employing a self-attention mechanism improves the refinement of features at each stage, leading to even more robust representations and improved overall performance. Furthermore, assigning learnable weights to each stage significantly improved performance and results. We conducted comprehensive evaluations on the MiniImageNet and FC100 datasets, specifically in the 5-way 1-shot and 5-way 5-shot scenarios. Additionally, we performed cross-domain tasks across eight benchmark datasets, achieving high accuracy in the testing domains. These evaluations demonstrate the efficacy of our proposed method in comparison to state-of-the-art approaches. https://github.com/FatemehAskari/MSENet"
+    },
+    "s9": {
+      "paper_id": "arxiv:1711.06025",
+      "text": "ent problem.). Compared to [20, 36], this can be seen as providing a learnable rather than fixed metric, or non-linear rather than linear classifier. Compared to [20] we benefit from an episodic training strat-egy with an end-to-end manner from scratch, and compared to [32] we avoid the complexity of set-to-set RNN embed-ding of the sample-set, and simply rely on pooling [33]. Zero-Shot Learning Our approach is designed for few- shot learning, but elegantly spans the space into zero-shot learning (ZSL) by modifying the sample branch to input a single category description rather than single training im-age. When applied to ZSL our architecture is related to methods that learn to align images and category embed-dings and perform recognition by predicting if an image and category embedding pair match [11, 3, 43, 46]. Sim-ilarly to the case with the prior metric-based few-shot ap-proaches, most of these apply a fixed manually defined sim-ilarity metric or linear classifier after combining the image and category embedding."
+    },
+    "s10": {
+      "paper_id": "arxiv:1711.06025",
+      "text": "le in the form of a class de-scription (c.f., single exemplar image in one-shot), making data insufficiency for gradient-based learning a challenge. While promising, most existing few-shot learning ap-proaches either require complex inference mechanisms [23, 9], complex recurrent neural network (RNN) architectures [39, 32], or fine-tuning the target problem [10, 29]. Our approach is most related to others that aim to train an effec-tive metric for one-shot learning [39, 36, 20]. Where they focus on the learning of the transferrable embedding and pre-define a fixed metric (e.g., as Euclidean [36]), we fur-ther aim to learn a transferrable deep metric for comparing the relation between images (few-shot learning), or between images and class descriptions (zero-shot learning). By ex-pressing the inductive bias of a deeper solution (multiple non-linear learned stages at both embedding and relation modules), we make it easier to learn a generalisable solu-tion to the problem."
+    },
+    "s11": {
+      "paper_id": "arxiv:2104.02638",
+      "text": "ns-fer with few datapoints. In computer vision, learning with few datapoints is, perhaps, more commonly addressed with semi-supervised learning (e.g. (Sohn et al., 2020)), how-ever (Kolesnikov et al., 2020) show that large vision models transfer well to popular classification benchmarks (Ima-geNet, CIFAR, etc.) and VTAB-1k. Several recent papers report that well-tuned transfer learn-ing baselines are competitive with more complex few-shot classification approaches (Chen et al., 2019; Dhillon et al., 2020; Chen et al., 2020b; Tian et al., 2020). Our work adds to these observations by applying an established few-shot classification evaluation protocol (Meta-Dataset) to large scale (both in terms of data and capacity) transfer learners. Doing so highlights some limitations of episodic approaches in a new way, and also reveals where transfer learning falls short. 2.2. Episodic approaches to few-shot classification"
+    }
+  },
+  "actual_support_passages": {
+    "p1": [
+      "e1",
+      "s1",
+      0,
+      840
+    ],
+    "p2": [
+      "e2",
+      "s2",
+      0,
+      1220
+    ],
+    "p3": [
+      "e3",
+      "s3",
+      0,
+      1041
+    ],
+    "p4": [
+      "e4",
+      "s4",
+      0,
+      1391
+    ],
+    "p5": [
+      "e5",
+      "s5",
+      0,
+      1768
+    ],
+    "p6": [
+      "e6",
+      "s6",
+      0,
+      715
+    ],
+    "p7": [
+      "e7",
+      "s7",
+      0,
+      1053
+    ],
+    "p8": [
+      "e8",
+      "s8",
+      0,
+      1506
+    ],
+    "p9": [
+      "e9",
+      "s9",
+      0,
+      1033
+    ],
+    "p10": [
+      "e10",
+      "s10",
+      0,
+      984
+    ],
+    "p11": [
+      "e11",
+      "s4",
+      0,
+      1391
+    ],
+    "p12": [
+      "e12",
+      "s4",
+      0,
+      1391
+    ],
+    "p13": [
+      "e13",
+      "s5",
+      0,
+      1768
+    ],
+    "p14": [
+      "e14",
+      "s7",
+      0,
+      1053
+    ],
+    "p15": [
+      "e15",
+      "s11",
+      0,
+      923
+    ]
+  },
+  "cases": [
+    {
+      "claim": {
+        "claim_id": "claim_2",
+        "kind": "scientific",
+        "claim_text": "Proto-Triplet/ICNN在miniImageNet上报告相对其他度量学习方法2%的准确率提升。",
+        "source_unit_id": "unit:0:28",
+        "source_fragment_id": "unit:0:28:native:writer:abstract:0:0",
+        "evidence_ids": [
+          "arxiv:2105.08149:page:1:block:9:claim:7cf2d36a262c",
+          "arxiv:2010.04525:abstract:claim:7178a9c4f03f",
+          "arxiv:2105.08149:abstract:claim:ae8bdfee0e05",
+          "arxiv:1907.03123:abstract:claim:5a36249bbf1e",
+          "arxiv:2305.09062:abstract:claim:549b9167d596",
+          "arxiv:1802.04376:abstract:claim:50a611de7d64",
+          "arxiv:2105.00379:abstract:claim:38498384e907",
+          "arxiv:2409.07989:abstract:claim:5ed923dac68f",
+          "arxiv:1711.06025:section:abstract:12:43376954155c:claim:71df1568e996",
+          "arxiv:1711.06025:section:abstract:4:b851ec357ca4:claim:3868df819471",
+          "arxiv:1907.03123:abstract:claim:998fb93b2a24",
+          "arxiv:1907.03123:abstract:claim:b4d49aba47c5",
+          "arxiv:2305.09062:abstract:claim:aaed703eb739",
+          "arxiv:2105.00379:abstract:claim:e2d40a72c0d6",
+          "arxiv:2104.02638:section:abstract:9:1354132472a1:claim:3fb7cfd2fbdb"
+        ],
+        "local_error": null
+      },
+      "original_location": {
+        "source_start": 28,
+        "source_end": 1250,
+        "section": "摘要"
+      },
+      "required_support_aspects": [
+        "predicate",
+        "conditions",
+        "quantities"
+      ],
+      "actual_allowed_support_ids": [
+        "p1",
+        "p2",
+        "p3",
+        "p4",
+        "p5",
+        "p6",
+        "p7",
+        "p8",
+        "p9",
+        "p10",
+        "p11",
+        "p12",
+        "p13",
+        "p14",
+        "p15"
+      ],
+      "raw_decision": {
+        "claim_id": "claim_2",
+        "correct_kind": "scientific",
+        "atomic": true,
+        "classification_valid": true,
+        "source_faithful": true,
+        "status": "unsupported",
+        "reason_code": "attribution_mismatch",
+        "explanation": "The claim attributes the 2% miniImageNet improvement jointly to Proto-Triplet and ICNN, but the cited materials show e11/e12 (s4) is the deep K-tuplet paper, not Proto-Triplet or ICNN. Only e13 (s5) supports the 2% improvement for Proto-Triplet/ICNN; the K-tuplet citation is incorrectly included in the evidence set.",
+        "support_basis": [
+          {
+            "support_id": "p13"
+          }
+        ],
+        "aspect_checks": [
+          {
+            "aspect": "predicate",
+            "supported": true,
+            "support_ids": [
+              "p13"
+            ],
+            "explanation": "s5 states that Proto-Triplet Loss and ICNN loss achieve a significant accuracy improvement on miniImageNet compared to other metric-based few-shot learning methods."
+          },
+          {
+            "aspect": "conditions",
+            "supported": true,
+            "support_ids": [
+              "p13"
+            ],
+            "explanation": "The result is reported on the miniImageNet benchmark, comparing against other metric-based few-shot learning methods, matching the claim's conditions."
+          },
+          {
+            "aspect": "quantities",
+            "supported": true,
+            "support_ids": [
+              "p13"
+            ],
+            "explanation": "s5 explicitly states the improvement margin is 2% in accuracy on the miniImageNet benchmark."
+          }
+        ]
+      },
+      "expected_consistency_error": {
+        "raised": true,
+        "error": "evaluation_decision_consistency_invalid",
+        "subreason": "negative_status_with_complete_positive_diagnostics"
+      }
+    },
+    {
+      "claim": {
+        "claim_id": "claim_3",
+        "kind": "scientific",
+        "claim_text": "K-tuplet覆盖miniImageNet到Caltech-101、CUB-200、Stanford Dogs和Cars的迁移评估。",
+        "source_unit_id": "unit:0:28",
+        "source_fragment_id": "unit:0:28:native:writer:abstract:0:0",
+        "evidence_ids": [
+          "arxiv:2105.08149:page:1:block:9:claim:7cf2d36a262c",
+          "arxiv:2010.04525:abstract:claim:7178a9c4f03f",
+          "arxiv:2105.08149:abstract:claim:ae8bdfee0e05",
+          "arxiv:1907.03123:abstract:claim:5a36249bbf1e",
+          "arxiv:2305.09062:abstract:claim:549b9167d596",
+          "arxiv:1802.04376:abstract:claim:50a611de7d64",
+          "arxiv:2105.00379:abstract:claim:38498384e907",
+          "arxiv:2409.07989:abstract:claim:5ed923dac68f",
+          "arxiv:1711.06025:section:abstract:12:43376954155c:claim:71df1568e996",
+          "arxiv:1711.06025:section:abstract:4:b851ec357ca4:claim:3868df819471",
+          "arxiv:1907.03123:abstract:claim:998fb93b2a24",
+          "arxiv:1907.03123:abstract:claim:b4d49aba47c5",
+          "arxiv:2305.09062:abstract:claim:aaed703eb739",
+          "arxiv:2105.00379:abstract:claim:e2d40a72c0d6",
+          "arxiv:2104.02638:section:abstract:9:1354132472a1:claim:3fb7cfd2fbdb"
+        ],
+        "local_error": null
+      },
+      "original_location": {
+        "source_start": 28,
+        "source_end": 1250,
+        "section": "摘要"
+      },
+      "required_support_aspects": [
+        "predicate",
+        "conditions"
+      ],
+      "actual_allowed_support_ids": [
+        "p1",
+        "p2",
+        "p3",
+        "p4",
+        "p5",
+        "p6",
+        "p7",
+        "p8",
+        "p9",
+        "p10",
+        "p11",
+        "p12",
+        "p13",
+        "p14",
+        "p15"
+      ],
+      "raw_decision": {
+        "claim_id": "claim_3",
+        "correct_kind": "scientific",
+        "atomic": true,
+        "classification_valid": true,
+        "source_faithful": true,
+        "status": "unsupported",
+        "reason_code": "attribution_mismatch",
+        "explanation": "The claim attributes the cross-dataset transfer evaluation to K-tuplet, but the cited evidence set includes e5 (s5, the Proto-Triplet/ICNN paper) which is not the K-tuplet method. Only e11/e12 (s4) supports the K-tuplet transfer result; the e5 citation is incorrectly included.",
+        "support_basis": [
+          {
+            "support_id": "p11"
+          }
+        ],
+        "aspect_checks": [
+          {
+            "aspect": "predicate",
+            "supported": true,
+            "support_ids": [
+              "p11"
+            ],
+            "explanation": "s4 states that the deep K-tuplet network trained on miniImageNet can be evaluated on Caltech-101, CUB-200, Stanford Dogs and Cars datasets, demonstrating transfer capability."
+          },
+          {
+            "aspect": "conditions",
+            "supported": true,
+            "support_ids": [
+              "p11"
+            ],
+            "explanation": "The transfer evaluation uses a model trained on miniImageNet and tested on the four named datasets, matching the claim's conditions."
+          }
+        ]
+      },
+      "expected_consistency_error": {
+        "raised": true,
+        "error": "evaluation_decision_consistency_invalid",
+        "subreason": "negative_status_with_complete_positive_diagnostics"
+      }
+    },
+    {
+      "claim": {
+        "claim_id": "claim_15",
+        "kind": "scientific",
+        "claim_text": "所引Proto-Triplet Loss与ICNN loss工作报告其在miniImageNet上相对其他度量学习方法有2%的准确率提升。",
+        "source_unit_id": "unit:3:2112",
+        "source_fragment_id": "unit:3:2112:native:writer:introduction:2:0",
+        "evidence_ids": [
+          "arxiv:2305.09062:abstract:claim:549b9167d596",
+          "arxiv:1907.03123:abstract:claim:998fb93b2a24",
+          "arxiv:1907.03123:abstract:claim:b4d49aba47c5",
+          "arxiv:2305.09062:abstract:claim:aaed703eb739"
+        ],
+        "local_error": null
+      },
+      "original_location": {
+        "source_start": 2112,
+        "source_end": 2582,
+        "section": "引言"
+      },
+      "required_support_aspects": [
+        "predicate",
+        "conditions",
+        "quantities"
+      ],
+      "actual_allowed_support_ids": [
+        "p5",
+        "p11",
+        "p12",
+        "p13"
+      ],
+      "raw_decision": {
+        "claim_id": "claim_15",
+        "correct_kind": "scientific",
+        "atomic": true,
+        "classification_valid": true,
+        "source_faithful": true,
+        "status": "unsupported",
+        "reason_code": "attribution_mismatch",
+        "explanation": "The claim attributes the 2% miniImageNet improvement to Proto-Triplet Loss and ICNN loss, but the evidence set includes e11/e12 (s4, the deep K-tuplet paper) which does not report this 2% result. Only e13 (s5) supports the 2% improvement; the K-tuplet citations are incorrectly included.",
+        "support_basis": [
+          {
+            "support_id": "p13"
+          }
+        ],
+        "aspect_checks": [
+          {
+            "aspect": "predicate",
+            "supported": true,
+            "support_ids": [
+              "p13"
+            ],
+            "explanation": "s5 states that Proto-Triplet Loss and ICNN loss achieve a significant accuracy improvement on miniImageNet compared to other metric-based few-shot learning methods."
+          },
+          {
+            "aspect": "conditions",
+            "supported": true,
+            "support_ids": [
+              "p13"
+            ],
+            "explanation": "The result is reported on the miniImageNet benchmark, comparing against other metric-based few-shot learning methods, matching the claim's conditions."
+          },
+          {
+            "aspect": "quantities",
+            "supported": true,
+            "support_ids": [
+              "p13"
+            ],
+            "explanation": "s5 explicitly states the improvement margin is 2% in accuracy on the miniImageNet benchmark."
+          }
+        ]
+      },
+      "expected_consistency_error": {
+        "raised": true,
+        "error": "evaluation_decision_consistency_invalid",
+        "subreason": "negative_status_with_complete_positive_diagnostics"
+      }
+    }
+  ]
+}

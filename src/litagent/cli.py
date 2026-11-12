@@ -1,0 +1,1086 @@
+"""Run survey, configuration, and tool-listing commands."""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import json
+import os
+import sys
+import threading
+import uuid
+import webbrowser
+from pathlib import Path
+
+from litagent.config import load_config
+from litagent.runner import LitAgent, derive_delivery
+from litagent.workbench import RunOptions
+
+
+def _add_benchmark_commands(subparsers) -> None:
+    """Register offline ingestion and explicit live retrieval benchmarks."""
+    benchmark = subparsers.add_parser(
+        "benchmark",
+        help="Run reproducible ingestion or RAG benchmarks",
+    )
+    benchmark_sub = benchmark.add_subparsers(
+        dest="benchmark_command",
+        required=True,
+    )
+    ingestion = benchmark_sub.add_parser("ingestion")
+    ingestion.add_argument("--dataset", required=True)
+    ingestion.add_argument(
+        "--output-root",
+        default="artifacts/benchmarks/rag",
+    )
+    ingestion.add_argument("--config", default=None)
+
+    retrieval = benchmark_sub.add_parser("retrieval")
+    retrieval.add_argument("--dataset", required=True)
+    retrieval.add_argument("--profiles", required=True)
+    retrieval.add_argument("--profile-id", action="append", default=[])
+    retrieval.add_argument(
+        "--output-root",
+        default="artifacts/benchmarks/rag",
+    )
+    retrieval.add_argument("--config", default=None)
+    retrieval.add_argument(
+        "--live",
+        action="store_true",
+        help="Allow model loading and isolated Qdrant/PostgreSQL access",
+    )
+
+    survey = benchmark_sub.add_parser("survey")
+    survey.add_argument(
+        "--stage", choices=["pilot", "ablation", "baseline", "quality"], required=True
+    )
+    survey.add_argument("--dataset", required=True)
+    survey.add_argument("--profiles", required=True)
+    survey.add_argument("--case-id", action="append", default=[])
+    survey.add_argument("--profile-id", action="append", default=[])
+    survey.add_argument("--judge-config", required=True)
+    survey.add_argument("--suite-id", default="quality-auto-20261009")
+    survey.add_argument("--continuation-of", default=None)
+    survey.add_argument("--resume-unrun", action="store_true")
+    survey.add_argument("--reuse-ablation", default=None)
+    survey.add_argument("--judge-only", action="store_true")
+    survey.add_argument("--reuse-surveys", default=None)
+    survey.add_argument("--dry-run", action="store_true")
+    survey.add_argument(
+        "--output-root",
+        default="artifacts/benchmarks/survey",
+    )
+    survey.add_argument("--run-artifact-root", default="artifacts/runs")
+    survey.add_argument("--config", default=None)
+    survey.add_argument("--max-observations", type=int, default=None)
+    survey.add_argument("--max-product-tokens", type=int, default=None)
+    survey.add_argument("--max-judge-tokens", type=int, default=None)
+    survey.add_argument(
+        "--live",
+        action="store_true",
+        help="Allow pilot, 30-run ablation, or 9-run baseline execution",
+    )
+
+    citations = benchmark_sub.add_parser("citations")
+    citations.add_argument("--source", action="append", required=True)
+    citations.add_argument("--case-id", action="append", default=[])
+    citations.add_argument("--profile-id", action="append", default=[])
+    citations.add_argument("--config", required=True)
+    citations.add_argument(
+        "--output-root",
+        default="artifacts/benchmarks/citation-audit",
+    )
+    citations.add_argument("--dry-run", action="store_true")
+    citations.add_argument("--live", action="store_true")
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """Build the CLI grammar without executing a command."""
+    parser = argparse.ArgumentParser(
+        prog="litagent",
+        description="LitAgent — Multi-agent adversarial literature review framework",
+    )
+    subparsers = parser.add_subparsers(dest="command", help="Commands")
+
+    # Survey command
+    survey = subparsers.add_parser("survey", help="Run a full literature survey")
+    survey.add_argument("query", help="Research query")
+    survey.add_argument("--config", default=None, help="Path to config YAML")
+    survey.add_argument("--output", "-o", default=None, help="Write report to file")
+    survey.add_argument(
+        "--format",
+        choices=["json", "markdown"],
+        default="markdown",
+        help="Output format (default: markdown)",
+    )
+    survey.add_argument("--verbose", "-v", action="store_true", help="DEBUG logging")
+    survey.add_argument(
+        "--language",
+        choices=["en", "zh-CN"],
+        default="en",
+        help="Report language (default: en)",
+    )
+
+    # Configuration command
+    cfg = subparsers.add_parser("config", help="Validate or display config")
+    cfg.add_argument("--config", default=None, help="Path to config YAML")
+    cfg.add_argument(
+        "--validate-only",
+        action="store_true",
+        help="Silent validation: exit 0 if valid, exit 1 if invalid",
+    )
+
+    # Tool command
+    tools_cmd = subparsers.add_parser("tools", help="List registered tools")
+    tools_cmd.add_argument(
+        "--format",
+        choices=["table", "json"],
+        default="table",
+        help="Output format",
+    )
+
+    # Corpus command
+    corpus = subparsers.add_parser(
+        "corpus",
+        help="Validate, ingest, inspect, or rebuild the paper corpus",
+    )
+    corpus_sub = corpus.add_subparsers(
+        dest="corpus_command",
+        required=True,
+    )
+
+    validate = corpus_sub.add_parser("validate")
+    validate.add_argument("--manifest", required=True)
+
+    ingest = corpus_sub.add_parser("ingest")
+    ingest.add_argument("--manifest", required=True)
+    ingest.add_argument("--resume", action="store_true")
+
+    stats = corpus_sub.add_parser("stats")
+    stats.add_argument(
+        "--purpose",
+        choices=["runtime", "benchmark"],
+        default="runtime",
+    )
+
+    rebuild = corpus_sub.add_parser("rebuild")
+    rebuild.add_argument("--manifest", required=True)
+    rebuild.add_argument("--yes", action="store_true")
+
+    quarantine = corpus_sub.add_parser("quarantine")
+    quarantine_sub = quarantine.add_subparsers(
+        dest="quarantine_command",
+        required=True,
+    )
+    quarantine_sub.add_parser("list")
+
+    demo = subparsers.add_parser(
+        "demo",
+        help="Open the reproducible flow replay",
+    )
+    mode = demo.add_mutually_exclusive_group()
+    mode.add_argument(
+        "--live",
+        action="store_true",
+        help="Allow real Survey runs; offline replay is the default",
+    )
+    mode.add_argument(
+        "--presentation",
+        action="store_true",
+        help="Replay packaged public records only; disable private state and all writes",
+    )
+    demo.add_argument("--host", default="127.0.0.1")
+    demo.add_argument("--port", type=int, default=8000)
+    demo.add_argument(
+        "--no-browser",
+        action="store_true",
+        help="Start the server without opening a browser",
+    )
+
+    _add_benchmark_commands(subparsers)
+    return parser
+
+
+def main() -> None:
+    """Parse arguments and dispatch the selected command."""
+    parser = build_parser()
+    args = parser.parse_args()
+
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
+    if args.command is None:
+        parser.print_help()
+        sys.exit(1)
+
+    if args.command == "config":
+        _cmd_config(args)
+    elif args.command == "demo":
+        _cmd_demo(args)
+    else:
+        asyncio.run(_dispatch_async(args))
+
+
+def _cmd_demo(args: argparse.Namespace) -> None:
+    """Start the local replay server in offline or explicit live mode."""
+    if not 1 <= args.port <= 65535:
+        raise SystemExit("demo port must be between 1 and 65535")
+    os.environ["LITAGENT_DEMO_MODE"] = (
+        "presentation"
+        if getattr(args, "presentation", False)
+        else "live" if args.live else "offline"
+    )
+    url = f"http://{args.host}:{args.port}/flow-demo"
+    if args.host not in {"127.0.0.1", "localhost", "::1"}:
+        print(
+            "Warning: flow artifacts may contain private local payloads; "
+            "prefer a loopback host.",
+            file=sys.stderr,
+        )
+    try:
+        import uvicorn
+    except ImportError as exc:
+        raise SystemExit('Install API support with: pip install -e ".[api]"') from exc
+
+    if not args.no_browser:
+        timer = threading.Timer(0.8, webbrowser.open, args=(url,))
+        timer.daemon = True
+        timer.start()
+    print(f"LitAgent demo: {url}")
+    uvicorn.run("litagent.api:app", host=args.host, port=args.port, reload=False)
+
+
+async def _dispatch_async(args: argparse.Namespace) -> None:
+    """Dispatch the selected asynchronous CLI command."""
+    if args.command == "survey":
+        await _cmd_survey(args)
+    elif args.command == "tools":
+        _cmd_tools(args)
+    elif args.command == "corpus":
+        await _cmd_corpus(args)
+    elif args.command == "benchmark":
+        await _cmd_benchmark(args)
+
+
+async def _cmd_benchmark(args: argparse.Namespace) -> None:
+    """Run one benchmark family and print its terminal summary."""
+    import subprocess
+
+    from litagent.benchmark.artifacts import BenchmarkArtifactRepository
+    from litagent.benchmark.datasets import (
+        load_ingestion_dataset,
+        load_profiles,
+        load_retrieval_dataset,
+        load_survey_dataset,
+        load_survey_judge_config,
+        load_survey_profiles,
+    )
+    from litagent.benchmark.generated_ingestion import (
+        GeneratedIngestionCaseExecutor,
+    )
+    from litagent.benchmark.ingestion_runner import IngestionRobustnessRunner
+    from litagent.benchmark.rag_runner import RAGBenchmarkRunner
+    from litagent.benchmark.survey_models import (
+        SurveyBenchmarkBudget,
+        SurveyBenchmarkResult,
+    )
+    from litagent.benchmark.survey_runner import SurveyBenchmarkRunner
+    from litagent.observability.recorder import ArchiveRepository
+
+    if args.benchmark_command == "citations":
+        await _cmd_citation_benchmark(args)
+        return
+
+    config = load_config(args.config)
+    artifacts = BenchmarkArtifactRepository(Path(args.output_root))
+    if args.benchmark_command == "ingestion":
+        dataset = load_ingestion_dataset(Path(args.dataset))
+        result = await IngestionRobustnessRunner(
+            GeneratedIngestionCaseExecutor(config.rag)
+        ).run(dataset.cases)
+        artifacts.write(result)
+        print(
+            json.dumps(
+                result.model_dump(mode="json"),
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        if result.status != "succeeded":
+            raise SystemExit(1)
+        return
+
+    if args.benchmark_command == "survey":
+        if not args.live and not args.dry_run:
+            raise SystemExit("survey benchmark requires explicit --live")
+        dataset = load_survey_dataset(Path(args.dataset))
+        profiles = load_survey_profiles(Path(args.profiles))
+        if args.stage == "quality":
+            from litagent.benchmark.quality_suite import QualitySuiteRunner
+
+            if (
+                args.case_id
+                or args.profile_id
+                or args.judge_only
+                or args.reuse_surveys
+                or args.reuse_ablation
+            ):
+                raise SystemExit(
+                    "quality stage uses a fixed 3+15 matrix and external-fulltext"
+                )
+            if args.max_product_tokens is not None or args.max_judge_tokens is not None:
+                raise SystemExit("quality stage uses fixed per-service token budgets")
+            profile = next(p for p in profiles if p.profile_id == "external-fulltext")
+            result = await QualitySuiteRunner(
+                config,
+                dataset,
+                profile,
+                root=Path(args.output_root),
+                run_archive=ArchiveRepository(Path(args.run_artifact_root)),
+                suite_id=args.suite_id,
+                prior_suite_id=args.continuation_of,
+                resume_unrun=args.resume_unrun,
+            ).run(dry_run=args.dry_run, max_new_observations=args.max_observations)
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return
+        if args.continuation_of or args.resume_unrun:
+            raise SystemExit("--continuation-of is supported only by quality stage")
+        judge_config = load_survey_judge_config(Path(args.judge_config))
+        budget_values = (
+            args.max_observations,
+            args.max_product_tokens,
+            args.max_judge_tokens,
+        )
+        if any(value is not None for value in budget_values) and not all(
+            value is not None for value in budget_values
+        ):
+            raise SystemExit(
+                "survey budget requires --max-observations, "
+                "--max-product-tokens, and --max-judge-tokens together"
+            )
+        budget = (
+            SurveyBenchmarkBudget(
+                max_observations=args.max_observations,
+                max_product_tokens=args.max_product_tokens,
+                max_judge_tokens=args.max_judge_tokens,
+            )
+            if all(value is not None for value in budget_values)
+            else None
+        )
+        git_sha, git_dirty = _git_state(subprocess)
+        runner = SurveyBenchmarkRunner(
+            base_config=config,
+            judge_config=judge_config,
+            artifacts=artifacts,
+            run_archive=ArchiveRepository(Path(args.run_artifact_root)),
+            budget=budget,
+        )
+        if args.judge_only or args.reuse_surveys:
+            if not args.judge_only or not args.reuse_surveys or args.reuse_ablation:
+                raise SystemExit(
+                    "--judge-only requires --reuse-surveys and forbids --reuse-ablation"
+                )
+            result = await runner.rejudge(
+                source=Path(args.reuse_surveys),
+                dataset=dataset,
+                case_ids=args.case_id,
+                profile_ids=args.profile_id,
+                dry_run=args.dry_run,
+            )
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            if result["status"] not in {"succeeded", "planned"}:
+                raise SystemExit(1)
+            return
+        if args.stage == "pilot":
+            if args.reuse_ablation:
+                raise SystemExit("--reuse-ablation is valid only for baseline")
+            if not args.case_id or not args.profile_id:
+                raise SystemExit(
+                    "survey pilot requires --case-id and --profile-id selections"
+                )
+            unknown_cases = set(args.case_id) - {case.case_id for case in dataset.cases}
+            unknown_profiles = set(args.profile_id) - {
+                profile.profile_id for profile in profiles
+            }
+            if unknown_cases:
+                raise SystemExit(f"unknown survey cases: {sorted(unknown_cases)}")
+            if unknown_profiles:
+                raise SystemExit(f"unknown survey profiles: {sorted(unknown_profiles)}")
+            selected_cases = [dataset.case_by_id(case_id) for case_id in args.case_id]
+            profiles_by_id = {profile.profile_id: profile for profile in profiles}
+            selected_profiles = [
+                profiles_by_id[profile_id] for profile_id in args.profile_id
+            ]
+            if args.dry_run:
+                print(
+                    json.dumps(
+                        runner.plan_matrix(dataset, selected_cases, selected_profiles),
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+                )
+                return
+            result = await runner.run_pilot(
+                dataset=dataset,
+                cases=selected_cases,
+                profiles=selected_profiles,
+                git_sha=git_sha,
+                git_dirty=git_dirty,
+            )
+        elif args.stage == "ablation":
+            if args.reuse_ablation:
+                raise SystemExit("--reuse-ablation is valid only for baseline")
+            if args.case_id or args.profile_id:
+                raise SystemExit(
+                    "--case-id/--profile-id are valid only for survey pilot"
+                )
+            if args.dry_run:
+                preview = runner.plan_matrix(
+                    dataset,
+                    [dataset.case_by_id(value) for value in dataset.ablation_case_ids],
+                    profiles,
+                )
+                preview["conditional_second_pass"] = (
+                    "Top two comparable profiles, six cases each; selected after first pass."
+                )
+                print(json.dumps(preview, ensure_ascii=False, indent=2))
+                return
+            result = await runner.run_ablation(
+                dataset=dataset,
+                profiles=profiles,
+                git_sha=git_sha,
+                git_dirty=git_dirty,
+            )
+        else:
+            if args.case_id or args.profile_id:
+                raise SystemExit(
+                    "--case-id/--profile-id are valid only for survey pilot"
+                )
+            if not args.reuse_ablation:
+                raise SystemExit("baseline requires --reuse-ablation")
+            ablation_path = Path(args.reuse_ablation)
+            if not ablation_path.is_file():
+                raise SystemExit(f"ablation artifact not found: {ablation_path}")
+            ablation = SurveyBenchmarkResult.model_validate_json(
+                ablation_path.read_text(encoding="utf-8")
+            )
+            if args.dry_run:
+                chosen = [
+                    profile
+                    for profile in profiles
+                    if profile.profile_id == ablation.recommended_profile_id
+                ]
+                if not chosen:
+                    raise SystemExit("baseline requires a valid recommended profile")
+                preview = runner.plan_matrix(
+                    dataset,
+                    [
+                        case
+                        for case in dataset.cases
+                        if case.case_id not in dataset.ablation_case_ids
+                    ],
+                    chosen,
+                )
+                preview["baseline_reuse"] = (
+                    "Execution additionally validates all ablation fingerprints."
+                )
+                print(json.dumps(preview, ensure_ascii=False, indent=2))
+                return
+            result = await runner.run_baseline(
+                dataset=dataset,
+                profiles=profiles,
+                ablation=ablation,
+                git_sha=git_sha,
+                git_dirty=git_dirty,
+            )
+        print(json.dumps(result.model_dump(mode="json"), ensure_ascii=False, indent=2))
+        if result.status != "succeeded":
+            raise SystemExit(1)
+        return
+
+    if not args.live:
+        raise SystemExit("retrieval benchmark requires explicit --live")
+    dataset = load_retrieval_dataset(Path(args.dataset))
+    profiles = load_profiles(Path(args.profiles))
+    selected = set(args.profile_id)
+    if selected:
+        known = {profile.profile_id for profile in profiles}
+        unknown = selected - known
+        if unknown:
+            raise SystemExit(f"unknown benchmark profiles: {sorted(unknown)}")
+        profiles = [profile for profile in profiles if profile.profile_id in selected]
+    git_sha, git_dirty = _git_state(subprocess)
+    results = await RAGBenchmarkRunner(
+        base_config=config,
+        artifacts=artifacts,
+    ).run(
+        dataset=dataset,
+        profiles=profiles,
+        git_sha=git_sha,
+        git_dirty=git_dirty,
+    )
+    summary = {
+        "status": (
+            "succeeded"
+            if all(result.status == "succeeded" for result in results)
+            else "failed"
+        ),
+        "profiles": [
+            {
+                "profile_id": result.profile_id,
+                "run_id": result.run_id,
+                "status": result.status,
+                "reason_codes": result.reason_codes,
+            }
+            for result in results
+        ],
+    }
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
+    if summary["status"] != "succeeded":
+        raise SystemExit(1)
+
+
+async def _cmd_citation_benchmark(args: argparse.Namespace) -> None:
+    """Plan or run Jev audits against frozen Survey/Judge artifacts only."""
+    from litagent.benchmark.artifacts import BenchmarkArtifactRepository
+    from litagent.benchmark.citation_audit import (
+        JevCitationAuditor,
+        load_jev_audit_config,
+        plan_citation_audit,
+    )
+    from litagent.benchmark.survey_metrics import artifact_evidence_ledger
+    from litagent.benchmark.survey_models import (
+        JudgeInventorySnapshot,
+        SurveyCaseObservation,
+    )
+    from litagent.benchmark.survey_recovery import verified_product
+    from litagent.observability.recorder import RedactingTraceHook
+    from litagent.observability.tracing import LangFuseTracer
+
+    if args.dry_run == args.live:
+        raise SystemExit("citations requires exactly one of --dry-run or --live")
+    audit_config = load_jev_audit_config(args.config)
+    if args.live and not audit_config.enabled:
+        raise SystemExit("Jev audit config must set enabled: true for --live")
+
+    candidates: list[tuple[str, SurveyCaseObservation, JudgeInventorySnapshot]] = []
+    unavailable: list[dict[str, str]] = []
+    case_filter = set(args.case_id)
+    profile_filter = set(args.profile_id)
+    for source_value in args.source:
+        source = Path(source_value)
+        if not source.is_file():
+            raise SystemExit(f"citation source not found: {source}")
+        try:
+            payload = json.loads(source.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise SystemExit(f"invalid citation source: {source}") from exc
+        if not isinstance(payload, dict) or payload.get("benchmark_type") not in {
+            "survey",
+            "survey_rejudge",
+        }:
+            raise SystemExit(f"unsupported citation source: {source}")
+        benchmark_id = str(payload.get("run_id") or source.stem)
+        for raw_observation in payload.get("observations") or []:
+            try:
+                observation = SurveyCaseObservation.model_validate(raw_observation)
+            except ValueError as exc:
+                raise SystemExit("invalid citation observation") from exc
+            if case_filter and observation.case_id not in case_filter:
+                continue
+            if profile_filter and observation.profile_id not in profile_filter:
+                continue
+            judge = observation.judge
+            if (
+                judge is None
+                or judge.status != "completed"
+                or judge.inventory_snapshot is None
+                or any(
+                    item.source_faithful is not True for item in judge.claim_assessments
+                )
+            ):
+                unavailable.append(
+                    {
+                        "run_id": observation.run_id,
+                        "reason": "inventory_unavailable_or_unverified",
+                    }
+                )
+                continue
+            candidates.append((benchmark_id, observation, judge.inventory_snapshot))
+
+    plans: list[dict] = []
+    prepared: list[tuple[SurveyCaseObservation, JudgeInventorySnapshot, dict]] = []
+    for benchmark_id, observation, inventory in candidates:
+        try:
+            artifact = verified_product(observation)
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            unavailable.append({"run_id": observation.run_id, "reason": str(exc)})
+            continue
+        artifact = dict(artifact)
+        artifact.update(
+            {
+                "_source_artifact_sha256": observation.artifact_sha256,
+                "_source_benchmark_id": benchmark_id,
+                "_case_id": observation.case_id,
+                "_profile_id": observation.profile_id,
+            }
+        )
+        ledger = artifact_evidence_ledger(artifact)
+        plan = plan_citation_audit(inventory, ledger, audit_config, artifact=artifact)
+        plans.append(plan)
+        if plan["status"] == "planned":
+            prepared.append((observation, inventory, artifact))
+
+    if args.dry_run:
+        status = "planned" if prepared else "unavailable"
+        print(
+            json.dumps(
+                {"status": status, "actions": plans, "unavailable": unavailable},
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        if not prepared:
+            raise SystemExit(1)
+        return
+    if not prepared:
+        print(json.dumps({"status": "failed", "unavailable": unavailable}, indent=2))
+        raise SystemExit(1)
+
+    runtime = load_config()
+    repository = BenchmarkArtifactRepository(Path(args.output_root))
+    results = []
+    for observation, inventory, artifact in prepared:
+        tracer = LangFuseTracer(
+            host=runtime.observability.langfuse_host,
+            public_key=os.getenv("LANGFUSE_PUBLIC_KEY", ""),
+            secret_key=os.getenv("LANGFUSE_SECRET_KEY", ""),
+            trace_seed=f"citation-audit:{observation.run_id}:{uuid.uuid4().hex}",
+        )
+        trace_hook = RedactingTraceHook(
+            tracer, payload_mode=runtime.observability.payload_mode
+        )
+        trace_hook(
+            "survey.start",
+            {
+                "query": "citation audit experiment",
+                "session_id": observation.run_id,
+            },
+        )
+        auditor = JevCitationAuditor(
+            trace_hook=trace_hook,
+            repository=repository,
+            trace_id=tracer.trace_id,
+            trace_url=tracer.trace_url,
+        )
+        try:
+            result = await auditor.evaluate(
+                inventory,
+                artifact_evidence_ledger(artifact),
+                audit_config,
+                artifact=artifact,
+                reference_judge=observation.judge.model_dump(mode="json"),
+            )
+        except asyncio.CancelledError:
+            trace_hook(
+                "survey.error",
+                {"error": "citation_audit_cancelled", "status": "cancelled"},
+            )
+            raise
+        except Exception as exc:
+            trace_hook(
+                "survey.error",
+                {"error": type(exc).__name__, "status": "failed"},
+            )
+            raise
+        else:
+            trace_hook(
+                "survey.complete",
+                {
+                    "quality_status": "experimental_sidecar",
+                    "delivery_status": result.status,
+                    "total_tokens": (
+                        (result.usage.input_tokens or 0)
+                        + (result.usage.output_tokens or 0)
+                    ),
+                    "judge": result.summary,
+                },
+            )
+        finally:
+            trace_hook.flush()
+        results.append(result)
+    summary = {
+        "status": (
+            "succeeded"
+            if results and all(item.status == "completed" for item in results)
+            else "partial"
+        ),
+        "results": [item.model_dump(mode="json") for item in results],
+        "unavailable": unavailable,
+    }
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
+    if summary["status"] != "succeeded":
+        raise SystemExit(1)
+
+
+def _git_state(subprocess_module) -> tuple[str, bool]:
+    """Read the reproducibility identity without making Git a hard dependency."""
+    try:
+        git_sha = subprocess_module.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+    except (OSError, subprocess_module.CalledProcessError):
+        git_sha = "unknown"
+    try:
+        git_dirty = bool(
+            subprocess_module.run(
+                ["git", "status", "--porcelain"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+        )
+    except (OSError, subprocess_module.CalledProcessError):
+        git_dirty = True
+    return git_sha, git_dirty
+
+
+async def _cmd_corpus(args: argparse.Namespace) -> None:
+    """Dispatch corpus sub-commands (ingestion pipeline)."""
+    import time
+
+    from litagent.config import load_config
+    from litagent.rag.chunking import build_corpus_chunker
+    from litagent.rag.ingest import (
+        CorpusIngestor,
+        ParsedAuditRepository,
+        QuarantineRepository,
+    )
+    from litagent.rag.manifest import load_manifest
+    from litagent.rag.pdf_parser import PyMuPDFParser
+    from litagent.rag.quality import CorpusTextQualityGate
+    from litagent.rag.runtime import CorpusRuntime
+    from litagent.rag.sources import ArxivPDFAdapter, LocalPDFAdapter
+    from litagent.rag.vector_store import QdrantVectorStore
+
+    config = load_config()
+    started = time.monotonic()
+    quarantine = QuarantineRepository(Path(config.rag.quarantine_root))
+
+    if args.corpus_command == "quarantine":
+        if args.quarantine_command == "list":
+            entries = quarantine.list_entries()
+            print(
+                json.dumps(
+                    {
+                        "identity": config.rag.paper_collection,
+                        "status": "ok",
+                        "count": len(entries),
+                        "entries": entries,
+                        "elapsed_ms": int((time.monotonic() - started) * 1000),
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+            return
+
+    if args.corpus_command == "validate":
+        manifest = load_manifest(
+            Path(args.manifest),
+            raw_root=Path(config.rag.raw_root),
+        )
+        print(
+            json.dumps(
+                {
+                    "identity": config.rag.paper_collection,
+                    "status": "ok",
+                    "counts": {"papers": len(manifest.papers)},
+                    "reason_codes": [],
+                    "elapsed_ms": int((time.monotonic() - started) * 1000),
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return
+
+    runtime = await CorpusRuntime.connect(
+        config,
+        purpose=getattr(args, "purpose", "runtime"),
+    )
+    try:
+        if args.corpus_command == "stats":
+            stats = await runtime.store.stats()
+            print(
+                json.dumps(
+                    {
+                        "identity": runtime.identity.collection_name,
+                        "status": stats.status.value,
+                        "counts": {"points": stats.points_count},
+                        "reason_codes": [],
+                        "elapsed_ms": int((time.monotonic() - started) * 1000),
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+            return
+
+        if args.corpus_command == "rebuild" and not args.yes:
+            print(
+                json.dumps(
+                    {
+                        "identity": runtime.identity.collection_name,
+                        "status": "aborted",
+                        "reason_codes": ["rebuild_requires_yes"],
+                        "elapsed_ms": int((time.monotonic() - started) * 1000),
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+            raise SystemExit(2)
+
+        import httpx
+
+        async with httpx.AsyncClient() as http_client:
+            if args.corpus_command == "rebuild":
+                # Rebuild the versioned collection before re-ingesting.
+                if await runtime.qdrant_client.collection_exists(
+                    runtime.identity.collection_name
+                ):
+                    await runtime.qdrant_client.delete_collection(
+                        runtime.identity.collection_name
+                    )
+                dim = await asyncio.to_thread(lambda: runtime.embedder.dim)
+                await QdrantVectorStore.ensure_compatible(
+                    runtime.qdrant_client,
+                    runtime.identity.collection_name,
+                    dim,
+                    identity=runtime.identity,
+                    embedder=runtime.embedder,
+                )
+                await runtime.state.reset_collection(runtime.identity.collection_name)
+
+            quality_gate = CorpusTextQualityGate(**config.rag.quality.model_dump())
+            parser = PyMuPDFParser(
+                quality_gate=quality_gate,
+                chunker=build_corpus_chunker(config.rag),
+            )
+            local_pdf_adapter = LocalPDFAdapter(
+                max_pdf_bytes=config.rag.max_pdf_bytes,
+            )
+            pdf_adapter = ArxivPDFAdapter(
+                http_client,
+                raw_root=Path(config.rag.raw_root),
+                max_pdf_bytes=config.rag.max_pdf_bytes,
+                download_timeout_seconds=config.rag.download_timeout_seconds,
+                allowed_content_types=config.rag.allowed_pdf_content_types,
+            )
+            ingestor = CorpusIngestor(
+                config=config.rag,
+                service=runtime.service,
+                parser=parser,
+                local_pdf_adapter=local_pdf_adapter,
+                pdf_adapter=pdf_adapter,
+                quarantine=quarantine,
+                audit_repository=ParsedAuditRepository(Path(config.rag.parsed_root)),
+            )
+
+            if args.corpus_command in {"ingest", "rebuild"}:
+                summary = await ingestor.ingest_manifest(
+                    Path(args.manifest),
+                    resume=getattr(args, "resume", False),
+                )
+                outcome_counts: dict[str, int] = {}
+                for report in summary.reports:
+                    outcome = report.outcome.value
+                    outcome_counts[outcome] = outcome_counts.get(outcome, 0) + 1
+                print(
+                    json.dumps(
+                        {
+                            "identity": runtime.identity.collection_name,
+                            "status": summary.status,
+                            "counts": {
+                                "papers": summary.paper_count,
+                                "succeeded": summary.succeeded_count,
+                                "failed": summary.failed_count,
+                                "embedded": summary.embedded_count,
+                                "payload_updated": summary.payload_updated_count,
+                                "deleted": summary.deleted_count,
+                                "unchanged": summary.unchanged_count,
+                            },
+                            "outcomes": outcome_counts,
+                            "reports": [
+                                report.model_dump(mode="json")
+                                for report in summary.reports
+                            ],
+                            "reason_codes": summary.reason_codes,
+                            "elapsed_ms": int((time.monotonic() - started) * 1000),
+                        },
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+                )
+    finally:
+        await runtime.close()
+
+
+def _delivery_exit_code(report: dict) -> int:
+    """Return zero only when the report is publishable."""
+    delivery = report.get("delivery") or derive_delivery(
+        report.get("partial", False), report.get("quality")
+    )
+    return 0 if delivery.get("publishable", False) else 1
+
+
+async def _cmd_survey(args: argparse.Namespace) -> None:
+    """Run a survey and emit it in the requested format."""
+    config = load_config(args.config)
+    if args.verbose:
+        config.logging.level = "DEBUG"
+
+    async with LitAgent(config) as agent:
+        report = await agent.run(
+            args.query,
+            options=RunOptions(report_language=args.language),
+        )
+
+    if args.format == "json":
+        output = json.dumps(report, ensure_ascii=False, indent=2)
+    else:
+        output = _format_report_markdown(report)
+
+    if args.output:
+        with open(args.output, "w", encoding="utf-8") as f:
+            f.write(output)
+        print(f"Report saved to {args.output}")
+    else:
+        print(output)
+
+    code = _delivery_exit_code(report)
+    if code:
+        delivery = report.get("delivery") or derive_delivery(
+            report.get("partial", False), report.get("quality")
+        )
+        print(
+            f"\nDelivery: {delivery.get('status', 'unknown')} — not publishable",
+            file=sys.stderr,
+        )
+        sys.exit(code)
+
+
+def _cmd_config(args: argparse.Namespace) -> None:
+    """Validate or display the resolved configuration."""
+    try:
+        config = load_config(args.config)
+    except Exception as e:
+        if args.validate_only:
+            print(f"INVALID: {e}", file=sys.stderr)
+            sys.exit(1)
+        raise
+
+    if args.validate_only:
+        print("OK: config is valid")
+        sys.exit(0)
+
+    print(config.model_dump_json(indent=2))
+
+
+def _cmd_tools(args: argparse.Namespace) -> None:
+    """List the registered built-in tools."""
+    from litagent.tools.builtin.extract import register_extract_tools
+    from litagent.tools.builtin.search import register_search_tools
+    from litagent.tools.registry import get_registry
+
+    registry = get_registry()
+    register_search_tools()
+    register_extract_tools()
+    tools = registry.list_all()
+
+    if args.format == "json":
+        data = [
+            {"name": t.name, "category": t.category.value, "description": t.description}
+            for t in tools
+        ]
+        print(json.dumps(data, ensure_ascii=False, indent=2))
+    else:
+        print(f"{'Name':<35} {'Category':<12} {'Description':<50}")
+        print("-" * 97)
+        for t in sorted(tools, key=lambda t: t.name):
+            desc = (
+                t.description[:47] + "..." if len(t.description) > 50 else t.description
+            )
+            print(f"{t.name:<35} {t.category.value:<12} {desc:<50}")
+
+
+def _format_report_markdown(report: dict) -> str:
+    """Render a survey report as Markdown."""
+    survey_text = report.get("survey", "")
+    metadata = report.get("metadata", {})
+    review_history = report.get("review_history", [])
+
+    lines = [
+        "# Literature Survey Report",
+        "",
+        f"**Query**: {metadata.get('query', 'N/A')}",
+        f"**Generated**: {metadata.get('generated_at', 'N/A')}",
+        f"**Review rounds**: {metadata.get('total_rounds', 0)}",
+        f"**Final score**: {metadata.get('final_score', 'N/A')}",
+        f"**Accepted**: {metadata.get('accepted', False)}",
+    ]
+
+    delivery = report.get("delivery") or derive_delivery(
+        report.get("partial", False), report.get("quality")
+    )
+    quality = report.get("quality") or {}
+
+    banner = None
+    if delivery["status"] == "partial":
+        banner = (
+            "> ⚠ **Partial results — NOT PUBLISHABLE** — "
+            "survey was interrupted (cost/timeout)."
+        )
+    elif delivery["status"] == "blocked":
+        banner = (
+            "> ⚠ **QUALITY FAILED — UNTRUSTED DRAFT, NOT PUBLISHABLE** "
+            f"(failed: {', '.join(quality.get('failed_metrics', []))})"
+        )
+    elif delivery["status"] == "needs_review":
+        banner = "> ⚠ **Quality unverified — needs review before publishing**"
+    if banner:
+        lines.insert(0, banner)
+        lines.insert(0, "")
+
+    lines.extend(["", "---", "", survey_text, ""])
+
+    if review_history:
+        lines.append("## Review History")
+        lines.append("")
+        for r in review_history:
+            review = r.get("review", {})
+            lines.append(
+                f"### Round {r.get('round', '?')} — "
+                f"Score: {review.get('score', 'N/A')}, "
+                f"Verdict: {review.get('verdict', 'N/A')}"
+            )
+            for w in review.get("weaknesses", []):
+                lines.append(f"- ⚠ {w}")
+            for issue in review.get("issues", []):
+                lines.append(
+                    f"- [{issue.get('severity', 'minor')}] "
+                    f"{issue.get('section', '')}: {issue.get('issue', '')}"
+                )
+            lines.append("")
+
+    return "\n".join(lines)
+
+
+if __name__ == "__main__":
+    main()

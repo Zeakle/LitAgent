@@ -1,0 +1,9 @@
+{
+  "publication_version": 1,
+  "suite_id": "stage-model-quality-20261020-002",
+  "source_archive_sha256": "4e29b945169c0903513896e6f41876f032f1d5fb440de8f2f02864e85d42bf42",
+  "source_suite_sha256": "334ad0adff0a0f2bb7b8125c0ffc1e67b5a9b40018278eb8779f115024072d5b",
+  "retrieval_sha256": "872a2afd1981f0565859a7b1d22da0efced57e075ef6e5f6e8d206df5b2c2f1a",
+  "source_binding": "3f1271e272d9bae1795bd93a608c663f8aa3fc35012d4b7ea2fe2b27e333a916",
+  "interpretation": "sanitized_diagnostic_not_scientific_acceptance"
+}

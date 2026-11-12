@@ -1,0 +1,558 @@
+{
+  "provenance": "public frozen run004 inputs and original decisions; no network or artifact reads in tests",
+  "source_body_sha256": "6dcb829ee477f3d6b66ddb7412e60431d286f2140806a960fb643816aaacc9d3",
+  "cases": [
+    {
+      "claim": {
+        "claim_id": "claim_3",
+        "kind": "scientific",
+        "claim_text": "分层ViT变体通过分层特征合并与局部自注意力实现了线性计算复杂度",
+        "source_unit_id": "unit:0:41",
+        "source_fragment_id": "unit:0:41:fragment:3",
+        "source_quote": "分层ViT变体通过分层特征合并与局部自注意力实现了线性计算复杂度 [E:arxiv:2404.13648:abstract:claim:189fed840826]；",
+        "source_start": 374,
+        "source_end": 456,
+        "section": "摘要",
+        "evidence_ids": [
+          "arxiv:2404.13648:abstract:claim:189fed840826"
+        ],
+        "local_error": "support_entity_unverified",
+        "correct_kind": "scientific",
+        "atomic": true,
+        "classification_valid": true,
+        "source_faithful": true,
+        "status": "unverifiable",
+        "reason_code": "unverifiable",
+        "explanation": "Host support validation: support_entity_unverified",
+        "support_basis": [
+          {
+            "evidence_alias": "e4",
+            "source": "evidence_text",
+            "quote": "Hierarchical vision transformers have linear computational complexity with respect to image size due to local self-attention and create hierarchical feature maps by merging image patches in deeper layers for dense prediction."
+          }
+        ],
+        "support_validation": {
+          "status": "unverified",
+          "issue": "support_entity_unverified",
+          "entity": "ViT",
+          "spans": [
+            {
+              "evidence_id": "arxiv:2404.13648:abstract:claim:189fed840826",
+              "source": "evidence_text",
+              "quote": "Hierarchical vision transformers have linear computational complexity with respect to image size due to local self-attention and create hierarchical feature maps by merging image patches in deeper layers for dense prediction.",
+              "source_start": 0,
+              "source_end": 225
+            }
+          ]
+        }
+      },
+      "original_model_decision": {
+        "claim_id": "claim_3",
+        "correct_kind": "scientific",
+        "atomic": true,
+        "classification_valid": true,
+        "source_faithful": true,
+        "status": "supported",
+        "reason_code": "supported",
+        "explanation": "The scientific assertion matches the source fragment text exactly, with correct attribution to e4, and the cited material supports that hierarchical ViTs have linear computational complexity via local self-attention.",
+        "support_basis": [
+          {
+            "evidence_alias": "e4",
+            "source": "evidence_text",
+            "quote": "Hierarchical vision transformers have linear computational complexity with respect to image size due to local self-attention and create hierarchical feature maps by merging image patches in deeper layers for dense prediction."
+          }
+        ]
+      },
+      "cited_materials": {
+        "e4": {
+          "evidence_id": "arxiv:2404.13648:abstract:claim:189fed840826",
+          "paper_id": "arxiv:2404.13648",
+          "paper_title": "Data-independent Module-aware Pruning for Hierarchical Vision\n  Transformers",
+          "text": "Hierarchical vision transformers have linear computational complexity with respect to image size due to local self-attention and create hierarchical feature maps by merging image patches in deeper layers for dense prediction.",
+          "original_support_ref": "s3",
+          "original_support": {
+            "paper_id": "arxiv:2404.13648",
+            "text": "Hierarchical vision transformers (ViTs) have two advantages over conventional ViTs. First, hierarchical ViTs achieve linear computational complexity with respect to image size by local self-attention. Second, hierarchical ViTs create hierarchical feature maps by merging image patches in deeper layers for dense prediction. However, existing pruning methods ignore the unique properties of hierarchical ViTs and use the magnitude value as the weight importance. This approach leads to two main drawbacks. First, the \"local\" attention weights are compared at a \"global\" level, which may cause some \"locally\" important weights to be pruned due to their relatively small magnitude \"globally\". The second issue with magnitude pruning is that it fails to consider the distinct weight distributions of the network, which are essential for extracting coarse to fine-grained features at various hierarchical levels. To solve the aforementioned issues, we have developed a Data-independent Module-Aware Pruning method (DIMAP) to compress hierarchical ViTs. To ensure that \"local\" attention weights at different hierarchical levels are compared fairly in terms of their contribution, we treat them as a module and examine their contribution by analyzing their information distortion. Furthermore, we introduce a novel weight metric that is solely based on weights and does not require input images, thereby eliminating the dependence on the patch merging process. Our method validates its usefulness and strengths on Swin Transformers of different sizes on ImageNet-1k classification. Notably, the top-5 accuracy drop is only 0.07% when we remove 52.5% FLOPs and 52.7% parameters of Swin-B. When we reduce 33.2% FLOPs and 33.2% parameters of Swin-S, we can even achieve a 0.8% higher relative top-5 accuracy than the original model. Code is available at: https://github.com/he-y/Data-independent-Module-Aware-Pruning"
+          }
+        }
+      },
+      "manual_status": "host_false_positive",
+      "reason": "科学表述与对应Hierarchical vision transformers原文一致；仅ViT缩写未出现于所选压缩句，support_entity_unverified不代表科学内容错误。完整原文明确ViTs。"
+    },
+    {
+      "claim": {
+        "claim_id": "claim_30",
+        "kind": "scientific",
+        "claim_text": "MCTF基于多准则融合标记，在ImageNet上实现了最佳速度-精度权衡，对DeiT-T和DeiT-S分别降低约44%的FLOPs，同时提升0.5%和0.3%的精度",
+        "source_unit_id": "unit:13:2890",
+        "source_fragment_id": "unit:13:2890:fragment:1",
+        "source_quote": "MCTF基于多准则融合标记，在ImageNet上实现了最佳速度-精度权衡，对DeiT-T和DeiT-S分别降低约44%的FLOPs，同时提升0.5%和0.3%的精度 [E:arxiv:2403.10030:abstract:claim:8b9f15d861da]；",
+        "source_start": 3006,
+        "source_end": 3138,
+        "section": "高效与归纳偏置增强变体",
+        "evidence_ids": [
+          "arxiv:2403.10030:abstract:claim:8b9f15d861da"
+        ],
+        "local_error": "support_basis_quote_invalid",
+        "correct_kind": "scientific",
+        "atomic": true,
+        "classification_valid": true,
+        "source_faithful": true,
+        "status": "unverifiable",
+        "reason_code": "unverifiable",
+        "explanation": "Host support validation: support_basis_quote_invalid",
+        "support_basis": [
+          {
+            "evidence_alias": "e5",
+            "source": "evidence_text",
+            "quote": "Specifically, DeiT-T and DeiT-S with MCTF reduce FLOPs by about 44% while improving the performance (+0.5%, and +0.3%) over the base model, respectively."
+          }
+        ],
+        "support_validation": {
+          "status": "unverified",
+          "issue": "support_basis_quote_invalid",
+          "spans": []
+        }
+      },
+      "original_model_decision": {
+        "claim_id": "claim_30",
+        "correct_kind": "scientific",
+        "atomic": true,
+        "classification_valid": true,
+        "source_faithful": true,
+        "status": "supported",
+        "reason_code": "supported",
+        "explanation": "The scientific assertion matches the source fragment text exactly, with correct attribution to e5, and the cited material supports MCTF's FLOPs reduction and accuracy gains.",
+        "support_basis": [
+          {
+            "evidence_alias": "e5",
+            "source": "evidence_text",
+            "quote": "Specifically, DeiT-T and DeiT-S with MCTF reduce FLOPs by about 44% while improving the performance (+0.5%, and +0.3%) over the base model, respectively."
+          }
+        ]
+      },
+      "cited_materials": {
+        "e5": {
+          "evidence_id": "arxiv:2403.10030:abstract:claim:8b9f15d861da",
+          "paper_id": "arxiv:2403.10030",
+          "paper_title": "Multi-criteria Token Fusion with One-step-ahead Attention for Efficient Vision Transformers",
+          "text": "The proposed Multi-criteria Token Fusion (MCTF) method gradually fuses tokens based on multi-criteria including similarity, informativeness, and size of fused tokens, and uses one-step-ahead attention to capture token informativeness, achieving the best speed-accuracy trade-off on ImageNet1K image classification.",
+          "original_support_ref": "s4",
+          "original_support": {
+            "paper_id": "arxiv:2403.10030",
+            "text": "Vision Transformer (ViT) has emerged as a prominent backbone for computer vision. For more efficient ViTs, recent works lessen the quadratic cost of the self-attention layer by pruning or fusing the redundant tokens. However, these works faced the speed-accuracy trade-off caused by the loss of information. Here, we argue that token fusion needs to consider diverse relations between tokens to minimize information loss. In this paper, we propose a Multi-criteria Token Fusion (MCTF), that gradually fuses the tokens based on multi-criteria (e.g., similarity, informativeness, and size of fused tokens). Further, we utilize the one-step-ahead attention, which is the improved approach to capture the informativeness of the tokens. By training the model equipped with MCTF using a token reduction consistency, we achieve the best speed-accuracy trade-off in the image classification (ImageNet1K). Experimental results prove that MCTF consistently surpasses the previous reduction methods with and without training. Specifically, DeiT-T and DeiT-S with MCTF reduce FLOPs by about 44% while improving the performance (+0.5%, and +0.3%) over the base model, respectively. We also demonstrate the applicability of MCTF in various Vision Transformers (e.g., T2T-ViT, LV-ViT), achieving at least 31% speedup without performance degradation. Code is available at https://github.com/mlvlab/MCTF."
+          }
+        }
+      },
+      "manual_status": "valid_full_source_wrong_field",
+      "reason": "44% FLOPs与DeiT-T/S分别+0.5%/+0.3%确在本篇完整原文；模型source填evidence_text，quote实际来自original_support，不能回填当前响应宣布通过。"
+    },
+    {
+      "claim": {
+        "claim_id": "claim_37",
+        "kind": "scientific",
+        "claim_text": "Evo-ViT将DeiT-S的推理速度提升50%，精度仅下降0.3%",
+        "source_unit_id": "unit:18:3860",
+        "source_fragment_id": "unit:18:3860:fragment:0",
+        "source_quote": "- **高效变体对比**：Evo-ViT将DeiT-S的推理速度提升50%，精度仅下降0.3% [E:arxiv:2202.07800:abstract:claim:65a413bd5635]；",
+        "source_start": 3860,
+        "source_end": 3957,
+        "section": "性能与效率对比",
+        "evidence_ids": [
+          "arxiv:2202.07800:abstract:claim:65a413bd5635"
+        ],
+        "local_error": "support_basis_quote_invalid",
+        "correct_kind": "scientific",
+        "atomic": true,
+        "classification_valid": true,
+        "source_faithful": true,
+        "status": "unverifiable",
+        "reason_code": "unverifiable",
+        "explanation": "Host support validation: support_basis_quote_invalid",
+        "support_basis": [
+          {
+            "evidence_alias": "e6",
+            "source": "evidence_text",
+            "quote": "For instance, the inference speed of DeiT-S is increased by 50% while its recognition accuracy is decreased by only 0.3% for ImageNet classification."
+          }
+        ],
+        "support_validation": {
+          "status": "unverified",
+          "issue": "support_basis_quote_invalid",
+          "spans": []
+        }
+      },
+      "original_model_decision": {
+        "claim_id": "claim_37",
+        "correct_kind": "scientific",
+        "atomic": true,
+        "classification_valid": true,
+        "source_faithful": true,
+        "status": "supported",
+        "reason_code": "supported",
+        "explanation": "The scientific assertion matches the source fragment text exactly, with correct attribution to e6, and the cited material supports that EViT speeds DeiT-S by 50% with 0.3% accuracy drop.",
+        "support_basis": [
+          {
+            "evidence_alias": "e6",
+            "source": "evidence_text",
+            "quote": "For instance, the inference speed of DeiT-S is increased by 50% while its recognition accuracy is decreased by only 0.3% for ImageNet classification."
+          }
+        ]
+      },
+      "cited_materials": {
+        "e6": {
+          "evidence_id": "arxiv:2202.07800:abstract:claim:65a413bd5635",
+          "paper_id": "arxiv:2202.07800",
+          "paper_title": "Not All Patches are What You Need: Expediting Vision Transformers via\n  Token Reorganizations",
+          "text": "The proposed method EViT improves ViTs by reducing computation under the same number of input tokens (e.g., DeiT-S inference speed increased by 50% with only 0.3% accuracy drop on ImageNet) and improving accuracy under the same computational cost (e.g., DeiT-S accuracy improved by 1% on ImageNet), with no additional parameters.",
+          "original_support_ref": "s5",
+          "original_support": {
+            "paper_id": "arxiv:2202.07800",
+            "text": "Vision Transformers (ViTs) take all the image patches as tokens and construct multi-head self-attention (MHSA) among them. Complete leverage of these image tokens brings redundant computations since not all the tokens are attentive in MHSA. Examples include that tokens containing semantically meaningless or distractive image backgrounds do not positively contribute to the ViT predictions. In this work, we propose to reorganize image tokens during the feed-forward process of ViT models, which is integrated into ViT during training. For each forward inference, we identify the attentive image tokens between MHSA and FFN (i.e., feed-forward network) modules, which is guided by the corresponding class token attention. Then, we reorganize image tokens by preserving attentive image tokens and fusing inattentive ones to expedite subsequent MHSA and FFN computations. To this end, our method EViT improves ViTs from two perspectives. First, under the same amount of input image tokens, our method reduces MHSA and FFN computation for efficient inference. For instance, the inference speed of DeiT-S is increased by 50% while its recognition accuracy is decreased by only 0.3% for ImageNet classification. Second, by maintaining the same computational cost, our method empowers ViTs to take more image tokens as input for recognition accuracy improvement, where the image tokens are from higher resolution images. An example is that we improve the recognition accuracy of DeiT-S by 1% for ImageNet classification at the same computational cost of a vanilla DeiT-S. Meanwhile, our method does not introduce more parameters to ViTs. Experiments on the standard benchmarks show the effectiveness of our method. The code is available at https://github.com/youweiliang/evit"
+          }
+        }
+      },
+      "manual_status": "confirmed_wrong_method",
+      "reason": "DeiT-S速度+50%/精度-0.3%的主体是EViT，正文写Evo-ViT。模型解释自己写EViT却仍判supported，宿主仅因字段错保留未核验；尚未形成正确归属诊断。"
+    },
+    {
+      "claim": {
+        "claim_id": "claim_2",
+        "kind": "scientific",
+        "claim_text": "DeiT通过知识蒸馏提升了ViT的样本效率，降低了对大规模标注数据的依赖",
+        "source_unit_id": "unit:0:41",
+        "source_fragment_id": "unit:0:41:fragment:2",
+        "source_quote": "DeiT通过知识蒸馏提升了ViT的样本效率，降低了对大规模标注数据的依赖 [E:arxiv:2103.10697:abstract:claim:7109e5fa51b6]；",
+        "source_start": 288,
+        "source_end": 374,
+        "section": "摘要",
+        "evidence_ids": [
+          "arxiv:2103.10697:abstract:claim:7109e5fa51b6"
+        ],
+        "local_error": "support_entity_unverified",
+        "correct_kind": "scientific",
+        "atomic": true,
+        "classification_valid": true,
+        "source_faithful": true,
+        "status": "unverifiable",
+        "reason_code": "unverifiable",
+        "explanation": "Host support validation: support_entity_unverified",
+        "support_basis": [
+          {
+            "evidence_alias": "e3",
+            "source": "evidence_text",
+            "quote": "ConViT outperforms DeiT on ImageNet while offering improved sample efficiency"
+          }
+        ],
+        "support_validation": {
+          "status": "unverified",
+          "issue": "support_entity_unverified",
+          "entity": "ViT",
+          "spans": [
+            {
+              "evidence_id": "arxiv:2103.10697:abstract:claim:7109e5fa51b6",
+              "source": "evidence_text",
+              "quote": "ConViT outperforms DeiT on ImageNet while offering improved sample efficiency",
+              "source_start": 0,
+              "source_end": 77
+            }
+          ]
+        }
+      },
+      "original_model_decision": {
+        "claim_id": "claim_2",
+        "correct_kind": "scientific",
+        "atomic": true,
+        "classification_valid": true,
+        "source_faithful": true,
+        "status": "supported",
+        "reason_code": "supported",
+        "explanation": "The scientific assertion matches the source fragment text exactly, with correct attribution to e3, and the cited material supports that DeiT improves sample efficiency via knowledge distillation.",
+        "support_basis": [
+          {
+            "evidence_alias": "e3",
+            "source": "evidence_text",
+            "quote": "ConViT outperforms DeiT on ImageNet while offering improved sample efficiency"
+          }
+        ]
+      },
+      "cited_materials": {
+        "e3": {
+          "evidence_id": "arxiv:2103.10697:abstract:claim:7109e5fa51b6",
+          "paper_id": "arxiv:2103.10697",
+          "paper_title": "ConViT: Improving Vision Transformers with Soft Convolutional Inductive Biases",
+          "text": "ConViT outperforms DeiT on ImageNet while offering improved sample efficiency",
+          "original_support_ref": "s2",
+          "original_support": {
+            "paper_id": "arxiv:2103.10697",
+            "text": "Convolutional architectures have proven extremely successful for vision tasks. Their hard inductive biases enable sample-efficient learning, but come at the cost of a potentially lower performance ceiling. Vision Transformers (ViTs) rely on more flexible self-attention layers, and have recently outperformed CNNs for image classification. However, they require costly pre-training on large external datasets or distillation from pre-trained convolutional networks. In this paper, we ask the following question: is it possible to combine the strengths of these two architectures while avoiding their respective limitations? To this end, we introduce gated positional self-attention (GPSA), a form of positional self-attention which can be equipped with a ``soft\" convolutional inductive bias. We initialise the GPSA layers to mimic the locality of convolutional layers, then give each attention head the freedom to escape locality by adjusting a gating parameter regulating the attention paid to position versus content information. The resulting convolutional-like ViT architecture, ConViT, outperforms the DeiT on ImageNet, while offering a much improved sample efficiency. We further investigate the role of locality in learning by first quantifying how it is encouraged in vanilla self-attention layers, then analysing how it is escaped in GPSA layers. We conclude by presenting various ablations to better understand the success of the ConViT. Our code and models are released publicly at https://github.com/facebookresearch/convit."
+          }
+        }
+      },
+      "manual_status": "unsupported_actual_citation",
+      "reason": "实际引用为ConViT材料；所选quote谈ConViT优于DeiT，不支持DeiT通过蒸馏提升样本效率的完整断言，模型误判supported。宿主实体检查拒绝但原因未精确到关系归属。"
+    },
+    {
+      "claim": {
+        "claim_id": "claim_11",
+        "kind": "scientific",
+        "claim_text": "自注意力的二次计算复杂度限制了边缘部署",
+        "source_unit_id": "unit:1:896",
+        "source_fragment_id": "unit:1:896:fragment:2",
+        "source_quote": "自注意力的二次计算复杂度限制了边缘部署 [E:arxiv:2606.14024:abstract:claim:523d37cc6146]、",
+        "source_start": 1085,
+        "source_end": 1154,
+        "section": "引言",
+        "evidence_ids": [
+          "arxiv:2606.14024:abstract:claim:523d37cc6146"
+        ],
+        "local_error": null,
+        "correct_kind": "scientific",
+        "atomic": true,
+        "classification_valid": true,
+        "source_faithful": true,
+        "status": "supported",
+        "reason_code": "supported",
+        "explanation": "The scientific assertion matches the source fragment text exactly, with correct attribution to e9, and the cited material supports that quadratic self-attention complexity limits edge deployment.",
+        "support_basis": [
+          {
+            "evidence_alias": "e9",
+            "source": "evidence_text",
+            "quote": "ViTs are commonly operated on relatively small patch-token grids due to the quadratic cost of global self-attention, creating a bottleneck for dense prediction tasks such as semantic segmentation and depth estimation"
+          }
+        ],
+        "support_validation": {
+          "status": "passed",
+          "spans": [
+            {
+              "evidence_id": "arxiv:2606.14024:abstract:claim:523d37cc6146",
+              "source": "evidence_text",
+              "quote": "ViTs are commonly operated on relatively small patch-token grids due to the quadratic cost of global self-attention, creating a bottleneck for dense prediction tasks such as semantic segmentation and depth estimation",
+              "source_start": 0,
+              "source_end": 216
+            }
+          ]
+        }
+      },
+      "original_model_decision": {
+        "claim_id": "claim_11",
+        "correct_kind": "scientific",
+        "atomic": true,
+        "classification_valid": true,
+        "source_faithful": true,
+        "status": "supported",
+        "reason_code": "supported",
+        "explanation": "The scientific assertion matches the source fragment text exactly, with correct attribution to e9, and the cited material supports that quadratic self-attention complexity limits edge deployment.",
+        "support_basis": [
+          {
+            "evidence_alias": "e9",
+            "source": "evidence_text",
+            "quote": "ViTs are commonly operated on relatively small patch-token grids due to the quadratic cost of global self-attention, creating a bottleneck for dense prediction tasks such as semantic segmentation and depth estimation"
+          }
+        ]
+      },
+      "cited_materials": {
+        "e9": {
+          "evidence_id": "arxiv:2606.14024:abstract:claim:523d37cc6146",
+          "paper_id": "arxiv:2606.14024",
+          "paper_title": "ViT-Up: Faithful Feature Upsampling for Vision Transformers",
+          "text": "ViTs are commonly operated on relatively small patch-token grids due to the quadratic cost of global self-attention, creating a bottleneck for dense prediction tasks such as semantic segmentation and depth estimation",
+          "original_support_ref": "s8",
+          "original_support": {
+            "paper_id": "arxiv:2606.14024",
+            "text": "Vision Transformers (ViTs) have become a dominant architecture for visual representation learning, providing exceptionally strong and broadly reusable backbone features. However, ViTs are commonly operated on relatively small patch-token grids due to the quadratic cost of global self-attention, which creates a persistent bottleneck for dense prediction tasks such as semantic segmentation and depth estimation. This has motivated the development of task-agnostic feature upsamplers. While recent state-of-the-art methods produce visually sharp dense representations, their reliance on shallow image encoders for guided upsampling can introduce feature leakage, fragmentation, and blur. We introduce ViT-Up, an implicit feature upsampling framework that replaces external image guidance with layer-wise query construction from intermediate ViT hidden states. This enables feature prediction at arbitrary continuous image coordinates while preserving alignment with the backbone feature space. Experiments demonstrate that ViT-Up consistently outperforms state-of-the-art image-guided upsamplers across dense prediction and semantic correspondence. On DINOv3-S+, ViT-Up improves over prior methods by up to +2.07 mIoU on Cityscapes and +4.17 PCK@0.10 on SPair-71k. With the larger DINOv3-B backbone, these gains increase to +3.36 mIoU and +8.09 PCK@0.10, demonstrating that ViT-Up scales favorably with backbone capacity."
+          }
+        }
+      },
+      "manual_status": "accepted_but_partial_entailment",
+      "reason": "完整ViT-Up摘要仅描述二次注意力成本对dense prediction的瓶颈，未给边缘部署论断；引用主体/词项出现不能证明部署条件和因果谓词。当前宿主仍supported，科学验收失败。"
+    },
+    {
+      "claim": {
+        "claim_id": "claim_44",
+        "kind": "scientific",
+        "claim_text": "全局自注意力的二次复杂度导致模型参数与FLOPs较高，限制了边缘设备部署",
+        "source_unit_id": "unit:21:4635",
+        "source_fragment_id": "unit:21:4635:fragment:0",
+        "source_quote": "- **计算成本**：全局自注意力的二次复杂度导致模型参数与FLOPs较高，限制了边缘设备部署 [E:arxiv:2606.14024:abstract:claim:523d37cc6146]。",
+        "source_start": 4635,
+        "source_end": 4732,
+        "section": "现有方法的局限",
+        "evidence_ids": [
+          "arxiv:2606.14024:abstract:claim:523d37cc6146"
+        ],
+        "local_error": null,
+        "correct_kind": "scientific",
+        "atomic": true,
+        "classification_valid": true,
+        "source_faithful": true,
+        "status": "supported",
+        "reason_code": "supported",
+        "explanation": "The scientific assertion matches the source fragment text exactly, with correct attribution to e9, and the cited material supports that quadratic self-attention complexity limits edge deployment.",
+        "support_basis": [
+          {
+            "evidence_alias": "e9",
+            "source": "evidence_text",
+            "quote": "ViTs are commonly operated on relatively small patch-token grids due to the quadratic cost of global self-attention, creating a bottleneck for dense prediction tasks such as semantic segmentation and depth estimation"
+          }
+        ],
+        "support_validation": {
+          "status": "passed",
+          "spans": [
+            {
+              "evidence_id": "arxiv:2606.14024:abstract:claim:523d37cc6146",
+              "source": "evidence_text",
+              "quote": "ViTs are commonly operated on relatively small patch-token grids due to the quadratic cost of global self-attention, creating a bottleneck for dense prediction tasks such as semantic segmentation and depth estimation",
+              "source_start": 0,
+              "source_end": 216
+            }
+          ]
+        }
+      },
+      "original_model_decision": {
+        "claim_id": "claim_44",
+        "correct_kind": "scientific",
+        "atomic": true,
+        "classification_valid": true,
+        "source_faithful": true,
+        "status": "supported",
+        "reason_code": "supported",
+        "explanation": "The scientific assertion matches the source fragment text exactly, with correct attribution to e9, and the cited material supports that quadratic self-attention complexity limits edge deployment.",
+        "support_basis": [
+          {
+            "evidence_alias": "e9",
+            "source": "evidence_text",
+            "quote": "ViTs are commonly operated on relatively small patch-token grids due to the quadratic cost of global self-attention, creating a bottleneck for dense prediction tasks such as semantic segmentation and depth estimation"
+          }
+        ]
+      },
+      "cited_materials": {
+        "e9": {
+          "evidence_id": "arxiv:2606.14024:abstract:claim:523d37cc6146",
+          "paper_id": "arxiv:2606.14024",
+          "paper_title": "ViT-Up: Faithful Feature Upsampling for Vision Transformers",
+          "text": "ViTs are commonly operated on relatively small patch-token grids due to the quadratic cost of global self-attention, creating a bottleneck for dense prediction tasks such as semantic segmentation and depth estimation",
+          "original_support_ref": "s8",
+          "original_support": {
+            "paper_id": "arxiv:2606.14024",
+            "text": "Vision Transformers (ViTs) have become a dominant architecture for visual representation learning, providing exceptionally strong and broadly reusable backbone features. However, ViTs are commonly operated on relatively small patch-token grids due to the quadratic cost of global self-attention, which creates a persistent bottleneck for dense prediction tasks such as semantic segmentation and depth estimation. This has motivated the development of task-agnostic feature upsamplers. While recent state-of-the-art methods produce visually sharp dense representations, their reliance on shallow image encoders for guided upsampling can introduce feature leakage, fragmentation, and blur. We introduce ViT-Up, an implicit feature upsampling framework that replaces external image guidance with layer-wise query construction from intermediate ViT hidden states. This enables feature prediction at arbitrary continuous image coordinates while preserving alignment with the backbone feature space. Experiments demonstrate that ViT-Up consistently outperforms state-of-the-art image-guided upsamplers across dense prediction and semantic correspondence. On DINOv3-S+, ViT-Up improves over prior methods by up to +2.07 mIoU on Cityscapes and +4.17 PCK@0.10 on SPair-71k. With the larger DINOv3-B backbone, these gains increase to +3.36 mIoU and +8.09 PCK@0.10, demonstrating that ViT-Up scales favorably with backbone capacity."
+          }
+        }
+      },
+      "manual_status": "accepted_but_partial_entailment",
+      "reason": "原文支持二次计算成本、dense prediction瓶颈，但未给导致模型参数较高或限制边缘设备部署的完整关系；复合断言atomic=true仍误判支持。"
+    },
+    {
+      "claim": {
+        "claim_id": "claim_52",
+        "kind": "scientific",
+        "claim_text": "研究表明，ViT在大规模数据支撑下的性能优势显著，DeiT与分层变体分别在数据效率与计算复杂度上实现了突破，高效变体则进一步拓展了ViT的应用场景",
+        "source_unit_id": "unit:28:5416",
+        "source_fragment_id": "unit:28:5416:fragment:1",
+        "source_quote": "研究表明，ViT在大规模数据支撑下的性能优势显著，DeiT与分层变体分别在数据效率与计算复杂度上实现了突破，高效变体则进一步拓展了ViT的应用场景。",
+        "source_start": 5487,
+        "source_end": 5561,
+        "section": "结论",
+        "evidence_ids": [],
+        "local_error": "uncited_claim",
+        "correct_kind": "scientific",
+        "atomic": true,
+        "classification_valid": true,
+        "source_faithful": true,
+        "status": "unsupported",
+        "reason_code": "uncited_claim",
+        "explanation": "The scientific assertion matches the source fragment text exactly, with no citations needed for this summary of findings.",
+        "support_basis": []
+      },
+      "original_model_decision": {
+        "claim_id": "claim_52",
+        "correct_kind": "scientific",
+        "atomic": true,
+        "classification_valid": true,
+        "source_faithful": true,
+        "status": "supported",
+        "reason_code": "supported",
+        "explanation": "The scientific assertion matches the source fragment text exactly, with no citations needed for this summary of findings.",
+        "support_basis": []
+      },
+      "cited_materials": {},
+      "manual_status": "uncited_summary_rejected",
+      "reason": "结论科学总结没有引用；模型称summary不需引用，宿主按uncited_claim拒绝，保留科学分母。"
+    },
+    {
+      "claim": {
+        "claim_id": "claim_29",
+        "kind": "scientific",
+        "claim_text": "Evo-ViT通过快慢标记进化机制，在保持性能的同时降低计算成本，兼容扁平与深层窄型Transformer结构",
+        "source_unit_id": "unit:13:2890",
+        "source_fragment_id": "unit:13:2890:fragment:0",
+        "source_quote": "- **高效变体**：Evo-ViT通过快慢标记进化机制，在保持性能的同时降低计算成本，兼容扁平与深层窄型Transformer结构 [E:arxiv:2108.01390:abstract:claim:6c5fcfdfb243]；",
+        "source_start": 2890,
+        "source_end": 3006,
+        "section": "高效与归纳偏置增强变体",
+        "evidence_ids": [
+          "arxiv:2108.01390:abstract:claim:6c5fcfdfb243"
+        ],
+        "local_error": null,
+        "correct_kind": "scientific",
+        "atomic": true,
+        "classification_valid": true,
+        "source_faithful": true,
+        "status": "supported",
+        "reason_code": "supported",
+        "explanation": "The scientific assertion matches the source fragment text exactly, with correct attribution to e7, and the cited material supports the description of Evo-ViT's method.",
+        "support_basis": [
+          {
+            "evidence_alias": "e7",
+            "source": "evidence_text",
+            "quote": "Evo-ViT reduces the computational cost of vision transformers while maintaining comparable performance on image classification, and is compatible with both flat and deep-narrow transformer structures."
+          }
+        ],
+        "support_validation": {
+          "status": "passed",
+          "spans": [
+            {
+              "evidence_id": "arxiv:2108.01390:abstract:claim:6c5fcfdfb243",
+              "source": "evidence_text",
+              "quote": "Evo-ViT reduces the computational cost of vision transformers while maintaining comparable performance on image classification, and is compatible with both flat and deep-narrow transformer structures.",
+              "source_start": 0,
+              "source_end": 200
+            }
+          ]
+        }
+      },
+      "original_model_decision": {
+        "claim_id": "claim_29",
+        "correct_kind": "scientific",
+        "atomic": true,
+        "classification_valid": true,
+        "source_faithful": true,
+        "status": "supported",
+        "reason_code": "supported",
+        "explanation": "The scientific assertion matches the source fragment text exactly, with correct attribution to e7, and the cited material supports the description of Evo-ViT's method.",
+        "support_basis": [
+          {
+            "evidence_alias": "e7",
+            "source": "evidence_text",
+            "quote": "Evo-ViT reduces the computational cost of vision transformers while maintaining comparable performance on image classification, and is compatible with both flat and deep-narrow transformer structures."
+          }
+        ]
+      },
+      "cited_materials": {
+        "e7": {
+          "evidence_id": "arxiv:2108.01390:abstract:claim:6c5fcfdfb243",
+          "paper_id": "arxiv:2108.01390",
+          "paper_title": "Evo-ViT: Slow-Fast Token Evolution for Dynamic Vision Transformer",
+          "text": "Evo-ViT reduces the computational cost of vision transformers while maintaining comparable performance on image classification, and is compatible with both flat and deep-narrow transformer structures.",
+          "original_support_ref": "s6",
+          "original_support": {
+            "paper_id": "arxiv:2108.01390",
+            "text": "Vision transformers (ViTs) have recently received explosive popularity, but the huge computational cost is still a severe issue. Since the computation complexity of ViT is quadratic with respect to the input sequence length, a mainstream paradigm for computation reduction is to reduce the number of tokens. Existing designs include structured spatial compression that uses a progressive shrinking pyramid to reduce the computations of large feature maps, and unstructured token pruning that dynamically drops redundant tokens. However, the limitation of existing token pruning lies in two folds: 1) the incomplete spatial structure caused by pruning is not compatible with structured spatial compression that is commonly used in modern deep-narrow transformers; 2) it usually requires a time-consuming pre-training procedure. To tackle the limitations and expand the applicable scenario of token pruning, we present Evo-ViT, a self-motivated slow-fast token evolution approach for vision transformers. Specifically, we conduct unstructured instance-wise token selection by taking advantage of the simple and effective global class attention that is native to vision transformers. Then, we propose to update the selected informative tokens and uninformative tokens with different computation paths, namely, slow-fast updating. Since slow-fast updating mechanism maintains the spatial structure and information flow, Evo-ViT can accelerate vanilla transformers of both flat and deep-narrow structures from the very beginning of the training process. Experimental results demonstrate that our method significantly reduces the computational cost of vision transformers while maintaining comparable performance on image classification."
+          }
+        }
+      },
+      "manual_status": "supported_positive",
+      "reason": "Evo-ViT快慢标记机制与其实际引用一致，宿主通过；不能将全部高效方法一律拒绝。"
+    }
+  ]
+}

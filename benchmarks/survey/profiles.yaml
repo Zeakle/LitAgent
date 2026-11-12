@@ -1,0 +1,26 @@
+schema_version: 1
+profiles:
+  - profile_id: external-only
+    rag_enabled: false
+  - profile_id: external-abstract
+    rag_enabled: true
+    rag_profile:
+      profile_id: survey-external-abstract
+      content_mode: abstract
+      chunk_strategy: page_block
+      chunk_size: 1200
+      chunk_overlap: 150
+      embedding_backend: sentence_transformer
+      embedding_model: all-MiniLM-L6-v2
+      retrieval_mode: rrf
+  - profile_id: external-fulltext
+    rag_enabled: true
+    rag_profile:
+      profile_id: survey-external-fulltext
+      content_mode: abstract_and_selected_fulltext
+      chunk_strategy: section_aware
+      chunk_size: 1200
+      chunk_overlap: 150
+      embedding_backend: sentence_transformer
+      embedding_model: all-MiniLM-L6-v2
+      retrieval_mode: rrf

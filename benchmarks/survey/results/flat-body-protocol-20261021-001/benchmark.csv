@@ -1,0 +1,8 @@
+path,reason,rejected_card_id
+introduction.0.fact_card_ids.0,card_outside_section,f:be2e7480445ad4d78b0b5eb4
+taxonomy.0.fact_card_ids.0,unknown_card_id,f:a9fc76f17091498e39100a53afd
+methods.1.fact_card_ids.0,card_outside_section,f:5f30847627a87481a58405c1
+methods.5.fact_card_ids.0,card_outside_section,f:3afe8643f47b44a70d6916f1
+methods.6.fact_card_ids.0,card_outside_section,f:7de78f7fac23b4e75b21134c
+methods.7.fact_card_ids.0,card_outside_section,f:a5a5b8be56235ce1cdea7b6d
+open_problems.2.fact_card_ids.0,card_outside_section,f:0325115a52ea86b0c42d8acb

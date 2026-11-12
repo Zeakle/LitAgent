@@ -1,0 +1,68 @@
+schema_version: 1
+profiles:
+  - profile_id: baseline-abstract-minilm-rrf
+    content_mode: abstract
+    chunk_strategy: page_block
+    chunk_size: 1200
+    chunk_overlap: 150
+    embedding_backend: sentence_transformer
+    embedding_model: all-MiniLM-L6-v2
+    retrieval_mode: rrf
+  - profile_id: retrieval-bm25
+    content_mode: abstract
+    chunk_strategy: page_block
+    chunk_size: 1200
+    chunk_overlap: 150
+    embedding_backend: sentence_transformer
+    embedding_model: all-MiniLM-L6-v2
+    retrieval_mode: bm25
+  - profile_id: retrieval-dense
+    content_mode: abstract
+    chunk_strategy: page_block
+    chunk_size: 1200
+    chunk_overlap: 150
+    embedding_backend: sentence_transformer
+    embedding_model: all-MiniLM-L6-v2
+    retrieval_mode: dense
+  - profile_id: retrieval-rrf-rerank
+    content_mode: abstract
+    chunk_strategy: page_block
+    chunk_size: 1200
+    chunk_overlap: 150
+    embedding_backend: sentence_transformer
+    embedding_model: all-MiniLM-L6-v2
+    retrieval_mode: rrf_rerank
+  - profile_id: fulltext-page-block
+    content_mode: abstract_and_selected_fulltext
+    chunk_strategy: page_block
+    chunk_size: 1200
+    chunk_overlap: 150
+    embedding_backend: sentence_transformer
+    embedding_model: all-MiniLM-L6-v2
+    retrieval_mode: rrf
+  - profile_id: fulltext-recursive
+    content_mode: abstract_and_selected_fulltext
+    chunk_strategy: recursive
+    chunk_size: 1200
+    chunk_overlap: 150
+    embedding_backend: sentence_transformer
+    embedding_model: all-MiniLM-L6-v2
+    retrieval_mode: rrf
+  - profile_id: fulltext-section-aware
+    content_mode: abstract_and_selected_fulltext
+    chunk_strategy: section_aware
+    chunk_size: 1200
+    chunk_overlap: 150
+    embedding_backend: sentence_transformer
+    embedding_model: all-MiniLM-L6-v2
+    retrieval_mode: rrf
+  - profile_id: specter2-abstract-rrf
+    content_mode: abstract
+    chunk_strategy: page_block
+    chunk_size: 1200
+    chunk_overlap: 150
+    embedding_backend: specter2
+    embedding_model: allenai/specter2_base
+    embedding_document_adapter: allenai/specter2
+    embedding_query_adapter: allenai/specter2_adhoc_query
+    retrieval_mode: rrf

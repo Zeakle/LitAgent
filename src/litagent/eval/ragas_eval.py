@@ -1,0 +1,551 @@
+"""Evaluate report faithfulness against referenced evidence with RAGAS."""
+
+from __future__ import annotations
+
+import asyncio
+import hashlib
+import json
+import re
+from collections import deque
+from collections.abc import Mapping
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from litagent.config import AppConfig
+from litagent.context.templates import wrap_xml
+from litagent.eval.base import (
+    CTX_EVIDENCE,
+    CTX_QUERY,
+    CTX_REFERENCED_EVIDENCE,
+    CTX_REFERENCED_EVIDENCE_IDS,
+    CTX_SELECTED_EVIDENCE,
+    CTX_UNRESOLVED_EVIDENCE_IDS,
+    EvalResult,
+    Evaluator,
+)
+from litagent.evidence import extract_evidence_refs_ordered
+from litagent.llm.client import BaseLLMClient
+from litagent.logging import get_logger
+from litagent.report_render import align_claim_to_source, build_report_source_units
+
+logger = get_logger("eval.ragas")
+
+
+_DIAGNOSTIC_PROMPT = """You are a faithfulness auditor. Given a survey and an evidence \
+ledger (each line "[E:<id>] (<paper title>) <text>"), list every factual claim in the \
+survey that is NOT supported by any ledger item.
+
+Return ONLY a JSON object:
+{"unsupported_claims": [
+  {"claim_text": "<claim as written in the survey>",
+   "evidence_ids": ["<related ledger ids the claim overstates, [] if none>"],
+   "reason": "<one-sentence why it is unsupported>"}
+]}
+If every claim is supported, return {"unsupported_claims": []}."""
+
+
+@dataclass(frozen=True)
+class ResolvedFaithfulnessContext:
+    """Store bounded evidence and fallback metadata for faithfulness scoring."""
+
+    texts: tuple[str, ...]
+    evidence_ids: tuple[str, ...]
+    fallback_used: bool
+    fallback_reason: str | None
+
+
+def _format_evidence_item(item: Mapping[str, Any]) -> str:
+    """Format one evidence item for RAGAS evaluation."""
+    return (
+        f"[E:{item.get('evidence_id', '')}] "
+        f"({item.get('paper_title', '')}; "
+        f"{item.get('source_locator', '')}) "
+        f"{item.get('text', '')}"
+    )
+
+
+def _checkpoint_failure(
+    exc: BaseException, survey: str, context: Mapping[str, Any]
+) -> None:
+    """Keep bounded failure frames in a local checkpoint copy, never the result."""
+    try:
+        from litagent.workbench import is_strict_policy
+
+        checkpoint = context.get("evaluation_checkpoint")
+        details = getattr(exc, "details", None)
+        progress = details.get("stages") if isinstance(details, Mapping) else None
+        if (
+            not is_strict_policy(context.get("quality_policy"))
+            or not callable(checkpoint)
+            or not isinstance(progress, dict)
+        ):
+            return
+
+        def label(value):
+            """Bound structural labels without retaining arbitrary exception text."""
+            return re.sub(r"[^A-Za-z0-9_./<>-]", "_", value)[:128]
+
+        def valid_sha(value):
+            """Recognize a complete host-produced SHA identity."""
+            return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value)
+
+        report_sha = hashlib.sha256(survey.encode()).hexdigest()
+        project = Path(__file__).resolve().parents[3]
+        chain, seen, current = [], set(), exc
+        while current is not None and id(current) not in seen and len(chain) < 4:
+            seen.add(id(current))
+            frames, count = deque(maxlen=16), 0
+            trace = current.__traceback__
+            while trace is not None:
+                code = trace.tb_frame.f_code
+                path = Path(code.co_filename)
+                file = (
+                    str(path.relative_to(project))
+                    if path.is_relative_to(project)
+                    else path.name
+                )
+                frames.append(
+                    {
+                        "file": label(file),
+                        "function": label(code.co_name),
+                        "line": trace.tb_lineno,
+                    }
+                )
+                count += 1
+                trace = trace.tb_next
+            chain.append(
+                {
+                    "type": label(type(current).__name__),
+                    "frames": list(frames),
+                    "frames_truncated": count > 16,
+                }
+            )
+            current = current.__cause__ or (
+                None if current.__suppress_context__ else current.__context__
+            )
+
+        capacity = progress.get("capacity") or {}
+        round_number = (capacity.get("round") or {}).get("number")
+        recovery = progress.get("inventory_recovery") or {}
+        attempt = recovery.get("attempt_index")
+        batches = progress.get("batches") or []
+        batch = batches[-1] if batches else {}
+        unfinished = batch.get("status") in {
+            "started_no_replay",
+            "interrupted_no_replay",
+            "invalid_response",
+        }
+        if progress.get("global_check") in {
+            "started_no_replay",
+            "interrupted_no_replay",
+        }:
+            stage = "global"
+        elif unfinished:
+            stage = "assessment"
+        elif (progress.get("global_preflight") or {}).get(
+            "status"
+        ) == "rejected_not_sent":
+            stage = "global_preflight"
+        else:
+            stage = "evaluation"
+        batch_sha = batch.get("input_sha256") if stage == "assessment" else None
+        batch_sha = batch_sha if valid_sha(batch_sha) else None
+        request_sha = None
+        matches = []
+        for request in progress.get("requests", []):
+            settlement = request.get("semantic_conflict_settlement") or {}
+            receipt = settlement.get("receipt") or {}
+            response = request.get("response")
+            if (
+                batch_sha is not None
+                and request.get("phase") == "assessment"
+                and request.get("status") == "response_received"
+                and valid_sha(request.get("input_sha256"))
+                and settlement.get("batch_payload_sha256") == batch_sha
+                and settlement.get("report_sha256") == report_sha
+                and settlement.get("input_sha256") == request["input_sha256"]
+                and isinstance(response, str)
+                and settlement.get("response_sha256")
+                == hashlib.sha256(response.encode()).hexdigest()
+                and isinstance(receipt, Mapping)
+                and receipt.get("contract") == "host-settled-assessment-receipt-v1"
+                and (
+                    round_number is None or receipt.get("round_number") == round_number
+                )
+            ):
+                matches.append(request["input_sha256"])
+        if len(matches) == 1:
+            request_sha = matches[0]
+        batch_index = batch.get("index") if stage == "assessment" else None
+        diagnostic = {
+            "contract_version": "evaluation-local-failure-v1",
+            "source_report_sha256": report_sha,
+            "exception_chain": chain,
+            "chain_truncated": current is not None,
+            "stage": stage,
+            "batch_index": (
+                batch_index if type(batch_index) is int and batch_index >= 0 else None
+            ),
+            "batch_payload_sha256": batch_sha,
+            "request_input_sha256": request_sha,
+            "capacity_round_number": (
+                round_number if type(round_number) is int else None
+            ),
+            "recovery_attempt_index": attempt if type(attempt) is int else None,
+        }
+        # save_progress projects event fields explicitly. The added key stays in
+        # this disk-only copy, outside exc.details and the shared result/trace.
+        checkpoint({**progress, "local_failure_diagnostic": diagnostic})
+    except Exception:
+        # A diagnostic I/O or malformed diagnostic context cannot mask the failure.
+        return
+
+
+class RagasFaithfulnessEvaluator(Evaluator):
+    """Score faithfulness with RAGAS and diagnose failed evaluations."""
+
+    def __init__(
+        self,
+        config: AppConfig,
+        threshold: float = 0.8,
+        llm: BaseLLMClient | None = None,
+    ):
+        """Initialize the RAGAS faithfulness evaluator."""
+        super().__init__(threshold)
+        self._cfg = config
+        self._llm = llm
+
+    @property
+    def metric_name(self) -> str:
+        """Return the evaluator metric name."""
+        return "faithfulness"
+
+    def _resolve_contexts(
+        self, context: Mapping[str, Any]
+    ) -> ResolvedFaithfulnessContext:
+        """Resolve and bound the evidence used for faithfulness scoring."""
+        referenced = context.get(CTX_REFERENCED_EVIDENCE)
+        referenced_ids = context.get(CTX_REFERENCED_EVIDENCE_IDS)
+        selected = context.get(CTX_SELECTED_EVIDENCE)
+
+        report_has_refs = isinstance(referenced_ids, list) and bool(referenced_ids)
+        fallback_used = False
+        fallback_reason: str | None = None
+
+        if isinstance(referenced, list) and referenced:
+            source_items = referenced
+        elif report_has_refs:
+            source_items = []
+        elif isinstance(selected, list) and selected:
+            source_items = selected
+            fallback_used = True
+            fallback_reason = "report_has_no_evidence_refs"
+        else:
+            source_items = []
+
+        max_items = self._cfg.eval.faithfulness_max_evidence_items
+        max_chars = self._cfg.eval.faithfulness_max_context_chars
+        texts: list[str] = []
+        evidence_ids: list[str] = []
+        seen: set[str] = set()
+        used_chars = 0
+
+        for raw in source_items:
+            if not isinstance(raw, Mapping):
+                continue
+            evidence_id = raw.get("evidence_id")
+            if not isinstance(evidence_id, str) or not evidence_id:
+                continue
+            if evidence_id in seen:
+                continue
+            rendered = _format_evidence_item(raw)
+            if not raw.get("text"):
+                continue
+            if len(texts) >= max_items:
+                break
+            if used_chars + len(rendered) > max_chars:
+                break
+            seen.add(evidence_id)
+            evidence_ids.append(evidence_id)
+            texts.append(rendered)
+            used_chars += len(rendered)
+
+        return ResolvedFaithfulnessContext(
+            texts=tuple(texts),
+            evidence_ids=tuple(evidence_ids),
+            fallback_used=fallback_used,
+            fallback_reason=fallback_reason,
+        )
+
+    async def _diagnose(self, survey: str, context: dict[str, Any]) -> dict[str, Any]:
+        """Diagnose unsupported claims against the resolved evidence ledger."""
+        resolved = self._resolve_contexts(context)
+        ledger = context.get(CTX_EVIDENCE)
+        if not self._llm:
+            return {"diagnostic_skipped": "diagnostic_llm_unavailable"}
+        if not isinstance(ledger, Mapping) or not ledger:
+            return {"diagnostic_skipped": "evidence_ledger_unavailable"}
+        if not resolved.texts:
+            return {"diagnostic_skipped": "referenced_evidence_unavailable"}
+
+        user_msg = "\n\n".join(
+            [
+                wrap_xml("survey", survey),
+                wrap_xml("evidence_ledger", "\n".join(resolved.texts)),
+            ]
+        )
+
+        try:
+            chat_kwargs: dict[str, Any] = {
+                "response_format": {"type": "json_object"},
+                "max_tokens": self._cfg.eval.max_tokens,
+            }
+            if self._cfg.eval.thinking_mode != "provider_default":
+                chat_kwargs["extra_body"] = {
+                    "thinking": {"type": self._cfg.eval.thinking_mode}
+                }
+            async with asyncio.timeout(self._cfg.eval.timeout_seconds):
+                response = await self._llm.chat(
+                    [
+                        {"role": "system", "content": _DIAGNOSTIC_PROMPT},
+                        {"role": "user", "content": user_msg},
+                    ],
+                    **chat_kwargs,
+                )
+            parsed = json.loads(response.content or "{}")
+        except asyncio.CancelledError:
+            raise
+        except TimeoutError:
+            return {"diagnostic_skipped": "diagnostic_timeout"}
+        except Exception as exc:
+            logger.warning(
+                "Faithfulness diagnostic failed error_type=%s",
+                type(exc).__name__,
+            )
+            return {
+                "diagnostic_skipped": "diagnostic_error",
+                "diagnostic_error_type": type(exc).__name__,
+            }
+
+        raw_claims = parsed.get("unsupported_claims")
+        if not isinstance(raw_claims, list):
+            return {"diagnostic_skipped": "malformed_diagnostic_output"}
+
+        normalized: list[dict[str, Any]] = []
+        seen: set[tuple[str, tuple[str, ...]]] = set()
+        ledger_ids = set(ledger)
+
+        for raw in raw_claims:
+            if not isinstance(raw, Mapping):
+                continue
+
+            claim_text = str(raw.get("claim_text") or "").strip()
+            if not claim_text:
+                continue
+
+            raw_ids = raw.get("evidence_ids")
+            evidence_ids: list[str] = []
+            if isinstance(raw_ids, list):
+                for item in raw_ids:
+                    if isinstance(item, str) and item:
+                        evidence_ids.append(item)
+            key = (claim_text, tuple(evidence_ids))
+            if key in seen:
+                continue
+            seen.add(key)
+
+            unknown = [item for item in evidence_ids if item not in ledger_ids]
+            if unknown:
+                reason_code = "unknown_evidence_ref"
+            elif not evidence_ids:
+                reason_code = "uncited_claim"
+            else:
+                reason_code = "insufficient_support"
+
+            normalized.append(
+                {
+                    "claim_text": claim_text,
+                    "evidence_ids": evidence_ids,
+                    "reason_code": reason_code,
+                    "explanation": str(
+                        raw.get("reason") or raw.get("explanation") or ""
+                    ),
+                }
+            )
+
+        return {"unsupported_claims": normalized}
+
+    async def _score_ragas(
+        self, survey: str, contexts: list[str], query: str
+    ) -> tuple[float, dict[str, Any]]:
+        """Score via the same configured provider adapter used by LitAgent."""
+        adapter = getattr(self._llm, "score_ragas_faithfulness", None)
+        if not callable(adapter):
+            raise RuntimeError("ragas_provider_adapter_unavailable")
+        async with asyncio.timeout(self._cfg.eval.timeout_seconds):
+            return await adapter(
+                user_input=query or "literature survey",
+                response=survey,
+                retrieved_contexts=contexts,
+                max_tokens=self._cfg.eval.max_tokens,
+                thinking_mode=self._cfg.eval.thinking_mode,
+            )
+
+    async def evaluate(self, survey: str, context: dict[str, Any]) -> EvalResult:
+        """Score a survey against report-referenced or selected evidence."""
+        if not survey.strip():
+            return EvalResult.skip(self.metric_name, "survey is empty")
+
+        if context.get("evaluation_version") in {
+            "survey-evaluation-v2",
+            "survey-evaluation-v3",
+        }:
+            from litagent.eval.scoped import (
+                CLASSIFICATION_CONTRACT,
+                EVALUATION_VERSION,
+                EXTRACTION_CONTRACT,
+                SUPPORT_CONTRACT,
+                ScopedEvaluationError,
+                evaluate_scoped,
+            )
+
+            base = {
+                "evaluation_version": context["evaluation_version"],
+                "quality_policy": context.get("quality_policy", "legacy"),
+                "extraction_contract": EXTRACTION_CONTRACT,
+                "classification_contract": CLASSIFICATION_CONTRACT,
+                "support_contract": SUPPORT_CONTRACT,
+                "threshold": self._threshold,
+                "structure_checks": context.get("structure_checks", {}),
+                "method_checks": context.get("method_checks", {}),
+                "language_checks": context.get("language_checks", {}),
+            }
+            failure_details = {}
+            try:
+                details = await evaluate_scoped(
+                    llm=self._llm, survey=survey, context=context, config=self._cfg.eval
+                )
+                score = details.pop("score")
+                details["threshold"] = self._threshold
+                if score is None:
+                    result = EvalResult.skip(
+                        self.metric_name,
+                        details.get("unverified_reason")
+                        or "evaluation_no_scientific_assertions",
+                    )
+                    result.details.update(details)
+                    return result
+                return self._make_result(score, details)
+            except asyncio.CancelledError:
+                raise
+            except ScopedEvaluationError as exc:
+                _checkpoint_failure(exc, survey, context)
+                reason = str(exc)
+                failure_details = exc.details
+            except TimeoutError:
+                reason = "evaluation_timeout"
+            except (ValueError, TypeError, json.JSONDecodeError) as exc:
+                reason = (
+                    str(exc)
+                    if str(exc).startswith("evaluation_")
+                    else "evaluation_contract_invalid"
+                )
+            except Exception as exc:
+                reason = f"evaluation_provider_error:{type(exc).__name__}"
+            result = EvalResult.skip(self.metric_name, reason)
+            result.details.update(
+                base, coverage={"complete": False}, unverified_count=None
+            )
+            result.details.update(failure_details)
+            return result
+
+        resolved = self._resolve_contexts(context)
+        if not resolved.texts:
+            return EvalResult.skip(
+                self.metric_name,
+                "no report-referenced or selected evidence in context",
+            )
+
+        query = str(context.get(CTX_QUERY) or "")
+        try:
+            scored = await self._score_ragas(survey, list(resolved.texts), query)
+            if isinstance(scored, tuple):
+                score, score_metadata = scored
+            else:
+                # Preserve compatibility for injected test evaluators.
+                score, score_metadata = float(scored), {}
+        except ImportError:
+            return EvalResult.skip(self.metric_name, "ragas not installed")
+        except asyncio.CancelledError:
+            raise
+        except TimeoutError:
+            return EvalResult.skip(self.metric_name, "ragas_timeout")
+        except Exception as exc:
+            error_type = type(exc).__name__
+            if error_type == "IncompleteOutputException":
+                reason = "ragas_incomplete_output"
+            elif isinstance(exc, (json.JSONDecodeError, TypeError, ValueError)):
+                reason = "ragas_malformed_output"
+            elif str(exc) == "ragas_provider_adapter_unavailable":
+                reason = "ragas_provider_adapter_unavailable"
+            else:
+                reason = f"ragas_provider_error:{error_type}"
+            logger.warning("ragas eval failed error_type=%s", error_type)
+            return EvalResult.skip(self.metric_name, reason)
+
+        if score != score:
+            return EvalResult.skip(self.metric_name, "ragas returned nan")
+
+        details = {
+            "contexts_count": len(resolved.texts),
+            "evidence_ids": list(resolved.evidence_ids),
+            "fallback_used": resolved.fallback_used,
+            "fallback_reason": resolved.fallback_reason,
+            "provider": score_metadata,
+            "unresolved_evidence_ids": list(
+                context.get(CTX_UNRESOLVED_EVIDENCE_IDS) or []
+            ),
+        }
+        result = self._make_result(score, details)
+        verdicts = score_metadata.get("verdicts")
+        if isinstance(verdicts, list):
+            result.details["factual_claim_count"] = len(verdicts)
+            result.details["unsupported_claims"] = self._diagnostics_from_verdicts(
+                survey, verdicts, set(resolved.evidence_ids)
+            )
+        elif not result.passed:
+            result.details["diagnostic_skipped"] = "legacy_score_without_verdicts"
+        return result
+
+    @staticmethod
+    def _diagnostics_from_verdicts(
+        survey: str, verdicts: list[dict[str, Any]], known_ids: set[str]
+    ) -> list[dict[str, Any]]:
+        """Preserve every negative verdict without guessing original citations."""
+        units = build_report_source_units(survey)
+        diagnostics = []
+        for item in verdicts:
+            if item.get("verdict") != 0:
+                continue
+            claim = str(item.get("statement") or "").strip()
+            alignment = align_claim_to_source(claim, units)
+            diagnostics.append(
+                {
+                    "claim_text": claim,
+                    "statement_id": item.get("statement_id"),
+                    "evidence_ids": [
+                        ref for ref in alignment.evidence_ids if ref in known_ids
+                    ],
+                    "reason_code": "insufficient_support",
+                    "explanation": str(item.get("reason") or ""),
+                    "source_quote": alignment.source_quote,
+                    "source_unit_id": alignment.source_unit_id,
+                    "source_start": alignment.start,
+                    "source_end": alignment.end,
+                    "citation_scope": alignment.citation_scope,
+                    "alignment_status": alignment.status,
+                    "diagnostic_source": "ragas_verdict",
+                }
+            )
+        return diagnostics

@@ -1,0 +1,805 @@
+"""Select evidence per survey section with reranking and lexical fallback."""
+
+from __future__ import annotations
+
+import asyncio
+import html
+import re
+import time
+import uuid
+from collections.abc import Mapping
+from dataclasses import asdict, dataclass, field
+from typing import Any, Callable
+
+from langchain_core.documents import Document
+
+from litagent.context.budget import BudgetManager
+from litagent.evidence import CitationAliasMap
+from litagent.logging import get_logger
+from litagent.observability.context import get_task_id
+from litagent.rag.interfaces import Reranker, ScoredDoc
+
+logger = get_logger("context.evidence_selector")
+
+_WORD_RE = re.compile(r"[a-z0-9]+")
+_SOURCE_INDEX = "_evidence_selector_source_index"
+_EVIDENCE_ID_RE = re.compile(r"^[A-Za-z0-9._:/-]+$")
+SHARED_SCOPE_CONTRACT = "strict-shared-selected-sources-v1"
+
+
+@dataclass(frozen=True)
+class SectionSpec:
+    """Define an immutable survey section and its retrieval hint."""
+
+    key: str
+    title: str
+    retrieval_hint: str
+
+
+DEFAULT_SECTIONS = (
+    SectionSpec(
+        "introduction",
+        "Introduction and Motivation",
+        "background context, problem statement, and motivation for the survey topic",
+    ),
+    SectionSpec(
+        "taxonomy",
+        "Taxonomy of Approaches",
+        "categorization of methods, approaches, architectures, and techniques",
+    ),
+    SectionSpec(
+        "methods",
+        "Detailed Analysis of Key Methods",
+        "specific algorithms, model architectures, training procedures, "
+        "technical details",
+    ),
+    SectionSpec(
+        "experiments",
+        "Experimental Comparison",
+        "benchmarks, datasets, metrics, quantitative results, performance numbers",
+    ),
+    SectionSpec(
+        "open_problems",
+        "Open Problems and Future Directions",
+        "limitations, gaps, unresolved challenges, and future research directions",
+    ),
+)
+
+
+@dataclass
+class EvidenceSelection:
+    """Store the serializable result of one evidence-selection pass."""
+
+    candidate_count: int
+    selected_items: dict[str, dict[str, Any]]
+    section_evidence_ids: dict[str, list[str]]
+    method_by_section: dict[str, str]
+    omitted_count: int
+    estimated_tokens: int
+    ranking_decisions: list[dict[str, Any]] = field(default_factory=list)
+    writing_scope_policy: str = "section_v1"
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return the complete selection result as a plain dictionary."""
+        value = asdict(self)
+        if self.writing_scope_policy == "section_v1":
+            value.pop("writing_scope_policy")
+        return value
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "EvidenceSelection":
+        """Validate and reconstruct a selection from a JSON-safe mapping."""
+        if not isinstance(value, Mapping):
+            raise ValueError(
+                f"EvidenceSelection.from_dict expects Mapping, "
+                f"got {type(value).__name__}"
+            )
+
+        cand_count = value.get("candidate_count")
+        if not isinstance(cand_count, int) or cand_count < 0:
+            raise ValueError(f"candidate_count must be int >= 0, got {cand_count!r}")
+
+        raw_items = value.get("selected_items", {})
+        if not isinstance(raw_items, Mapping):
+            raise ValueError(
+                f"selected_items must be Mapping, got {type(raw_items).__name__}"
+            )
+
+        selected_items: dict[str, dict[str, Any]] = {}
+        for k, v in raw_items.items():
+            if not isinstance(k, str) or not k:
+                raise ValueError(f"selected_items key must be non-empty str, got {k!r}")
+            if not _EVIDENCE_ID_RE.fullmatch(k):
+                raise ValueError(f"selected_items key has invalid evidence id: {k!r}")
+            if not isinstance(v, Mapping):
+                raise ValueError(
+                    f"selected_items[{k!r}] must be Mapping, got {type(v).__name__}"
+                )
+
+            item = dict(v)
+            if item.get("evidence_id") != k:
+                raise ValueError(
+                    f"selected_items[{k!r}].evidence_id must equal its key"
+                )
+
+            selected_items[k] = item
+
+        raw_sec = value.get("section_evidence_ids", {})
+
+        if not isinstance(raw_sec, Mapping):
+            raise ValueError(
+                f"section_evidence_ids must be Mapping, got {type(raw_sec).__name__}"
+            )
+
+        section_evidence_ids: dict[str, list[str]] = {}
+        for k, v in raw_sec.items():
+            if not isinstance(k, str):
+                raise ValueError(f"section_evidence_ids key must be str, got {k!r}")
+            if not isinstance(v, list):
+                raise ValueError(
+                    f"section_evidence_ids[{k!r}] must be list, got {type(v).__name__}"
+                )
+
+            ids: list[str] = []
+            for evidence_id in v:
+                if (
+                    not isinstance(evidence_id, str)
+                    or evidence_id not in selected_items
+                ):
+                    raise ValueError(
+                        f"section_evidence_ids[{k!r}] contains unknown id "
+                        f"{evidence_id!r}"
+                    )
+                if evidence_id in ids:
+                    raise ValueError(
+                        f"section_evidence_ids[{k!r}] contains duplicate id "
+                        f"{evidence_id!r}"
+                    )
+                ids.append(evidence_id)
+
+            section_evidence_ids[k] = ids
+
+        raw_method = value.get("method_by_section", {})
+
+        if not isinstance(raw_method, Mapping):
+            raise ValueError(
+                f"method_by_section must be Mapping, got {type(raw_method).__name__}"
+            )
+
+        method_by_section: dict[str, str] = {}
+        for k, v in raw_method.items():
+            if not isinstance(k, str):
+                raise ValueError(f"method_by_section key must be str, got {k!r}")
+            if v not in {"cross_encoder", "lexical_fallback", "selected_union"}:
+                raise ValueError(f"invalid retrieval method for section {k!r}: {v!r}")
+            if v == "selected_union" and k not in {"abstract", "conclusion"}:
+                raise ValueError(f"selected_union is not allowed for section {k!r}")
+            method_by_section[k] = v
+
+        if set(method_by_section) - set(section_evidence_ids):
+            raise ValueError("method_by_section contains an unknown section")
+        for section_key, ids in section_evidence_ids.items():
+            if ids and section_key not in method_by_section:
+                raise ValueError(
+                    f"section {section_key!r} has evidence ids but no retrieval method"
+                )
+            if method_by_section.get(section_key) == "selected_union" and set(
+                ids
+            ) != set(selected_items):
+                raise ValueError(
+                    f"selected_union section {section_key!r} must reuse all selected ids"
+                )
+
+        oc = value.get("omitted_count")
+        if not isinstance(oc, int) or oc < 0:
+            raise ValueError(f"omitted_count must be int >= 0, got {oc!r}")
+
+        et = value.get("estimated_tokens")
+        if not isinstance(et, int) or et < 0:
+            raise ValueError(f"estimated_tokens must be int >= 0, got {et!r}")
+
+        if cand_count < len(selected_items):
+            raise ValueError(
+                "candidate_count cannot be smaller than selected item count"
+            )
+
+        if oc != cand_count - len(selected_items):
+            raise ValueError(
+                "omitted_count must equal candidate_count - selected item count"
+            )
+
+        policy = value.get("writing_scope_policy", "section_v1")
+        if policy not in {"section_v1", "frozen_union_v1"}:
+            raise ValueError("writing_scope_policy_invalid")
+        return cls(
+            candidate_count=cand_count,
+            selected_items=selected_items,
+            section_evidence_ids=section_evidence_ids,
+            method_by_section=method_by_section,
+            omitted_count=oc,
+            estimated_tokens=et,
+            writing_scope_policy=policy,
+            ranking_decisions=[
+                dict(item)
+                for item in value.get("ranking_decisions", [])
+                if isinstance(item, Mapping)
+            ],
+        )
+
+
+def compact_evidence_selection(
+    selection: EvidenceSelection, *, max_text_chars: int = 800
+) -> EvidenceSelection:
+    """Shorten evidence text while preserving the selected paper and ID set."""
+    if max_text_chars <= 0:
+        raise ValueError("max_text_chars must be positive")
+    compact_items: dict[str, dict[str, Any]] = {}
+    for evidence_id, raw in selection.selected_items.items():
+        item = dict(raw)
+        text = item.get("text")
+        if isinstance(text, str) and len(text) > max_text_chars:
+            item["text"] = text[:max_text_chars].rstrip()
+        compact_items[evidence_id] = item
+    estimated_tokens = sum(
+        max(1, len(str(item.get("text") or "")) // 4) for item in compact_items.values()
+    )
+    return EvidenceSelection(
+        candidate_count=selection.candidate_count,
+        selected_items=compact_items,
+        section_evidence_ids={
+            key: list(values) for key, values in selection.section_evidence_ids.items()
+        },
+        method_by_section=dict(selection.method_by_section),
+        omitted_count=selection.omitted_count,
+        estimated_tokens=estimated_tokens,
+        ranking_decisions=list(selection.ranking_decisions),
+        writing_scope_policy=selection.writing_scope_policy,
+    )
+
+
+class EvidenceSelector:
+    """Rank evidence per section and pack it within a shared budget."""
+
+    def __init__(
+        self,
+        reranker: Reranker | None,
+        budget: BudgetManager,
+        *,
+        top_k_per_section: int = 20,
+        max_items: int = 60,
+        per_paper_cap: int = 3,
+        prefer_method_sections: bool = False,
+        trace_hook: Callable[[str, dict], None] | None = None,
+    ) -> None:
+        """Initialize the evidence selector."""
+        if top_k_per_section <= 0:
+            raise ValueError("top_k_per_section must be positive")
+
+        if max_items <= 0:
+            raise ValueError("max_items must be positive")
+
+        if per_paper_cap <= 0:
+            raise ValueError("per_paper_cap must be positive")
+
+        self._reranker = reranker
+        self._budget = budget
+        self._top_k_per_section = top_k_per_section
+        self._max_items = max_items
+        self._per_paper_cap = per_paper_cap
+        self._prefer_method_sections = prefer_method_sections
+        self._trace_hook = trace_hook
+
+    def _emit(self, event: str, data: dict) -> None:
+        """Emit a trace event."""
+        if self._trace_hook is None:
+            return
+
+        try:
+            self._trace_hook(event, data)
+        except Exception:
+            logger.debug("trace_hook failed for %s", event, exc_info=True)
+
+    async def select(
+        self,
+        query: str,
+        ledger: dict[str, dict[str, Any]],
+        sections: tuple[SectionSpec, ...] = DEFAULT_SECTIONS,
+        *,
+        max_tokens: int,
+        reuse_selected: bool = False,
+    ) -> EvidenceSelection:
+        """Rank and round-robin pack ledger items within the token budget."""
+        if max_tokens <= 0:
+            raise ValueError("max_tokens must be positive")
+
+        keys = [s.key for s in sections]
+
+        if any(not k for k in keys):
+            raise ValueError("section key must be non-empty")
+        if len(keys) != len(set(keys)):
+            raise ValueError("section keys must be unique")
+
+        operation_id = uuid.uuid4().hex[:12]
+        task_id = get_task_id()
+        t0 = time.perf_counter()
+
+        self._emit(
+            "evidence.retrieve.start",
+            {
+                "operation_id": operation_id,
+                "task_id": task_id,
+                "query": query,
+                "section_keys": keys,
+                "candidate_count": len(ledger),
+                "top_k_per_section": self._top_k_per_section,
+                "max_items": self._max_items,
+                "max_tokens": max_tokens,
+            },
+        )
+
+        try:
+            result = await self._select_inner(
+                query, ledger, sections, max_tokens, keys, reuse_selected
+            )
+        except asyncio.CancelledError:
+            elapsed = int((time.perf_counter() - t0) * 1000)
+            self._emit(
+                "evidence.retrieve.failed",
+                {
+                    "operation_id": operation_id,
+                    "task_id": task_id,
+                    "error_type": "CancelledError",
+                    "reason_code": "cancelled",
+                    "elapsed_ms": elapsed,
+                },
+            )
+            raise
+        except Exception as exc:
+            elapsed = int((time.perf_counter() - t0) * 1000)
+            self._emit(
+                "evidence.retrieve.failed",
+                {
+                    "operation_id": operation_id,
+                    "task_id": task_id,
+                    "error_type": type(exc).__name__,
+                    "reason_code": "evidence_selection_error",
+                    "elapsed_ms": elapsed,
+                },
+            )
+            raise
+
+        elapsed = int((time.perf_counter() - t0) * 1000)
+        self._emit(
+            "evidence.retrieve.complete",
+            {
+                "operation_id": operation_id,
+                "task_id": task_id,
+                "candidate_count": result.candidate_count,
+                "selected_items": result.selected_items,
+                "section_evidence_ids": result.section_evidence_ids,
+                "method_by_section": result.method_by_section,
+                "selected_count": len(result.selected_items),
+                "omitted_count": result.omitted_count,
+                "estimated_tokens": result.estimated_tokens,
+                "elapsed_ms": elapsed,
+                "ranking_decisions": result.ranking_decisions,
+            },
+        )
+        return result
+
+    async def _select_inner(
+        self,
+        query: str,
+        ledger: dict[str, dict[str, Any]],
+        sections: tuple[SectionSpec, ...],
+        max_tokens: int,
+        section_keys: list[str],
+        reuse_selected: bool = False,
+    ) -> EvidenceSelection:
+
+        # Reject malformed ledger entries before ranking.
+        """Select evidence within section and token-budget constraints."""
+        valid_items: list[tuple[str, dict[str, Any]]] = []
+
+        for eid, item in ledger.items():
+            if not isinstance(item, Mapping):
+                continue
+
+            if not eid or not _EVIDENCE_ID_RE.match(eid):
+                continue
+
+            if item.get("evidence_id") != eid:
+                continue
+
+            text = item.get("text")
+
+            if not isinstance(text, str) or not text.strip():
+                continue
+
+            valid_items.append((eid, dict(item)))
+
+        item_by_id: dict[str, dict[str, Any]] = dict(valid_items)
+
+        if not valid_items:
+            return EvidenceSelection(
+                candidate_count=0,
+                selected_items={},
+                section_evidence_ids={k: [] for k in section_keys},
+                method_by_section={},
+                omitted_count=0,
+                estimated_tokens=0,
+            )
+
+        # Rank each section independently, falling back per section.
+        section_ranked: dict[str, list[str]] = {}
+        method_by_section: dict[str, str] = {}
+        ranking_scores: dict[str, dict[str, float]] = {}
+
+        for section in sections:
+            section_query = f"{query}\n{section.title}\n{section.retrieval_hint}"
+
+            if self._reranker is not None and query:
+                try:
+                    docs = [
+                        ScoredDoc(
+                            doc=Document(
+                                page_content=(
+                                    f"{item.get('paper_title', '')}\n"
+                                    f"{item.get('text', '')}"
+                                ),
+                                metadata={_SOURCE_INDEX: idx, "evidence_id": eid},
+                            ),
+                            score=0.0,
+                        )
+                        for idx, (eid, item) in enumerate(valid_items)
+                    ]
+
+                    ranked = await asyncio.to_thread(
+                        self._reranker.rerank,
+                        section_query,
+                        docs,
+                    )
+
+                    # Reject partial or ambiguous reranker output before using IDs.
+                    if not isinstance(ranked, list) or not ranked:
+                        raise ValueError("reranker returned no ranked documents")
+
+                    eids: list[str] = []
+                    seen: set[str] = set()
+
+                    for scored_doc in ranked:
+                        if not isinstance(scored_doc, ScoredDoc):
+                            raise ValueError("reranker returned a non-ScoredDoc value")
+
+                        if not isinstance(scored_doc.doc, Document):
+                            raise ValueError(
+                                "reranker returned ScoredDoc without Document"
+                            )
+
+                        eid = scored_doc.doc.metadata.get("evidence_id")
+
+                        if not isinstance(eid, str) or eid not in item_by_id:
+                            raise ValueError("reranker returned a unknown evidence id")
+
+                        if eid in seen:
+                            raise ValueError(
+                                "reranker returned a duplicate evidence id"
+                            )
+
+                        seen.add(eid)
+                        eids.append(eid)
+
+                    if set(eids) != set(item_by_id):
+                        raise ValueError("reranker omitted candidates")
+                    section_ranked[section.key] = eids
+                    ranking_scores[section.key] = {
+                        doc.doc.metadata["evidence_id"]: float(doc.score)
+                        for doc in ranked
+                    }
+                    method_by_section[section.key] = "cross_encoder"
+
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    logger.warning(
+                        "Reranker failed for section %s: %s, falling back to lexical",
+                        section.key,
+                        type(exc).__name__,
+                    )
+
+                    section_ranked[section.key] = self._lexical_rank_section(
+                        section_query, valid_items
+                    )
+                    method_by_section[section.key] = "lexical_fallback"
+
+            else:
+                section_ranked[section.key] = self._lexical_rank_section(
+                    section_query, valid_items
+                )
+                method_by_section[section.key] = "lexical_fallback"
+
+            if method_by_section[section.key] == "lexical_fallback":
+                tokens = set(_WORD_RE.findall(section_query.lower()))
+                ranking_scores[section.key] = {
+                    eid: self._lexical_score(tokens, item) for eid, item in valid_items
+                }
+
+        if (
+            self._prefer_method_sections
+            and reuse_selected
+            and "methods" in section_ranked
+        ):
+            ranked_methods = section_ranked["methods"]
+            focused = [
+                eid
+                for eid in ranked_methods
+                if str(item_by_id[eid].get("chunk_key", "")).startswith("section:")
+                and re.search(
+                    r"method|approach|representation|render|encoding|sampling|"
+                    r"optimization|optimizing|architecture|formulation",
+                    str(item_by_id[eid].get("section", "")),
+                    re.I,
+                )
+            ][:3]
+            priority_ids = set(focused)
+            section_ranked["methods"] = focused + [
+                eid for eid in ranked_methods if eid not in priority_ids
+            ]
+
+        # Pack round-robin while enforcing item, paper, and token caps.
+        selected: dict[str, dict[str, Any]] = {}
+        section_eids: dict[str, list[str]] = {k: [] for k in section_keys}
+        paper_counts: dict[str, int] = {}
+        estimated_tokens = 0
+
+        section_iters = {s.key: iter(section_ranked.get(s.key, [])) for s in sections}
+        exhausted: set[str] = set()
+        decisions: dict[tuple[str, str], dict[str, Any]] = {
+            (section, eid): {
+                "section": section,
+                "evidence_id": eid,
+                "paper_id": item_by_id[eid].get("paper_id"),
+                "rank": rank,
+                "score": ranking_scores[section][eid],
+                "reason_code": "global_item_limit",
+            }
+            for section, ids in section_ranked.items()
+            for rank, eid in enumerate(ids, 1)
+        }
+
+        while len(exhausted) < len(sections) and (
+            reuse_selected or len(selected) < self._max_items
+        ):
+            for section in sections:
+                if not reuse_selected and len(selected) >= self._max_items:
+                    break
+                if section.key in exhausted:
+                    continue
+                if len(section_eids[section.key]) >= self._top_k_per_section:
+                    exhausted.add(section.key)
+                    for remaining in section_iters[section.key]:
+                        decisions[(section.key, remaining)][
+                            "reason_code"
+                        ] = "section_limit"
+                    continue
+
+                # Each section gets one acceptance per pass; skipped candidates
+                # do not consume its slot or let an earlier section run ahead.
+                while True:
+                    try:
+                        eid = next(section_iters[section.key])
+                    except StopIteration:
+                        exhausted.add(section.key)
+                        break
+
+                    reused = eid in selected
+                    if reused and not reuse_selected:
+                        decisions[(section.key, eid)][
+                            "reason_code"
+                        ] = "duplicate_selected"
+                        continue
+
+                    item = item_by_id[eid]
+                    paper_id = item.get("paper_id") or eid.split(":")[0]
+                    if not reused and len(selected) >= self._max_items:
+                        decisions[(section.key, eid)][
+                            "reason_code"
+                        ] = "global_item_limit"
+                        continue
+                    if (
+                        not reused
+                        and paper_counts.get(paper_id, 0) >= self._per_paper_cap
+                    ):
+                        decisions[(section.key, eid)]["reason_code"] = "paper_limit"
+                        continue
+
+                    # Include serialized XML overhead in the budget trial.
+                    trial = EvidenceSelection(
+                        candidate_count=len(valid_items),
+                        selected_items={**selected, eid: item},
+                        section_evidence_ids={
+                            **{k: list(v) for k, v in section_eids.items()},
+                            section.key: section_eids[section.key] + [eid],
+                        },
+                        method_by_section=method_by_section,
+                        omitted_count=0,
+                        estimated_tokens=0,
+                    )
+
+                    formatted = format_evidence_selection(trial)
+                    new_tokens = self._budget.count_tokens(formatted)
+                    if new_tokens > max_tokens:
+                        decisions[(section.key, eid)]["reason_code"] = "token_budget"
+                        continue
+
+                    if not reused:
+                        selected[eid] = item
+                        paper_counts[paper_id] = paper_counts.get(paper_id, 0) + 1
+                    section_eids[section.key].append(eid)
+                    estimated_tokens = new_tokens
+                    decisions[(section.key, eid)]["reason_code"] = (
+                        "reused_selected" if reused else "selected"
+                    )
+                    break
+
+        omitted = len(valid_items) - len(selected)
+
+        return EvidenceSelection(
+            candidate_count=len(valid_items),
+            selected_items=selected,
+            section_evidence_ids=section_eids,
+            method_by_section=method_by_section,
+            omitted_count=max(0, omitted),
+            estimated_tokens=estimated_tokens,
+            ranking_decisions=list(decisions.values())
+            + [
+                {"evidence_id": str(eid), "reason_code": "invalid_entry"}
+                for eid in ledger
+                if eid not in item_by_id
+            ],
+        )
+
+    @staticmethod
+    def _lexical_score(query_tokens: set[str], item: Mapping[str, Any]) -> float:
+        """Score title-weighted lexical coverage with a stable empty-query result."""
+        if not query_tokens:
+            return 0.0
+        title = set(_WORD_RE.findall(str(item.get("paper_title") or "").lower()))
+        text = set(_WORD_RE.findall(str(item.get("text") or "").lower()))
+        return (2 * len(query_tokens & title) + len(query_tokens & text)) / len(
+            query_tokens
+        )
+
+    def _lexical_rank_section(
+        self, section_query: str, valid_items: list[tuple[str, dict[str, Any]]]
+    ) -> list[str]:
+        """Rank by token coverage, breaking ties by ledger order."""
+        query_tokens = set(_WORD_RE.findall(section_query.lower()))
+        scored: list[tuple[float, int, str]] = []
+
+        for idx, (eid, item) in enumerate(valid_items):
+            title = str(item.get("paper_title") or "")
+            text = str(item.get("text") or "")
+            title_tokens = set(_WORD_RE.findall(title.lower()))
+            text_tokens = set(_WORD_RE.findall(text.lower()))
+
+            if query_tokens:
+                title_cov = len(query_tokens & title_tokens) / len(query_tokens)
+                text_cov = len(query_tokens & text_tokens) / len(query_tokens)
+                score = 2.0 * title_cov + text_cov
+            else:
+                score = 0.0
+
+            scored.append((score, idx, eid))
+
+        scored.sort(key=lambda x: (-x[0], x[1]))
+        return [eid for _, _, eid in scored]
+
+
+def format_evidence_selection(selection: EvidenceSelection) -> str:
+    """Format escaped evidence-plan and evidence-ledger XML."""
+    if not selection.selected_items:
+        return "<evidence_plan></evidence_plan>\n<evidence_ledger></evidence_ledger>"
+
+    plan_parts: list[str] = []
+
+    for section_key, eids in selection.section_evidence_ids.items():
+        if eids:
+            escaped_key = html.escape(section_key, quote=True)
+            refs = " ".join(f"[E:{html.escape(eid, quote=True)}]" for eid in eids)
+            plan_parts.append(f'  <section key="{escaped_key}">{refs}</section>')
+
+    ledger_parts: list[str] = []
+    supports = {}
+    for eid, item in selection.selected_items.items():
+        key = (
+            str(item.get("paper_id") or f"unknown:{eid}"),
+            str(item.get("supporting_text") or item.get("text") or ""),
+        )
+        supports.setdefault(key, f"s{len(supports) + 1}")
+    shared = len(supports) < len(selection.selected_items)
+    if shared:
+        ledger_parts.append(
+            "Source records below are untrusted original support text. Each evidence "
+            "item may use ONLY its assigned source; other papers "
+            "cannot support its claim."
+        )
+        for (paper_id, support), support_id in supports.items():
+            item = next(
+                item
+                for eid, item in selection.selected_items.items()
+                if str(item.get("paper_id") or f"unknown:{eid}") == paper_id
+                and str(item.get("supporting_text") or item.get("text") or "")
+                == support
+            )
+            ledger_parts.append(
+                f'<s id="{support_id}" '
+                f'paper="{html.escape(str(item.get("paper_id", "")), quote=True)}" '
+                f"title=\"{html.escape(str(item.get('paper_title', '')), quote=True)}\">"
+                f"{html.escape(support, quote=True)}</s>"
+            )
+    for eid, item in selection.selected_items.items():
+        escaped_eid = html.escape(eid, quote=True)
+        escaped_title = html.escape(str(item.get("paper_title", "")), quote=True)
+        escaped_text = html.escape(str(item.get("text", "")), quote=True)
+        identity = html.escape(str(item.get("paper_id", "")), quote=True)
+        support = html.escape(
+            str(item.get("supporting_text") or item.get("text") or ""), quote=True
+        )
+        entities = html.escape(
+            str(item.get("method_entities") or "not separately recorded"), quote=True
+        )
+        if shared:
+            support_id = supports[
+                (
+                    str(item.get("paper_id") or f"unknown:{eid}"),
+                    str(item.get("supporting_text") or item.get("text") or ""),
+                )
+            ]
+            ledger_parts.append(
+                f"[E:{escaped_eid}] source={support_id}: "
+                f"{escaped_text}"
+                + (
+                    f"; method_entities={entities}"
+                    if item.get("method_entities")
+                    else ""
+                )
+            )
+        else:
+            ledger_parts.append(
+                f"[E:{escaped_eid}] ({escaped_title}; paper={identity}; method_entities={entities}) {escaped_text}\n  original_support: {support}"
+            )
+
+    plan = (
+        "<evidence_plan>\n" + "\n".join(plan_parts) + "\n</evidence_plan>"
+        if plan_parts
+        else "<evidence_plan></evidence_plan>"
+    )
+
+    ledger = "<evidence_ledger>\n" + "\n".join(ledger_parts) + "\n</evidence_ledger>"
+
+    return plan + "\n" + ledger
+
+
+def alias_evidence_selection(
+    selection: EvidenceSelection, aliases: CitationAliasMap
+) -> EvidenceSelection:
+    """Project selected IDs for LLM prompts without changing the trusted selection."""
+    inverse = aliases.evidence_id_to_alias
+    if set(inverse) != set(selection.selected_items):
+        raise ValueError("citation alias inventory differs from selected evidence")
+    return EvidenceSelection(
+        candidate_count=selection.candidate_count,
+        selected_items={
+            inverse[eid]: {**item, "evidence_id": inverse[eid]}
+            for eid, item in selection.selected_items.items()
+        },
+        section_evidence_ids={
+            key: [inverse[eid] for eid in values]
+            for key, values in selection.section_evidence_ids.items()
+        },
+        method_by_section=dict(selection.method_by_section),
+        omitted_count=selection.omitted_count,
+        estimated_tokens=selection.estimated_tokens,
+        ranking_decisions=list(selection.ranking_decisions),
+    )
