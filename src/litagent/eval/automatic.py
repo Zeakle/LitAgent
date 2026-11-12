@@ -48,7 +48,97 @@ def frozen_judge_fingerprint() -> str:
     )
 
 
-def _funded_automatic_capacity(report: dict, budget) -> dict:
+def _funded_partitioned_native_capacity(report: dict, owner, run_id: str) -> dict:
+    """Authenticate the final native round against its exact budget partition."""
+    from litagent import review_policy
+    from litagent.eval.ragas_repair import _settled_evaluation
+    from litagent.eval.results import EvaluationRunResult, evaluation_run_identity
+    from litagent.safety.planned_accounting import validate_accounting_snapshot
+
+    try:
+        snapshot = validate_accounting_snapshot(
+            owner.snapshot(), expected_plan=owner.plan
+        )
+        envelope = snapshot["plan"]["envelope"]
+        engine = envelope["semantic_engine"]
+        survey = report["survey"]
+        sha = hashlib.sha256(survey.encode()).hexdigest()
+        details = report["evaluation"]["faithfulness"]["details"]
+        run = EvaluationRunResult.from_details(details, sha)
+        entries = snapshot["entries"]
+        if (
+            details["source_report_sha256"] != sha
+            or not run.inventory_valid()
+            or snapshot["usage_uncertain"]
+            or snapshot["stop_reason"]
+            or any(e["status"] != "settled" or not e["sent"] for e in entries.values())
+        ):
+            raise ValueError("incomplete native settlement")
+
+        stages = details["stages"]
+        identity = stages["evaluation_identity"]
+        initial = evaluation_run_identity(
+            run_id, survey, "initial", engine_identity=engine["identity"]
+        )
+        revision = evaluation_run_identity(
+            run_id, survey, "post_rewrite", engine_identity=engine["identity"]
+        )
+        if identity == initial:
+            partition = None
+        elif identity == revision:
+            partition = "evaluation_revision"
+        else:
+            decision = report.get("metadata", {}).get("recovery_decision") or {}
+            if (
+                decision.get("action") != "inventory"
+                or decision.get("source_report_sha256") != sha
+                or identity
+                != evaluation_run_identity(
+                    run_id,
+                    survey,
+                    "post_rewrite",
+                    engine_identity=engine["identity"],
+                    inventory_recovery=decision,
+                )
+            ):
+                raise ValueError("native round identity mismatch")
+            partition = "inventory"
+
+        _settled_evaluation(stages, entries, identity)
+        requests = stages["requests"]
+        expected = {row["request_id"]: row["phase"] for row in requests}
+        expected[stages["global_request_id"]] = "global"
+        if (
+            {key for key in entries if key.startswith(identity + ":")}
+            != expected.keys()
+            or not {"inventory", "assessment"}.issubset(expected.values())
+            or any(
+                entries[key]["stage"]
+                != (
+                    review_policy.stage_name(envelope, phase, partition)
+                    if partition
+                    else phase
+                )
+                for key, phase in expected.items()
+            )
+        ):
+            raise ValueError("native round settlement mismatch")
+        return {
+            "contract": "host-automatic-capacity-ragas-v1",
+            "source_report_sha256": sha,
+            "budget_plan_identity": snapshot["plan"]["identity"],
+            "budget_snapshot_sha256": digest(snapshot),
+            "actual_assertions": len(run.assertions),
+            "actual_batches": sum(r["phase"] == "assessment" for r in requests),
+            "semantic_engine": engine,
+        }
+    except (KeyError, TypeError, AttributeError, ValueError) as exc:
+        raise ValueError("automatic_capacity_binding_invalid") from exc
+
+
+def _funded_automatic_capacity(
+    report: dict, budget, *, run_id: str | None = None
+) -> dict:
     """Authorize growth only from an entirely settled host-owned evaluation round."""
     if (
         report.get("evaluation", {})
@@ -57,8 +147,15 @@ def _funded_automatic_capacity(report: dict, budget) -> dict:
         .get("implementation")
         == "ragas-cited-faithfulness-v1"
     ):
+        from litagent import review_policy
         from litagent.eval.ragas_native import funded_capacity
+        from litagent.safety.planned_budget import planned_backend
 
+        owner = planned_backend(budget)
+        if owner is not None and review_policy.enabled(owner.plan.get("envelope")):
+            if not run_id:
+                raise ValueError("automatic_capacity_binding_invalid")
+            return _funded_partitioned_native_capacity(report, owner, run_id)
         return funded_capacity(report, budget)
     from litagent.capacity import POLICY
     from litagent.safety.planned_accounting import validate_accounting_snapshot
@@ -294,7 +391,9 @@ def freeze_automatic_inputs(
     if not ids or len(ids) != len(set(ids)):
         raise ValueError("automatic_inventory_invalid")
     capacity_receipt = (
-        _funded_automatic_capacity(report, budget) if len(ids) > 128 else None
+        _funded_automatic_capacity(report, budget, run_id=run_id)
+        if len(ids) > 128
+        else None
     )
     science = []
     for claim in assertions:

@@ -18,6 +18,20 @@ HISTORICAL_RESULT_IDENTITIES = frozenset(
 )
 
 
+def evaluation_run_identity(
+    run_id, survey, phase, *, engine_identity=None, inventory_recovery=None
+):
+    """Bind request IDs to a report, evaluation phase and optional recovery."""
+    from litagent.quality import digest
+
+    identity = digest([run_id, survey, phase])
+    if inventory_recovery is not None:
+        identity = digest([identity, inventory_recovery])
+    if engine_identity is not None:
+        identity = digest([identity, engine_identity])
+    return identity
+
+
 def historical_checks(details, report_sha256):
     """Read stored checks for a known old execution without recomputing its verdicts."""
     identity = details.get("evaluation_result_identity")

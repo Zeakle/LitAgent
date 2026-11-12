@@ -2,6 +2,8 @@
 
 import copy
 import hashlib
+import json
+from pathlib import Path
 
 import pytest
 from model_config_helpers import load_previous_default_config as load_config
@@ -13,7 +15,11 @@ from test_writer_v2 import case  # noqa: F401
 from litagent.capacity_evaluation import adaptive_eval_config, preflight_round
 from litagent.capacity_rounds import choose_refinement, plan_round
 from litagent.config import EvalConfig
-from litagent.eval.automatic import automatic_acceptance, freeze_automatic_inputs
+from litagent.eval.automatic import (
+    _funded_automatic_capacity,
+    automatic_acceptance,
+    freeze_automatic_inputs,
+)
 from litagent.eval.base import CTX_EVIDENCE
 from litagent.eval.batched import (
     batch_prompt,
@@ -218,6 +224,72 @@ def test_legacy_inventory_limit_preserves_complete_old_inputs(count):
     report["metadata"].pop("capacity_policy")
     snapshot = freeze_automatic_inputs(report, ledger, run_id="legacy-auto")
     assert len(snapshot["frozen_inventory"]["assertions"]) == count
+
+
+def test_416_final_candidate_delivery_replays_with_exact_settlements():
+    """Replay the immutable Live report and reject cross-round funding."""
+    root = Path("artifacts/acceptance/workbench-few-shot-416-20261112")
+    run_id = "1a84a9c43390"
+    archive = root / "runs" / f"{run_id}.json"
+    ledger_path = (
+        root / "runtime/targeted-repairs" / f"{run_id}.json.budget-ledger.json"
+    )
+    if not archive.is_file() or not ledger_path.is_file():
+        pytest.skip("Private 416 replay is available only in the local archive")
+    archive_bytes, ledger_bytes = archive.read_bytes(), ledger_path.read_bytes()
+    report = json.loads(archive_bytes)["report"]
+    assert not report["delivery"]["publishable"]
+    original = json.loads(ledger_bytes)
+    owner = PlannedBudget(original["plan"])
+    owner.restore(original)
+    meta = report["metadata"]
+    receipt = meta["extraction_verification"]
+    selected = {
+        card["evidence_id"]: receipt["candidate_ledger"][card["evidence_id"]]
+        for card in meta["fact_cards"].values()
+    }
+    snapshot = freeze_automatic_inputs(report, selected, run_id=run_id, budget=owner)
+    frozen = snapshot["frozen_inventory"]
+    assert len(frozen["inventory"]["claims"]) == 439
+    result = automatic_acceptance(snapshot, report["evaluation"])
+    assert result["publishable"] and not result["failure_codes"]
+    assert result["report_sha256"] == meta["writing_bindings"]["report_sha256"]
+    assert owner.snapshot() == original
+
+    with pytest.raises(ValueError, match="automatic_capacity_binding_invalid"):
+        _funded_automatic_capacity(report, owner)
+    with pytest.raises(ValueError, match="automatic_capacity_binding_invalid"):
+        _funded_automatic_capacity(report, owner, run_id="wrong-run")
+
+    initial = meta["evaluation_history"]["initial_evaluation"]["faithfulness"][
+        "details"
+    ]
+    for fault in ("wrong-round", "duplicate", "missing", "wrong-report"):
+        changed = copy.deepcopy(report)
+        stages = changed["evaluation"]["faithfulness"]["details"]["stages"]
+        if fault == "wrong-round":
+            stages["global_request_id"] = initial["stages"]["global_request_id"]
+            stages["global_usage"] = initial["stages"]["global_usage"]
+        elif fault == "duplicate":
+            stages["requests"].append(stages["requests"][0])
+        elif fault == "missing":
+            stages["requests"].pop()
+        else:
+            changed["survey"] += "\n"
+        with pytest.raises(ValueError, match="automatic_capacity_binding_invalid"):
+            _funded_automatic_capacity(changed, owner, run_id=run_id)
+
+    final = report["evaluation"]["faithfulness"]["details"]["stages"]
+    key = final["global_request_id"]
+    owner.entries[key]["stage"] = "inventory/global"
+    # The entry is valid in isolation, but it belongs to the wrong partition.
+    validate_accounting_snapshot(owner.snapshot(), expected_plan=owner.plan)
+    with pytest.raises(ValueError, match="automatic_capacity_binding_invalid"):
+        _funded_automatic_capacity(report, owner, run_id=run_id)
+    assert (
+        archive.read_bytes() == archive_bytes
+        and ledger_path.read_bytes() == ledger_bytes
+    )
 
 
 def test_capacity_diagnostic_without_trusted_budget_does_not_authorize_growth(case):
