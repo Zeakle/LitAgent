@@ -21,6 +21,9 @@ LOSSLESS_JSON_POLICY = "lossless-json-recovery-v1"
 PREVIOUS_WORKFLOW_IDENTITY = (
     "c24dddf369888b41ab4f250bf2bfc2537cd423967b1bc9c668c00b0fb9ffc784"
 )
+SUMMARY_420_WORKFLOW_IDENTITY = (
+    "97f008d6e4a3c7aa58b3788e155f5daa76140b71da80971fff0ebc44caf447e1"
+)
 REPAIR_ALLOWANCES = {"capacity": 3, "inventory": 3, "prose": 5}
 LEGACY = {
     "max_requests": 64,
@@ -136,6 +139,7 @@ def validate_run_limits(value):
             if value.get("workflow_identity") not in (
                 review_policy.identity(),
                 PREVIOUS_WORKFLOW_IDENTITY,
+                SUMMARY_420_WORKFLOW_IDENTITY,
             ):
                 raise ValueError("review_workflow_identity_invalid")
     if (

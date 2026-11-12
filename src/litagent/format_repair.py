@@ -55,11 +55,63 @@ _FENCE = re.compile(
     r"[ \t\r\n]*```(?:json)?[ \t]*\r?\n(.*?)\r?\n```[ \t\r\n]*", re.I | re.S
 )
 _SEPARATORS = frozenset(",: \t\r\n")
+SUMMARY_RETRY_CONTRACT = "writer-summary-json-retry-v1"
+SUMMARY_RETRY_INSTRUCTION = (
+    "The previous response was invalid JSON. Generate the complete abstract and "
+    "conclusion again from the frozen body_units. Write each text key followed "
+    "by a colon and a nonempty JSON string value. A bare text key is invalid. "
+    "Keep the references and paragraph flag in the same object as their text."
+)
 
 
 def policy_identity():
     """Bind the complete implementation and model choices to new live plans."""
     return hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+
+
+def summary_retry_messages(messages):
+    """Add a recovery-specific instruction only to the independent summary wire."""
+    from litagent.writing_v2 import LIVE_SUMMARY_PROMPT
+
+    if not messages[0]["content"].startswith(LIVE_SUMMARY_PROMPT + "\n"):
+        return messages
+    return [
+        {
+            **messages[0],
+            "content": SUMMARY_RETRY_INSTRUCTION + "\n\n" + messages[0]["content"],
+        },
+        *messages[1:],
+    ]
+
+
+def check_summary_retry_capacity(messages, response_format, max_tokens, envelope):
+    """Check the actual retry constructor against its frozen request ceiling."""
+    from litagent.output_capacity import envelope_context_limit
+    from litagent.safety.budget import strict_request_reservation
+    from litagent.writing_v2 import WriterError
+
+    retry = summary_retry_messages(messages)
+    if retry is messages:
+        return
+    reservation = strict_request_reservation(retry, max_tokens, response_format)
+    cap = min(envelope["request_caps"]["summary"], envelope_context_limit(envelope))
+    if reservation > cap:
+        raise WriterError(
+            "writer_summary_preflight_capacity",
+            "budget",
+            diagnostics=[{"reservation": reservation, "cap": cap}],
+        )
+
+
+def _regeneration_identity(original, stage, contract):
+    """Bind the one permitted retry edit to the complete original request."""
+    from litagent.quality import digest
+
+    if contract is None:
+        return original
+    if stage != "summary" or contract != SUMMARY_RETRY_CONTRACT:
+        raise ValueError("format regeneration contract")
+    return digest([original, contract, SUMMARY_RETRY_INSTRUCTION])
 
 
 def raw_sha(raw):
@@ -393,7 +445,12 @@ def validate_recovery_record(entry):
                 or last["status"] != "accepted"
                 or last["raw"] != entry["raw"]
                 or last["usage"] != entry["usage"]
-                or last["input_sha256"] != entry["input_sha256"]
+                or last["input_sha256"]
+                != _regeneration_identity(
+                    entry["input_sha256"],
+                    entry.get("stage"),
+                    last.get("request_contract"),
+                )
                 or "format_patch" in entry
             ):
                 raise ValueError("format regeneration identity")
@@ -472,7 +529,9 @@ async def recover_response(
             ),
         )
 
-    async def send(kind, client, wire_messages, wire_format, kwargs, identity):
+    async def send(
+        kind, client, wire_messages, wire_format, kwargs, identity, *, contract=None
+    ):
         request_id = session.identity + ":" + name + ":format:" + kind
         attempt = {
             "kind": kind,
@@ -480,6 +539,8 @@ async def recover_response(
             "input_sha256": identity,
             "ledger_request_id": request_id,
         }
+        if contract is not None:
+            attempt["request_contract"] = contract
         state["attempts"].append(attempt)
         with request_scope(budget_stage, request_id):
             try:
@@ -633,13 +694,18 @@ async def recover_response(
     else:
         state["format_input"] = "writer_format_original_unprovable"
 
+    retry_messages = (
+        summary_retry_messages(messages) if stage == "summary" else messages
+    )
+    contract = SUMMARY_RETRY_CONTRACT if retry_messages is not messages else None
     reply, attempt = await send(
         "regeneration",
         session.llm,
-        messages,
+        retry_messages,
         response_format,
         request_kwargs,
-        entry["input_sha256"],
+        _regeneration_identity(entry["input_sha256"], stage, contract),
+        contract=contract,
     )
     candidate = dict(entry)
     session.record_response(candidate, reply)

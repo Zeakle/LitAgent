@@ -1,12 +1,14 @@
 """Exercise both loops through the ordinary Survey API and real consumers."""
 
 import asyncio
+import base64
 import copy
 import json
 from pathlib import Path
 
 import httpx
 import pytest
+from jsonschema import Draft202012Validator
 from openai import AsyncOpenAI
 from test_native_responses import envelope
 from test_workbench_survey_repair import QUERY, WorkbenchGateway
@@ -14,8 +16,11 @@ from test_writer_v2 import case  # noqa: F401
 
 from litagent import api
 from litagent.config import load_config
+from litagent.format_repair import SUMMARY_RETRY_CONTRACT, validate_recovery_record
 from litagent.observability.recorder import ArchiveRepository
 from litagent.runner import LitAgent
+from litagent.safety.planned_budget import PlannedBudget
+from litagent.writing_v2 import WriterError
 
 
 class SeparateGateway(WorkbenchGateway):
@@ -44,6 +49,8 @@ class SeparateGateway(WorkbenchGateway):
         self.format_injected = False
         self.editorial_fault = editorial_fault
         self.archived_editorial_reply = None
+        self.summary_responses = ()
+        self.initial_summary_requests = []
 
     async def __call__(self, request):
         """Recover a damaged editorial reply through the actual format agent."""
@@ -53,24 +60,32 @@ class SeparateGateway(WorkbenchGateway):
             if "anchors" in payload:
                 self.format_calls += 1
                 raw = payload["raw"]
+                answer = {
+                    "outcome": "patch",
+                    "edits": [
+                        {"start": len(raw) - 1, "end": len(raw), "replacement": ""}
+                    ],
+                }
+                if self.summary_responses and not self.review_calls:
+                    answer = {"outcome": "cannot_repair", "edits": []}
                 response = envelope(
-                    json.dumps(
-                        {
-                            "outcome": "patch",
-                            "edits": [
-                                {
-                                    "start": len(raw) - 1,
-                                    "end": len(raw),
-                                    "replacement": "",
-                                }
-                            ],
-                        }
-                    ),
+                    json.dumps(answer),
                     model=body["model"],
                 )
                 response["usage"]["output_tokens_details"]["reasoning_tokens"] = 0
                 return httpx.Response(200, json=response)
             result = await super().__call__(request)
+            if (
+                self.summary_responses
+                and not self.review_calls
+                and "abstract" in body["text"]["format"]["schema"]["properties"]
+            ):
+                raw = self.summary_responses[len(self.initial_summary_requests)]
+                self.initial_summary_requests.append(body)
+                if raw is not None:
+                    wire = result.json()
+                    wire["output"][-1]["content"][0]["text"] = raw
+                    return httpx.Response(200, json=wire)
             if (
                 self.editorial_fault == "duplicate_key"
                 and "response_target_keys" in payload
@@ -413,6 +428,94 @@ async def test_duplicate_editorial_keys_reject_patch_and_evaluate_retained_draft
     assert settlement["stage"] == "review_revision/repair"
     assert settlement["status"] == "settled"
     assert settlement["actual_tokens"] > 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", ["portable", "live-420-recovery", "live-420-rejected"])
+async def test_summary_missing_value_requires_regeneration(
+    case, tmp_path, monkeypatch, path
+):
+    """Exercise the real summary wire, recovery, and downstream report consumers."""
+    gateway = SeparateGateway(case, reviews=0)
+    initial = '{"abstract":[{"text","body_unit_refs":["u1"],"paragraph_start":true}]}'
+    archive = None
+    if path != "portable":
+        archive = Path(
+            "artifacts/acceptance/workbench-few-shot-420-20261112/runtime/"
+            "targeted-repairs/f0326ac4f8a3.json.writer-v2.json"
+        ).resolve()
+        if not archive.is_file():
+            pytest.skip("Local 420 writer journal is unavailable")
+        original = archive.read_bytes()
+        archived = json.loads(original)["calls"]["summary_initial"]
+        old_regeneration = archived["format_recovery"]["attempts"][-1]
+        initial = archived["raw"]
+        request, retry = [
+            base64.b64decode(entry["provider_receipt"]["request_body_base64"])
+            for entry in (archived, old_regeneration)
+        ]
+        assert request == retry
+        assert "Native output type map" in json.loads(request)["input"][0]["content"]
+        ledger_path = archive.with_name("f0326ac4f8a3.json.budget-ledger.json")
+        historical = json.loads(ledger_path.read_bytes())
+        owner = PlannedBudget(historical["plan"])
+        owner.restore(historical)
+        assert owner.snapshot() == historical
+
+    rejected = path == "live-420-rejected"
+    gateway.summary_responses = (initial, old_regeneration["raw"] if rejected else None)
+    report = await execute(case, tmp_path, monkeypatch, gateway)
+    first, retry = gateway.initial_summary_requests
+    system = first["input"][0]["content"]
+    assert not any(phrase in system for phrase in ("type map", "item keys", "patches"))
+    example, _ = json.JSONDecoder().raw_decode(
+        system.split("JSON encoding example only: ", 1)[1]
+    )
+    Draft202012Validator(first["text"]["format"]["schema"]).validate(example)
+    assert all(items[0]["text"] for items in example.values())
+    assert "A bare text key is invalid" in retry["input"][0]["content"]
+    assert {k: v for k, v in first.items() if k != "input"} == {
+        k: v for k, v in retry.items() if k != "input"
+    }
+    assert first["input"][1:] == retry["input"][1:]
+    assert gateway.format_calls == 2
+
+    runtime = tmp_path / "artifacts/targeted-repairs"
+    (journal_file,) = runtime.glob("*.json.writer-v2.json")
+    (ledger_file,) = runtime.glob("*.json.budget-ledger.json")
+    journal = json.loads(journal_file.read_bytes())
+    entry = journal["calls"]["summary_initial"]
+    recovery = entry["format_recovery"]
+    assert recovery["original"]["raw"] == initial
+    assert entry["original_syntax_failure"]["code"] == "writer_json_invalid"
+    regeneration = recovery["attempts"][-1]
+    assert regeneration["request_contract"] == SUMMARY_RETRY_CONTRACT
+    assert regeneration["input_sha256"] != entry["input_sha256"]
+    assert len(recovery["attempts"]) == 3
+    ledger = json.loads(ledger_file.read_bytes())
+    settlement = ledger["entries"][regeneration["ledger_request_id"]]
+    assert settlement["stage"] == "format_summary"
+    assert settlement["status"] == "settled"
+    assert (
+        settlement["reserved_tokens"]
+        <= ledger["plan"]["stages"]["format_summary"]["request_cap"]
+    )
+    if rejected:
+        assert regeneration["status"] == "rejected"
+        assert regeneration["raw"] == old_regeneration["raw"]
+        assert not report["delivery"]["publishable"]
+        assert gateway.review_calls == gateway.global_calls == 0
+    else:
+        assert recovery["outcome"] == "regenerated"
+        validate_recovery_record(entry)
+        regeneration["input_sha256"] = entry["input_sha256"]
+        with pytest.raises(WriterError, match="writer_format_receipt_conflict"):
+            validate_recovery_record(entry)
+        assert gateway.review_calls == 1
+        assert gateway.global_calls == 2
+        assert report["delivery"]["publishable"]
+    if archive is not None:
+        assert archive.read_bytes() == original
 
 
 @pytest.mark.asyncio
