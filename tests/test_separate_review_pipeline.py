@@ -3,6 +3,7 @@
 import asyncio
 import copy
 import json
+from pathlib import Path
 
 import httpx
 import pytest
@@ -42,6 +43,7 @@ class SeparateGateway(WorkbenchGateway):
         self.format_calls = 0
         self.format_injected = False
         self.editorial_fault = editorial_fault
+        self.archived_editorial_reply = None
 
     async def __call__(self, request):
         """Recover a damaged editorial reply through the actual format agent."""
@@ -69,6 +71,26 @@ class SeparateGateway(WorkbenchGateway):
                 response["usage"]["output_tokens_details"]["reasoning_tokens"] = 0
                 return httpx.Response(200, json=response)
             result = await super().__call__(request)
+            if (
+                self.editorial_fault == "duplicate_key"
+                and "response_target_keys" in payload
+                and self.editorial_edits == 1
+                and self.global_calls == 0
+            ):
+                wire = result.json()
+                content = wire["output"][-1]["content"][0]
+                raw = content["text"]
+                if self.archived_editorial_reply is not None:
+                    content["text"] = self.archived_editorial_reply
+                else:
+                    responses = json.loads(raw)["target_responses"]
+                    key, response = next(iter(responses.items()))
+                    duplicate = json.dumps({key: {**response, "action": "keep"}})
+                    encoded = json.dumps(responses)
+                    content["text"] = raw.replace(
+                        encoded, encoded[:-1] + ", " + duplicate[1:], 1
+                    )
+                return httpx.Response(200, json=wire)
             if (
                 self.editorial_fault
                 and "response_target_keys" in payload
@@ -338,6 +360,59 @@ async def test_third_editorial_rejection_only_retains_draft_for_settled_empty_pa
     assert gateway.format_calls == 0
     assert meta["review_workflow"]["allowances"]["review_revision"]["used"] == 3
     assert report["delivery"]["publishable"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("use_archive", [False, True], ids=["conflicting", "live-418"])
+async def test_duplicate_editorial_keys_reject_patch_and_evaluate_retained_draft(
+    case, tmp_path, monkeypatch, use_archive
+):
+    """Send duplicate keys through the real parser and inspect the settled failure."""
+    gateway = SeparateGateway(case, editorial_fault="duplicate_key")
+    if use_archive:
+        archive = Path(
+            "artifacts/acceptance/workbench-few-shot-418-20261112/runtime/"
+            "targeted-repairs/2b29eaea8576.json.writer-v2.json"
+        )
+        if not archive.is_file():
+            pytest.skip("Local 418 writer journal is unavailable")
+        gateway.archived_editorial_reply = json.loads(archive.read_bytes())["calls"][
+            "repair_0"
+        ]["raw"]
+
+    report = await execute(case, tmp_path, monkeypatch, gateway)
+    meta = report["metadata"]
+    (rejected,) = meta["editorial_history"]
+    assert rejected["status"] == "candidate_rejected"
+    assert rejected["reason_code"] == "writer_duplicate_key"
+    initial = meta["evaluation_history"]["initial_evaluation"]
+    assert (
+        initial["faithfulness"]["details"]["source_report_sha256"]
+        == rejected["source_report_sha256"]
+    )
+    assert "revision 1" not in report["survey"]
+    assert gateway.editorial_edits == 1
+    assert gateway.format_calls == 0
+    assert gateway.global_calls == 2 and gateway.repair_count == 1
+    assert report["delivery"]["publishable"]
+
+    attempts = meta["targeted_repair_state"]["attempts"]
+    assert attempts[0]["category"] == "review_revision"
+    assert attempts[0]["status"] == "failed"
+    assert attempts[0]["error_code"] == "writer_duplicate_key"
+    runtime = tmp_path / "artifacts/targeted-repairs"
+    (journal_file,) = runtime.glob("*.json.writer-v2.json")
+    (ledger_file,) = runtime.glob("*.json.budget-ledger.json")
+    journal = json.loads(journal_file.read_bytes())
+    failure = journal["calls"]["repair_0"]["failure"]
+    assert failure["code"] == "writer_duplicate_key"
+    if use_archive:
+        assert journal["calls"]["repair_0"]["raw"] == gateway.archived_editorial_reply
+    ledger = json.loads(ledger_file.read_bytes())
+    settlement = ledger["entries"][f"{journal['identity']}:repair_0"]
+    assert settlement["stage"] == "review_revision/repair"
+    assert settlement["status"] == "settled"
+    assert settlement["actual_tokens"] > 0
 
 
 @pytest.mark.asyncio

@@ -12,6 +12,11 @@ def writer_session(client, path, run_id, document, *, trace_hook=None):
     """Reopen the same authenticated writer and raw-reference journal."""
     from litagent.writing_v2 import WriterSession
 
+    envelope = document.get("budget_envelope")
+    if review_policy.enabled(envelope) and (
+        envelope["run_limits"].get("workflow_identity") != review_policy.identity()
+    ):
+        raise ValueError("review_workflow_identity_invalid")
     session = WriterSession(
         client,
         path,
@@ -28,10 +33,7 @@ def writer_session(client, path, run_id, document, *, trace_hook=None):
         syntax_policy=document.get("generation_syntax_policy"),
         writing_plan=document.get("generation_writing_plan"),
     )
-    if (
-        not review_policy.enabled(session.envelope)
-        or document.get("budget_envelope") != session.envelope
-    ):
+    if not review_policy.enabled(session.envelope) or envelope != session.envelope:
         raise ValueError("review_cycle_envelope_conflict")
     return session
 
@@ -137,14 +139,14 @@ def improvement(report, candidate, regressed):
         return {**result, "reason": "candidate_improvement_unproven"}
 
 
-def _settled_empty_editorial_patch(session, error):
-    """Recognize a settled, rejected replacement that leaves the draft intact."""
+def _settled_rejected_editorial_patch(session, error):
+    """Recognize a settled patch rejection that leaves the draft intact."""
     from litagent.safety.planned_budget import planned_backend
+    from litagent.writing_v2 import classify_failure
 
     if (
         error.family != "protocol"
-        or error.code != "writer_flat_schema_invalid"
-        or not error.diagnostics
+        or error.code not in {"writer_flat_schema_invalid", "writer_duplicate_key"}
         or not session.state["attempts"]
     ):
         return False
@@ -161,11 +163,12 @@ def _settled_empty_editorial_patch(session, error):
     if (
         failure.get("call") != name
         or failure.get("stage") != "repair"
+        or failure.get("response_received") is not True
         or call.get("status") != "failed_no_replay"
         or call.get("provider_status") != "completed"
         or call.get("finish_reason") != "stop"
         or call.get("provider_error")
-        or call.get("failure", {}).get("diagnostics") != error.diagnostics
+        or call.get("failure") != classify_failure(error)
     ):
         return False
     budget = planned_backend(getattr(session.llm, "_cost_budget", None))
@@ -177,6 +180,11 @@ def _settled_empty_editorial_patch(session, error):
         or settlement.get("status") != "settled"
         or settlement.get("sent") is not True
     ):
+        return False
+    if error.code == "writer_duplicate_key":
+        # Strict parsing rejected the whole response before applying any edit.
+        return True
+    if not error.diagnostics:
         return False
     try:
         reply = json.loads(call["raw"])
@@ -358,7 +366,7 @@ async def editorial_cycle(worker, task, source):
         except WriterError as exc:
             row.update(status="candidate_rejected", reason_code=exc.code)
             if exc.family != "quality":
-                if not _settled_empty_editorial_patch(session, exc):
+                if not _settled_rejected_editorial_patch(session, exc):
                     raise
                 # Preserve the failed call and spent allowance, but do not
                 # present this discarded edit as a failure of the retained draft.

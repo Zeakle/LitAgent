@@ -290,7 +290,8 @@ def test_408_only_current_science_targets_are_authorized():
 
 def test_new_workflow_identity_and_parent_deadline_are_frozen():
     from litagent.config import AppConfig
-    from litagent.run_limits import validate_run_limits
+    from litagent.review_cycles import writer_session
+    from litagent.run_limits import PREVIOUS_WORKFLOW_IDENTITY, validate_run_limits
     from litagent.writer_source_view import source_view_identity
     from litagent.writing_flat import repair_prompt_identity
 
@@ -308,6 +309,12 @@ def test_new_workflow_identity_and_parent_deadline_are_frozen():
     assert limits["workflow_identity"] == review_policy.identity()
     with pytest.raises(ValueError, match="review_workflow_identity_invalid"):
         validate_run_limits({**limits, "workflow_identity": "a" * 64})
+    archived = {**limits, "workflow_identity": PREVIOUS_WORKFLOW_IDENTITY}
+    assert archived != limits and validate_run_limits(archived) == archived
+    with pytest.raises(ValueError, match="review_workflow_identity_invalid"):
+        writer_session(
+            None, None, "archived", {"budget_envelope": {"run_limits": archived}}
+        )
     data = cfg.model_dump()
     data["adversarial"]["task_timeout_ms"] = 27000000
     with pytest.raises(ValueError, match="deadline_insufficient"):
