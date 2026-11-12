@@ -123,6 +123,7 @@ _STAGE_FIELDS = {
         "current_body_format",
         "body_units",
         "summary_source_body_sha256",
+        "response_target_keys",
     },
 }
 
@@ -146,6 +147,7 @@ def _hex_digest(value):
 
 def source_view_identity() -> str:
     """Bind only this optional projection and its explicit field boundaries."""
+    from litagent.review_policy import legacy_source
     from litagent.writing_v2 import (
         WriterSession,
         _summary_request_bound,
@@ -177,7 +179,7 @@ def source_view_identity() -> str:
             re.sub(
                 r"(?ms)^ +# BEGIN format recovery provenance\n.*?^ +# END format recovery provenance\n",
                 "",
-                inspect.getsource(WriterSession.patch),
+                legacy_source(WriterSession._patch),
             ),
             inspect.getsource(repair_capacity_snapshot),
             _CHAPTER_HOST_PLAN_FIELDS,
@@ -187,9 +189,12 @@ def source_view_identity() -> str:
             _PACKET_FIELDS,
             _PARENTS,
             sorted(_AUGMENTATION_FIELDS),
-            {key: sorted(value) for key, value in _STAGE_FIELDS.items()},
+            {
+                key: sorted(value - {"response_target_keys"})
+                for key, value in _STAGE_FIELDS.items()
+            },
             *[
-                inspect.getsource(function)
+                legacy_source(function)
                 for function in (
                     _digest,
                     _invalid,
@@ -659,6 +664,10 @@ def project_source_view(system, payload, packet, envelope) -> tuple:
     """Copy a selected request, replacing only authenticated card candidates."""
     if not selected_source_view(envelope):
         return system, payload
+    from litagent import review_policy
+
+    if "response_target_keys" in payload and not review_policy.enabled(envelope):
+        _invalid()
     from litagent.safety.planned_budget import validate_writer_envelope
 
     validate_writer_envelope(envelope)

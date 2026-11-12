@@ -363,7 +363,7 @@ CONCISE_REPAIR_SUMMARY = (
 
 def repair_prompt_identity() -> str:
     """Bind only the explicitly selected repair instructions and final renderer."""
-    import inspect
+    from litagent.review_policy import legacy_source
 
     return _writer().digest(
         [
@@ -375,7 +375,7 @@ def repair_prompt_identity() -> str:
             CONCISE_REPAIR_ORDINARY,
             CONCISE_REPAIR_SUMMARY,
             *[
-                inspect.getsource(function)
+                legacy_source(function)
                 for function in (
                     selected_repair_prompt,
                     _repair_prompt_type_map,
@@ -443,6 +443,19 @@ def repair_prompt_system(schema: dict) -> str:
             and plan.get("repair_mapping_contract") == "capacity-source-map-v4"
         ):
             output = CONCISE_REPAIR_SOURCE_OWNER
+        elif roots == {"outcome", "explanation", "patches", "target_responses"}:
+            if fields not in (
+                {"target_id", "text", "fact_card_refs"},
+                {"target_id", "text", "body_unit_refs"},
+            ):
+                raise ValueError("unsupported response fields")
+            output = (
+                "Respond to EVERY target_responses key with replace, keep or cannot_resolve. "
+                "response_target_keys maps short tN keys to authorized targets. "
+                "Only replace has patches; use its short tN key and the schema's reference field. "
+                "Keep requires actual frozen reference_ids and a reason; do not echo unchanged text. "
+                "A response is not a scientific verdict. Never silently omit a target or edit outside it."
+            )
         elif roots == {"outcome", "explanation", "patches"}:
             if fields == {"target_id", "text", "fact_card_refs"}:
                 output = CONCISE_REPAIR_ORDINARY
@@ -692,7 +705,7 @@ def _assessment_conflict_guidance(effect):
 
 def semantic_conflict_guidance_identity(*, extended=False):
     """Bind selected projections without changing any legacy guidance identity."""
-    import inspect
+    from litagent.review_policy import legacy_source
 
     identity = _writer().digest(
         [
@@ -702,7 +715,7 @@ def semantic_conflict_guidance_identity(*, extended=False):
             SEMANTIC_CONFLICT_ASPECT_COLUMNS,
             SEMANTIC_CONFLICT_DIGEST_WIRE,
             *[
-                inspect.getsource(function)
+                legacy_source(function)
                 for function in (
                     _semantic_conflict_task_view_selected,
                     _semantic_conflict_issue_table,
@@ -4940,6 +4953,7 @@ def _prepare(schema):
         }
     elif set(fields) in (
         {"outcome", "explanation", "patches"},
+        {"outcome", "explanation", "patches", "target_responses"},
         {"outcome", "explanation", "patches", "removed_targets", "edit_records"},
         {"outcome", "explanation", "patches", "edit_records"},
     ):
@@ -4951,7 +4965,12 @@ def _prepare(schema):
                 "outcome": fields["outcome"],
                 "explanation": fields["explanation"],
                 "patches": w._array(
-                    w._closed({"target_id": patch["target_id"], **unit["properties"]}),
+                    w._closed(
+                        {
+                            "target_id": copy.deepcopy(patch["target_id"]),
+                            **unit["properties"],
+                        }
+                    ),
                     minimum=0,
                     maximum=(
                         patch["sentences"]["maxItems"]
@@ -4962,6 +4981,15 @@ def _prepare(schema):
                 ),
             }
         )
+        if "target_responses" in fields:
+            wire["properties"]["target_responses"] = copy.deepcopy(
+                fields["target_responses"]
+            )
+            wire["required"].append("target_responses")
+            directory = host["x-target-directory"]
+            wire["properties"]["patches"]["items"]["properties"]["target_id"][
+                "enum"
+            ] = list(directory)
         if "edit_records" in fields:
             wire["properties"].update(
                 {
@@ -4978,6 +5006,11 @@ def _prepare(schema):
         "host_schema": host,
         "wire_schema": wire,
         "mappings": mappings,
+        **(
+            {"target_directory": host["x-target-directory"]}
+            if "target_responses" in fields
+            else {}
+        ),
     }
 
 
@@ -5041,13 +5074,22 @@ def encode(value, schema):
             "outcome": value["outcome"],
             "explanation": value["explanation"],
             "patches": [
-                {"target_id": p["target_id"], **copy.deepcopy(u)}
+                {
+                    "target_id": (
+                        {v: k for k, v in plan["target_directory"].items()}[
+                            p["target_id"]
+                        ]
+                        if "target_directory" in plan
+                        else p["target_id"]
+                    ),
+                    **copy.deepcopy(u),
+                }
                 for p in value["patches"]
                 for u in p["sentences"]
             ],
             **{
                 k: copy.deepcopy(value[k])
-                for k in ("edit_records", "removed_targets")
+                for k in ("edit_records", "removed_targets", "target_responses")
                 if k in value
             },
         }
@@ -5770,7 +5812,11 @@ def parse(
         return (
             derived_targets[ordinal]
             if owner_directory is not None
-            else source["target_id"]
+            else (
+                plan["target_directory"][source["target_id"]]
+                if "target_directory" in plan
+                else source["target_id"]
+            )
         )
 
     def bind(unit, wire_path, canonical_path):
@@ -5919,6 +5965,11 @@ def parse(
             "outcome": value["outcome"],
             "explanation": value["explanation"],
             "patches": patches,
+            **(
+                {"target_responses": copy.deepcopy(value["target_responses"])}
+                if "target_responses" in value
+                else {}
+            ),
             **(
                 {k: value[k] for k in ("removed_targets", "edit_records") if k in value}
                 if "edit_records" in value

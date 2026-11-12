@@ -519,9 +519,15 @@ def public_summary(report):
         if history.get("source_report_sha256") == sha
         else None
     )
+    from litagent.review_cycles import public_projection
+
+    workflow = public_projection(
+        (report.get("metadata") or {}).get("review_workflow"), sha
+    )
     return {
         "contract": CONTRACT,
         "report_sha256": sha,
+        **({"review_workflow": workflow} if workflow else {}),
         **({"recovery": recovery} if recovery else {}),
         "metrics": metrics,
         "checks": {
@@ -628,6 +634,10 @@ def sanitize_summary(value):
 
     if recovery := sanitize_recovery(value.get("recovery")):
         out["recovery"] = recovery
+    from litagent.review_cycles import public_projection
+
+    if workflow := public_projection(value.get("review_workflow"), sha):
+        out["review_workflow"] = workflow
     return out
 
 
@@ -640,13 +650,57 @@ def summary_tables(rows):
         summary = row.get("evaluation_summary")
         if not isinstance(summary, dict) or summary.get("contract") != CONTRACT:
             continue
+        if workflow := summary.get("review_workflow"):
+            for kind, quota in workflow["allowances"].items():
+                entries.append(
+                    [
+                        row.get("case_id", ""),
+                        kind,
+                        "已用 / used",
+                        quota["used"],
+                        f'{quota["remaining"]} remaining / 剩余',
+                    ]
+                )
+            for review in workflow["reviews"]:
+                entries.append(
+                    [
+                        row.get("case_id", ""),
+                        f'写作审阅 / Review {review["round"] + 1}',
+                        review["status"],
+                        "—",
+                        review["source_report_sha256"],
+                    ]
+                )
+            for evaluation in workflow["evaluations"]:
+                label = {
+                    "repair_preflight": "修复预检／未发送 / Repair preflight · not sent",
+                    "repair_incomplete": "修复终止／未复评 / Repair ended · not reevaluated",
+                }.get(
+                    evaluation.get("kind"),
+                    f'完整评估 / Evaluation {evaluation["round"]}',
+                )
+                entries.append(
+                    [
+                        row.get("case_id", ""),
+                        label,
+                        evaluation["status"],
+                        "—",
+                        evaluation["reason"] or "—",
+                    ]
+                )
+            entries.append(
+                [
+                    row.get("case_id", ""),
+                    "最终交付 / Delivery",
+                    "passed" if workflow["publishable"] else "blocked",
+                    "—",
+                    workflow["report_sha256"],
+                ]
+            )
         if recovery := summary.get("recovery"):
             remaining = recovery.get("remaining_by_category")
             balance = (
-                " / ".join(
-                    f"{kind} {remaining[kind]}"
-                    for kind in ("capacity", "inventory", "prose")
-                )
+                " / ".join(f"{kind} {remaining[kind]}" for kind in remaining)
                 if remaining
                 else str(recovery.get("remaining_attempts", "—"))
             )

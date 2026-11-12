@@ -13,6 +13,7 @@ from litagent.output_capacity import (
     envelope_context_tokens,
     envelope_output_tokens,
 )
+from litagent.review_policy import parent_stage
 
 _CONTRACTS = {f"planned-budget-v{version}" for version in range(2, 8)}
 _PINNED_SUPPORT_REVISIONS = frozenset(
@@ -189,6 +190,7 @@ def _envelope(value):
                     "ragas-global-unit-keys-v1",
                     "ragas-global-unit-keys-v2",
                     "ragas-global-unit-keys-v3",
+                    "ragas-global-unit-keys-v4",
                 }
                 and engine.get("global_findings_contract")
                 == "anchored-global-findings-v2"
@@ -810,7 +812,10 @@ def _plan(plan):
         )
         outputs = {
             **outputs,
-            **{key: outputs[parent] for key, (parent, _) in format_stages.items()},
+            **{
+                key: outputs[parent_stage(parent)]
+                for key, (parent, _) in format_stages.items()
+            },
         }
         counts = {key: item["count"] for key, item in projected.items()}
         for key, (_, count) in format_stages.items():
@@ -857,7 +862,8 @@ def _plan(plan):
                 }
             )
             and all(
-                item["output_tokens"] == outputs.get(key)
+                item["output_tokens"]
+                == outputs.get(key, outputs.get(parent_stage(key)))
                 for key, item in projected.items()
             ),
             "plan_complete_path_invalid",
@@ -866,7 +872,9 @@ def _plan(plan):
         _require(
             all(
                 spec["request_cap"]
-                == envelope["request_caps"][format_stages.get(key, (key,))[0]]
+                == envelope["request_caps"][
+                    parent_stage(format_stages.get(key, (key,))[0])
+                ]
                 for key, spec in projected.items()
                 if key != "body_initial"
             )

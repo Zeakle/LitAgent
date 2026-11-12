@@ -1,10 +1,12 @@
 """Exercise model-proposed format edits and the actual Responses consumer."""
 
+import base64
 import json
 from pathlib import Path
 
 import httpx
 import pytest
+from jsonschema import Draft202012Validator
 from test_native_responses import envelope, owner_for
 from test_unavailable_cost_exports import display_case, exported
 from test_writer_v2 import case
@@ -88,6 +90,27 @@ def test_patch_rejects_ownership_or_literal_changes(attack):
         FormatRepairAgent(raw).apply(edits)
 
 
+@pytest.mark.parametrize("response", ["original", "regeneration"])
+def test_411_root_closure_passes_original_provider_schema(response):
+    journal = Path(
+        "artifacts/acceptance/workbench-few-shot-411-20261111/runtime/"
+        "targeted-repairs/e2f5eed4f5fa.json.writer-v2.json"
+    )
+    if not journal.is_file():
+        pytest.skip("411 provider responses are available only in the local archive")
+    source = json.loads(journal.read_bytes())["calls"]["repair_1"]["format_recovery"]
+    original = source["original"]
+    provider_request = json.loads(
+        base64.b64decode(original["provider_receipt"]["request_body_base64"])
+    )
+    schema = provider_request["text"]["format"]["schema"]
+    raw = original["raw"] if response == "original" else source["attempts"][-1]["raw"]
+    agent = FormatRepairAgent(raw)
+    value, _, candidate, _ = agent.apply(agent.root_closure_edits())
+    assert candidate == raw + "}"
+    Draft202012Validator(schema).validate(value)
+
+
 @pytest.fixture(scope="module")
 def archive():
     root = Path("artifacts/acceptance/ragas-native-single-20261109-075")
@@ -120,7 +143,17 @@ def archive():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "path", ["valid", "lite", "pro", "regeneration", "failure", "unknown"]
+    "path",
+    [
+        "valid",
+        "local_eof",
+        "invalid_local_candidate",
+        "lite",
+        "pro",
+        "regeneration",
+        "failure",
+        "unknown",
+    ],
 )
 async def test_075_recovery_with_sdk_budget_and_replay(tmp_path, archive, path):
     execution, journal, plan = archive
@@ -148,13 +181,18 @@ async def test_075_recovery_with_sdk_budget_and_replay(tmp_path, archive, path):
         plan["envelope"],
     )
     requests = []
+    initial = {
+        "valid": raw[:-1],
+        "local_eof": raw[:-2],
+        "invalid_local_candidate": "{",
+    }.get(path, raw)
 
     def handler(request):
         request_body = json.loads(request.content)
         index = len(requests)
         requests.append(request_body)
         if index == 0:
-            answer = raw[:-1] if path == "valid" else raw
+            answer = initial
         elif index == 3:
             assert request_body == requests[0]
             answer = raw if path == "failure" else raw[:-1]
@@ -209,6 +247,8 @@ async def test_075_recovery_with_sdk_budget_and_replay(tmp_path, archive, path):
             assert session().reference_input(value) == writer.reference_input(value)
         expected_calls = {
             "valid": 1,
+            "local_eof": 1,
+            "invalid_local_candidate": 4,
             "lite": 2,
             "pro": 3,
             "regeneration": 4,
@@ -226,9 +266,21 @@ async def test_075_recovery_with_sdk_budget_and_replay(tmp_path, archive, path):
             assert status["calls"] == []
         else:
             entry = writer.journal["calls"][name]
-            assert entry["format_recovery"]["original"]["raw"] == raw
+            recovery = entry["format_recovery"]
+            assert recovery["original"]["raw"] == initial
             validate_recovery_record(entry)
-            if path in {"lite", "pro"}:
+            if path == "local_eof":
+                assert entry["raw"] == initial
+                assert recovery["attempts"] == [
+                    {"kind": "local_eof", "status": "accepted", "sent": False}
+                ]
+                assert status["recovered_count"] == 1
+                assert status["requests_used"] == status["actual_tokens"] == 0
+                recovery["attempts"][0]["sent"] = True
+                with pytest.raises(WriterError, match="writer_format_receipt_conflict"):
+                    validate_recovery_record(entry)
+                recovery["attempts"][0]["sent"] = False
+            if path in {"lite", "pro", "local_eof"}:
                 entry["format_patch"]["candidate"] += " "
                 with pytest.raises(WriterError, match="writer_format_receipt_conflict"):
                     validate_recovery_record(entry)

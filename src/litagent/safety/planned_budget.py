@@ -11,6 +11,7 @@ from contextvars import ContextVar
 from pathlib import Path
 from typing import Callable
 
+from litagent.review_policy import parent_stage, stage_name
 from litagent.safety.budget import CostBudget, strict_request_reservation
 
 CONTRACT = "planned-budget-v2"
@@ -1017,7 +1018,7 @@ def envelope_budget_plan(
             inventory=batches * (1 + repairs), assessment=batches * (1 + repairs)
         )
     if extended := extended_repair_stages(envelope, repairs):
-        counts.update(extended)
+        counts = {"body": counts["body"], **extended}
     outputs = {
         "body": 20000,
         "summary": 20000,
@@ -1034,8 +1035,8 @@ def envelope_budget_plan(
     stages = {
         k: {
             "count": n,
-            "request_cap": envelope["request_caps"][k],
-            "output_tokens": outputs[k],
+            "request_cap": envelope["request_caps"][parent_stage(k)],
+            "output_tokens": outputs[parent_stage(k)],
             "bound": "host_envelope_upper_bound",
         }
         for k, n in counts.items()
@@ -1195,15 +1196,19 @@ def build_budget_plan(
         format_stages = format_recovery_stages(envelope)
         for key, (parent, count) in format_stages.items():
             required_counts[key] = count
-            outputs[key] = outputs[parent]
+            outputs[key] = outputs[parent_stage(parent)]
         if (
             body not in {(5, 0), (4, 1)}
             or counts != required_counts
-            or any(s["output_tokens"] != outputs[k] for k, s in projected.items())
+            or any(
+                s["output_tokens"] != outputs.get(k, outputs.get(parent_stage(k)))
+                for k, s in projected.items()
+            )
         ):
             raise ValueError("adaptive_budget_complete_path_invalid")
         if envelope and any(
-            s["request_cap"] != envelope["request_caps"][format_stages.get(k, (k,))[0]]
+            s["request_cap"]
+            != envelope["request_caps"][parent_stage(format_stages.get(k, (k,))[0])]
             for k, s in projected.items()
             if k != "body_initial"
         ):
@@ -1742,6 +1747,8 @@ class PlannedBudget(CostBudget):
     def _owner(self):
         """Require a host-bound stage and immutable request identity."""
         owner = _active_request.get()
+        if owner is not None:
+            owner = (stage_name(self.plan.get("envelope"), owner[0]), owner[1])
         if (
             owner is None
             or not all(isinstance(v, str) and v for v in owner)
@@ -1762,7 +1769,7 @@ class PlannedBudget(CostBudget):
 
     def _stage_spec(self, stage):
         """Resolve a stage from the shared effective allocation."""
-        return self.effective_stages[stage]
+        return self.effective_stages[stage_name(self.plan.get("envelope"), stage)]
 
     def _restore_capacity(self, value):
         """Replay allocation proofs before accepting their enlarged request slots."""
@@ -1792,6 +1799,7 @@ class PlannedBudget(CostBudget):
 
     def _stage_entries(self, stage):
         """Return only reservations owned by one protected stage."""
+        stage = stage_name(self.plan.get("envelope"), stage)
         return [e for e in self.entries.values() if e["stage"] == stage]
 
     def remaining(self, *, advance=True):
@@ -1866,6 +1874,7 @@ class PlannedBudget(CostBudget):
 
     def check_stage_requests(self, stage, amounts):
         """Preflight every assessment batch before paying for its first batch."""
+        stage = stage_name(self.plan.get("envelope"), stage)
         spec = self._stage_spec(stage) if stage in self.plan["stages"] else None
         if self.plan["contract"] in ENVELOPE_BUDGETS and spec is not None:
             if (

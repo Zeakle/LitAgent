@@ -112,6 +112,12 @@ class AdversarialReviewWorker(Worker):
             "body_summary_v2",
             "body_summary_v3",
         ):
+            from litagent.review_policy import enabled
+
+            if enabled(synthesis_result["writer_document"].get("budget_envelope")):
+                from litagent.review_cycles import editorial_cycle
+
+                return await editorial_cycle(self, task, synthesis_result)
             self._reviewer._writer_path = self._synthesis._repair_state_path_provider()
             self._reviewer._writer_run_id = self._synthesis._run_id_provider()
             async with self._sub_span(task.task_id, "reviewer", 1):

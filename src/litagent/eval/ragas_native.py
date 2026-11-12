@@ -19,6 +19,7 @@ from litagent.eval.engine_policy import (
     ANCHORED_GLOBAL_REVIEW,
     KEYED_ASSESSMENT,
     KEYED_GLOBAL_ANCHORS,
+    KEYED_GLOBAL_LOCATED_OMISSIONS,
     KEYED_GLOBAL_QUOTED_OMISSIONS,
     KEYED_GLOBAL_UNITS,
     anchored_native_review,
@@ -173,6 +174,17 @@ def _project_issue_anchors(schema, payload):
         item["properties"]["anchor_ids"].update(
             minItems=1, items={"type": "string", "enum": list(choices)}
         )
+        if (
+            code == "missing_assertion"
+            and payload.get("global_unit_response_contract")
+            == KEYED_GLOBAL_LOCATED_OMISSIONS
+        ):
+            item["properties"]["anchor_ids"]["maxItems"] = 1
+            item["properties"]["explanation"]["description"] = (
+                "Describe the specific unrepresented proposition or qualifier. "
+                "The host unit key supplies location; this is not a verbatim quote. "
+                "Unsupported or translated extracted statements still count as extracted."
+            )
         branches.append(item)
     if branches:
         schema["properties"]["issues"]["items"] = {"anyOf": branches}
@@ -247,6 +259,29 @@ def _restore_issue_anchors(raw, payload, progress):
                 progress.setdefault("omission_review_conflicts", []).append(
                     {"source_unit_id": unit["source_unit_id"], "claim_ids": matched}
                 )
+        if (
+            code == "missing_assertion"
+            and payload.get("global_unit_response_contract")
+            == KEYED_GLOBAL_LOCATED_OMISSIONS
+        ):
+            if len(anchors) != 1:
+                _fail_global_field(
+                    progress, path + ".anchor_ids", "omission_requires_one_unit"
+                )
+            unit = next(
+                u for u in payload["source_units"] if u["coverage_key"] == anchors[0]
+            )
+            # Location is host-owned; prose never supplies coordinates or clears a
+            # finding. Even an apparently redundant omission still needs recovery.
+            progress.setdefault("omission_locations", []).append(
+                {
+                    "issue_index": index,
+                    "coverage_key": anchors[0],
+                    "source_unit_id": unit["source_unit_id"],
+                    "source_quote": unit["text"],
+                    "extracted_claim_ids": list(unit["extracted_claim_ids"]),
+                }
+            )
         issue["anchor_ids"] = restored
 
 
@@ -267,12 +302,18 @@ def global_review_request(
     if unit_response_contract is not None and (
         not anchored
         or unit_response_contract
-        not in (KEYED_GLOBAL_UNITS, KEYED_GLOBAL_ANCHORS, KEYED_GLOBAL_QUOTED_OMISSIONS)
+        not in (
+            KEYED_GLOBAL_UNITS,
+            KEYED_GLOBAL_ANCHORS,
+            KEYED_GLOBAL_QUOTED_OMISSIONS,
+            KEYED_GLOBAL_LOCATED_OMISSIONS,
+        )
     ):
         raise ValueError("ragas_global_unit_response_contract_invalid")
     short_anchors = unit_response_contract in (
         KEYED_GLOBAL_ANCHORS,
         KEYED_GLOBAL_QUOTED_OMISSIONS,
+        KEYED_GLOBAL_LOCATED_OMISSIONS,
     )
     requirements = context.get("coverage_requirements") or []
     payload = {
@@ -400,6 +441,15 @@ def global_review_request(
             "missing_assertion use exactly one unit key and put only the exact "
             "unrepresented clause from that unit in explanation, without citations."
         )
+    if unit_response_contract == KEYED_GLOBAL_LOCATED_OMISSIONS:
+        messages[0]["content"] += (
+            "\nFor each missing_assertion select exactly one unit key. In explanation "
+            "describe the specific unrepresented proposition or qualifier and why "
+            "that unit's extracted statements omit it. Do not copy text for location: "
+            "the host resolves the key. Compare ALL extracted statements, including "
+            "unsupported and translated equivalents. Insufficient paper support is "
+            "not an inventory omission. Mark a unit with an actual omission incomplete."
+        )
     if unit_view or compact or force_compact:
         from litagent.eval.ragas_global_wire import (
             INSTRUCTION,
@@ -431,7 +481,11 @@ def parse_native_global_response(content, payload, progress):
     """Map exact native IDs to the shared anchor representation before validation."""
     anchored = payload.get("global_findings_contract") == ANCHORED_GLOBAL_REVIEW
     contract = payload.get("global_unit_response_contract")
-    short_anchors = contract in (KEYED_GLOBAL_ANCHORS, KEYED_GLOBAL_QUOTED_OMISSIONS)
+    short_anchors = contract in (
+        KEYED_GLOBAL_ANCHORS,
+        KEYED_GLOBAL_QUOTED_OMISSIONS,
+        KEYED_GLOBAL_LOCATED_OMISSIONS,
+    )
     keyed = contract == KEYED_GLOBAL_UNITS or short_anchors
     if keyed or anchored:
         try:
@@ -754,7 +808,7 @@ def _check_native_admission(
             assertions, _ = canonical_assertions(
                 samples,
                 host_organization=native_unit_response_contract(envelope)
-                == KEYED_GLOBAL_QUOTED_OMISSIONS,
+                in (KEYED_GLOBAL_QUOTED_OMISSIONS, KEYED_GLOBAL_LOCATED_OMISSIONS),
             )
             _, messages, fmt = global_review_request(
                 survey,
@@ -895,7 +949,7 @@ async def execute_native(*, llm, survey, context, config):
             result = await adapter.score(samples)
             organization_enabled = (engine or {}).get(
                 "global_unit_response_contract"
-            ) == KEYED_GLOBAL_QUOTED_OMISSIONS
+            ) in (KEYED_GLOBAL_QUOTED_OMISSIONS, KEYED_GLOBAL_LOCATED_OMISSIONS)
             assertions, claim_groups = canonical_assertions(
                 result["samples"], host_organization=organization_enabled
             )

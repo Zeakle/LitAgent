@@ -4,6 +4,7 @@ import asyncio
 import copy
 import hashlib
 
+from litagent import review_policy
 from litagent.quality import digest
 
 VERSION = "survey-evaluation-ragas-v1"
@@ -12,12 +13,15 @@ RECOVERY = "ragas-recovery-v1"
 
 def repetition_followup(original, evaluation, rewrite, envelope):
     """Admit one fully supported, exact-bound draft for a local repetition retry."""
-    from litagent.eval.engine_policy import KEYED_GLOBAL_QUOTED_OMISSIONS
+    from litagent.eval.engine_policy import (
+        KEYED_GLOBAL_LOCATED_OMISSIONS,
+        KEYED_GLOBAL_QUOTED_OMISSIONS,
+    )
     from litagent.quality import evaluated_repair_repetitions
 
     if (
         envelope.get("semantic_engine", {}).get("global_unit_response_contract")
-        != KEYED_GLOBAL_QUOTED_OMISSIONS
+        not in (KEYED_GLOBAL_QUOTED_OMISSIONS, KEYED_GLOBAL_LOCATED_OMISSIONS)
         or rewrite.reason_code != "writer_candidate_failed"
         or not rewrite.candidate
         or not rewrite.candidate_evaluation
@@ -175,10 +179,17 @@ def sanitize_recovery(value):
     by_category = value.get("remaining_by_category")
     if (
         isinstance(by_category, dict)
-        and set(by_category) == set(REPAIR_ALLOWANCES)
+        and (
+            set(by_category) == set(REPAIR_ALLOWANCES)
+            or set(by_category) == set(review_policy.ALLOWANCES)
+        )
         and all(
             type(by_category[k]) is int and 0 <= by_category[k] <= n
-            for k, n in REPAIR_ALLOWANCES.items()
+            for k, n in (
+                review_policy.ALLOWANCES
+                if set(by_category) == set(review_policy.ALLOWANCES)
+                else REPAIR_ALLOWANCES
+            ).items()
         )
     ):
         result["remaining_by_category"] = dict(by_category)
@@ -210,7 +221,7 @@ def _settled_evaluation(stages, entries, round_identity):
             key not in seen
             and phase in {"inventory", "assessment", "global"}
             and row["status"] == "completed"
-            and entry["stage"] == phase
+            and review_policy.parent_stage(entry["stage"]) == phase
             and entry["status"] == "settled"
             and entry["sent"] is True
             and entry.get("wire_sha256")
@@ -239,6 +250,9 @@ def _followup_budget(snapshot, *, edit, summary):
             counts["summary"] = 1
     reserved = {}
     for stage, count in counts.items():
+        stage = review_policy.stage_name(
+            plan.get("envelope"), stage, "evaluation_revision" if edit else "inventory"
+        )
         spec = stages[stage]
         entries = [e for e in snapshot["entries"].values() if e["stage"] == stage]
         maximum = count * spec["request_cap"]
@@ -420,7 +434,11 @@ def recovery_decision(report, context, budget):
         )
         diagnostics = negative if inventory else native_repair_diagnostics(details)
         review = meta.get("reviewer_diagnostics") or {}
-        if not inventory and review.get("source_report_sha256") == sha:
+        if (
+            not inventory
+            and not review_policy.enabled(owner.plan["envelope"])
+            and review.get("source_report_sha256") == sha
+        ):
             diagnostics.extend(review.get("issues", []))
         document = meta["writer_document"]
         targets = repair_targets(
@@ -428,7 +446,8 @@ def recovery_decision(report, context, budget):
         )
         if targets:
             _require(
-                balances is None or balances["prose"] > 0,
+                balances is None
+                or balances.get("prose", balances.get("evaluation_revision", 0)) > 0,
                 "ragas_recovery_prose_limit_reached",
             )
             action = "combined" if inventory else "prose"
@@ -479,6 +498,20 @@ def recovery_decision(report, context, budget):
 
 
 async def recover_inventory(runner, *, query, report, results, decision):
+    """Protect recovery reservations independently of authored revisions."""
+    from litagent.safety.planned_budget import locked_writer_envelope
+
+    if review_policy.enabled(locked_writer_envelope(runner._cost_budget)):
+        with review_policy.partition("inventory"):
+            return await _recover_inventory(
+                runner, query=query, report=report, results=results, decision=decision
+            )
+    return await _recover_inventory(
+        runner, query=query, report=report, results=results, decision=decision
+    )
+
+
+async def _recover_inventory(runner, *, query, report, results, decision):
     """Reassess an unchanged report once, charging the shared attempt before send."""
     from litagent.quality import (
         begin_targeted_repair,

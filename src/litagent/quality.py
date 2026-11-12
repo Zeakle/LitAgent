@@ -418,14 +418,16 @@ def targeted_repair_state(
         versions = {
             "shared-targeted-repair-limit-v2": 3,
             "independent-targeted-repair-v1": 11,
+            "independent-targeted-repair-v2": 12,
         }
         limit = versions.get(value.get("version"), 2) if isinstance(value, dict) else 2
-    if type(limit) is not int or limit not in (2, 3, 11):
+    if type(limit) is not int or limit not in (2, 3, 11, 12):
         raise ValueError("strict_targeted_repair_state_invalid")
     version = {
         2: TARGETED_REPAIR_CONTRACT,
         3: "shared-targeted-repair-limit-v2",
         11: "independent-targeted-repair-v1",
+        12: "independent-targeted-repair-v2",
     }[limit]
     if value is None:
         return {"version": version, "run_id": run_id, "limit": limit, "attempts": []}
@@ -445,7 +447,12 @@ def targeted_repair_state(
             not isinstance(attempt, dict)
             or type(attempt.get("index")) is not int
             or attempt.get("index") != index
-            or attempt.get("stage") not in {"native_initial", "evaluation"}
+            or attempt.get("stage")
+            not in (
+                {"native_initial", "evaluation", "review"}
+                if limit == 12
+                else {"native_initial", "evaluation"}
+            )
             or attempt.get("status")
             not in {"started_no_replay", "completed", "failed", "cancelled"}
             or not re.fullmatch(r"[0-9a-f]{64}", attempt.get("input_sha256", ""))
@@ -466,20 +473,40 @@ def targeted_repair_state(
             )
         ):
             raise ValueError("strict_targeted_repair_category_invalid")
-    if limit == 11 and any(n < 0 for n in remaining_repair_allowances(value).values()):
+    if limit == 12:
+        for row in value["attempts"]:
+            allowed = {
+                "native_initial": {"capacity"},
+                "review": {"review_revision"},
+                "evaluation": {"evaluation_revision", "inventory", "capacity"},
+            }
+            if row.get("category") not in allowed[row["stage"]]:
+                raise ValueError("strict_targeted_repair_category_invalid")
+    if limit in (11, 12) and any(
+        n < 0 for n in remaining_repair_allowances(value).values()
+    ):
         raise ValueError("strict_targeted_repair_category_exhausted")
     return value
 
 
 def remaining_repair_allowances(state):
     """Count the durable category reservations, including failed and cancelled sends."""
-    if state.get("version") != "independent-targeted-repair-v1":
+    if state.get("version") not in (
+        "independent-targeted-repair-v1",
+        "independent-targeted-repair-v2",
+    ):
         return None
+    from litagent.review_policy import ALLOWANCES
     from litagent.run_limits import REPAIR_ALLOWANCES
 
+    limits = (
+        ALLOWANCES
+        if state["version"] == "independent-targeted-repair-v2"
+        else REPAIR_ALLOWANCES
+    )
     return {
         kind: limit - sum(row.get("category") == kind for row in state["attempts"])
-        for kind, limit in REPAIR_ALLOWANCES.items()
+        for kind, limit in limits.items()
     }
 
 
@@ -610,19 +637,45 @@ def begin_targeted_repair(
 ) -> dict:
     """Consume an attempt immediately before dispatch, never on a failed preflight."""
     targeted_repair_state(state, state["run_id"])
-    if stage not in {"native_initial", "evaluation"} or not re.fullmatch(
-        r"[0-9a-f]{64}", input_sha256
-    ):
+    if stage not in (
+        {"native_initial", "evaluation", "review"}
+        if state["version"] == "independent-targeted-repair-v2"
+        else {"native_initial", "evaluation"}
+    ) or not re.fullmatch(r"[0-9a-f]{64}", input_sha256):
         raise ValueError("strict_targeted_repair_state_invalid")
     if len(state["attempts"]) >= state["limit"]:
         raise ValueError("strict_targeted_repair_limit_exceeded")
     extended = remaining_repair_allowances(state)
     if extended is not None:
-        category = category or ("capacity" if stage == "native_initial" else "prose")
+        if state["version"] == "independent-targeted-repair-v2":
+            category = (
+                category
+                or {
+                    "native_initial": "capacity",
+                    "review": "review_revision",
+                    "evaluation": "evaluation_revision",
+                }[stage]
+            )
+        else:
+            category = category or (
+                "capacity" if stage == "native_initial" else "prose"
+            )
         if (
             category
             not in (
-                {"capacity"} if stage == "native_initial" else {"inventory", "prose"}
+                (
+                    {
+                        "native_initial": {"capacity"},
+                        "review": {"review_revision"},
+                        "evaluation": {"inventory", "evaluation_revision", "capacity"},
+                    }[stage]
+                    if state["version"] == "independent-targeted-repair-v2"
+                    else (
+                        {"capacity"}
+                        if stage == "native_initial"
+                        else {"inventory", "prose"}
+                    )
+                )
             )
             or extended[category] <= 0
         ):

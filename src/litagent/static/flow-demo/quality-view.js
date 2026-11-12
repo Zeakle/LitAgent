@@ -161,9 +161,10 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
   const budgetPlan = options.budgetPlan;
   const allowances = budgetPlan?.scope_bounds?.repair_allowances;
   const repairLabels = options.locale === "en"
-    ? { capacity: "Draft refinement", inventory: "Inventory recovery", prose: "Prose revision" }
-    : { capacity: "初稿精简", inventory: "清单恢复", prose: "正文修订" };
+    ? { review_revision: "Writing revision", evaluation_revision: "Evaluation repair", capacity: "Draft refinement", inventory: "Inventory recovery", prose: "Prose revision" }
+    : { review_revision: "写作审阅修订", evaluation_revision: "验收修复", capacity: "初稿精简", inventory: "清单恢复", prose: "正文修订" };
   const byCategory = values => Object.entries(repairLabels)
+    .filter(([kind]) => kind in values)
     .map(([kind, label]) => `${label} ${display(values[kind])}`).join(" · ");
   if (["planned-budget-v2", "planned-budget-v3", "planned-budget-v4", "planned-budget-v5", "planned-budget-v6", "planned-budget-v7"].includes(budgetPlan?.contract)) {
     const en = options.locale === "en", panel = node(container, "section", null, "quality-section");
@@ -515,14 +516,39 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
     show(en ? "Final report Evaluation" : "最终正文 Evaluation",history.final_evaluation,"",true);
   }
   const repairs = options.targetedRepairState;
+  const workflow = options.reviewWorkflow;
+  if (workflow?.contract === "separate-review-evaluation-v1" && workflow.report_sha256 === options.sha) {
+    const section=node(container,"section",null,"quality-section"), en=options.locale === "en";
+    node(section,"h3",en ? "Writing review → Evaluation → acceptance repair" : "写作审阅 → 独立评估 → 验收修复");
+    node(section,"p",en ? "Review decisions are editorial advice. Only complete Evaluation can establish scientific acceptance. Working drafts are not delivered reports." : "审稿回应只代表写作处理；完整 Evaluation 决定科学验收。临时工作稿不是已交付报告。");
+    for (const [kind, quota] of Object.entries(workflow.allowances || {}))
+      node(section,"p",`${repairLabels[kind] || kind}: ${quota.used} / ${quota.limit} · ${en ? "remaining" : "剩余"} ${quota.remaining}`);
+    for (const round of workflow.reviews || []) {
+      const details=node(section,"details");
+      node(details,"summary",`${en ? "Writing review" : "写作审阅"} ${round.round + 1} · ${round.status}`);
+      node(details,"p",`SHA ${round.source_report_sha256}`,"audit-binding");
+      node(details,"p",`${en ? "Responses" : "逐项回应"}: ${Object.entries(round.responses || {}).map(([k,v])=>`${k}: ${v}`).join(" · ") || "—"}`);
+    }
+    for (const round of workflow.evaluations || []) {
+      const details=node(section,"details");
+      const label=round.kind === "repair_preflight" ? (en ? "Repair preflight · no request sent" : "修复预检 · 未发送请求") : round.kind === "repair_incomplete" ? (en ? "Repair ended · no reevaluation" : "修复终止 · 未进入复评") : `${en ? "Strict evaluation" : "严格评估"} ${round.round}`;
+      node(details,"summary",`${label} · ${L(round.status)} · ${round.reason || "—"}`);
+      node(details,"p",`SHA ${round.report_sha256 || "—"}`,"audit-binding");
+      node(details,"p",`${en ? "Supported / unsupported / unverified" : "支持／不支持／未核验"}: ${display(round.supported)} / ${display(round.unsupported)} / ${display(round.unverified)}`);
+      if(round.promoted)node(details,"p",en ? "Improved working draft · not delivered" : "改善工作稿 · 尚未交付");
+    }
+    if(workflow.working_report_sha256)node(section,"p",`${en ? "Unpublished working draft SHA" : "未交付工作稿 SHA"}: ${workflow.working_report_sha256}`,"audit-binding");
+    node(section,"p",`${en ? "Final delivery" : "最终交付"}: ${workflow.publishable ? L("passed") : L("blocked")}`);
+  }
   if (repairs) {
     const section=node(container,"section",null,"quality-section");const en=options.locale === "en";
     node(section,"h3",en ? "Bounded targeted repairs" : "有限定向修复");
-    const independent = repairs.version === "independent-targeted-repair-v1";
-    if(!((repairs.version === "shared-targeted-repair-limit-v1" && repairs.limit === 2) || (repairs.version === "shared-targeted-repair-limit-v2" && repairs.limit === 3) || (independent && repairs.limit === 11)) || !Array.isArray(repairs.attempts))node(section,"p",L("unavailable"));
+    const separate = repairs.version === "independent-targeted-repair-v2";
+    const independent = repairs.version === "independent-targeted-repair-v1" || separate;
+    if(!((repairs.version === "shared-targeted-repair-limit-v1" && repairs.limit === 2) || (repairs.version === "shared-targeted-repair-limit-v2" && repairs.limit === 3) || (independent && repairs.limit === (separate ? 12 : 11))) || !Array.isArray(repairs.attempts))node(section,"p",L("unavailable"));
     else {
       const consumed = independent ? byCategory(Object.fromEntries(
-        Object.keys(repairLabels).map(kind => [kind, repairs.attempts.filter(a => a.category === kind).length])
+        (separate ? ["review_revision", "evaluation_revision", "capacity", "inventory"] : ["capacity", "inventory", "prose"]).map(kind => [kind, repairs.attempts.filter(a => a.category === kind).length])
       )) : `${repairs.attempts.length} / ${repairs.limit}`;
       node(section,"p",`${en ? "Attempts consumed" : "已消耗次数"}: ${consumed}`);
       if(!independent && budgetPlan?.envelope?.closeout_profile === "engineering-closeout-v1") {
@@ -535,7 +561,7 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
       }
 
       node(section,"p",verification ? (en ? "A completed repair call does not establish scientific support; complete Evaluation and any enabled reviews must still pass." : "修复调用完成不代表科学支持；仍需完整 Evaluation 及已启用的复核通过。") : (en ? "A completed repair call does not establish scientific support; full Evaluation and Judge are still required." : "修复调用完成不代表科学支持；仍需完整 Evaluation 和 Judge。"));
-      for(const attempt of repairs.attempts)node(section,"p",`${["bounded-inventory-recovery-v1", "bounded-inventory-recovery-v2","ragas-recovery-v1"].includes(attempt.purpose) ? (en ? "Inventory re-extraction" : "断言清单重抽取") : attempt.cause === "capacity" ? (en ? "Body capacity refinement" : "正文容量精简") : attempt.stage === "native_initial" ? (en ? "Initial native unit" : "初稿单元") : (en ? "Evaluation repair" : "正文定向修复")}: ${L(attempt.status)}`);
+      for(const attempt of repairs.attempts)node(section,"p",`${separate ? repairLabels[attempt.category] : ["bounded-inventory-recovery-v1", "bounded-inventory-recovery-v2","ragas-recovery-v1"].includes(attempt.purpose) ? (en ? "Inventory re-extraction" : "断言清单重抽取") : attempt.cause === "capacity" ? (en ? "Body capacity refinement" : "正文容量精简") : attempt.stage === "native_initial" ? (en ? "Initial native unit" : "初稿单元") : (en ? "Evaluation repair" : "正文定向修复")}: ${L(attempt.status)}`);
     }
   }
   if (hasPipeline) {

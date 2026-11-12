@@ -12,7 +12,21 @@ ANCHORED_GLOBAL_REVIEW = "anchored-global-findings-v2"
 KEYED_GLOBAL_UNITS = "ragas-global-unit-keys-v1"
 KEYED_GLOBAL_ANCHORS = "ragas-global-unit-keys-v2"
 KEYED_GLOBAL_QUOTED_OMISSIONS = "ragas-global-unit-keys-v3"
+KEYED_GLOBAL_LOCATED_OMISSIONS = "ragas-global-unit-keys-v4"
 KEYED_ASSESSMENT = "ragas-assessment-statement-keys-v1"
+# Exact pre-v4 descriptors are readable, never resumable under a new identity.
+ARCHIVED_QUOTED_OMISSION_ENGINES = {
+    (None, None): "3c117b941d70981dced95f8e7c5e47b8ff73da8ef2713decbb25a63cd3946a9b",
+    (None, KEYED_ASSESSMENT): (
+        "830412b7ea9ffbff8851115c4c5f05af22ce11f8925870c2ced99ace493dbf06"
+    ),
+    (UNIT_CONTRACT, None): (
+        "89aaabba62252d84c9b9eab4903a6e5fa34da65c56ccd6517ceb8397afd5ed86"
+    ),
+    (UNIT_CONTRACT, KEYED_ASSESSMENT): (
+        "382e2908e0cf7c71648b6353f9cb8ec3947e4d9441add4c1bd172747cf9f93bf"
+    ),
+}
 ARCHIVED_SHORT_ANCHOR_ENGINES = {
     (None, None): "45541dbf153f36ebdee1df6a472db12acc1c4df48f45c1d160b4bf1b26a7c711",
     (None, KEYED_ASSESSMENT): (
@@ -121,7 +135,12 @@ def engine_descriptor(
         raise ValueError("ragas_global_input_contract_invalid")
     if global_unit_response_contract is not None and (
         global_unit_response_contract
-        not in (KEYED_GLOBAL_UNITS, KEYED_GLOBAL_ANCHORS, KEYED_GLOBAL_QUOTED_OMISSIONS)
+        not in (
+            KEYED_GLOBAL_UNITS,
+            KEYED_GLOBAL_ANCHORS,
+            KEYED_GLOBAL_QUOTED_OMISSIONS,
+            KEYED_GLOBAL_LOCATED_OMISSIONS,
+        )
         or global_findings_contract != ANCHORED_GLOBAL_REVIEW
     ):
         raise ValueError("ragas_global_unit_response_contract_invalid")
@@ -212,7 +231,13 @@ def validate_engine(value, *, archived=False):
         units_contract = current.get("global_unit_response_contract")
         wire = findings, input_contract, units_contract
         keyed_assessment = "assessment_response_contract" in current
-        if units_contract == KEYED_GLOBAL_ANCHORS:
+        if units_contract == KEYED_GLOBAL_QUOTED_OMISSIONS:
+            archived_ids.append(
+                ARCHIVED_QUOTED_OMISSION_ENGINES[
+                    input_contract, current.get("assessment_response_contract")
+                ]
+            )
+        elif units_contract == KEYED_GLOBAL_ANCHORS:
             archived_ids.append(
                 ARCHIVED_SHORT_ANCHOR_ENGINES[
                     input_contract, current.get("assessment_response_contract")

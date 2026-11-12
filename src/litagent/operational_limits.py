@@ -176,6 +176,7 @@ def is_uplifted(config):
         PROFILE,
         EXTENDED_PROFILE,
         FORMAT_PROFILE,
+        "separate-review-evaluation-v1",
     )
 
 
@@ -192,6 +193,7 @@ def budget_resource_profile(budget):
         PROFILE,
         EXTENDED_PROFILE,
         FORMAT_PROFILE,
+        "separate-review-evaluation-v1",
     ):
         return PROFILE
     backend = getattr(budget, "_planned_backend", None)
@@ -199,7 +201,7 @@ def budget_resource_profile(budget):
     if isinstance(plan, dict) and (
         plan.get("contract") == "planned-preparation-v2"
         or plan.get("envelope", {}).get("run_limits", {}).get("profile")
-        in (PROFILE, EXTENDED_PROFILE, FORMAT_PROFILE)
+        in (PROFILE, EXTENDED_PROFILE, FORMAT_PROFILE, "separate-review-evaluation-v1")
     ):
         return PROFILE
     return None

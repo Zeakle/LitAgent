@@ -1,4 +1,4 @@
-"""Propose bounded format edits while keeping ownership checks on the host."""
+"""Recover JSON syntax with bounded edits verified on the host."""
 
 import hashlib
 import json
@@ -166,6 +166,12 @@ class FormatRepairAgent:
             {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
         ], RESPONSE_FORMAT
 
+    def root_closure_edits(self):
+        """Propose one EOF brace for an unfenced root without a known close."""
+        if self.root_end is not None or (self.start, self.end) != (0, len(self.raw)):
+            return []
+        return [{"start": self.end, "end": self.end, "replacement": "}"}]
+
     def apply(self, edits):
         """Rebuild candidate and prove the original literal and container owners."""
         from litagent.writing_flat import _index, _tokens
@@ -331,13 +337,15 @@ def validate_recovery_record(entry):
     try:
         original = state["original"]
         attempts = state["attempts"]
+        kinds = [attempt["kind"] for attempt in attempts]
         if (
             original["raw_sha256"] != raw_sha(original["raw"])
             or state["input_sha256"] != entry["input_sha256"]
             or state["schema_sha256"] != entry["schema_sha256"]
-            or [attempt["kind"] for attempt in attempts]
+            or kinds
             not in (
                 [],
+                ["local_eof"],
                 ["lite"],
                 ["lite", "pro"],
                 ["lite", "pro", "regeneration"],
@@ -351,12 +359,24 @@ def validate_recovery_record(entry):
         ):
             raise ValueError("format attempt identity")
         accepted = state.get("outcome")
+        local = kinds == ["local_eof"]
+        if local and (
+            accepted != "recovered"
+            or set(attempts[0]) != {"kind", "status", "sent"}
+            or attempts[0]["sent"] is not False
+        ):
+            raise ValueError("local format attempt identity")
         if accepted == "recovered":
+            edits = (
+                FormatRepairAgent(original["raw"]).root_closure_edits()
+                if local
+                else patch_edits(_parse_json(attempts[-1]["raw"]))
+            )
             if (
                 original["raw"] != entry["raw"]
                 or attempts[-1]["status"] != "accepted"
-                or patch_edits(_parse_json(attempts[-1]["raw"]))
-                != entry["format_patch"]["edits"]
+                or not edits
+                or edits != entry["format_patch"]["edits"]
             ):
                 raise ValueError("format patch identity")
             replay_provenance_options(
@@ -434,7 +454,9 @@ async def recover_response(
     entry["original_syntax_failure"] = classify_failure(original)
     session.save()
     parent = {"synthesis": "body", "revision": "repair"}.get(stage, stage)
-    budget_stage = "format_" + parent
+    from litagent.review_policy import stage_name
+
+    budget_stage = "format_" + stage_name(session.envelope, parent)
 
     def account(attempt):
         recorded = budget.entries.get(attempt["ledger_request_id"], {})
@@ -544,6 +566,20 @@ async def recover_response(
     except (ValueError, TypeError):
         agent = None
     if agent is not None:
+        edits = agent.root_closure_edits()
+        if edits:
+            candidate = dict(entry)
+            try:
+                value = check(candidate, edits=edits)
+            except ValueError:
+                # A brace must make the entire response valid before replacing
+                # the original wire record. Other failures use the usual fallback.
+                pass
+            else:
+                attempt = {"kind": "local_eof", "sent": False}
+                state["attempts"].append(attempt)
+                return accept(candidate, attempt, value, "recovered")
+
         from litagent.safety.budget import strict_request_reservation
 
         prior = "writer_json_invalid"

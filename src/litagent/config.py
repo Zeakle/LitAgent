@@ -460,6 +460,7 @@ class EvalConfig(BaseModel):
             "ragas-global-unit-keys-v1",
             "ragas-global-unit-keys-v2",
             "ragas-global-unit-keys-v3",
+            "ragas-global-unit-keys-v4",
         ]
         | None
     ) = None
@@ -557,14 +558,29 @@ class AppConfig(BaseModel):
                 raise ValueError("format_recovery_model_identity_invalid")
             timeouts = self.llm.request_timeouts_seconds
             margin = self.llm.request_deadline_margin_seconds
+            from litagent import review_policy
+
+            writer_counts = (
+                ("synthesis", 20),
+                ("repair", 12),
+                ("summary", 4),
+                ("reviewer", 1),
+            )
+            if review_policy.enabled({"run_limits": run_limits}):
+                # Each authored response may use two format agents and one regen.
+                edits = (
+                    review_policy.ALLOWANCES["review_revision"]
+                    + review_policy.ALLOWANCES["capacity"]
+                )
+                writer_counts = (
+                    ("synthesis", 20),
+                    ("repair", 4 * edits),
+                    ("summary", 4 * (1 + edits)),
+                    ("reviewer", 4),
+                )
             minimum = sum(
                 count * (timeouts.get(stage, timeouts.get("default", 180)) + margin)
-                for stage, count in (
-                    ("synthesis", 20),
-                    ("repair", 12),
-                    ("summary", 4),
-                    ("reviewer", 1),
-                )
+                for stage, count in writer_counts
             )
             if self.adversarial.task_timeout_ms <= minimum * 1000:
                 raise ValueError("format_recovery_writer_deadline_insufficient")

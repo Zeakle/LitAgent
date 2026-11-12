@@ -18,6 +18,7 @@ from litagent.eval.engine_policy import (
     ANCHORED_GLOBAL_REVIEW,
     CONTRACT,
     KEYED_GLOBAL_ANCHORS,
+    KEYED_GLOBAL_LOCATED_OMISSIONS,
     KEYED_GLOBAL_QUOTED_OMISSIONS,
     configured_engine,
     engine_descriptor,
@@ -139,7 +140,11 @@ class NativeGateway(structured.LongScientificGateway):
                             (
                                 unit["coverage_key"]
                                 if canonical.get("global_unit_response_contract")
-                                in (KEYED_GLOBAL_ANCHORS, KEYED_GLOBAL_QUOTED_OMISSIONS)
+                                in (
+                                    KEYED_GLOBAL_ANCHORS,
+                                    KEYED_GLOBAL_QUOTED_OMISSIONS,
+                                    KEYED_GLOBAL_LOCATED_OMISSIONS,
+                                )
                                 else unit["source_unit_id"]
                             )
                         ]
@@ -162,7 +167,11 @@ class NativeGateway(structured.LongScientificGateway):
                 ]
                 if mode == "persistent" or (
                     canonical.get("global_unit_response_contract")
-                    in (KEYED_GLOBAL_ANCHORS, KEYED_GLOBAL_QUOTED_OMISSIONS)
+                    in (
+                        KEYED_GLOBAL_ANCHORS,
+                        KEYED_GLOBAL_QUOTED_OMISSIONS,
+                        KEYED_GLOBAL_LOCATED_OMISSIONS,
+                    )
                     and mode == "combined"
                 ):
                     if "coverage_key" in unit:

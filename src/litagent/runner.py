@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import hashlib
 import json
 import os
@@ -15,6 +16,7 @@ from functools import wraps
 from pathlib import Path
 from typing import Any, Callable, Literal
 
+from litagent import review_policy
 from litagent.agents import adversarial
 from litagent.agents.adversarial import AdversarialReviewWorker
 from litagent.agents.dedup import DedupWorker
@@ -1026,6 +1028,7 @@ class LitAgent:
                 "targeted_repair_state",
                 "writer_document",
                 "reviewer_diagnostics",
+                "editorial_history",
             ):
                 if (
                     name == "targeted_repair_state"
@@ -1117,6 +1120,7 @@ class LitAgent:
             )
             or (
                 options.generation_strategy in ("body_summary_v2", "body_summary_v3")
+                and not review_policy.enabled(envelope)
                 and metadata.get("reviewer_diagnostics", {}).get("issues")
             )
             or (
@@ -1164,7 +1168,9 @@ class LitAgent:
                 }
             for attempt in range(repair_limit):
                 attempt_results = results
-                if working["metadata"].get("repetition_retry_base_sha256"):
+                if working["metadata"].get("repetition_retry_base_sha256") or working[
+                    "metadata"
+                ].get("working_revision_sha256"):
                     attempt_results = {
                         **results,
                         "adversarial_review": {
@@ -1240,12 +1246,11 @@ class LitAgent:
                         "inventory_recovery_evaluated",
                         "inventory_recovery_retryable",
                     }:
-                        if rewrite.candidate_quality.get(
-                            "status"
-                        ) == "passed" and not metadata.get(
-                            "reviewer_diagnostics", {}
-                        ).get(
-                            "issues"
+                        if rewrite.candidate_quality.get("status") == "passed" and (
+                            review_policy.enabled(envelope)
+                            or not metadata.get("reviewer_diagnostics", {}).get(
+                                "issues"
+                            )
                         ):
                             break
                         continue
@@ -1283,6 +1288,40 @@ class LitAgent:
                         continue
                     if rewrite.reason_code == "writer_repair_duplicate":
                         continue
+                    if review_policy.enabled(envelope) and rewrite.candidate_evaluation:
+                        from litagent.review_cycles import improvement
+
+                        proof = improvement(
+                            working, rewrite, self._passed_metric_regressed
+                        )
+                        outcome["working_draft_decision"] = proof
+                        if proof["promote"]:
+                            working.update(
+                                survey=rewrite.candidate,
+                                evaluation=rewrite.candidate_evaluation,
+                                quality=rewrite.candidate_quality,
+                            )
+                            working["metadata"].update(rewrite.candidate_metadata)
+                            working["metadata"]["working_revision_sha256"] = (
+                                rewrite.candidate_bindings["report_sha256"]
+                            )
+                            outcome["next_repair_base_sha256"] = (
+                                rewrite.candidate_bindings["report_sha256"]
+                            )
+                            metadata["working_draft"] = {
+                                "survey": rewrite.candidate,
+                                "evaluation": rewrite.candidate_evaluation,
+                                "writing_bindings": rewrite.candidate_bindings,
+                                "publishable": False,
+                                "report_sha256": rewrite.candidate_bindings[
+                                    "report_sha256"
+                                ],
+                            }
+                        if rewrite.reason_code in {
+                            "writer_candidate_failed",
+                            "writer_candidate_regressed",
+                        }:
+                            continue
                     if rewrite.reason_code == "writer_candidate_failed":
                         if options.generation_strategy == "body_summary_v3":
                             from litagent.eval.ragas_repair import repetition_followup
@@ -1360,6 +1399,7 @@ class LitAgent:
         if (metadata.get("writing_bindings") or {}).get("scope_notice_contract"):
             if (
                 options.generation_strategy in ("body_summary_v2", "body_summary_v3")
+                and not review_policy.enabled(envelope)
                 and metadata.get("reviewer_diagnostics", {}).get("issues")
                 and not metadata.get("evidence_rewrite", {}).get("committed")
             ):
@@ -1532,6 +1572,13 @@ class LitAgent:
         allow_trusted_writes: bool = True,
     ) -> dict[str, Any]:
         """Apply trusted side effects and emit one normalized terminal report."""
+        from litagent.review_cycles import public_projection, result_projection
+
+        workflow = result_projection(report_data)
+        if workflow is not None:
+            report_data["metadata"]["review_workflow"] = public_projection(
+                workflow, workflow["report_sha256"]
+            )
         if (
             allow_trusted_writes
             and self._run_policy.claims_writes
@@ -1978,15 +2025,19 @@ class LitAgent:
         )
         workers.append(self._relevance_gate)
 
-        from litagent.eval.engine_policy import KEYED_GLOBAL_QUOTED_OMISSIONS
+        from litagent.eval.engine_policy import (
+            KEYED_GLOBAL_LOCATED_OMISSIONS,
+            KEYED_GLOBAL_QUOTED_OMISSIONS,
+        )
         from litagent.extraction_verification import (
             ADMISSION_VERSION,
             ExtractionVerifier,
         )
         from litagent.rag.targeted_fulltext import TargetedFulltext
 
-        prefer_method_sections = (
-            cfg.eval.native_global_unit_response == KEYED_GLOBAL_QUOTED_OMISSIONS
+        prefer_method_sections = cfg.eval.native_global_unit_response in (
+            KEYED_GLOBAL_QUOTED_OMISSIONS,
+            KEYED_GLOBAL_LOCATED_OMISSIONS,
         )
         self._extractor = ExtractorWorker(
             strategy=self._extraction_strategy,
@@ -3353,6 +3404,95 @@ class LitAgent:
             raise ValueError("strict_targeted_repair_run_invalid")
         return Path("artifacts/targeted-repairs") / f"{self._session_id}.json"
 
+    async def _evaluate_writer_candidate(
+        self, query, report, results, initial, candidate
+    ):
+        """Evaluate a private candidate, then atomically accept or retain its failure."""
+        from litagent.eval.ragas_repair import native_repair_diagnostics
+        from litagent.review_cycles import writer_session
+
+        trial = copy.deepcopy(results)
+        trial["adversarial_review"].update(
+            final_draft=candidate.candidate, **candidate.candidate_metadata
+        )
+        evaluation = await self._evaluate(
+            query=query, survey=candidate.candidate, results=trial, phase="post_rewrite"
+        )
+        quality = self._derive_quality(evaluation)
+        details = evaluation.get("faithfulness", {}).get("details", {})
+        technical = bool(
+            details.get("execution_error")
+            or details.get("component_errors")
+            or details.get("stages", {}).get("global_check") != "completed"
+        )
+        regressed = self._passed_metric_regressed(
+            initial,
+            evaluation,
+            original_survey=report["survey"],
+            candidate_survey=candidate.candidate,
+        )
+        accepted = quality["status"] == "passed" and not technical and not regressed
+        reason = (
+            "committed"
+            if accepted
+            else (
+                "ragas_recovery_candidate_execution_failed"
+                if technical
+                else (
+                    "writer_candidate_regressed"
+                    if regressed
+                    else "writer_candidate_failed"
+                )
+            )
+        )
+        session = writer_session(
+            self._stage_llm("generation"),
+            self._targeted_repair_path(),
+            self._session_id,
+            candidate.candidate_metadata["writer_document"],
+            trace_hook=self._trace_hook,
+        )
+        record = next(
+            r
+            for r in reversed(session.journal["candidates"])
+            if r["report_sha256"] == candidate.candidate_bindings["report_sha256"]
+        )
+        record.update(
+            evaluation=evaluation, quality=quality, committed=accepted, status=reason
+        )
+        if accepted:
+            session.journal.pop("failure", None)
+        else:
+            session.journal["failure"] = {
+                "code": reason,
+                "family": "protocol" if technical else "quality",
+                "candidate_sha256": record["report_sha256"],
+                "diagnostics": native_repair_diagnostics(details),
+            }
+        session.save()
+        metadata = {
+            **candidate.candidate_metadata,
+            "targeted_repair_state": copy.deepcopy(session.state),
+        }
+        if accepted:
+            report.update(
+                survey=candidate.candidate, evaluation=evaluation, quality=quality
+            )
+            report["metadata"].update(metadata)
+            report["metadata"].pop("writer_failure", None)
+            results["adversarial_review"].update(trial["adversarial_review"])
+        return RewriteOutcome(
+            True,
+            accepted,
+            candidate.candidate,
+            None,
+            evaluation,
+            quality,
+            reason,
+            candidate.candidate_bindings,
+            metadata,
+        )
+
     async def _attempt_evidence_rewrite(
         self,
         *,
@@ -3396,6 +3536,24 @@ class LitAgent:
                     results=results,
                     decision=decision,
                 )
+            if review_policy.enabled(inventory_envelope):
+                with review_policy.partition("evaluation_revision"):
+                    candidate = await repair_report(
+                        self,
+                        query=query,
+                        report_data=report_data,
+                        results=results,
+                        initial_evaluation=initial_evaluation,
+                        initial_quality=initial_quality,
+                        report_language=report_language,
+                        recovery=decision,
+                        prepare_only=True,
+                    )
+                    if candidate.reason_code != "writer_candidate_prepared":
+                        return candidate
+                    return await self._evaluate_writer_candidate(
+                        query, report_data, results, initial_evaluation, candidate
+                    )
             return await repair_report(
                 self,
                 query=query,

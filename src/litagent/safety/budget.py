@@ -33,7 +33,11 @@ class CostBudget:
         from litagent.operational_limits import PROFILE
         from litagent.run_limits import EXTENDED_PROFILE, FORMAT_PROFILE
 
-        if resource_profile in (EXTENDED_PROFILE, FORMAT_PROFILE):
+        if resource_profile in (
+            EXTENDED_PROFILE,
+            FORMAT_PROFILE,
+            "separate-review-evaluation-v1",
+        ):
             # Preparation and per-request transport use the same expanded
             # bounds. The writer plan authenticates the larger run allowance.
             resource_profile = PROFILE

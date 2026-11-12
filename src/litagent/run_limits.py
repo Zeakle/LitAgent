@@ -5,6 +5,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
 
+from litagent import review_policy
+
 CONTRACT = "configured-run-limits-v1"
 UPLIFT_CONTRACT = "configured-run-limits-v2"
 EXTENDED_CONTRACT = "configured-run-limits-v3"
@@ -35,6 +37,11 @@ EXTENDED = {
     "max_repairs": sum(REPAIR_ALLOWANCES.values()),
 }
 PROFILES = {
+    review_policy.PROFILE: (
+        review_policy.LIMITS_CONTRACT,
+        {**EXTENDED, "max_requests": 226, "max_repairs": 12},
+        47_420_000,
+    ),
     FORMAT_PROFILE: (FORMAT_CONTRACT, {**EXTENDED, "max_requests": 226}, 47_420_000),
     None: (CONTRACT, LEGACY, None),
     PROFILE: (UPLIFT_CONTRACT, UPLIFT, 12_000_000),
@@ -48,11 +55,16 @@ class PlannedRunLimits(BaseModel):
     model_config = ConfigDict(extra="forbid")
     max_tokens: int = Field(default=10_000_000, strict=True, ge=500_000, le=2**63 - 1)
     profile: (
-        Literal["operational-plus20-v1", "extended-repair-v1", "agent-format-repair-v1"]
+        Literal[
+            "operational-plus20-v1",
+            "extended-repair-v1",
+            "agent-format-repair-v1",
+            "separate-review-evaluation-v1",
+        ]
         | None
     ) = None
     max_requests: int = Field(default=64, strict=True, ge=1, le=226)
-    max_repairs: int = Field(default=2, strict=True, ge=0, le=11)
+    max_repairs: int = Field(default=2, strict=True, ge=0, le=12)
     context_tokens: int = Field(default=196608, strict=True, ge=32768, le=235930)
     max_output_tokens: int = Field(default=32768, strict=True, ge=1, le=39322)
     syntax_policy: (
@@ -73,7 +85,7 @@ class PlannedRunLimits(BaseModel):
             raise ValueError("run_limits_profile_budget_exceeded")
         if (
             (self.syntax_policy == FORMAT_JSON_POLICY)
-            != (self.profile == FORMAT_PROFILE)
+            != (self.profile in (FORMAT_PROFILE, review_policy.PROFILE))
             or self.syntax_policy == LOSSLESS_JSON_POLICY
             and self.profile != EXTENDED_PROFILE
         ):
@@ -116,6 +128,10 @@ def validate_run_limits(value):
             "profile",
             *UPLIFT,
         }
+        if contract == review_policy.LIMITS_CONTRACT:
+            expected.add("workflow_identity")
+            if value.get("workflow_identity") != review_policy.identity():
+                raise ValueError("review_workflow_identity_invalid")
     if (
         contract
         not in (
@@ -123,6 +139,7 @@ def validate_run_limits(value):
             UPLIFT_CONTRACT,
             EXTENDED_CONTRACT,
             FORMAT_CONTRACT,
+            review_policy.LIMITS_CONTRACT,
             REQUEST_CONTRACT,
         )
         or set(value) - {"syntax_policy"} != expected
@@ -133,17 +150,26 @@ def validate_run_limits(value):
                 != {
                     EXTENDED_CONTRACT: LOSSLESS_JSON_POLICY,
                     FORMAT_CONTRACT: FORMAT_JSON_POLICY,
+                    review_policy.LIMITS_CONTRACT: FORMAT_JSON_POLICY,
                 }.get(contract)
             )
         )
     ):
         raise ValueError("run_limits_contract_invalid")
     limits = PlannedRunLimits.model_validate(
-        {k: v for k, v in value.items() if k != "contract"}
+        {k: v for k, v in value.items() if k not in {"contract", "workflow_identity"}}
     )
     if limits.contract != contract:
         raise ValueError("run_limits_profile_mismatch")
-    return {"contract": contract, **limits.model_dump()}
+    return {
+        "contract": contract,
+        **limits.model_dump(),
+        **(
+            {"workflow_identity": review_policy.identity()}
+            if contract == review_policy.LIMITS_CONTRACT
+            else {}
+        ),
+    }
 
 
 def configured_run_limits(config):
@@ -164,6 +190,11 @@ def configured_run_limits(config):
     return {
         "contract": limits.contract,
         **limits.model_dump(),
+        **(
+            {"workflow_identity": review_policy.identity()}
+            if limits.contract == review_policy.LIMITS_CONTRACT
+            else {}
+        ),
     }
 
 
@@ -179,6 +210,11 @@ def envelope_run_limits(envelope=None):
 def repair_allowances(envelope):
     """Return the independent quotas of the explicitly selected native profile."""
     limits = (envelope or {}).get("run_limits") or {}
+    if review_policy.enabled(envelope):
+        validate_run_limits(limits)
+        if not envelope.get("semantic_engine"):
+            raise ValueError("extended_repair_requires_native_ragas")
+        return dict(review_policy.ALLOWANCES)
     if limits.get("contract") not in (EXTENDED_CONTRACT, FORMAT_CONTRACT):
         return None
     validate_run_limits(limits)
@@ -200,6 +236,8 @@ def extended_repair_stages(envelope, repairs):
         + envelope["semantic_engine"]["batch_size"]
         - 1
     ) // envelope["semantic_engine"]["batch_size"]
+    if review_policy.enabled(envelope):
+        return review_policy.stage_counts(batches)
     rounds = 1 + limits["inventory"] + limits["prose"]
     edits = limits["capacity"] + limits["prose"]
     return {
@@ -217,7 +255,10 @@ def format_recovery_stages(envelope):
     limits = (envelope or {}).get("run_limits") or {}
     if limits.get("syntax_policy") != FORMAT_JSON_POLICY:
         return {}
-    counts = extended_repair_stages(envelope, sum(REPAIR_ALLOWANCES.values()))
+    limits = repair_allowances(envelope)
+    counts = extended_repair_stages(envelope, sum(limits.values()))
+    if review_policy.enabled(envelope):
+        return review_policy.format_stages(counts)
     return {
         "format_body": ("body", 3 * 5),
         "format_summary": ("summary", 3 * counts["summary"]),
