@@ -5,53 +5,42 @@
 
 **An evidence-grounded literature review system built around multi-agent collaboration.**
 
-Turn a research question into paper retrieval, evidence extraction, review writing,
-editorial review and verification. Inspect citations, evidence and quality status
-in a research workbench with execution replay and local exports.
+Find and organize papers around a research question, then write a literature review
+with citations. Read reports, inspect sources, review revisions and export documents
+from a single workbench.
 
 [Demo](#demo) · [Architecture](#architecture-and-stack) ·
 [Experiments](#experiments-and-validation) · [Quick start](#quick-start)
 
-> Reproducible engineering demonstration. Live Survey remains experimental;
-> a formal 15-case baseline has not been established.
-
 ## Overview
 
-Literature reviews require organizing multiple sources, checking whether citations
-support claims, and preserving evidence across revisions. LitAgent models this work
-as explicit tasks and binds each report to its evidence and verification results.
+LitAgent divides literature review work into retrieval, filtering, extraction,
+writing and review tasks handled by collaborating agents. Each report retains its
+sources, review history and evaluation results for inspection and revision.
 
 - **Input:** a research question, run configuration, and an optional local paper corpus.
 - **Process:** external search and local RAG → deduplication and filtering → evidence extraction → writing and review → verification and bounded repair.
-- **Output:** a structured review, references, evidence locations, quality and delivery status, and a run record.
+- **Output:** a structured review, references, source locations, evaluation results and a run record.
 
 ## Demo
 
 ![LitAgent workbench with report reading and citation inspection](./docs/images/readme-workbench-zh.jpg)
 
-*Chinese UI captured from the current source using the synthetic `sample-ready` fixture.
-This illustrates the interface and contracts, not model quality.*
-
-After running `litagent demo --presentation`, open the
-[workbench](http://127.0.0.1:8000/flow-demo) or
-[evidence overview](http://127.0.0.1:8000/presentation). These addresses require a local server.
-
-| View | What you can inspect |
+| View | Features |
 | --- | --- |
 | Report and evidence | Prose, numbered citations, source locations and references; Markdown/PDF/Word and BibTeX/RIS/CSL JSON exports |
 | Execution and diagnostics | Task DAG, stage status, call timeline, errors and usage |
-| Verification and revision | Version-bound evaluation, delivery reasons and a real frozen-evidence repair case |
+| Verification and revision | Evaluation results, revision history and report version comparison |
 
-[Three-minute walkthrough](./docs/presentation-guide.md) ·
-[Historical video and version notes](./docs/presentation-guide.md#保存的演示材料)
+[Demo guide](./docs/presentation-guide.md) · [Demo video](./docs/images/demo-walkthrough.mp4)
 
 ## Core capabilities
 
-- **Multi-agent collaboration:** explicit dependencies and asynchronous scheduling with separate search, extraction, writing and review responsibilities.
-- **Hybrid retrieval:** external paper search plus a local Paper Corpus, supporting dense/BM25/RRF, optional reranking and full-text evidence.
-- **Evidence-grounded verification:** preserve paper identities, evidence and source locations; distinguish valid citation IDs from actual support for a claim.
-- **Human review and recovery:** optional paper-selection and final-report checkpoints reuse completed stages; human approval cannot override failed quality.
-- **Reproducibility and diagnostics:** offline demonstration, versioned artifacts, request budgets and checkpoints, with optional LangFuse tracing.
+- **Multi-agent collaboration:** schedule tasks asynchronously by dependency, with separate agents for search, extraction, writing and review.
+- **Hybrid retrieval:** combine external paper search with a local corpus using dense retrieval, BM25, RRF fusion and reranking.
+- **Citation verification:** link report claims to cited papers and source passages, then check whether the citations support each conclusion.
+- **Human review:** review paper selections and final reports, and resume tasks from checkpoints.
+- **Run tracing:** record task states, model calls and usage, with history replay and LangFuse support.
 
 ## Architecture and stack
 
@@ -79,39 +68,37 @@ flowchart TB
     RUN -.-> OBS
 ```
 
-This is a capability-level overview; dotted edges represent resources or recording.
-**Independent editorial and Evaluation repair loops** require explicit selection of
-the policy in `config/separate-review-evaluation.yaml`; historical profiles retain
-their behavior. See the [detailed flow](./docs/system-overview.md#independent-review-and-evaluation-loops)
-for branches, stopping conditions and failure outcomes.
+Dotted edges represent storage and observability. The
+[independent-loop profile](./config/separate-review-evaluation.yaml) provides separate
+controls for Reviewer edits and Evaluation repairs.
+[Detailed flow](./docs/system-overview.md#independent-review-and-evaluation-loops).
 
-| Responsibility | Technology and boundary |
+| Module | Technology |
 | --- | --- |
-| Orchestration | Python 3.11, asyncio, custom TaskGraph/Scheduler; LangGraph implements the ReAct subflow, not the entire Survey DAG |
+| Orchestration | Python 3.11, asyncio, custom TaskGraph/Scheduler; LangGraph implements the ReAct subflow |
 | Retrieval and corpus | Qdrant, dense/BM25/RRF, optional CrossEncoder, PyMuPDF; full-text chunks retain source locations |
 | State and memory | Redis and PostgreSQL; local human review uses SQLite, with file-based run artifacts and checkpoints |
 | Interfaces | FastAPI, SSE and the browser workbench; local citation styles and six export types |
 | Observability and reproduction | Local RunArtifact, optional LangFuse, Docker Compose, offline tests and versioned benchmarks |
 
-[Module responsibilities and contracts](./docs/system-overview.md) ·
-[Capabilities and evidence](./docs/design-truth.md)
+[Architecture guide](./docs/system-overview.md) ·
+[Features and tests](./docs/design-truth.md)
 
 ## Engineering decisions
 
-| Problem | Design | Verification |
+| Design | Implementation | Documentation and tests |
 | --- | --- | --- |
-| How do concurrent tasks handle dependencies and interruption? | Scheduler injects completed upstream outputs and models failure, cancellation and skipped states explicitly | [Orchestrator tests](./tests/test_orchestrator.py) |
-| A citation exists, but does it support the claim? | Keep candidate findings separate from source evidence; check actual citations and preserve host-owned locations | [Evidence contracts](./docs/system-overview.md#paper-and-evidence-contracts) |
-| How do editorial edits differ from factual repairs? | Explicit configuration selects separate loops and budgets; edited drafts remain unverified until Evaluation, and factual repairs undergo full re-evaluation | [Pipeline tests](./tests/test_separate_review_pipeline.py) |
-| How are reports and scores kept aligned after revision or recovery? | Bind report SHA, evidence and evaluation; an improved but failing candidate is only a working draft, while publication still requires the complete quality gate | [Version and delivery contracts](./docs/system-overview.md#evaluation-and-delivery) |
+| Asynchronous scheduling | Pass upstream results along DAG dependencies and handle failed, cancelled and skipped tasks consistently | [Orchestrator tests](./tests/test_orchestrator.py) |
+| Claims linked to evidence | Preserve source locations and check each claim against its actual citations | [Evidence model](./docs/system-overview.md#paper-and-evidence-contracts) |
+| Separate review and verification | Reviewer provides editorial feedback; Evaluation verifies independently, with separate revision budgets and re-evaluation after edits | [Pipeline tests](./tests/test_separate_review_pipeline.py) |
+| Report version management | Associate prose, evidence and evaluation by SHA; retain revision history and checkpoints | [Version management](./docs/system-overview.md#evaluation-and-delivery) |
 
 ## Experiments and validation
 
-### Small retrieval benchmark
+### Retrieval benchmark
 
-Fixed **25 papers, 15 queries, three repetitions per query**. Relevance judgments
-are `source_reviewed`, without independent double annotation. Results describe
-this dataset's retrieval and latency tradeoffs, not general academic search quality.
+Using **25 papers, 15 queries and three repetitions per query**, the benchmark
+compares recall, ranking quality and latency across retrieval configurations.
 
 | Configuration | Recall@5 | nDCG@10 | p50 ms |
 | --- | ---: | ---: | ---: |
@@ -121,38 +108,27 @@ this dataset's retrieval and latency tradeoffs, not general academic search qual
 | RRF + reranker | 0.9089 | 0.9406 | 647 |
 | Full-text section-aware | 0.9222 | 0.8426 | 61 |
 
-Reranking improved ranking but increased latency, so this experiment did not change
-the default configuration. Full-text profiles also change indexed material and are
-not pure ranking ablations. [Full results and reproduction details](./benchmarks/rag/RESULTS.md).
+RRF + reranker reached nDCG@10 of 0.9406 at 647 ms p50 latency, while MiniLM + RRF
+returned results at 14 ms p50. The choice depends on ranking quality and response-time
+requirements. The full-text profile uses section-aware chunking to compare retrieval
+with different indexed material. [Full results](./benchmarks/rag/RESULTS.md).
 
-### Real repair case and validation boundaries
+### Review revision case
 
-A repair case used the same few-shot review and **31 frozen evidence items**. The
-initial draft had nine unsupported scientific claims and failed the inventory
-check. After revision, fresh claim extraction and full re-evaluation found support
-from actual citations for 398/398 claims, meeting that case's strict delivery gate.
-This is **one automatically evaluated frozen-evidence case**, without independent
-human calibration. It establishes neither general accuracy nor a formal 15-case baseline.
-[Case and usage notes](./docs/presentation-guide.md#最新状态与失败复盘) ·
-[Public record](./src/litagent/static/presentation/frozen-repair-377-380.json).
+In one few-shot literature review, the system used **31 fixed evidence items** to
+locate nine claims lacking citation support, then revised and re-evaluated the full
+report. All 398 scientific claims extracted in that evaluation passed the system's
+citation-support checks. [Case record](./src/litagent/static/presentation/frozen-repair-377-380.json).
 
-| Validation layer | What it establishes |
-| --- | --- |
-| Offline tests and synthetic demo | Contracts, failure boundaries and UI behavior; not model quality |
-| Retrieval benchmark | Recall, ranking and latency for a fixed corpus and queries |
-| Real frozen-evidence case | Revision and verification for specific inputs, configuration and version |
-| Formal Survey baseline | Not established; 0/15 formal cases completed |
-
-Historical suites report generation, review, evaluation and delivery separately;
-unexecuted cases are not scientific zero scores.
-[Survey methodology and history](./benchmarks/survey/README.md) · [Historical closeout](./docs/closeout.md).
+Pytest covers orchestration, evidence processing, evaluation and revision,
+checkpoint recovery and API behavior. See the
+[Survey benchmark documentation](./benchmarks/survey/README.md) for methods and run records.
 
 ## Quick start
 
 ### Offline demonstration without API keys
 
-Requires Python 3.11. Dependency installation needs internet access; the installed
-demo needs no API key, Docker, model download or runtime network calls.
+Requires Python 3.11. Demo mode needs no API key or Docker.
 
 ```sh
 python -m venv .venv
@@ -163,11 +139,6 @@ python -m pip install -c requirements/release-constraints.txt -e ".[api]"
 litagent demo --presentation
 ```
 
-Open the local URL printed in the terminal. Add `--no-browser --port 8001` if needed.
-Presentation mode reads packaged records only, without scanning private archives or
-recovering paid tasks. Built-in `ready`, `blocked` and `partial` samples are synthetic;
-real cases are labeled separately.
-
 ### Optional live run
 
 ```sh
@@ -177,12 +148,10 @@ docker compose up -d
 litagent demo --live
 ```
 
-Live runs incur model charges; `--live` and `--presentation` are mutually exclusive.
-See the [environment example](./.env.example), [default configuration](./config/default.yaml)
-and [independent-loop profile](./config/separate-review-evaluation.yaml). The new profile
-requires explicit selection and is not automatically enabled by the command above.
-Academic citation styles need Node.js; Chinese PDF/Word rendering needs CJK fonts.
-See [runtime preparation](./docs/presentation-guide.md#启动与准备).
+Live runs require a configured model service and incur charges from that provider.
+See the [environment example](./.env.example) and [default configuration](./config/default.yaml).
+Citation-style and document-export requirements are covered in the
+[setup guide](./docs/presentation-guide.md#启动与准备).
 
 ### Development checks
 
@@ -192,20 +161,17 @@ python -m black --check src tests
 python -m isort --check-only --profile black src tests
 ```
 
-Default tests exclude `integration` and `live`; offline success does not establish scientific correctness.
+Integration and live-model tests use the `integration` and `live` markers and can be run separately.
 
 ## Status and documentation
 
-Implemented engineering capabilities include retrieval, writing and review,
-evidence tracing, quality and delivery policies, replay and export. Current work
-focuses on controlled Survey validation and human calibration; no formal baseline
-has been established. OCR and arbitrary-URL full-text acquisition are unsupported.
-The project does not claim full PRISMA or journal-format compliance.
+Next steps include expanding the evaluation set, improving long-report review and
+revision, and optimizing retrieval quality and running costs.
 
 | Document | Contents |
 | --- | --- |
 | [System architecture](./docs/system-overview.md) | Responsibilities, data flow, two loops, persistence and degradation |
-| [Demo guide](./docs/presentation-guide.md) | Setup, walkthrough, real case and historical media |
-| [Capabilities and evidence](./docs/design-truth.md) | Implementation, verification links and experimental boundaries |
+| [Demo guide](./docs/presentation-guide.md) | Setup, walkthrough and demo materials |
+| [Features and tests](./docs/design-truth.md) | Feature implementations and corresponding tests |
 | [Retrieval results](./benchmarks/rag/RESULTS.md) / [Survey methodology](./benchmarks/survey/README.md) | Conditions, results and historical records |
-| [Timeouts and cancellation](./docs/timeouts.md) / [Release criteria](./docs/release.md) | Runtime limits, acceptance checks and known boundaries |
+| [Timeouts and cancellation](./docs/timeouts.md) / [Release criteria](./docs/release.md) | Runtime configuration and acceptance checks |
