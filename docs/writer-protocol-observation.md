@@ -19,7 +19,7 @@
 
 `tests/test_writer_v2_protocol.py` 用真实 SDK、预算、ModelBoundClient、WriterSession 和归档消费者，只替代 HTTP 传输，验证合法与非法 JSON、未知用量、取消、模型身份、原包一致性、身份漂移、进程中断、不重发及公开错误脱敏。
 
-当前依据及限制见 [计划审查](writer-plan-review-20261023.md)。只有新的真实观察完成后才能判断这次协议是否通过；科学质量仍须完整 Survey Evaluation 证明。
+当前依据及限制见 计划审查。只有新的真实观察完成后才能判断这次协议是否通过；科学质量仍须完整 Survey Evaluation 证明。
 
 ## 2026-10-23 实际观察
 

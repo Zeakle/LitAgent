@@ -10,6 +10,6 @@
 - 48历史保护文件、486冻结源码及全部副本、请求/响应绑定、四格式三题分母及未知账本继承均只读核对通过。
 - LangFuse读回1个generation、`usage_available=false`及HTTP403元数据，科学输入/输出为空。不声称完整业务链或端到端质量通过。
 
-[HTML](benchmark.html) · [JSON](benchmark.json) · [CSV](benchmark.csv) · [Markdown](benchmark.md) · [脱敏诊断](protocol-diagnostic.json) · [离线修复证据](../../../../docs/native-reemission-review-20261025.md)
+[HTML](benchmark.html) · [JSON](benchmark.json) · [CSV](benchmark.csv) · [Markdown](benchmark.md) · [脱敏诊断](protocol-diagnostic.json) · 离线修复证据
 
 当前需要先由账户所有者解决方舟欠费；系统没有自动重试、充值、修改密钥或清空未知费用。013终态不重启，未来独立验证须保留完整历史账本和同一科学门禁。Phase14.5保持`in_progress`，真实可靠性仍未得到三域验收证明。

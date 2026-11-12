@@ -51,3 +51,6 @@ artifacts/benchmarks/runtime/
 # Survey 运行调试产物
 survey_run*.log
 survey_result.md
+
+# Local archive of dated development notes
+/docs/archive/

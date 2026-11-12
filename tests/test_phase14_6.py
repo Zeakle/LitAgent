@@ -220,7 +220,6 @@ def test_language_readmes_link_to_each_other() -> None:
     """Keep Chinese as the landing page and English as a complete alternative."""
     chinese = Path("README.md").read_text(encoding="utf-8")
     english = Path("README.en.md").read_text(encoding="utf-8")
-    legacy = Path("README.zh-CN.md").read_text(encoding="utf-8")
 
     assert "](./README.md)" in english
     assert "](./README.en.md)" in english
@@ -228,14 +227,11 @@ def test_language_readmes_link_to_each_other() -> None:
     assert "](./README.en.md)" in chinese
     assert "## 项目概览" in chinese
     assert "## Overview" in english
-    assert "](./README.md)" in legacy
-    assert "](./README.en.md)" in legacy
-    assert "```" not in legacy
     assert "inter" + "view" not in english.lower()
     assert "面" + "试" not in chinese
 
 
-@pytest.mark.parametrize("filename", ["README.md", "README.en.md", "README.zh-CN.md"])
+@pytest.mark.parametrize("filename", ["README.md", "README.en.md"])
 def test_readme_relative_links_resolve_to_versioned_files(filename: str) -> None:
     content = Path(filename).read_text(encoding="utf-8")
     targets = re.findall(r"\]\((\./[^)#]+)", content)
@@ -247,7 +243,12 @@ def test_readme_relative_links_resolve_to_versioned_files(filename: str) -> None
 
 @pytest.mark.parametrize(
     "filename",
-    ["docs/design-truth.md", "docs/system-overview.md", "docs/presentation-guide.md"],
+    [
+        "docs/README.md",
+        "docs/design-truth.md",
+        "docs/system-overview.md",
+        "docs/presentation-guide.md",
+    ],
 )
 def test_public_documentation_relative_links_resolve(filename: str) -> None:
     document = Path(filename)

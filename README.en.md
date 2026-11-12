@@ -32,7 +32,7 @@ sources, review history and evaluation results for inspection and revision.
 | Execution and diagnostics | Task DAG, stage status, call timeline, errors and usage |
 | Verification and revision | Evaluation results, revision history and report version comparison |
 
-[Demo guide](./docs/presentation-guide.md) · [Demo video](./docs/images/demo-walkthrough.mp4)
+[Demo guide](./docs/presentation-guide.md)
 
 ## Core capabilities
 
@@ -167,6 +167,8 @@ Integration and live-model tests use the `integration` and `live` markers and ca
 
 Next steps include expanding the evaluation set, improving long-report review and
 revision, and optimizing retrieval quality and running costs.
+
+[Documentation index](./docs/README.md)
 
 | Document | Contents |
 | --- | --- |

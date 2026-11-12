@@ -1,6 +1,6 @@
 # Engineering release status
 
-## Current closeout · 2026-11-04
+## Historical closeout · 2026-11-04
 
 The only new fixed suite, **frozen-writer-closeout-20261104-055**, reached its
 specified terminal state: one of three cases ran, one body and summary completed,
@@ -75,8 +75,6 @@ The original failure replay and retrieval measurements remain separately identif
   same source SHA. Word rendering used the bundled LibreOffice runtime.
 - Desktop and 390 CSS-pixel Chinese/English views, document language, keyboard
   evidence/diagnostic expansion and unavailable scientific scores verified.
-- [Short screen-capture walkthrough](images/demo-walkthrough.mp4) is a 25-second
-  sequence of captured views, with subtitles, not a real-time generation recording.
 - The actual protocol LangFuse readback has one generation, empty input/output,
   and 23,744 input / 4,152 output tokens; no scientific result is inferred.
 - GitHub API and origin access currently fail (including `github.com` DNS

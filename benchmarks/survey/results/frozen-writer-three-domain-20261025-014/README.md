@@ -12,6 +12,6 @@
 - 完整原包经安装SDK→Synthesis离线逐字重放，同一归属拒绝、0修复、完整11184历史用量保持；重放1次模拟HTTP、0新增外部请求，不计作新费用或科学核验。
 - LangFuse读回1个generation、11184tokens/思考明细及空科学IO；不声称完整业务链覆盖。
 
-[HTML](benchmark.html) · [JSON](benchmark.json) · [CSV](benchmark.csv) · [Markdown](benchmark.md) · [脱敏协议诊断](protocol-diagnostic.json) · [恢复边界与离线证据](../../../../docs/native-reemission-review-20261025.md)
+[HTML](benchmark.html) · [JSON](benchmark.json) · [CSV](benchmark.csv) · [Markdown](benchmark.md) · [脱敏协议诊断](protocol-diagnostic.json) · 恢复边界与离线证据
 
 014已终止，不追加到通过、不自动15题。本次只证明账户已能接收请求和本地拒绝机制有效，未证明正文科学可靠。后续先离线审查现有段落/句子指令与原生schema的接线，不新增业务输出协议或猜测原文段落。Phase14.5保持`in_progress`。

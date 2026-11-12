@@ -96,7 +96,4 @@ Pro 已带来统计显著提升。独立完成/主导等归属表述应由本人
   2026-11-12 从源码 `bdfecbd` 启动 `litagent demo --presentation` 后采集，
   选择合成 `sample-ready` 并打开引用检查面板。截图展示当前界面；样例内容不证明模型质量，
   也不用于证明新双循环已完成真实运行。
-- **历史演示素材**：[25 秒截屏讲解视频](images/demo-walkthrough.mp4)和
-  [字幕](images/demo-walkthrough.srt)，归档于 2026-10-20 提交 `19cd514`。
-  这是当时的页面与导出检查截屏序列，不是实时生成录屏或重构后界面实录；
-  内置报告为合成夹具。[历史公开依据页截图](images/public-overview.jpg)仅作旧版参考。
+- [历史公开依据页截图](images/public-overview.jpg)仅作旧版参考。

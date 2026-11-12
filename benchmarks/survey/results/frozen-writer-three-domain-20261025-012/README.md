@@ -12,6 +12,6 @@
 - 44个历史保护文件及485个冻结源码副本核对不变。完整原包、正文片段和运行记录留在本地，公开包只有状态、位置、SHA和统计。
 - LangFuse读回实际5个generation、62995tokens、思考明细及空科学IO；不声称完整执行树或端到端质量通过。
 
-[HTML](benchmark.html) · [JSON](benchmark.json) · [CSV](benchmark.csv) · [Markdown](benchmark.md) · [脱敏协议诊断](protocol-diagnostic.json) · [下一步设计审查](../../../../docs/native-reemission-review-20261025.md)
+[HTML](benchmark.html) · [JSON](benchmark.json) · [CSV](benchmark.csv) · [Markdown](benchmark.md) · [脱敏协议诊断](protocol-diagnostic.json) · 下一步设计审查
 
 后续先离线统一审查正文与摘要的无损协议恢复，验证完整字符串、字段、引用和顺序能否严格保留；不新增业务输出格式，不自动补旧JSON后接受，不恢复012或付费追加到通过。Phase14.5保持in_progress。

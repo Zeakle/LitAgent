@@ -30,7 +30,7 @@ LitAgent 将文献综述流程拆分为检索、筛选、提取、写作和审�
 | 执行与诊断 | 任务 DAG、阶段状态、调用时间线、错误与用量 |
 | 核验与修订 | 评估结果、修订历史和报告版本对比 |
 
-[演示指南](./docs/presentation-guide.md) · [演示视频](./docs/images/demo-walkthrough.mp4)
+[演示指南](./docs/presentation-guide.md)
 
 ## 核心能力
 
@@ -157,6 +157,8 @@ python -m isort --check-only --profile black src tests
 ## 项目状态与文档导航
 
 后续将扩充评测集，完善长文审阅与修订流程，并持续优化检索质量和运行成本。
+
+[完整文档索引](./docs/README.md)
 
 | 文档 | 内容 |
 | --- | --- |
