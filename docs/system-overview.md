@@ -151,17 +151,19 @@ mistaken for an up-to-date one.
 
 ## Evaluation and Delivery
 
-The frozen run configuration selects the evaluation engine. The scoped Evaluation
-v3 path and the explicitly selected `ragas-cited-faithfulness-v1` path must not be
-presented as the same default. Both preserve the distinction between citation ID
-validity (`citation_accuracy`) and semantic support. The independent-loop profile
-selects the latter engine, with full inventory, actual-citation assessment and
-global checks. See [engine policy](../src/litagent/eval/engine_policy.py).
-The new UI uses strict_auto_v2: scientific support must be 1.0 and core coverage,
-structure and consistency must pass. Optional Judge checks the final report; optional
-Jev checks extraction before writing. Both are off by default in the new UI; old
-API and checkpoint defaults retain their historical semantics. Stage routing uses
-Lite for planning/extraction/review/evaluation and Pro for writing and repairs.
+The default configuration uses RAGAS Faithfulness with the sources cited by
+each report unit. The independent-loop profile uses the same engine. Historical
+runs retain their original evaluation contract. The quality page shows citation
+ID validity separately from scientific support. See [metric definitions](evaluation-results.md).
+
+Reviewer makes editorial recommendations during writing. Evaluation checks the
+report after writing and reassesses revision candidates. The workbench defaults
+to `strict_auto_v2`, which requires complete verification, a scientific support
+rate of 1.0, no contradictions and passing report checks. Jev is enabled by default
+for extraction before writing. The final-report Judge is retired in the workbench.
+Stage routing uses Lite for planning, extraction, review and evaluation, and Pro
+for writing and revisions.
+
 When evidence repair is attempted, the candidate report is kept isolated from the
 publishable result until structure validation, reference validation and
 post-rewrite evaluation succeed. The opt-in workflow can retain a verified

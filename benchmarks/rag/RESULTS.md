@@ -1,4 +1,4 @@
-# Phase 14.3 RAG Benchmark Results
+# RAG Benchmark Results
 
 ## 结论
 
