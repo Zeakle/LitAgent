@@ -153,17 +153,3 @@ python -m isort --check-only --profile black src tests
 ```
 
 集成测试与真实模型测试使用 `integration`、`live` 标记，按需单独运行。
-
-## 项目状态与文档导航
-
-后续将扩充评测集，完善长文审阅与修订流程，并持续优化检索质量和运行成本。
-
-[完整文档索引](./docs/README.md)
-
-| 文档 | 内容 |
-| --- | --- |
-| [系统架构](./docs/system-overview.md) | 模块职责、数据流、双循环、持久化与降级 |
-| [演示指南](./docs/presentation-guide.md) | 环境准备、操作流程与演示材料 |
-| [功能与测试索引](./docs/design-truth.md) | 功能实现与对应测试 |
-| [检索结果](./benchmarks/rag/RESULTS.md) / [Survey 方法](./benchmarks/survey/README.md) | 实验条件、结果与历史记录 |
-| [超时与取消](./docs/timeouts.md) / [发布验收](./docs/release.md) | 运行配置与验收方式 |
