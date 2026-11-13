@@ -31,4 +31,4 @@
 未运行Reviewer/Evaluation/Judge/Jev，无人工金标准，不提供准确率或误放行率。协议完成不代表科学支持；Phase14.5 in_progress，正式15题未运行。
 完整正文、原始响应与来源只留本地；公开仅脱敏状态、身份和用量。
 
-[JSON](benchmark.json) · [CSV](benchmark.csv) · [Markdown](benchmark.md) · [HTML](benchmark.html)
+[JSON](benchmark.json) · [CSV](benchmark.csv) · [Markdown](README.md) · [HTML](benchmark.html)

@@ -26,4 +26,4 @@
 
 下一步应减少长哈希ID的抄写负担：使用明确的章节内短编号，由程序精确恢复稳定卡ID；未知编号与越权引用继续拒绝。该方案尚未实现、未付费验证，不得将“已存在的卡”直接当成“该章节允许的卡”。
 
-[JSON](benchmark.json)、[CSV问题清单](benchmark.csv)、[Markdown](benchmark.md)、[独立HTML](benchmark.html)共享相同结果。无人工金标准，误放行率和误拒绝率不可用；Phase14.5保持in_progress，正式套件仍0/15。
+[JSON](benchmark.json)、[CSV问题清单](benchmark.csv)、[Markdown](README.md)、[独立HTML](benchmark.html)共享相同结果。无人工金标准，误放行率和误拒绝率不可用；Phase14.5保持in_progress，正式套件仍0/15。
