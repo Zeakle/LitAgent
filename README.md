@@ -24,16 +24,12 @@ LitAgent 将文献综述流程拆分为检索、筛选、提取、写作和审�
 
 ![LitAgent 系统流程与四层记忆读写图](./docs/images/readme-workflow-memory-zh.svg)
 
-[查看完整架构图](./docs/images/readme-workflow-memory-zh.svg)
-
 左侧是运行流程。外部论文搜索与本地 RAG 并行，证据抽取与引用网络分析并行。右侧四层记忆通过同色虚线接到使用节点，箭头指向节点表示读取，指向记忆表示写入。
 节点角标中，`LLM` 表示调用生成式模型，`LLM*` 表示按任务或配置调用，`代码` 表示该步骤无生成式 LLM 调用。检索和排序仍可使用向量模型或重排模型。
 工作记忆按运行、Agent 和工作单元隔离，记录已采纳的决定、待解决问题和近期改动。
 程序性记忆在搜索结束后累计成功、空结果、限流和超时。情景记忆在报告满足交付条件后保存调研摘要，供下一次规划召回。
 
 语义记忆统一在 Extract 前按研究主题召回。系统核对来源和适用条件后，将符合条件的证据纳入本轮账本，供后续写作、审阅和评估使用。报告满足交付条件后，只将最终版本实际引用且核验通过的证据写入语义记忆。
-
-[架构说明](./docs/system-overview.md) · [功能与测试索引](./docs/design-truth.md)
 
 ## 核心能力
 
@@ -59,10 +55,10 @@ LitAgent 将文献综述流程拆分为检索、筛选、提取、写作和审�
 
 RRF + reranker 的 nDCG@10 达到 0.9406，p50 延迟为 647 ms；MiniLM + RRF
 的 p50 为 14 ms，可根据排序质量和响应速度的需求选择。全文配置采用 section-aware 切分，
-单独比较不同索引材料下的检索表现。[完整实验结果](./benchmarks/rag/RESULTS.md)。
+单独比较不同索引材料下的检索表现。
 
 项目使用 pytest 覆盖任务编排、证据处理、评估修订、断点恢复及 API 行为。
-评测方法与运行记录见 [Survey 评测文档](./benchmarks/survey/README.md)。
+检索结果和功能验证记录分别保存在 `benchmarks/rag/RESULTS.md` 和 `docs/design-truth.md`。
 
 ## 效果展示
 
@@ -93,8 +89,7 @@ litagent demo --live
 ```
 
 真实运行需要配置模型服务，费用由所选服务商收取。
-配置方式见[环境变量示例](./.env.example)与[默认配置](./config/default.yaml)。
-引用样式和文档导出的环境要求见[安装说明](./docs/presentation-guide.md#启动与准备)。
+环境变量示例在 `.env.example`，默认配置在 `config/default.yaml`。
 
 ### 开发验证
 

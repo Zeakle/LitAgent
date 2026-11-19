@@ -26,8 +26,6 @@ sources, review history and evaluation results for inspection and revision.
 
 ![LitAgent survey workflow and memory read and write points](./docs/images/readme-workflow-memory-en.svg)
 
-[View the full-size diagram](./docs/images/readme-workflow-memory-en.svg)
-
 The left side shows the runtime workflow. External search and local RAG run in parallel, as do extraction and citation analysis. Colored dashed lines connect each memory layer to its workflow nodes. Arrows into a node indicate reads, and arrows toward memory indicate writes.
 The `LLM` badge marks a generative model call. `LLM*` means the call depends on the task or configuration. `Code` marks steps without a generative LLM call. Retrieval and ranking can still use embedding or reranking models.
 Working memory keeps decisions, open issues, and recent changes scoped by run, agent, and work unit.
@@ -35,9 +33,6 @@ Procedural memory counts successes, empty results, rate limits, and timeouts aft
 After delivery checks pass, episodic memory stores the survey summary for future planning.
 
 Semantic memory is read once before Extract using the research topic. The system checks recalled evidence and adds eligible items to the current evidence ledger. Writing, review, and evaluation use that ledger. After delivery checks pass, semantic memory stores the verified items cited by the final report.
-
-[Architecture guide](./docs/system-overview.md) ·
-[Features and tests](./docs/design-truth.md)
 
 ## Core capabilities
 
@@ -65,11 +60,11 @@ compares recall, ranking quality and latency across retrieval configurations.
 RRF + reranker reached nDCG@10 of 0.9406 at 647 ms p50 latency, while MiniLM + RRF
 returned results at 14 ms p50. The choice depends on ranking quality and response-time
 requirements. The full-text profile uses section-aware chunking to compare retrieval
-with different indexed material. [Full results](./benchmarks/rag/RESULTS.md).
+with different indexed material.
 
 Pytest covers orchestration, evidence processing, evaluation and revision,
-checkpoint recovery and API behavior. See the
-[Survey benchmark documentation](./benchmarks/survey/README.md) for methods and run records.
+checkpoint recovery and API behavior.
+Retrieval results and feature verification records are in `benchmarks/rag/RESULTS.md` and `docs/design-truth.md`.
 
 ## Demo
 
@@ -100,9 +95,7 @@ litagent demo --live
 ```
 
 Live runs require a configured model service and incur charges from that provider.
-See the [environment example](./.env.example) and [default configuration](./config/default.yaml).
-Citation-style and document-export requirements are covered in the
-[setup guide](./docs/presentation-guide.md#启动与准备).
+See `.env.example` for environment variables and `config/default.yaml` for defaults.
 
 ### Development checks
 
