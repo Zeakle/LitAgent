@@ -24,7 +24,11 @@ sources, review history and evaluation results for inspection and revision.
 
 ## Demo
 
-![LitAgent workbench with report reading and citation inspection](./docs/images/readme-workbench-zh.jpg)
+![A generated Vision Transformer survey with its outline, abstract and inline citations](./docs/images/readme-workbench-zh.jpg)
+
+The screenshot shows a Vision Transformer survey from a live run. Re-evaluation found
+support in the cited sources for 536 of 561 scientific claims (95.54%), so the draft
+did not meet the strict delivery criteria.
 
 | View | Features |
 | --- | --- |

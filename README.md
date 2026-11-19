@@ -22,7 +22,9 @@ LitAgent 将文献综述流程拆分为检索、筛选、提取、写作和审�
 
 ## 效果展示
 
-![LitAgent 中文研究工作台：报告阅读与引用导航](./docs/images/readme-workbench-zh.jpg)
+![真实生成的 Vision Transformer 综述，显示目录、摘要与行内引用](./docs/images/readme-workbench-zh.jpg)
+
+截图来自一次真实的 Vision Transformer 文献综述运行。复评中，561 条科学断言有 536 条获实际引用支持（95.54%），这版草稿未达到严格交付标准。
 
 | 页面 | 功能 |
 | --- | --- |
