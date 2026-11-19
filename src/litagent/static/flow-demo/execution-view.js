@@ -57,7 +57,7 @@ export function buildExecutionGraph(tasks = {}, dependencies = {}, executionNode
 
   const nodes = stableOrder.map((id) => {
     const task = definitions.get(id) || {};
-    const execution = matchingExecution(executionNodes, id);
+    const execution = task.observation || matchingExecution(executionNodes, id);
     return {
       id,
       rank: rank.get(id) || 0,
@@ -67,7 +67,7 @@ export function buildExecutionGraph(tasks = {}, dependencies = {}, executionNode
       labelKey: task.labelKey || null,
       summaryFacts: task.summaryFacts || [],
       status: execution?.status || task.status || "pending",
-      durationMs: execution?.duration_ms ?? execution?.elapsed_ms ?? task.durationMs ?? null,
+      durationMs: execution?.duration_ms ?? execution?.elapsed_ms ?? execution?.durationMs ?? task.durationMs ?? null,
       usage: execution?.usage || null,
       error: execution?.error || task.error || null,
     };
@@ -91,9 +91,10 @@ function layoutOptions(options) {
 export function layoutExecutionGraph(graph, options = {}) {
   const config = layoutOptions(options);
   const direction = config.direction || "LR";
+  const vertical = direction === "TB";
   const nodeWidth = Number(config.nodeSizes?.width) || 248;
   const nodeHeight = Number(config.nodeSizes?.height) || 108;
-  const primaryGap = 104;
+  const primaryGap = vertical ? 72 : 104;
   const crossGap = 28;
   const padding = 32;
   const groups = new Map();
@@ -104,11 +105,13 @@ export function layoutExecutionGraph(graph, options = {}) {
   }
   const incomingOrder = new Map();
   for (const edge of graph.edges || []) {
+    if (edge.kind === "feedback") continue;
     if (!incomingOrder.has(edge.to)) incomingOrder.set(edge.to, []);
     incomingOrder.get(edge.to).push(edge.from);
   }
   const previousOrder = new Map();
   const positioned = [];
+  const maxLanes = Math.max(0, ...[...groups.values()].map(nodes => nodes.length));
   for (const [rank, nodes] of [...groups.entries()].sort((a, b) => a[0] - b[0])) {
     nodes.sort((left, right) => {
       const score = (node) => {
@@ -123,8 +126,9 @@ export function layoutExecutionGraph(graph, options = {}) {
     });
     nodes.forEach((node, index) => {
       previousOrder.set(node.id, index);
-      const primary = padding + rank * (nodeWidth + primaryGap);
-      const cross = padding + index * (nodeHeight + crossGap);
+      const primary = padding + rank * ((vertical ? nodeHeight : nodeWidth) + primaryGap);
+      const cross = padding + (index + (vertical ? (maxLanes - nodes.length) / 2 : 0))
+        * ((vertical ? nodeWidth : nodeHeight) + crossGap);
       positioned.push({
         ...node,
         x: direction === "LR" ? primary : cross,
@@ -135,11 +139,14 @@ export function layoutExecutionGraph(graph, options = {}) {
     });
   }
   const byId = new Map(positioned.map((node) => [node.id, node]));
+  const feedbackCount = (graph.edges || []).filter(edge => edge.kind === "feedback").length;
   const contentWidth = positioned.length
     ? Math.max(...positioned.map((node) => node.x + node.width)) + padding
+      + (vertical && feedbackCount ? 240 + feedbackCount * 24 : 0)
     : 0;
   const contentHeight = positioned.length
     ? Math.max(...positioned.map((node) => node.y + node.height)) + padding
+      + (!vertical && feedbackCount ? 72 + feedbackCount * 24 : 0)
     : 0;
   const bounds = { x: 0, y: 0, width: contentWidth, height: contentHeight };
   return {
@@ -173,8 +180,8 @@ export function fitGraphToViewport(
   );
   return {
     scale,
-    translateX: (viewportWidth - contentWidth * scale) / 2 - (Number(bounds.x) || 0) * scale,
-    translateY: (viewportHeight - contentHeight * scale) / 2 - (Number(bounds.y) || 0) * scale,
+    translateX: Math.max(padding, (viewportWidth - contentWidth * scale) / 2) - (Number(bounds.x) || 0) * scale,
+    translateY: Math.max(padding, (viewportHeight - contentHeight * scale) / 2) - (Number(bounds.y) || 0) * scale,
     ready: true,
   };
 }
@@ -234,39 +241,70 @@ export function renderExecutionGraph(container, graph, onSelect, options = {}) {
     ...neighborhood.upstreamIds,
     ...neighborhood.downstreamIds,
   ].filter(Boolean));
+  let feedbackIndex = 0;
   for (const edge of graph.edges) {
     const from = graph.byId.get(edge.from);
     const to = graph.byId.get(edge.to);
     if (!from || !to) continue;
     const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
     path.classList.add("graph-edge");
-    const x1 = from.x + from.width;
-    const y1 = from.y + from.height / 2;
-    const x2 = to.x;
-    const y2 = to.y + to.height / 2;
-    const mid = (x1 + x2) / 2;
-    path.setAttribute("d", `M ${x1} ${y1} C ${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}`);
+    path.dataset.kind = edge.kind || "dependency";
+    let labelX, labelY;
+    if (edge.kind === "feedback" && graph.direction === "TB") {
+      const x1 = from.x + from.width, y1 = from.y + from.height / 2;
+      const x2 = to.x + to.width, y2 = to.y + to.height / 2;
+      const routeX = Math.max(x1, x2) + 76 + feedbackIndex++ * 24;
+      path.setAttribute("d", `M ${x1} ${y1} C ${routeX} ${y1}, ${routeX} ${y2}, ${x2} ${y2}`);
+      labelX = routeX + 12; labelY = (y1 + y2) / 2;
+    } else if (edge.kind === "feedback") {
+      const x1 = from.x + from.width / 2, y1 = from.y + from.height;
+      const x2 = to.x + to.width / 2, y2 = to.y + to.height;
+      const routeY = Math.max(y1, y2) + 76 + feedbackIndex++ * 24;
+      path.setAttribute("d", `M ${x1} ${y1} C ${x1} ${routeY}, ${x2} ${routeY}, ${x2} ${y2}`);
+      labelX = (x1 + x2) / 2; labelY = routeY - 10;
+    } else if (graph.direction === "TB") {
+      const x1 = from.x + from.width / 2, y1 = from.y + from.height;
+      const x2 = to.x + to.width / 2, y2 = to.y;
+      const mid = (y1 + y2) / 2;
+      path.setAttribute("d", `M ${x1} ${y1} C ${x1} ${mid}, ${x2} ${mid}, ${x2} ${y2}`);
+      labelX = (x1 + x2) / 2 + 12; labelY = mid;
+    } else {
+      const x1 = from.x + from.width, y1 = from.y + from.height / 2;
+      const x2 = to.x, y2 = to.y + to.height / 2;
+      const mid = (x1 + x2) / 2;
+      path.setAttribute("d", `M ${x1} ${y1} C ${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}`);
+      labelX = mid; labelY = (y1 + y2) / 2 - 10;
+    }
     path.setAttribute("marker-end", "url(#graph-arrow)");
     path.dataset.edgeId = edge.id || `${edge.from}>${edge.to}`;
     if (options.selectedId && !neighborhood.edgeIds.includes(path.dataset.edgeId)) {
       path.dataset.dimmed = "true";
     }
     svg.append(path);
+    const label = options.edgeLabel?.(edge);
+    if (label) {
+      const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      text.setAttribute("x", labelX); text.setAttribute("y", labelY);
+      text.setAttribute("text-anchor", graph.direction === "TB" ? "start" : "middle"); text.classList.add("graph-edge-label");
+      text.textContent = label;
+      svg.append(text);
+    }
   }
   stage.append(svg);
   for (const node of graph.nodes) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "graph-node";
+    button.dataset.nodeId = node.id;
     button.dataset.status = node.status;
     button.dataset.selected = String(node.id === options.selectedId);
-    button.dataset.dimmed = String(Boolean(options.selectedId && !related.has(node.id)));
+    button.dataset.dimmed = String(Boolean(options.selectedId && !related.has(node.id)) || options.matches?.(node) === false);
     button.style.left = `${node.x}px`;
     button.style.top = `${node.y}px`;
     button.style.width = `${node.width}px`;
     button.style.height = `${node.height}px`;
     const name = document.createElement("strong");
-    name.textContent = options.label?.(node.labelKey, node.name) || node.name;
+    name.textContent = `${options.label?.(node.labelKey, node.name) || node.name}${node.round ? ` · ${node.round}` : ""}`;
     const summary = document.createElement("span");
     summary.className = "graph-node-summary";
     summary.textContent = options.summary?.(node) || node.id;

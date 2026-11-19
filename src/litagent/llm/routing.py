@@ -56,3 +56,30 @@ class ModelBoundClient(BaseLLMClient):
     async def close(self):
         """Leave transport disposal to its owner."""
         return None
+
+
+class NativeEvaluationClient:
+    """Route native Evaluation calls using the same phase that owns the reservation."""
+
+    def __init__(self, evaluation, inventory_model: str):
+        self._evaluation = evaluation
+        rebind = getattr(evaluation, "for_model", None)
+        self._inventory = (
+            rebind(inventory_model, "evaluation_inventory")
+            if rebind is not None
+            else ModelBoundClient(evaluation, inventory_model, "evaluation_inventory")
+        )
+
+    def __getattr__(self, name):
+        return getattr(self._evaluation, name)
+
+    async def chat(self, messages, **kwargs):
+        """Keep NLI and global review on their original model and verify inventory echoes."""
+        from litagent.safety.planned_budget import current_request_stage
+
+        stage = current_request_stage()
+        if stage == "inventory":
+            return await self._inventory.chat(messages, **kwargs)
+        if stage in ("assessment", "global"):
+            return await self._evaluation.chat(messages, **kwargs)
+        raise ValueError("native_evaluation_request_stage_invalid")

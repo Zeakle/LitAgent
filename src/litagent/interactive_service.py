@@ -172,28 +172,59 @@ class InteractiveRunService:
             if report is None and checkpoint.report_data:
                 report = dict(checkpoint.report_data)
 
-        artifact = self._archive_repository.get(run_id)
-        archive_view = (
-            project_flow_demo_view(artifact, source="archive")
-            if artifact is not None
-            else None
+        archived = self._archive_repository.get(run_id)
+        artifact = await self.get_audit_artifact(run_id)
+        artifact["status"] = row["status"]
+        artifact["error"] = row.get("error")
+        if report is not None:
+            artifact["report"] = report
+        archive_view = await asyncio.to_thread(
+            project_flow_demo_view,
+            artifact,
+            source="archive" if archived else "live",
+            citation_style=citation_style,
         )
         if archive_view is not None:
             archive_graph = archive_view.get("dag") or {}
-            if not graph["tasks"]:
+            if archive_graph.get("tasks"):
                 graph["tasks"] = dict(archive_graph.get("tasks") or {})
                 graph["dependencies"] = dict(archive_graph.get("dependencies") or {})
             graph["nodes"] = dict(archive_graph.get("nodes") or {})
-            if report is None and artifact.get("report"):
-                report = dict(artifact["report"])
+            if not graph["tasks"]:
+                # Before the first checkpoint, durable worker events still expose
+                # real nodes. Missing scheduler dependencies are not reconstructed.
+                graph["tasks"] = {
+                    node["task_id"]: {
+                        "task_id": node["task_id"],
+                        "agent_type": node["name"],
+                        "input": node.get("input"),
+                        "status": node["status"],
+                    }
+                    for node in graph["nodes"].values()
+                    if node.get("kind") == "worker" and node.get("task_id")
+                }
+            projected_report = archive_view.get("report") or {}
+            if report is None and (
+                projected_report.get("survey") or projected_report.get("metadata")
+            ):
+                report = dict(artifact.get("report") or projected_report)
+            if report is not None:
+                report["metadata"] = projected_report.get("metadata") or report.get(
+                    "metadata", {}
+                )
 
         timeline = await self._repository.list_events(run_id)
         versions = await self._repository.list_report_versions(run_id)
         evaluation = dict((report or {}).get("evaluation") or {})
-        quality = (report or {}).get("quality")
-        delivery = (report or {}).get("delivery")
+        quality = archive_view.get("quality") or (report or {}).get("quality") or None
+        delivery = (
+            (report or {}).get("delivery") or archive_view.get("delivery") or None
+        )
         metadata = dict((report or {}).get("metadata") or {})
         archive_summary = (archive_view or {}).get("summary") or {}
+        has_recorded_runtime = bool(
+            archived or run_id in self._recorders or artifact.get("events")
+        )
         evidence = list((archive_view or {}).get("evidence") or [])
         if not evidence:
             raw_evidence = (report or {}).get("evidence") or metadata.get(
@@ -209,7 +240,7 @@ class InteractiveRunService:
             "can_cancel": status in {"queued", "running", "awaiting_human"},
             "can_review": status == "awaiting_human" and review is not None,
             "can_export": bool(versions),
-            "can_download_artifact": artifact is not None,
+            "can_download_artifact": archived is not None,
             "has_trace": bool(trace.get("trace_url")),
         }
         token_usage = metadata.get("token_usage") or {}
@@ -228,7 +259,8 @@ class InteractiveRunService:
             or (metadata.get("execution") or {}).get("elapsed_ms"),
             "total_tokens": (
                 archive_summary.get("total_tokens")
-                if archive_summary.get("total_tokens") is not None
+                if has_recorded_runtime
+                and archive_summary.get("total_tokens") is not None
                 else token_usage.get("total_tokens")
             ),
             "quality_status": (quality or {}).get("status"),
@@ -257,13 +289,22 @@ class InteractiveRunService:
                 },
                 paper_catalog=paper_catalog_from_nodes(graph["nodes"]),
                 citation_style=citation_style,
+                writing_bindings=(report.get("metadata") or {}).get("writing_bindings"),
             )
             rendered_report = reader_report_projection(reader)
         return {
             "schema_version": 1,
             "source": "interactive",
             "summary": summary,
-            "budget_state": (archive_view or {}).get("budget_state"),
+            "budget_state": (
+                archive_view.get("budget_state")
+                if archived is not None or artifact.get("budget_state") is not None
+                else None
+            ),
+            "budget_plan": archive_view.get("budget_plan"),
+            "pipeline_verification": archive_view.get("pipeline_verification"),
+            "targeted_repair_state": archive_view.get("targeted_repair_state"),
+            "display_warnings": archive_view.get("display_warnings", []),
             "graph": graph,
             "timeline": timeline,
             "report": report,
@@ -327,6 +368,7 @@ class InteractiveRunService:
                     (archive or {}).get("nodes") or {}
                 ),
                 citation_style=citation_style,
+                writing_bindings=(report.get("metadata") or {}).get("writing_bindings"),
             )
             rendered_report = reader_report_projection(reader)
         return {
@@ -433,6 +475,7 @@ class InteractiveRunService:
                     (archive or {}).get("nodes") or {}
                 ),
                 citation_style=citation_style,
+                writing_bindings=metadata.get("writing_bindings"),
             )
         return await self._exporter.export(
             version,

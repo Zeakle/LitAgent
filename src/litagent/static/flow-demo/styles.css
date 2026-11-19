@@ -194,11 +194,14 @@ h3 { font-size: 13px; }
 .stage-member[data-status="failed"] small { color: var(--danger); }
 .execution-graph { position: relative; width: 100%; height: 100%; overflow: hidden; cursor: grab; touch-action: none; background-color: #f8faf9; background-image: linear-gradient(#e8edeb 1px, transparent 1px), linear-gradient(90deg, #e8edeb 1px, transparent 1px); background-size: 24px 24px; }
 .execution-graph[data-panning="true"] { cursor: grabbing; }
-.graph-stage { position: absolute; top: 0; left: 0; min-width: 100%; min-height: 100%; transform-origin: 0 0; will-change: transform; }
+.graph-stage { position: absolute; top: 0; left: 0; transform-origin: 0 0; will-change: transform; }
 .graph-edges { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .graph-edges > path { fill: none; stroke: #879b96; stroke-width: 1.6; transition: opacity 120ms ease; }
 .graph-edges marker path { fill: #879b96; }
 .graph-edges > path[data-dimmed="true"] { opacity: .14; }
+.graph-edges > path[data-kind="sequence"] { stroke-dasharray: 6 4; stroke: #768c96; }
+.graph-edges > path[data-kind="feedback"] { stroke: #ad6b20; stroke-width: 2.4; }
+.graph-edge-label { fill: #89551c; font: 600 12px/1.4 "Segoe UI", sans-serif; paint-order: stroke; stroke: #f8faf9; stroke-width: 5px; stroke-linejoin: round; }
 .graph-node { position: absolute; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 5px; border: 1px solid #aebbb7; border-left: 4px solid #7e8b88; border-radius: 5px; padding: 10px 12px; background: #fff; color: var(--ink); box-shadow: 0 3px 8px rgb(38 58 54 / 7%); text-align: left; }
 .graph-node:hover, .graph-node[data-selected="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px rgb(15 118 110 / 14%); }
 .graph-node[data-dimmed="true"] { opacity: .32; }
@@ -253,7 +256,7 @@ h3 { font-size: 13px; }
 .quality-gate { margin-top: 24px; border-left: 4px solid var(--accent); padding: 14px 17px; background: var(--surface-soft); }
 .quality-gate p { margin: 7px 0 0; color: var(--muted); font-size: 12px; }
 
-.inspector-drawer { position: fixed; z-index: 20; top: 0; right: 0; bottom: 0; width: min(var(--drawer), 92vw); transform: translateX(102%); border-left: 1px solid var(--line); background: #fff; box-shadow: -14px 0 32px rgb(30 47 43 / 14%); transition: transform 160ms ease-out; }
+.inspector-drawer { position: fixed; z-index: 20; top: 0; right: 0; bottom: 0; width: min(640px, 94vw); transform: translateX(102%); border-left: 1px solid var(--line); background: #fff; box-shadow: -14px 0 32px rgb(30 47 43 / 14%); transition: transform 160ms ease-out; }
 .inspector-drawer[data-open="true"] { transform: translateX(0); }
 .inspector-drawer > header { display: flex; min-height: 68px; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); padding: 12px 16px; }
 .inspector-drawer > header > div { min-width: 0; }
@@ -417,3 +420,38 @@ h3 { font-size: 13px; }
 
 #benchmark-detail .quality-section > svg { display: block; width: 100%; height: auto; max-height: 60px; }
 .quality-matrix-row { padding: .8rem 0; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+
+/* Keep full scientific source text readable without clipping the detail panel. */
+.ledger-controls { display: flex; flex-wrap: wrap; gap: 10px; padding: 12px 20px; background: #fff; border-bottom: 1px solid var(--line); }
+.ledger-controls label { flex: 1 1 220px; min-width: 0; }
+.ledger-controls input, .ledger-controls select { width: 100%; min-height: 40px; padding: 8px 10px; border: 1px solid #c6d2ce; border-radius: 5px; background: #fff; color: var(--ink); }
+.ledger-help { margin: 12px 20px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.evidence-row .evidence-badge { grid-column: 2; width: fit-content; padding: 4px 8px; background: #eef2f1; border-radius: 4px; font-size: 11px; font-weight: 500; }
+.evidence-badge[data-state="accepted"] { background: #e6f4ed; color: #176046; }
+.evidence-badge[data-state="rejected"], .evidence-badge[data-state="mismatch"] { background: #fff0e4; color: #8b471c; }
+.evidence-detail-section { border-bottom: 1px solid var(--line); padding: 4px 0 16px; margin-bottom: 12px; }
+.evidence-detail-section h3 { margin: 12px 0 8px; font-size: 14px; }
+.evidence-detail-section p { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.8; margin: 8px 0; }
+.evidence-detail-section small { color: var(--muted); overflow-wrap: anywhere; }
+.evidence-detail-section .evidence-detail-section { padding: 0 12px 10px; border: 0; background: #f5f8f7; border-radius: 5px; }
+.probability-row { display: flex; justify-content: space-between; gap: 16px; margin-top: 7px; font-size: 12px; }
+.call-inspect-button { display: block; width: 100%; padding: 12px; margin-top: 8px; border: 1px solid var(--line); border-radius: 4px; color: var(--accent); background: #f5f9f8; text-align: left; overflow-wrap: anywhere; }
+@media (max-width: 760px) { .evidence-row .evidence-badge { grid-column: 1; } .ledger-controls { padding: 10px 12px; } }
+
+
+.execution-business { margin: 20px 0; padding-top: 12px; border-top: 1px solid var(--border, #d8e0e7); }
+.execution-business h3 { margin: 0 0 12px; font-size: 15px; }
+.execution-field { margin: 10px 0; padding-left: 12px; border-left: 2px solid #dde5eb; min-width: 0; }
+.execution-field > strong { color: var(--muted, #526579); font-size: 12px; }
+.execution-text, .execution-document { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; }
+.execution-text { margin: 4px 0 10px; }
+.execution-entry { margin: 8px 0; padding: 10px; background: var(--panel, #f5f8fa); border-radius: 8px; }
+.execution-entry summary { cursor: pointer; overflow-wrap: anywhere; }
+.execution-draft-controls { display: flex; gap: 8px; flex-wrap: wrap; }
+.execution-draft-controls button { padding: 7px 12px; border: 1px solid #c6d4df; border-radius: 7px; background: white; cursor: pointer; }
+.execution-draft-controls button[aria-pressed="true"] { background: #e0f2ed; border-color: #3d8e79; }
+.execution-draft-controls button:disabled { opacity: .5; cursor: default; }
+.execution-diff-note { font-size: 12px; color: var(--muted, #526579); }
+.execution-document { padding: 16px; border: 1px solid #d8e0e7; border-radius: 8px; background: #fff; font-size: 14px; }
+.execution-document ins { background: #d4f4df; color: #145c34; text-decoration: none; }
+.execution-document del { background: #ffe0e0; color: #9b2c2c; }

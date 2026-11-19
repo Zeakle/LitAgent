@@ -108,10 +108,22 @@ def build_reader_report(
     evidence_ledger: Mapping[str, Mapping[str, object]],
     paper_catalog: Mapping[str, Mapping[str, object]],
     citation_style: str = "numbered",
+    writing_bindings: Mapping | None = None,
 ) -> ReaderReport:
     """Number known papers by first citation while retaining evidence identity."""
     if citation_style not in STYLES:
         raise ValueError("unsupported_citation_style")
+    if writing_bindings and "citation_contract" in writing_bindings:
+        from litagent.writing_v2 import bound_fragments
+
+        bound_fragments(report.survey, writing_bindings)
+        return _build_styled_report(
+            report,
+            evidence_ledger,
+            paper_catalog,
+            citation_style,
+            scopes=writing_bindings["citation_scopes"],
+        )
     if citation_style not in {"numbered", "evidence"}:
         return _build_styled_report(
             report, evidence_ledger, paper_catalog, citation_style
@@ -126,6 +138,11 @@ def build_reader_report(
             report.content_sha256,
             "evidence",
         )
+    return _build_numbered_report(report, evidence_ledger, paper_catalog)
+
+
+def _build_numbered_report(report, evidence_ledger, paper_catalog):
+    """Build the original numbered bibliography without requiring the CSL runtime."""
     numbers: dict[str, int] = {}
     titles: dict[str, str] = {}
     occurrences: list[tuple[int, str]] = []
@@ -206,7 +223,9 @@ def build_reader_report(
     )
 
 
-def _build_styled_report(report, ledger, catalog, style) -> ReaderReport:
+def _build_styled_report(
+    report, ledger, catalog, style, *, scopes=None
+) -> ReaderReport:
     """Render scholarly styles while preserving occurrence-level evidence links."""
     snapshot = build_bibliographic_snapshot(report, ledger, catalog)
     numbers = {item["id"]: i + 1 for i, item in enumerate(snapshot["items"])}
@@ -233,23 +252,59 @@ def _build_styled_report(report, ledger, catalog, style) -> ReaderReport:
         list(dict.fromkeys(ledger[eid]["paper_id"] for eid in ids))
         for _, _, ids in groups
     ]
-    formatted = format_citations(snapshot["items"], clusters, style)
+    if style in {"numbered", "evidence"}:
+        bibliography = (
+            []
+            if style == "evidence"
+            else _build_numbered_report(report, ledger, catalog).bibliography
+        )
+        formatted = {
+            "bibliography": bibliography,
+            "citations": [
+                (
+                    " ".join(f"[E:{eid}]" for eid in ids)
+                    if style == "evidence"
+                    else ", ".join(f"[{numbers[pid]}]" for pid in papers)
+                )
+                for (_, _, ids), papers in zip(groups, clusters, strict=True)
+            ],
+        }
+    else:
+        formatted = format_citations(snapshot["items"], clusters, style)
     links = []
     occurrences = []
     pieces = []
     cursor = 0
+    scope_iter = iter(scopes or [])
+    scope = next(scope_iter, None)
     for (start, end, ids), raw_label in zip(
         groups, formatted["citations"], strict=True
     ):
         label = csl_markdown(raw_label)
         anchor = f"citation-{len(links) + 1}"
-        links.append({"anchor": anchor, "label": label, "evidence_ids": ids})
+        link = {"anchor": anchor, "label": label, "evidence_ids": ids}
+        if scopes is not None:
+            while scope and scope["source_end"] <= start:
+                scope = next(scope_iter, None)
+            if scope and scope["source_start"] <= start < end <= scope["source_end"]:
+                link["citation_scope"] = {
+                    **{
+                        key: scope[key]
+                        for key in ("source_start", "source_end", "source_quote")
+                    },
+                    "report_sha256": report.content_sha256,
+                }
+        links.append(link)
         occurrences.extend((numbers[ledger[eid]["paper_id"]], eid) for eid in ids)
         pieces.extend([report.survey[cursor:start], f"[{label}](#{anchor})"])
         cursor = end
     pieces.append(report.survey[cursor:])
     markdown = "".join(pieces)
-    bibliography = tuple(csl_markdown(x) for x in formatted["bibliography"])
+    bibliography = (
+        tuple(formatted["bibliography"])
+        if style in {"numbered", "evidence"}
+        else tuple(csl_markdown(x) for x in formatted["bibliography"])
+    )
     markdown, bibliography_span = _insert_bibliography(
         markdown, bibliography, report.report_language
     )
@@ -329,6 +384,17 @@ def reader_report_projection(reader: ReaderReport) -> dict[str, object]:
             ],
             "citation_style": reader.citation_style,
             "citation_links": list(reader.citation_links),
+            **(
+                {
+                    "citation_scopes": [
+                        link["citation_scope"]
+                        for link in reader.citation_links
+                        if "citation_scope" in link
+                    ]
+                }
+                if any("citation_scope" in link for link in reader.citation_links)
+                else {}
+            ),
             "warnings": list(reader.warnings),
             "source_sha256": reader.source_sha256,
             "projection_sha256": reader.projection_sha256,

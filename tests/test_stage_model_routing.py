@@ -24,6 +24,84 @@ LITE = "doubao-seed-2-1-lite-260915"
 PRO = "doubao-seed-2-1-pro-260915"
 
 
+@pytest.mark.parametrize(
+    "profile",
+    ["agent-format-repair", "llm-stage-repair-stream", "operational-plus20"],
+)
+def test_native_inventory_model_is_visible_and_changes_run_identity(profile):
+    cfg = load_config(f"config/{profile}.yaml")
+    summary = build_config_summary(cfg, "strict_auto_v2")
+    assert summary["effective"]["llm"]["model_routing"] == {
+        "version": "stage-model-routing-v2",
+        "extraction": LITE,
+        "generation": PRO,
+        "evaluation": LITE,
+        "evaluation_inventory": PRO,
+    }
+    cfg.llm.evaluation_inventory_model = None
+    assert cfg.llm.model_for("evaluation_inventory") == LITE
+    assert "evaluation_inventory_model" not in cfg.llm.model_dump()
+    assert (
+        build_config_summary(cfg, "strict_auto_v2")["fingerprint"]
+        != summary["fingerprint"]
+    )
+    assert not LLMConfig(model=LITE, evaluation_inventory_model=PRO).uses_single_model(
+        LITE
+    )
+    with pytest.raises(ValueError):
+        LLMConfig(evaluation_inventory_model=" ")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("wrong_echo", [False, True])
+async def test_native_ragas_inventory_routes_pro_and_nli_routes_lite(wrong_echo):
+    from test_native_ragas_adapter import Transport
+
+    from litagent.eval.ragas_adapter import NativeRagasAdapter
+    from litagent.safety.planned_budget import request_scope
+
+    transport = Transport({"sentence": ["claim"]}, {"claim": 0})
+    transport._cost_budget = CostBudget()
+    transport._cost_budget.configure_strict(halt_on_unknown_usage=True)
+    send = transport.chat
+    models = []
+
+    async def chat(messages, **kwargs):
+        models.append(kwargs["model"])
+        response = await send(messages, **kwargs)
+        response.model = LITE if wrong_echo else kwargs["model"]
+        return response
+
+    transport.chat = chat
+    cfg = load_config("config/llm-stage-repair-stream.yaml")
+    agent = LitAgent(cfg)
+    evaluation = ModelBoundClient(transport, LITE, "evaluation")
+    agent._stage_llms["evaluation"] = evaluation
+    assert agent._evaluation_client({}) is evaluation
+    client = agent._evaluation_client(
+        {"semantic_engine": {"contract": cfg.eval.semantic_engine}}
+    )
+    assert client._cost_budget is transport._cost_budget
+    adapter = NativeRagasAdapter(client, cfg.eval, keyed_assessment=True)
+    samples = [
+        {"id": "u0", "question": "q", "response": "sentence", "contexts": ["source"]}
+    ]
+    if wrong_echo:
+        with pytest.raises(ValueError, match="stage_model_identity_mismatch"):
+            await adapter.score(samples)
+        assert models == [PRO] and transport._cost_budget.stop_reason
+        return
+    result = await adapter.score(samples)
+    assert result["score"] == 0
+    assert models == [PRO, LITE]
+    with request_scope("global", "global-test"):
+        await client.chat([{}, {"content": '{"jobs":{}}'}])
+    assert models == [PRO, LITE, LITE]
+    with pytest.raises(ValueError, match="request_stage_invalid"):
+        await client.chat([])
+    assert len(models) == 3
+
+
 def test_default_profile_routes_both_lite_roles_and_pro_writing():
     cfg = load_config()
     assert [

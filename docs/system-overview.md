@@ -159,10 +159,13 @@ ID validity separately from scientific support. See [metric definitions](evaluat
 Reviewer makes editorial recommendations during writing. Evaluation checks the
 report after writing and reassesses revision candidates. The workbench defaults
 to `strict_auto_v2`, which requires complete verification, a scientific support
-rate of 1.0, no contradictions and passing report checks. Jev is enabled by default
-for extraction before writing. The final-report Judge is retired in the workbench.
-Stage routing uses Lite for planning, extraction, review and evaluation, and Pro
-for writing and revisions.
+rate of 1.0 and supported answers to the user’s question and explicit requirements.
+Global review measures question coverage, contradictions, chapter depth and concrete
+limitations. Strict delivery requires zero contradictions. The host tracks every
+processed unit and assertion. The model no longer audits extraction for omissions. Host checks still validate citations,
+structure, language and the methodology record. Jev checks extraction before
+writing. Pro writes, revises and decomposes report statements. Lite reviews
+drafts, judges support against cited passages and checks question coverage.
 
 When evidence repair is attempted, the candidate report is kept isolated from the
 publishable result until structure validation, reference validation and

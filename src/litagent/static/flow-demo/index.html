@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
   <title>LitAgent Research Workbench</title>
-  <link rel="stylesheet" href="/static/flow-demo/styles.css?v=15.10.6.409-loops">
+  <link rel="stylesheet" href="/static/flow-demo/styles.css?v=15.10.6.431">
 </head>
 <body>
   <div class="app-shell">
@@ -83,6 +83,7 @@
             </div>
             <label id="timeline-filter-control" class="timeline-filter-control" hidden><span class="sr-only" data-i18n="eventCategory">事件类别</span><select id="timeline-filter" aria-label="Timeline category" data-i18n-label="timelineCategory"><option value="all" data-i18n="allEvents">全部事件</option><option value="worker">Worker</option><option value="llm">LLM</option><option value="tool">Tool</option><option value="rag">RAG</option><option value="memory">Memory</option><option value="evaluation">Evaluation</option><option value="rewrite">Rewrite</option><option value="error">Error</option></select></label>
           </header>
+          <label id="graph-search-control" class="ledger-controls" hidden><span class="sr-only" data-i18n="graphSearch">筛选节点</span><input id="graph-search" type="search" data-i18n-placeholder="graphSearch" placeholder="按节点名称、ID 或状态高亮"></label>
           <div id="graph-diagnostic" class="graph-diagnostic" hidden></div>
           <div class="execution-panels">
             <div id="stage-overview" class="stage-overview"></div>
@@ -92,12 +93,28 @@
         </section>
 
         <section id="section-review" class="workbench-section review-section" hidden><header class="section-header"><div><span class="section-eyebrow">HUMAN-IN-THE-LOOP</span><h2 data-i18n="review">人工审核</h2></div><span id="review-stage"></span></header><div id="review-content" class="review-content"></div></section>
-        <section id="section-evidence" class="workbench-section evidence-section" hidden><header class="section-header"><div><span class="section-eyebrow">LEDGER</span><h2 data-i18n="evidence">证据</h2></div><output id="evidence-count">0</output></header><section id="search-records" class="search-records" aria-live="polite"></section><div id="evidence-list" class="evidence-list"></div></section>
+        <section id="section-evidence" class="workbench-section evidence-section" hidden>
+          <header class="section-header"><div><span class="section-eyebrow">LEDGER</span><h2 data-i18n="evidence">证据</h2></div><output id="evidence-count">0</output></header>
+          <div class="ledger-controls">
+            <label><span class="sr-only" data-i18n="evidenceSearch">搜索证据</span><input id="evidence-search" type="search" data-i18n-placeholder="evidenceSearch" placeholder="搜索论文、Claim 或原文"></label>
+            <label><span class="sr-only" data-i18n="evidenceFilter">证据筛选</span><select id="evidence-filter">
+              <option value="all" data-i18n="ledgerAll">全部候选与报告证据</option>
+              <option value="selected" data-i18n="ledgerSelected">当前报告证据</option>
+              <option value="accepted" data-i18n="jev_accepted">Jev · 已准入</option>
+              <option value="rejected" data-i18n="jev_rejected">Jev · 未准入</option>
+              <option value="unverified" data-i18n="jev_unverified">Jev · 未核验／记录不完整</option>
+              <option value="disabled" data-i18n="jev_disabled">Jev · 未启用</option>
+              <option value="mismatch" data-i18n="jev_mismatch">Jev · 原文或 claim 不匹配</option>
+            </select></label>
+          </div>
+          <p class="ledger-help" data-i18n="ledgerHelp">逐条查看提取结论、核验原文与 Jev 判断。</p>
+          <section id="search-records" class="search-records" aria-live="polite"></section><div id="evidence-list" class="evidence-list"></div>
+        </section>
         <section id="section-quality" class="workbench-section quality-section" hidden><header class="section-header"><div><span class="section-eyebrow">EVALUATION</span><h2 data-i18n="quality">质量</h2></div></header><div id="quality-content" class="quality-content"></div></section>
       </div>
     </main>
 
-    <aside id="inspector-drawer" class="inspector-drawer" aria-label="Inspector" aria-hidden="true"><header><div><span class="section-eyebrow" data-i18n="inspect">检查详情</span><h2 id="inspector-title">—</h2></div><button id="close-inspector" class="icon-command" type="button" aria-label="Close inspector">×</button></header><div id="inspector-content" class="inspector-content"></div></aside>
+    <aside id="inspector-drawer" class="inspector-drawer" aria-label="Inspector" aria-hidden="true" inert><header><div><span class="section-eyebrow" data-i18n="inspect">检查详情</span><h2 id="inspector-title">—</h2></div><button id="close-inspector" class="icon-command" type="button" aria-label="Close inspector">×</button></header><div id="inspector-content" class="inspector-content"></div></aside>
   </div>
 
   <dialog id="new-run-dialog" class="new-run-dialog">
@@ -118,6 +135,6 @@
     </form>
   </dialog>
   <div id="sidebar-scrim" class="sidebar-scrim" hidden></div>
-  <script type="module" src="/static/flow-demo/app.js?v=15.10.6.409-loops"></script>
+  <script type="module" src="/static/flow-demo/app.js?v=15.10.6.431"></script>
 </body>
 </html>

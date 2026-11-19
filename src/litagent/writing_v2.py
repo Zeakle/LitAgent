@@ -15,7 +15,7 @@ from pathlib import Path
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError
 
-from litagent import review_policy
+from litagent import inline_citations, review_policy, stage_repair
 from litagent.body_quality import (
     NATIVE_REPORT_INPUT_CONTRACT,
     ROLES,
@@ -276,7 +276,7 @@ def preflight_summary_contract(packet, aliases, writing_plan, envelope):
         check_summary_retry_capacity(
             messages, native, envelope_output_tokens(envelope)["summary"], envelope
         )
-    if selected_summary_body_view(envelope):
+    if selected_summary_body_view(envelope) or inline_citations.selected(envelope):
         summary_request_upper_bound(packet, aliases, writing_plan, envelope)
 
 
@@ -284,7 +284,9 @@ def summary_request_upper_bound(packet, aliases, writing_plan, envelope):
     """Bound complete summary requests over all legal body sizes and layouts."""
     from litagent.writer_source_view import selected_summary_body_view
 
-    if not selected_summary_body_view(envelope):
+    if not selected_summary_body_view(envelope) and not inline_citations.selected(
+        envelope
+    ):
         return None
     # Cache only a pure proof for byte-identical frozen inputs, never accounting
     # or a mutable result. Runtime requests still pass their original guards.
@@ -302,6 +304,7 @@ def _summary_request_bound(inputs):
     from litagent.output_capacity import envelope_context_limit, envelope_output_tokens
     from litagent.safety.budget import strict_request_reservation
     from litagent.safety.planned_budget import nested_json_size
+    from litagent.writer_source_view import selected_summary_body_view
 
     spec = envelope_writing_spec(writing_plan, envelope)
     maximum = envelope["body_max_units"]
@@ -330,6 +333,15 @@ def _summary_request_bound(inputs):
         system, payload = prepare_planned_input(
             system, payload, packet, aliases, writing_plan, envelope
         )
+        if inline_citations.selected(envelope) and not selected_summary_body_view(
+            envelope
+        ):
+            # Full premises carry two authored indices alongside each unit.
+            # Reserve longest encodings even when not all can occur together.
+            path = [max(BODY, key=len), count - 1, count - 1]
+            payload["body_units"] = {
+                uid: {**unit, "path": path} for uid, unit in units.items()
+            }
         messages = request_messages(
             system, payload, schema, wire_contract="flat-writer-v1"
         )
@@ -339,6 +351,18 @@ def _summary_request_bound(inputs):
         measured = strict_request_reservation(
             messages, envelope_output_tokens(envelope)["summary"], native
         )
+        if inline_citations.selected(envelope):
+            from litagent.format_repair import summary_retry_messages
+
+            cited = inline_citations.cited_summary_probe(
+                system, payload, schema, aliases
+            )
+            output = envelope_output_tokens(envelope)["summary"]
+            measured = max(
+                strict_request_reservation(summary_retry_messages(wire), output, native)
+                for wire in (messages, cited)
+                if wire is not None
+            )
         # Canonical body framing is unavoidable but never sent in this view.
         # Empty text/refs/title and one paragraph per chapter give its minimum.
         # Each extra text byte (including both JSON escaping layers) costs at
@@ -968,6 +992,8 @@ def request_messages(system, payload, schema, *, wire_contract=None):
         )
 
         plan = prepare(schema)
+        if plan.get("inline_citations"):
+            return inline_citations.messages(system, payload, schema, plan)
         if plan["kind"] == "summary" and system.startswith(LIVE_SUMMARY_PROMPT):
             return live_summary_messages(system, payload, plan["wire_schema"])
         if selected_repair_prompt(payload.get("writing_envelope")):
@@ -1780,6 +1806,15 @@ def validate_body(body, aliases, *, writing_plan=None, envelope=None):
     _valid_text(body["title"])
     for unit in units.values():
         _valid_text(unit["text"])
+        if inline_citations.selected(envelope):
+            if (
+                inline_citations.references(
+                    unit["text"], aliases, scope_contract=stage_repair.scope(envelope)
+                )
+                != unit["fact_card_refs"]
+            ):
+                raise WriterError("writer_inline_citation_binding_invalid")
+
     return units
 
 
@@ -1885,6 +1920,14 @@ def compile_document(
     _valid_text(body["title"])
     titles = dict(structure_sections("academic_v2", language))
     parts, spans = ["# " + body["title"]], []
+    inline = inline_citations.selected(envelope)
+    citation_scopes = []
+    if inline:
+        if inline_citations.MARK_START.search(body["title"]):
+            raise WriterError("writer_inline_citation_position_invalid")
+        evidence_by_ref = {
+            ref: cards[key]["evidence_id"] for ref, key in aliases.items()
+        }
     for key in ("abstract", *BODY, "conclusion"):
         parts.append("\n\n## " + titles[key])
         paragraphs = summaries[key] if key in summaries else body[key]
@@ -1903,6 +1946,24 @@ def compile_document(
                     )
                 else:
                     refs = unit["fact_card_refs"]
+                if inline:
+                    try:
+                        refs = inline_citations.references(
+                            text, refs, scope_contract=stage_repair.scope(envelope)
+                        )
+                    except WriterError as exc:
+                        if (
+                            key in summaries
+                            and exc.code == "writer_inline_citation_unknown"
+                        ):
+                            raise WriterError(
+                                exc.code,
+                                diagnostics=[
+                                    {**item, "path": [key, pi, si]}
+                                    for item in exc.diagnostics
+                                ],
+                            ) from exc
+                        raise
                 eids = list(
                     dict.fromkeys(cards[aliases[r]]["evidence_id"] for r in refs)
                 )
@@ -1912,6 +1973,23 @@ def compile_document(
                 rendered = text + (
                     " " + " ".join(f"[E:{e}]" for e in eids) if eids else ""
                 )
+                if inline:
+                    rendered, local_scopes = inline_citations.compile_text(
+                        text,
+                        evidence_by_ref,
+                        scope_contract=stage_repair.scope(envelope),
+                    )
+                    for index, scope in enumerate(local_scopes):
+                        citation_scopes.append(
+                            {
+                                **scope,
+                                "source_start": start + scope["source_start"],
+                                "source_end": start + scope["source_end"],
+                                "unit_id": f"writer:{key}:{pi}:{si}",
+                                "path": [key, pi, si],
+                                "scope_index": index,
+                            }
+                        )
                 parts.append(rendered)
                 spans.append(
                     {
@@ -1944,6 +2022,13 @@ def compile_document(
         "scope_notices": {},
         "units": spans,
     }
+    if inline:
+        bindings.update(
+            citation_contract=inline_citations.CONTRACT, citation_scopes=citation_scopes
+        )
+        if stage_repair.enabled(envelope):
+            bindings["citation_scope_contract"] = stage_repair.SCOPE_CONTRACT
+        inline_citations.validate_scopes(draft, bindings)
     limits = effective_summary_limits(envelope)
     if limits is not None:
         bindings["summary_constraints"] = limits
@@ -1980,6 +2065,10 @@ def bound_fragments(survey, bindings):
         ):
             raise WriterError("writer_unit_binding_invalid")
         seen.add(r["unit_id"])
+    inline = "citation_contract" in bindings or "citation_scopes" in bindings
+    if inline:
+        records = inline_citations.validate_scopes(survey, bindings)
+        seen = {(r["unit_id"], r["scope_index"]) for r in records}
     for unit in build_report_source_units(survey):
         if unit.start >= academic_end:
             continue
@@ -1991,14 +2080,19 @@ def bound_fragments(survey, bindings):
                     raise WriterError("writer_unit_coverage_invalid")
                 fragments.append(
                     {
-                        "source_fragment_id": unit.unit_id + ":native:" + r["unit_id"],
+                        "source_fragment_id": (
+                            unit.unit_id
+                            + (f":scope:{r['scope_index']}" if inline else "")
+                            + ":native:"
+                            + r["unit_id"]
+                        ),
                         "start": a - unit.start,
                         "end": b - unit.start,
                         "source_quote": survey[a:b],
                         "citation_aliases": r["evidence_ids"],
                     }
                 )
-                used.add(r["unit_id"])
+                used.add((r["unit_id"], r["scope_index"]) if inline else r["unit_id"])
                 cursor = b
         if not fragments or survey[cursor : unit.end].strip():
             raise WriterError("writer_unit_coverage_invalid")
@@ -3098,6 +3192,8 @@ def budgeted_writer_plan(
             kwargs["run_limits"] = run_limits
         if semantic_engine is not None:
             kwargs["semantic_engine"] = semantic_engine
+            if semantic_engine.get("capacity_recovery_contract"):
+                kwargs["native_inventory_question"] = packet["query"]
         envelope = make_writer_envelope(**kwargs)
         body_output = envelope_output_tokens(envelope)["body"]
         preflight_summary_contract(packet, aliases, RANGE_WRITING_PLAN, envelope)
@@ -3191,6 +3287,7 @@ def summary_request_input(packet, units, envelope=None):
     return system, payload, apply_capacity_schema(schema, envelope)
 
 
+@stage_repair.with_policy
 def repair_request_input(
     packet,
     body,
@@ -3241,6 +3338,7 @@ def repair_request_input(
             )
     if review_policy.enabled(envelope) and cause != "capacity":
         schema = review_policy.response_contract(schema, targets, references)
+    schema = inline_citations.annotate(schema, envelope)
     source = packet
     if (
         wire_contract == "flat-writer-v1"
@@ -3406,7 +3504,11 @@ def repair_request_input(
         else:
             system += "\n" + REPAIR_GUIDANCE_WIRE_INSTRUCTION
         if selected_repair_prompt(envelope):
-            system = repair_prompt_system(schema)
+            system = (
+                inline_citations.repair_system(schema)
+                if inline_citations.selected(envelope)
+                else repair_prompt_system(schema)
+            )
         if review_policy.enabled(envelope) and cause != "capacity":
             payload["response_target_keys"] = schema["x-target-directory"]
             if not selected_repair_prompt(envelope):
@@ -3668,6 +3770,7 @@ def guidance_wire_fields(envelope):
     }
 
 
+@stage_repair.with_policy
 def check_repair_guidance_record(envelope, record, **kwargs):
     """Authenticate optional metadata without changing the legacy codec checker."""
     prompt_fields = repair_prompt_fields(envelope)
@@ -3811,13 +3914,21 @@ def check_guidance_wire_record(
                 targets if targets is not None else record["authorized_targets"],
                 _guidance_depth=depth + 1,
             )
+            replay_failure = witness["previous_failure"]
+            if stage_repair.enabled(envelope):
+                selected = stage_repair.select_prior_feedback(fresh, replay_failure)
+                fresh, replay_failure = selected["directory"], selected["failure"]
+                if fresh is None or digest(
+                    record["arguments"]["previous_failure"]
+                ) != digest(replay_failure):
+                    raise ValueError("guidance prior selection")
             if digest(fresh) != digest(authority["feedback_context"]):
                 raise ValueError("guidance prior directory")
             if digest(
                 prior_repair_guidance_context(
                     fresh,
                     witness["prior"]["bindings"],
-                    witness["previous_failure"]["diagnostics"],
+                    replay_failure["diagnostics"],
                 )
             ) != digest(authority["guidance_context"]["prior_candidate"]):
                 raise ValueError("guidance prior context")
@@ -4519,6 +4630,15 @@ class WriterSession:
         from litagent.safety.planned_budget import planned_backend
 
         escrow = planned_backend(getattr(llm, "_cost_budget", None))
+        from litagent.llm.responses import selected_transport
+
+        self.responses_transport = selected_transport(
+            escrow.plan.get("envelope") if escrow else None
+        )
+        if self.responses_transport:
+            if provider_api != "responses":
+                raise WriterError("writer_transport_requires_responses", "identity")
+            identity_parts.append(["responses_transport", self.responses_transport])
         self.wire_contract = None
         if escrow is not None:
             identity_parts.append(["budget_plan", escrow.plan["identity"]])
@@ -4560,6 +4680,11 @@ class WriterSession:
                 raise WriterError("writer_output_capacity_conflict", "identity")
             if self.journal.get("identity") != self.identity:
                 raise WriterError("writer_checkpoint_identity_conflict")
+            if (
+                self.journal.get("generation_responses_transport")
+                != self.responses_transport
+            ):
+                raise WriterError("writer_transport_identity_conflict", "identity")
             from litagent.eval.dimensions import dimensions_fields
             from litagent.writer_source_view import source_view_fields
 
@@ -4693,6 +4818,8 @@ class WriterSession:
                 self.journal["summary_constraints_sha256"] = digest(limits)
         if provider_api == "responses":
             self.journal["generation_provider_api"] = provider_api
+        if self.responses_transport:
+            self.journal["generation_responses_transport"] = self.responses_transport
         if shape_recovery:
             self.journal["shape_recovery_contract"] = SHAPE_RECOVERY_CONTRACT
         if reemission_contract:
@@ -4757,6 +4884,12 @@ class WriterSession:
 
     def messages(self, system, payload, schema):
         """Keep legacy bytes unchanged while measuring the complete new wire."""
+        if stage_repair.enabled(self.envelope):
+            feedback = self.journal.get("candidate_feedback", {})
+            stage = review_policy.stage_name(self.envelope, "summary")
+            if stage.split("/", 1)[0] != feedback.get("category"):
+                feedback = {}
+            payload = {**payload, "candidate_feedback": feedback}
         if self.wire_contract is None:
             return request_messages(system, payload, schema)
         return request_messages(
@@ -5417,11 +5550,16 @@ class WriterSession:
             if effort is not None:
                 request_identity.append({"reasoning_effort": effort})
             if api == "responses":
-                from litagent.llm.responses import RESPONSES_CONTRACT
+                from litagent.llm.responses import response_contract, transport_kwargs
 
                 request_kwargs["provider_api"] = api
-                request_identity.append([api, RESPONSES_CONTRACT])
+                request_kwargs.update(transport_kwargs(self.envelope))
+                request_identity.append(
+                    [api, response_contract(self.responses_transport)]
+                )
                 entry["provider_api"] = api
+                if self.responses_transport:
+                    entry["responses_transport"] = self.responses_transport
             entry.update(
                 input_sha256=digest(request_identity),
                 thinking_mode=mode,
@@ -5461,6 +5599,18 @@ class WriterSession:
                         messages[0]["content"] if view_fields else system
                     ),
                 )
+            if stage_repair.enabled(self.envelope) and stage in {"repair", "summary"}:
+                category = review_policy.stage_name(self.envelope, stage).split("/")[0]
+                if category in {"review_revision", "evaluation_revision", "capacity"}:
+                    bound = {
+                        "stage": stage,
+                        "category": category,
+                        "messages": copy.deepcopy(messages),
+                        "response_format": copy.deepcopy(rf),
+                        "schema": copy.deepcopy(schema),
+                    }
+                    entry["candidate_request"] = bound
+                    entry["candidate_request_sha256"] = digest(bound)
             reservation = check_grounded_request_budget(
                 self.llm,
                 messages,
@@ -5525,13 +5675,11 @@ class WriterSession:
                     planned_backend(budget)
                     and response.provider_error == "responses_incomplete"
                 ):
-                    import base64
+                    from litagent.llm.responses import decode_private_receipt
 
                     receipt = getattr(response, "provider_receipt", {}) or {}
                     try:
-                        raw = json.loads(
-                            base64.b64decode(receipt.get("response_body_base64", ""))
-                        )
+                        _, raw = decode_private_receipt(receipt)
                         if (raw.get("incomplete_details") or {}).get("reason") in {
                             "length",
                             "max_output_tokens",
@@ -6274,7 +6422,16 @@ class WriterSession:
             if cause == "review"
             else "evaluation_revision" if cause == "evaluation" else "capacity"
         )
-        with review_policy.partition(category):
+        with review_policy.partition(category), stage_repair.policy(self.envelope):
+            if stage_repair.enabled(self.envelope) and cause in {
+                "review",
+                "evaluation",
+            }:
+                resumed = stage_repair.resume_body(
+                    self, body, targets, category=category
+                )
+                if resumed is not None:
+                    return resumed
             return await self._patch(body, targets, cause=cause, **kwargs)
 
     async def _patch(
@@ -6289,6 +6446,7 @@ class WriterSession:
         feedback_context=None,
         guidance_context=None,
         guidance_replay_witness=None,
+        prior_feedback_failure=None,
     ):
         """Repair only authorized units within the shared two-attempt limit."""
         if self.writing_plan == RANGE_WRITING_PLAN:
@@ -6384,6 +6542,17 @@ class WriterSession:
                     copy.deepcopy(guidance_context)
                 )
                 self.save()
+            request_failure = self.journal.get("failure")
+            if prior_feedback_failure is not None:
+                if (
+                    not stage_repair.enabled(self.envelope)
+                    or guidance_replay_witness is None
+                    or feedback_context is None
+                    or digest(guidance_replay_witness["previous_failure"])
+                    != digest(request_failure)
+                ):
+                    raise WriterError("writer_feedback_identity_invalid", "identity")
+                request_failure = prior_feedback_failure
             captured_guidance = []
             system, payload, schema = repair_request_input(
                 self.packet,
@@ -6391,7 +6560,7 @@ class WriterSession:
                 targets,
                 references,
                 cause=cause,
-                previous_failure=self.journal.get("failure"),
+                previous_failure=request_failure,
                 writing_plan=self.writing_plan,
                 envelope=self.envelope,
                 wire_contract=self.wire_contract,
@@ -6508,8 +6677,43 @@ class WriterSession:
             ),
             digest(payload),
         )
+        # Bind a rejection before applying any candidate; successful-patch
+        # provenance does not exist for a cross-field response conflict.
+        if inline_citations.selected(self.envelope) and (
+            cause in {"review", "evaluation"}
+            or (cause == "capacity" and stage_repair.enabled(self.envelope))
+        ):
+            entry["patch_request"] = {
+                "contract": "bound-patch-rejection-v1",
+                "body_sha256": digest(body),
+                "summary_only": summary_body is not None,
+                "targets": copy.deepcopy(targets),
+                "references": list(references),
+                "schema": copy.deepcopy(schema),
+                "messages": copy.deepcopy(messages),
+                "response_format": copy.deepcopy(rf),
+            }
+            entry["patch_request_sha256"] = digest(entry["patch_request"])
         if cause == "capacity":
             entry["source_body_sha256"] = digest(body)
+            # BEGIN native capacity provenance
+            from litagent.eval.native_capacity import (
+                selected as native_capacity_selected,
+            )
+
+            if (
+                native_capacity_selected(self.envelope)
+                and (capacity_diagnostic or {}).get("reason")
+                == "evaluation_native_capacity_refinement_required"
+            ):
+                # Bind the parent before sending. Completed repair entries are
+                # immutable; a later summary must not rewrite their identity.
+                entry["native_capacity"] = {
+                    "budget_partition": review_policy.capacity_parent(),
+                    "source_report_sha256": capacity_diagnostic["source_report_sha256"],
+                    "capacity_identity": capacity_diagnostic["allocation_identity"],
+                }
+            # END native capacity provenance
             entry["targets"] = {
                 tid: {k: t[k] for k in ("path", "end", "original_sha256")}
                 for tid, t in targets.items()
@@ -6549,7 +6753,12 @@ class WriterSession:
                     result.get("target_responses")
                 )
                 entry["all_authorized_targets"] = copy.deepcopy(targets)
-                targets = review_policy.validate_responses(result, targets, references)
+                targets = review_policy.validate_responses(
+                    result,
+                    targets,
+                    references,
+                    diagnose=inline_citations.selected(self.envelope),
+                )
                 if not targets:
                     entry.update(
                         status="completed",
@@ -7472,6 +7681,11 @@ async def synthesize(worker, task, cards, selection, methodology, requirements):
             "generation_reasoning_effort": session.reasoning_effort,
             "generation_prompt_contract": PROMPT_CONTRACT,
             **(
+                {"citation_contract": inline_citations.CONTRACT}
+                if inline_citations.selected(session.envelope)
+                else {}
+            ),
+            **(
                 {"writer_wire_contract": session.wire_contract}
                 if session.wire_contract is not None
                 else {}
@@ -7698,11 +7912,21 @@ async def review(worker, task):
         from litagent.writing_flat import REVIEW_INSTRUCTION
 
         flat_instruction = REVIEW_INSTRUCTION
+        if inline_citations.selected(session.envelope):
+            flat_instruction += (
+                "\nThe report uses inline citations. Inspect each claim against the "
+                "marks next to that claim. Do not use another sentence's evidence "
+                "merely because both sentences share a review unit."
+            )
     support_instruction = ""
     if support_validation_fields(session.envelope):
         from litagent.eval.scoped import WRITER_SUPPORT_RECEIPT_INSTRUCTION
 
         support_instruction = "\n" + WRITER_SUPPORT_RECEIPT_INSTRUCTION
+    attribution = stage_repair.enabled(session.envelope)
+    if attribution:
+        schema = stage_repair.review_attribution_schema(schema, payload["cards"])
+        support_instruction += stage_repair.REVIEW_ATTRIBUTION_INSTRUCTION
     result = await session.call(
         (
             ("reviewer:" + str(task.input_data.get("review_round", 0)))
@@ -7728,11 +7952,21 @@ async def review(worker, task):
             "responses" if planned else getattr(worker, "_native_provider_api", "chat")
         ),
     )
+    issues, rejected = result["issues"], []
+    if attribution:
+        issues, rejected = stage_repair.bind_reviewer_issues(
+            issues,
+            doc["packet"],
+            payload["citation_projection"],
+            source["writing_bindings"]["citation_scopes"],
+        )
+    accepted = not issues and not rejected
     return {
-        "score": 0.0 if result["issues"] else 1.0,
-        "issues": result["issues"],
+        "score": 1.0 if accepted else 0.0,
+        "issues": issues,
+        **({"rejected_issues": rejected} if rejected else {}),
         "explanation": result["explanation"],
-        "accepted": not result["issues"],
+        "accepted": accepted,
         "source_report_sha256": source["writing_bindings"]["report_sha256"],
     }
 
@@ -8698,7 +8932,7 @@ async def _repair_report(
         recovery["source_report_sha256"]
         != hashlib.sha256(original.encode()).hexdigest()
         or recovery["evaluation_sha256"] != digest(initial_evaluation)
-        or recovery["action"] not in {"prose", "combined"}
+        or recovery["action"] not in {"prose", "combined", "capacity"}
         or recovery["budget"]["status"] != "admitted"
     ):
         raise WriterError("writer_recovery_decision_invalid", "identity")
@@ -8762,6 +8996,14 @@ async def _repair_report(
         if combined
         else native_repair_diagnostics(details)
     )
+    if recovery is not None and recovery["action"] == "capacity":
+        # Partial host negatives are observations, not a completed scientific
+        # evaluation. Capacity recovery authorizes only the resource targets.
+        if not capacity_repair or recovery.get(
+            "capacity_identity"
+        ) != capacity_issue.get("identity"):
+            raise WriterError("writer_capacity_decision_invalid", "identity")
+        diagnostics = []
     diagnostic_categories = ["evaluation"] * len(diagnostics)
     review = meta.get("reviewer_diagnostics") or {}
     if (
@@ -8795,6 +9037,26 @@ async def _repair_report(
         )
     before_count = len(session.state["attempts"])
     candidate = None
+    retryable = False
+    summary_rejection = None
+
+    def reject_refresh(error, edited, summaries=None):
+        from litagent.review_cycles import reject_summary_candidate
+
+        return reject_summary_candidate(
+            session,
+            error,
+            edited,
+            summaries,
+            {
+                **results["adversarial_review"],
+                **meta,
+                "draft": original,
+                "report_language": report_language,
+            },
+            category="evaluation_revision",
+        )
+
     try:
         if recovery is not None and list(targets) != recovery["targets"]:
             raise WriterError("writer_recovery_target_mismatch", "identity")
@@ -8823,6 +9085,7 @@ async def _repair_report(
             raise WriterError("writer_no_editable_targets", "quality")
         feedback_context = None
         deferred_feedback = None
+        prior_feedback_failure = None
         previous_failure = session.journal.get("failure") or {}
         if repetition_base or (
             review_policy.enabled(session.envelope)
@@ -8865,13 +9128,29 @@ async def _repair_report(
                 previous_failure,
                 targets,
             )
-            deferred_feedback = defer_disjoint_prior_feedback(
-                session.envelope,
-                feedback_context,
-                previous_failure,
-                action=(recovery or {}).get("action"),
-            )
-            if deferred_feedback is not None:
+            if stage_repair.enabled(session.envelope) and (recovery or {}).get(
+                "action"
+            ) in ("prose", "combined"):
+                selected = stage_repair.select_prior_feedback(
+                    feedback_context, previous_failure
+                )
+                feedback_context = selected["directory"]
+                prior_feedback_failure = selected["failure"]
+                deferred_feedback = selected["audit"]
+            else:
+                deferred_feedback = defer_disjoint_prior_feedback(
+                    session.envelope,
+                    feedback_context,
+                    previous_failure,
+                    action=(recovery or {}).get("action"),
+                )
+            if (recovery or {}).get("action") == "capacity":
+                from litagent.eval.native_capacity import retry_feedback
+
+                deferred_feedback = retry_feedback(
+                    previous_failure, prior[0], feedback_context
+                )
+            if deferred_feedback is not None and prior_feedback_failure is None:
                 feedback_context = None
         current_capacity_instruction = None
         if capacity_repair and session.envelope.get("repair_mapping_contract") in (
@@ -8886,15 +9165,31 @@ async def _repair_report(
                 "actual_assertions": capacity_issue.get("actual_assertions"),
                 "target_assertions": session.envelope["model_assertions"],
                 "target_batches": session.envelope["assessment_batches"],
-                "allocation_identity": owner.allocation["identity"],
+                "allocation_identity": (
+                    capacity_issue["identity"]
+                    if (recovery or {}).get("action") == "capacity"
+                    else owner.allocation["identity"]
+                ),
                 "assertions_by_section": capacity_issue.get(
                     "assertions_by_section", {}
                 ),
                 "assertions_by_native_unit": {
-                    k.split(":native:")[-1]: v
-                    for k, v in capacity_issue.get("assertions_by_fragment", {}).items()
+                    **inline_citations.native_unit_counts(
+                        capacity_issue.get("assertions_by_fragment", {})
+                    )
                 },
             }
+            if (recovery or {}).get("action") == "capacity":
+                # The limiting dimension is the complete request, not an
+                # invented smaller assertion quota or a mutable allocation.
+                current_capacity_instruction.pop("target_assertions")
+                current_capacity_instruction.pop("target_batches")
+                current_capacity_instruction.update(
+                    **{
+                        key: capacity_issue[key]
+                        for key in ("field", "actual", "maximum")
+                    }
+                )
             overflows = stages.get("capacity_request_overflows", [])
             if overflows:
                 limiting = max(
@@ -8945,6 +9240,10 @@ async def _repair_report(
                     # they are not duplicate capacity identity/count fields.
                     capacity_guidance["explanation"] = capacity_issue["explanation"]
                 guidance_diagnostics.append(capacity_guidance)
+                if (deferred_feedback or {}).get(
+                    "policy"
+                ) == "native-capacity-recovery-v1":
+                    capacity_guidance["explanation"] = deferred_feedback["explanation"]
                 guidance_categories.append("capacity")
             elif (
                 recovery is not None
@@ -8975,22 +9274,27 @@ async def _repair_report(
                 prior_context = prior_repair_guidance_context(
                     feedback_context,
                     prior[0]["bindings"],
-                    previous_failure["diagnostics"],
+                    (prior_feedback_failure or previous_failure)["diagnostics"],
                 )
             guidance_context = {
                 "current": current_context,
                 "prior_candidate": prior_context,
             }
             if deferred_feedback is not None:
-                # The failed candidate remains in the journal. The provider
-                # receives only the original report's authorized diagnoses.
+                # Retain complete prior findings locally, including those that
+                # cannot authorize edits to the selected working report.
                 session.journal.setdefault("deferred_prior_feedback", []).append(
                     deferred_feedback
                 )
-                session.journal["failure"] = {
-                    "code": "writer_prior_feedback_outside_targets",
-                    "family": "quality",
-                }
+                if prior_feedback_failure is None:
+                    session.journal["failure"] = {
+                        "code": (
+                            "native_capacity_candidate_still_oversized"
+                            if (recovery or {}).get("action") == "capacity"
+                            else "writer_prior_feedback_outside_targets"
+                        ),
+                        "family": "capacity" if capacity_repair else "quality",
+                    }
                 session.save()
         wire_replay_options = {}
         if guidance_wire_fields(session.envelope) and feedback_context is not None:
@@ -9003,6 +9307,8 @@ async def _repair_report(
                 "prior": copy.deepcopy(prior[0]),
                 "previous_failure": copy.deepcopy(previous_failure),
             }
+            if prior_feedback_failure is not None:
+                wire_replay_options["prior_feedback_failure"] = prior_feedback_failure
         is_summary = next(iter(targets.values()))["path"][0] in {
             "abstract",
             "conclusion",
@@ -9028,6 +9334,7 @@ async def _repair_report(
             )
             body, summaries = document["body"], updated
         else:
+            input_failure = copy.deepcopy(session.journal.get("failure"))
             body = await session.patch(
                 document["body"],
                 targets,
@@ -9058,10 +9365,9 @@ async def _repair_report(
                                 "assertions_by_section", {}
                             ),
                             "assertions_by_native_unit": {
-                                k.split(":native:")[-1]: v
-                                for k, v in capacity_issue.get(
-                                    "assertions_by_fragment", {}
-                                ).items()
+                                **inline_citations.native_unit_counts(
+                                    capacity_issue.get("assertions_by_fragment", {})
+                                )
                             },
                         }
                         if capacity_repair
@@ -9080,6 +9386,20 @@ async def _repair_report(
                 ),
                 **wire_replay_options,
             )
+            if (
+                not capacity_repair
+                and inline_citations.selected(session.envelope)
+                and input_failure is not None
+                and session.journal.get("failure") == input_failure
+            ):
+                # This feedback was sent with a now-completed edit. Keep it with
+                # that request instead of mislabelling the next summary as failed.
+                patch_name = f"repair_{session.state['attempts'][-1]['index']}"
+                session.journal.setdefault("consumed_repair_feedback", {})[
+                    patch_name
+                ] = input_failure
+                session.journal.pop("failure")
+                session.save()
             if summary_regeneration_guidance is not None:
                 # The reserved summary call replaces both sections from the
                 # revised body. Keep the authenticated old findings local.
@@ -9090,19 +9410,38 @@ async def _repair_report(
                 session.save()
             if review_policy.enabled(session.envelope) and body == document["body"]:
                 raise WriterError("writer_repair_no_progress", "quality")
-            summaries = await refresh_summaries(
-                session, document["body"], body, document["summaries"], targets
+            summaries = None
+            try:
+                summaries = await refresh_summaries(
+                    session, document["body"], body, document["summaries"], targets
+                )
+            except WriterError as exc:
+                if not capacity_repair:
+                    summary_rejection = reject_refresh(exc, body)
+                    retryable = summary_rejection is not None and (
+                        not stage_repair.enabled(session.envelope)
+                        or summary_rejection.get("action") != "stop"
+                    )
+                raise
+        try:
+            candidate, bindings = compile_document(
+                body,
+                summaries,
+                meta["fact_cards"],
+                document["aliases"],
+                report_language,
+                meta.get("review_methodology"),
+                writing_plan=session.writing_plan,
+                envelope=session.envelope,
             )
-        candidate, bindings = compile_document(
-            body,
-            summaries,
-            meta["fact_cards"],
-            document["aliases"],
-            report_language,
-            meta.get("review_methodology"),
-            writing_plan=session.writing_plan,
-            envelope=session.envelope,
-        )
+        except WriterError as exc:
+            if not is_summary and not capacity_repair:
+                summary_rejection = reject_refresh(exc, body, summaries)
+                retryable = summary_rejection is not None and (
+                    not stage_repair.enabled(session.envelope)
+                    or summary_rejection.get("action") != "stop"
+                )
+            raise
         if (
             session.envelope is not None
             and "capacity" in session.envelope
@@ -9116,6 +9455,10 @@ async def _repair_report(
                 "quality",
                 [{"candidate_sha256": hashlib.sha256(candidate.encode()).hexdigest()}],
             )
+        if stage_repair.enabled(session.envelope):
+            session.journal.pop("pending_candidate", None)
+            session.journal.pop("candidate_feedback", None)
+            session.save()
         updated_doc = {
             **document,
             "body": body,
@@ -9311,9 +9654,73 @@ async def _repair_report(
         raise
     except Exception as exc:
         from litagent.capacity_repair import retryable_map_failure
+        from litagent.review_cycles import reject_patch_candidate
 
+        patch_rejection = None
+        if (
+            isinstance(exc, WriterError)
+            and capacity_repair
+            and stage_repair.enabled(session.envelope)
+            and isinstance(results.get("adversarial_review"), dict)
+        ):
+            # Capacity owns its own settled attempt and authorization directory.
+            # A rejected response may be retried; the retained report is unchanged.
+            patch_rejection = stage_repair.reject_candidate(
+                session,
+                exc,
+                {
+                    **results["adversarial_review"],
+                    **meta,
+                    "draft": original,
+                    "report_language": report_language,
+                },
+                category="capacity",
+            )
+            retryable = patch_rejection is not None and (
+                patch_rejection["action"] != "stop"
+            )
+        if (
+            isinstance(exc, WriterError)
+            and (
+                stage_repair.enabled(session.envelope)
+                or exc.code == "writer_patch_response_mismatch"
+            )
+            and inline_citations.selected(session.envelope)
+            and not capacity_repair
+            and isinstance(results.get("adversarial_review"), dict)
+        ):
+            patch_rejection = reject_patch_candidate(
+                session,
+                exc,
+                {
+                    **results["adversarial_review"],
+                    **meta,
+                    "draft": original,
+                    "report_language": report_language,
+                },
+                category="evaluation_revision",
+            )
+            if patch_rejection is not None:
+                retryable = (
+                    patch_rejection["remaining"] > 0
+                    and patch_rejection.get("action") != "stop"
+                )
         prior = session.journal.get("failure", {})
         failure = classify_failure(exc)
+        if patch_rejection is not None:
+            session.journal.setdefault("rejected_failures", {})[
+                patch_rejection["call"]
+            ] = copy.deepcopy(prior)
+        if summary_rejection is not None:
+            # The next request gets only local repair feedback, never new edit authority.
+            failure["diagnostics"] = [
+                {
+                    k: row[k]
+                    for k in ("code", "path", "reference", "offset", "reason")
+                    if k in row
+                }
+                for row in summary_rejection["diagnostics"]
+            ]
         if retryable_map_failure(prior, document["body"], session.envelope):
             failure["source_body_sha256"] = prior["source_body_sha256"]
         session.journal["failure"] = failure
@@ -9330,6 +9737,9 @@ async def _repair_report(
             None,
             None,
             str(exc),
+            retryable=retryable,
+            summary_rejection=summary_rejection,
+            patch_rejection=patch_rejection,
         )
     finally:
         meta["targeted_repair_state"] = session.state

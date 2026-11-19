@@ -6,6 +6,7 @@ import copy
 import hashlib
 import json
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from litagent.agents.adversarial import AdversarialReviewWorker
 from litagent.agents.reviewer import ReviewerWorker
@@ -20,7 +21,12 @@ from litagent.llm.client import BaseLLMClient
 from litagent.orchestrator.scheduler import Scheduler
 from litagent.orchestrator.task_graph import SubTask, TaskGraph
 from litagent.output_capacity import configured_output_tokens
-from litagent.quality import build_fact_cards, coverage_requirements, digest
+from litagent.quality import (
+    build_fact_cards,
+    coverage_requirements,
+    digest,
+    validate_fact_snapshot,
+)
 from litagent.run_limits import configured_run_limits
 from litagent.safety.budget import CostBudget
 from litagent.workbench import RunOptions, VerificationOptions
@@ -49,6 +55,258 @@ def frozen_options():
         report_language="zh-CN",
         review_structure="academic_v2",
         verification=VerificationOptions(judge=False, jev=False),
+    )
+
+
+def import_retained_draft(
+    session, source, *, archive_path, archive_sha256, report_sha256
+):
+    """Authenticate a frozen manuscript and recover its recorded section methods."""
+    from litagent.stage_repair import validate_retained
+
+    raw = Path(archive_path).read_bytes()
+    if hashlib.sha256(raw).hexdigest() != archive_sha256:
+        raise ValueError("frozen_import_archive_sha256_mismatch")
+    original = json.loads(raw)["nodes"]["worker:adversarial_review"]["output"][
+        "evidence_selection"
+    ]
+    selected = source["evidence_selection"]
+    if original.get("valid") is False or selected.get("valid") is False:
+        raise ValueError("frozen_import_invalid_selection")
+    prior = EvidenceSelection.from_dict(original)
+    methods = dict(selected.get("method_by_section", {}))
+    for section, ids in selected["section_evidence_ids"].items():
+        if not ids and section not in methods:
+            continue
+        method = prior.method_by_section.get(section)
+        if not method or methods.get(section, method) != method:
+            raise ValueError(f"frozen_import_section_method_mismatch: {section}")
+        # Supplemental evidence belongs to the current snapshot. Only original
+        # recommendations can establish the provenance of the section method.
+        archived_ids = set(prior.section_evidence_ids[section])
+        shared = set(ids).intersection(prior.selected_items)
+        if ids and (not shared or not shared.issubset(archived_ids)):
+            raise ValueError(f"frozen_import_section_evidence_mismatch: {section}")
+        methods[section] = method
+    selection = {**selected, "method_by_section": methods}
+    doc = source["writer_document"]
+    if (
+        session.packet != doc["packet"]
+        or session.aliases != doc["aliases"]
+        or session.envelope != doc.get("budget_envelope")
+        or session.writing_plan != doc.get("generation_writing_plan")
+        or source.get("final_draft", source["draft"]) != source["draft"]
+    ):
+        raise ValueError("frozen_import_draft_mismatch")
+    retained = {
+        k: source[k]
+        for k in (
+            "quality_policy",
+            "analysis_plan",
+            "coverage_requirements",
+            "coverage_matrix",
+            "report_language",
+            "review_structure",
+            "generation_strategy",
+            "body_quality",
+            "draft",
+            "writer_document",
+            "writing_bindings",
+            "fact_cards",
+            "evidence_snapshot_sha256",
+            "review_methodology",
+            "extraction_verification",
+        )
+        if k in source
+    }
+    retained.update(
+        evidence_selection=selection, final_draft=source["draft"], editorial_history=[]
+    )
+    if validate_retained(session, retained) != report_sha256:
+        raise ValueError("frozen_import_report_sha256_mismatch")
+    return retained
+
+
+def _record_imported_sources(session, document):
+    """Record exact local authored JSON separately from any provider replies."""
+
+    from litagent.eval.dimensions import dimensions_fields
+    from litagent.writer_source_view import make_source_view_record, source_view_fields
+    from litagent.writing_flat import encode
+    from litagent.writing_v2 import (
+        BODY,
+        chapter_request_input,
+        summary_request_input,
+        validate_body,
+    )
+
+    def receive(name, stage, authored, system, payload, schema):
+        system, payload = session.planned_input(system, payload)
+        messages = session.messages(system, payload, schema)
+        raw = json.dumps(encode(authored, schema), ensure_ascii=False)
+        entry = {
+            "stage": stage,
+            "status": "local_import",
+            "raw": raw,
+            "raw_sha256": hashlib.sha256(raw.encode()).hexdigest(),
+            "writer_source_view_record": make_source_view_record(
+                session.envelope, messages[0]["content"], payload, session.packet
+            ),
+        }
+        record = entry["writer_source_view_record"]
+        entry.update(
+            payload_sha256=record["view_sha"], system_sha256=record["system_sha"]
+        )
+        entry.update(dimensions_fields(session.envelope))
+        entry.update(source_view_fields(session.envelope))
+        parsed, _ = session.parse_wire_response(raw, schema, entry)
+        if parsed != authored:
+            raise ValueError(f"frozen_import_wire_mismatch: {name}")
+        session.journal["calls"][name] = entry
+        session.register_reference_response(name, authored)
+        return session.reference_input(authored)
+
+    body, received, origins = {}, {}, []
+    for section in BODY:
+        name = "local_body:" + section
+        system, payload, schema = chapter_request_input(
+            session.packet,
+            session.aliases,
+            section,
+            body,
+            body,
+            session.writing_plan,
+            session.envelope,
+        )
+        authored = {section: document["body"][section]}
+        if section == BODY[0]:
+            authored = {"title": document["body"]["title"], **authored}
+        received_part, origin_part = receive(
+            name, "synthesis", authored, system, payload, schema
+        )
+        body.update(copy.deepcopy(authored))
+        received.update(received_part)
+        origins.extend(origin_part)
+        session.remember_reference_input(body, received, origins)
+    units = validate_body(
+        body,
+        session.aliases,
+        writing_plan=session.writing_plan,
+        envelope=session.envelope,
+    )
+    system, payload, schema = summary_request_input(
+        session.packet, units, session.envelope
+    )
+    receive("local_summary", "summary", document["summaries"], system, payload, schema)
+    session.reference_input(document["summaries"])
+
+
+async def reevaluate_imported_draft(
+    agent, source, extracts, options, *, archive_path, archive_sha256, report_sha256
+):
+    """Reevaluate a local manuscript through the normal bounded repair and delivery path."""
+    from litagent.benchmark.quality_suite import suite_lock
+    from litagent.review_cycles import writer_session
+    from litagent.safety.planned_budget import locked_writer_envelope
+    from litagent.stage_repair import enabled
+
+    if any(
+        source.get(field) != getattr(options, field)
+        for field in (
+            "quality_policy",
+            "review_structure",
+            "report_language",
+            "generation_strategy",
+            "body_quality",
+        )
+    ):
+        raise ValueError("frozen_import_options_mismatch")
+    budget = agent._cost_budget
+    envelope = locked_writer_envelope(budget)
+    snapshot = budget.snapshot()
+    if (
+        not enabled(envelope)
+        or source["writer_document"]["budget_envelope"] != envelope
+        or snapshot["requests_sent"]
+        or snapshot.get("usage_uncertain")
+        or budget.stop_reason
+    ):
+        raise ValueError("frozen_import_requires_new_planned_run")
+    session = writer_session(
+        agent._stage_llm("generation"),
+        agent._targeted_repair_path(),
+        agent._session_id,
+        source["writer_document"],
+        trace_hook=agent._trace_hook,
+    )
+    if session.state["attempts"] or session.journal["calls"]:
+        raise ValueError("frozen_import_writer_already_started")
+    retained = import_retained_draft(
+        session,
+        source,
+        archive_path=archive_path,
+        archive_sha256=archive_sha256,
+        report_sha256=report_sha256,
+    )
+    query = session.packet["query"]
+    results = {"adversarial_review": retained, "extract": extracts}
+    context = agent._build_eval_context(
+        query=query, survey=retained["draft"], results=results
+    )
+    validate_fact_snapshot(
+        retained["fact_cards"],
+        context["evidence"],
+        retained["evidence_snapshot_sha256"],
+    )
+    # The reference codec checkpoints after each chapter. Publish only after
+    # the entire imported document has passed that same codec.
+    with TemporaryDirectory() as temporary:
+        staged = writer_session(
+            session.llm,
+            Path(temporary) / "sources.json",
+            session.run_id,
+            retained["writer_document"],
+        )
+        _record_imported_sources(staged, retained["writer_document"])
+        session.path.parent.mkdir(parents=True, exist_ok=True)
+        with suite_lock(session.path.with_name(session.path.name + ".import.lock")):
+            if session.path.exists() or session.journal_path.exists():
+                raise ValueError("frozen_import_writer_already_started")
+            session.journal = staged.journal
+            session.save()
+    retained["targeted_repair_state"] = session.state
+    graph = TaskGraph()
+    graph.add_task(
+        SubTask("extract", "Import frozen evidence", "extractor", max_retries=0)
+    )
+    graph.mark_done("extract", extracts)
+    graph.add_task(
+        SubTask(
+            "adversarial_review",
+            "Import frozen manuscript",
+            "adversarial_review",
+            max_retries=0,
+        ),
+        depends_on=["extract"],
+    )
+    graph.mark_done("adversarial_review", retained)
+    report, degradation = await agent._prepare_report(
+        query=query,
+        graph=graph,
+        results=results,
+        options=options,
+        search_outcomes=[],
+        degradation_codes=[],
+        cancellation=None,
+    )
+    await agent._automatic_review(report, query, results, None)
+    return await agent._finalize_report(
+        query=query,
+        report_data=report,
+        results=results,
+        degradation_codes=degradation,
+        cancellation=None,
+        allow_trusted_writes=False,
     )
 
 

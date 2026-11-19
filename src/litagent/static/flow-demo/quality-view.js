@@ -23,6 +23,14 @@ const LABELS = {
   passed: ["通过", "Passed"], failed: ["未通过", "Failed"], unverified: ["未核验", "Unverified"],
   disabled: ["未启用", "Disabled"],
   not_run: ["未运行", "Not run"],
+  reviewed: ["已记录审稿意见", "Review findings recorded"],
+  review_issues_unbound: ["审稿意见无法核对引文归属", "Review findings could not be verified against their citations"],
+  review_accepted: ["写作审阅完成", "Writing review complete"],
+  review_limit_reached: ["已达审阅修订上限", "Review revision limit reached"],
+  unchanged_with_response: ["已回应，保留原稿", "Responded; draft retained"],
+  repeated_candidate: ["修订稿重复", "Candidate repeats a prior draft"],
+  revised_unverified: ["已修订，待核验", "Revised, pending Evaluation"],
+  candidate_rejected: ["修订候选被拒", "Revision candidate rejected"],
   citation_accuracy: ["引用 ID 有效性", "Citation ID validity"], faithfulness: ["科学断言支持率", "Scientific assertion support"], internal_consistency: ["内部一致性", "Internal consistency"],
   idHelp: ["引用存在不代表论文支持该断言。", "A valid citation ID does not establish semantic support."],
   historical: ["历史评估口径；不能与新版直接比较。", "Historical evaluation scope; not directly comparable with v2."],
@@ -61,6 +69,14 @@ const LABELS = {
   invalid_response: ["响应契约无效", "Invalid response contract"],
   evaluation_analysis_claim_ownership_invalid: ["章节断言归属无效，整体未核验", "Invalid chapter claim ownership; overall evaluation unverified"],
   support_basis_quote_invalid: ["支持原文与所选来源字段不匹配", "Support text does not match the selected source field"],
+  science_not_fully_supported: ["科学支持未达到严格交付要求", "Strict scientific support requirement unmet"],
+  science_support_unverified: ["全篇科学支持率尚未核验", "Report-wide scientific support is unverified"],
+  body_analysis_incomplete: ["章节分析核验未通过", "Chapter analysis check failed"],
+  incomplete_verification: ["核验未完成", "Verification incomplete"],
+  inventory_invalid: ["断言清单无效", "Invalid assertion inventory"],
+  outside_global_review_scope: ["本轮未检查此项", "Outside this review’s scope"],
+  core_coverage_unverified: ["核心问题覆盖未通过", "Core coverage requirement unmet"],
+  scientific_limitations_missing: ["缺少有来源支持的具体局限", "Missing supported limitations"],
   insufficient_support: ["证据不足", "Insufficient support"], attribution_mismatch: ["引用归属错误", "Attribution mismatch"], uncited_claim: ["缺少引用", "Uncited claim"], unknown_evidence_ref: ["证据缺失", "Unknown evidence"], record_mismatch: ["运行记录不一致", "Record mismatch"],
   gate: ["内容质量／交付状态", "Content quality / delivery"], reasons: ["阻断或降级原因", "Blocking or degradation reasons"], noReasons: ["未记录降级原因。", "No degradation reason recorded."], diagnosticOnly: ["结果供复核；不修改评分或人工批准。", "Review evidence only; preserves scores and approval."],
 };
@@ -118,16 +134,25 @@ function renderIndependentChecks(container, details, options, onSelect, L) {
   node(panel, "h3", en ? "Independent checks" : "独立检查与交付门禁");
   node(panel, "p", en ? "Scores describe completed measurements; delivery requires every mandatory check. Unverified results have no score." : "评分描述已完成的测量；交付要求所有必要检查通过。未核验结果没有分数。");
   const formulas = {citation_accuracy: ["有效去重引用 ID／全部去重引用 ID 与格式错误项", "Valid unique IDs / all unique IDs and malformed markers"], faithfulness: ["获支持科学断言／全部科学断言；严格交付要求 1.0", "Supported scientific assertions / all scientific assertions; delivery requires 1.0"], internal_consistency: ["max(0, 1 − 0.2 × 矛盾对数)；严格交付要求无矛盾", "max(0, 1 − 0.2 × conflict pairs); delivery requires no conflicts"]};
+  const questionOnly = details.stages?.global_scope === "question-coverage-v1";
+  if (questionOnly) {
+    delete formulas.internal_consistency;
+    node(panel, "p", en ? "Global review checks whether the report answers the user’s question and explicit requirements. Inventory counts track the statements processed." : "全局检查仅判断正文是否回答了用户的问题及明确要求。清单统计反映已处理的断言。");
+  }
+  if (details.stages?.global_scope === "report-review-no-omissions-v1") {
+    node(panel, "p", en ? "Internal consistency counts contradictory claim pairs under matching conditions. Inventory completeness tracks processing of the extracted claims. Extraction recall is unmeasured." : "内部一致性统计同一条件下互相矛盾的断言对。清单完整性指已抽取断言的处理情况。本次未评测断言抽取召回率。");
+  }
   for (const [name, labels] of Object.entries(formulas)) node(panel, "p", `${L(name)}: ${labels[en ? 1 : 0]}`);
   const titles = {execution: ["执行完整性", "Execution completeness"], inventory: ["清单有效性", "Inventory validity"], core_coverage: ["核心问题覆盖", "Core coverage"], structure: ["结构", "Structure"], method: ["方法披露", "Method disclosure"], language: ["语言", "Language"], analysis: ["章节分析", "Chapter analysis"], method_statements: ["运行方法陈述", "Runtime statements"], organization: ["组织陈述", "Organization"], global_report: ["全局正文问题", "Global report issues"], limitations: ["具体局限", "Concrete limitations"]};
   const table = node(panel, "table", null, "quality-distribution quality-batches"), head = node(table, "thead"), header = node(head, "tr");
+  if (details.stages?.global_scope === "report-review-no-omissions-v1") titles.inventory = ["已抽取断言处理完整性", "Extracted claim processing"];
   for (const label of (en ? ["Check", "Status", "Reason"] : ["检查", "状态", "原因"])) node(header, "th", label).setAttribute?.("scope", "col");
   const body = node(table, "tbody");
   for (const [name, item] of Object.entries(details.evaluation_checks || {})) {
     const row = node(body, "tr");
     node(row, "th", titles[name]?.[en ? 1 : 0] || name).setAttribute?.("scope", "row");
     node(row, "td", L(item.status || "unverified"));
-    const cell = node(row, "td", (item.reason_codes || []).join(", ") || "—");
+    const cell = node(row, "td", (item.reason_codes || []).map(L).join(", ") || "—");
     if (["inventory", "execution", "core_coverage"].includes(name)) {
       const action = node(cell, "button", en ? "View evidence" : "查看依据"); action.type = "button"; action.setAttribute?.("style", "min-width:5.5rem");
       action.addEventListener("click", () => onSelect({kind: "metric", id: name, value: item}, action));
@@ -161,8 +186,8 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
   const budgetPlan = options.budgetPlan;
   const allowances = budgetPlan?.scope_bounds?.repair_allowances;
   const repairLabels = options.locale === "en"
-    ? { review_revision: "Writing revision", evaluation_revision: "Evaluation repair", capacity: "Draft refinement", inventory: "Inventory recovery", prose: "Prose revision" }
-    : { review_revision: "写作审阅修订", evaluation_revision: "验收修复", capacity: "初稿精简", inventory: "清单恢复", prose: "正文修订" };
+    ? { review_revision: "Writing revision", evaluation_revision: "Evaluation repair", capacity: "Capacity refinement", inventory: "Inventory recovery", prose: "Prose revision" }
+    : { review_revision: "写作审阅修订", evaluation_revision: "验收修复", capacity: "容量精简", inventory: "清单恢复", prose: "正文修订" };
   const byCategory = values => Object.entries(repairLabels)
     .filter(([kind]) => kind in values)
     .map(([kind, label]) => `${label} ${display(values[kind])}`).join(" · ");
@@ -230,6 +255,13 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
   }
   if (details.evaluation_result_contract === "independent-evaluation-v1") renderIndependentChecks(container, details, options, onSelect, L);
   const gate = node(container, "section", null, "quality-gate");
+  const preflight = details.stages?.capacity_admission?.rejection;
+  if (preflight?.code === "global_request_preflight_exceeded" && [preflight.reservation, preflight.context_limit, preflight.request_cap].every(x => Number.isInteger(x) && x > 0) && preflight.reservation > Math.min(preflight.context_limit, preflight.request_cap)) {
+    const en=options.locale === "en";
+    node(gate,"h3",en ? "Global request preflight exceeded" : "全局请求预检超限");
+    node(gate,"p",`${en ? "Reservation / allowed limit" : "请求预留／允许上限"}: ${preflight.reservation} / ${Math.min(preflight.context_limit, preflight.request_cap)} tokens`);
+    node(gate,"p",en ? "NLI and global review were not sent. Science remains unverified. This reservation is not billed usage." : "支持核验和全局检查尚未发送，科学结果未核验。这里的预留不是实际费用。");
+  }
   node(gate, "h3", `${quality?.status || "unverified"} / ${delivery?.status || "pending"}`);
   node(gate, "p", `${L("gate")} · ${L("reasons")}: ${(delivery?.reason_codes || []).join(", ") || L("noReasons")}`);
   const currentFailure = options.writerFailure;
@@ -303,15 +335,44 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
     const en = options.locale === "en";
     const strict = node(container, "section", null, "quality-section");
     node(strict, "h3", en ? "Strict acceptance · scientific support required: 100%" : "严格交付门禁 · 科学支持率要求 100%");
-    node(strict, "p", `${L(details.strict_acceptance?.status || "unverified")} · ${(details.strict_acceptance?.failure_codes || []).join(", ")}`);
+    const explanation = quality?.failure_explanation;
+    if (explanation?.primary?.length) {
+      node(strict, "p", `${L(details.strict_acceptance.status)} · ${en ? "Primary reasons" : "主要原因"}`);
+      const list = node(strict, "ul");
+      for (const code of explanation.primary) {
+        const reason = node(list, "li", L(code));
+        if (code !== "science_not_fully_supported") continue;
+        for (const [section, ids] of Object.entries(explanation.analysis_dependencies)) {
+          const label = (details.assertions || []).find(c => c.claim_id === ids[0])?.section || section;
+          node(reason, "p", en ? `Affected section: ${label}. Selected claims lack sufficient support.` : `受影响章节：${label}。以下断言缺少充分依据。`);
+          for (const id of ids) {
+            const claim = details.assertions.find(c => c.claim_id === id);
+            if (!claim) continue;
+            const button = node(reason, "button", id);
+            button.type = "button";
+            button.addEventListener("click", () => onSelect({kind: "quality-diagnostic", id, value: claim}, button));
+          }
+        }
+      }
+      const raw = node(strict, "details");
+      node(raw, "summary", en ? "Original gate codes" : "原始门禁判定");
+      node(raw, "p", (details.strict_acceptance.failure_codes || []).join(", "));
+    } else {
+      node(strict, "p", `${L(details.strict_acceptance?.status || "unverified")} · ${(details.strict_acceptance?.failure_codes || []).join(", ")}`);
+    }
     node(strict, "p", verification ? optionalHelp : acceptance?.policy === "strict_auto_v2" ? (en ? "Jev extraction verification, complete Evaluation and Judge must pass; no human approval." : "Jev提取核验、完整Evaluation与Judge通过才可自动交付；无人工审批。") : acceptance ? (en ? "Evaluation, Judge and Jev must all pass; no human approval stage." : "Evaluation、Judge、Jev 全部通过才可自动交付；无人工审批阶段。") : en ? "Execution complete ≠ verified ≠ human approved. Judge/Jev do not override this gate." : "执行完成、自动核验通过和人工批准是三个状态。Judge/Jev 不覆盖此门禁。");
     const stages = details.stages || {};
     node(strict, "p", `${en ? "Assessed assertions" : "已处理断言"}: ${display(stages.processed_assertions)} / ${display(stages.expected_assertions)}`);
     const table = node(strict, "table", null, "quality-distribution quality-batches"); const body = node(table, "tbody");
     for (const batch of stages.batches || []) { const row = node(body, "tr"); node(row, "th", `${en ? "Batch" : "批次"} ${Number.isInteger(batch.index) ? batch.index + 1 : L("unavailable")}`); node(row, "td", L(batch.status)); node(row, "td", `${batch.claim_ids?.length || 0} ${L("claims")}`); }
-    node(strict, "p", `${en ? "Global consistency" : "全局一致性"}: ${L(stages.global_check || "unverified")}`);
+    const questionOnly = stages.global_scope === "question-coverage-v1";
+    const scopedReview = questionOnly || stages.global_scope === "report-review-no-omissions-v1";
+    const globalLabel = questionOnly ? (en ? "User question coverage" : "用户问题覆盖") : (en ? "Global consistency" : "全局一致性");
+    node(strict, "p", `${globalLabel}: ${L(stages.global_check || "unverified")}`);
     if (details.global_findings_contract) {
-      node(strict,"p",`${en ? "Inventory validity" : "抽取清单有效性"}: ${L(details.inventory_check?.status || "unverified")}`);
+      const processing = stages.global_scope === "report-review-no-omissions-v1";
+      const inventoryLabel = processing ? (en ? "Extracted claim processing" : "已抽取断言处理完整性") : (en ? "Inventory validity" : "抽取清单有效性");
+      node(strict,"p",`${inventoryLabel}: ${L((processing ? details.evaluation_checks?.inventory?.status : details.inventory_check?.status) || "unverified")}`);
       node(strict,"p",en ? "Completed requests and partial scientific decisions do not establish a complete valid evaluation. Inventory defects cannot authorize rewriting scientific prose." : "请求完成和部分科学判断不代表整体验证有效。抽取清单缺陷不能自动授权改写正文。");
       for(const issue of details.global_issues || stages.global_issues || []) {
         const owner = issue.owner === "inventory" ? (en ? "Inventory defect" : "抽取清单问题") : issue.owner === "report" ? (en ? "Report issue" : "正文问题") : (en ? "Unclassified global finding" : "未分类全局问题");
@@ -319,12 +380,14 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
       }
     }
     if(stages.global_reason_code)node(strict,"p",L(stages.global_reason_code));
-    if(details.scope_notice_contract)node(strict,"p",`${en ? "Substantive limitations" : "具体科学局限"}: ${L(details.limitations_check?.adequate === true ? "passed" : "unverified")} · ${details.limitations_check?.explanation || L("unavailable")}`);
+    if(details.scope_notice_contract && !questionOnly)node(strict,"p",`${en ? "Substantive limitations" : "具体科学局限"}: ${L(details.limitations_check?.adequate === true ? "passed" : "unverified")} · ${details.limitations_check?.explanation || L("unavailable")}`);
     for (const requirement of details.coverage_requirements || []) {
       const verdict = (details.core_coverage || []).find(c => c.requirement_id === requirement.requirement_id);
       const supportedIds = new Set((details.assertions || []).filter(c => c.kind === "scientific" && c.status === "supported").map(c => c.claim_id));
       const verified = details.coverage?.complete === true && verdict?.answered === true && Array.isArray(verdict.claim_ids) && verdict.claim_ids.length > 0 && verdict.claim_ids.every(id => supportedIds.has(id));
-      node(strict, "p", `${requirement.text || requirement.requirement_id || L("unavailable")}: ${L(verified ? "passed" : "unverified")}`);
+      const status = verified ? "passed" : scopedReview && stages.global_check === "completed" && verdict ? "failed" : "unverified";
+      node(strict, "p", `${requirement.text || requirement.requirement_id || L("unavailable")}: ${L(status)}`);
+      if (scopedReview && verdict?.explanation) node(strict, "p", verdict.explanation);
     }
     const cards = node(strict, "details", null, "quality-diagnostic");
     node(cards, "summary", `${en ? "Fact card bindings" : "事实卡绑定"} · ${Object.keys(details.fact_card_map || {}).length}`);
@@ -473,7 +536,7 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
       const box=node(section,"details",null,"quality-diagnostic");node(box,"summary",label);
       const d=evaluation?.faithfulness?.details;
       node(box,"p",reason || "");
-      node(box,"p",en ? (committed ? "Committed report" : "Diagnostic record; not a committed report") : (committed ? "已提交正文" : "诊断记录；不代表已提交正文"));
+      node(box,"p",committed === null ? (en ? "Retained draft; not delivered" : "保留草稿，尚未交付") : en ? (committed ? "Committed report" : "Diagnostic record; not a committed report") : (committed ? "已提交正文" : "诊断记录；不代表已提交正文"));
       if(!d){node(box,"p",en ? "Full Evaluation not run" : "未运行完整 Evaluation");return;}
       node(box,"p",`${en ? "Unit coverage" : "单元覆盖"}: ${display(d.coverage?.processed_units)} / ${display(d.coverage?.source_units)}`);
       node(box,"p",`${L("supported")}: ${display(d.supported_count)} · ${L("unsupported")}: ${display(d.unsupported_count)} · ${L("pending")}: ${display(d.unverified_count)}`);
@@ -487,6 +550,7 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
         stop: en ? "Repair stopped before sending" : "修复未发送",
         prose: en ? "Targeted prose repair" : "正文定向修复",
         combined: en ? "Prose repair and full inventory reassessment" : "正文修复与清单完整复评",
+        capacity: en ? "Capacity refinement and complete reassessment" : "容量精简与完整复评",
         inventory: en ? "Inventory recovery · prose unchanged" : "清单恢复 · 正文未修改",
       };
       node(section,"p",labels[recovery.action]);
@@ -498,7 +562,7 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
       if (recovery.attempted) node(section,"p", recovery.reassessment === "completed"
         ? (en ? "Full reassessment completed" : "完整复评已执行")
         : (en ? "Full reassessment unverified" : "完整复评未核验"));
-      if (recovery.attempted && !recovery.committed && ["prose", "combined"].includes(recovery.action))
+      if (recovery.attempted && !recovery.committed && ["prose", "combined", "capacity"].includes(recovery.action))
         node(section,"p",en ? "Candidate not committed" : "候选未提交");
     }
     show(editorialBound ? (en ? "Source-version initial Evaluation" : "来源版本首次 Evaluation") : (en ? "Initial Evaluation" : "首次 Evaluation"),earlier.initial_evaluation,"",false);
@@ -513,7 +577,7 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
       }
     }
     if(editorialBound)node(section,"p",en ? "Local cleanup removed one confirmed redundant sentence. Earlier evaluations belong to source versions; the current report was assessed in full again." : "本地整理移除一条已确认重复句。前序评估属于来源版本；当前正文已重新完整核验。");
-    show(en ? "Final report Evaluation" : "最终正文 Evaluation",history.final_evaluation,"",true);
+    show(en ? "Final report Evaluation" : "最终正文 Evaluation",history.final_evaluation,"",delivery?.publishable === true ? true : null);
   }
   const repairs = options.targetedRepairState;
   const workflow = options.reviewWorkflow;
@@ -523,10 +587,44 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
     node(section,"p",en ? "Review decisions are editorial advice. Only complete Evaluation can establish scientific acceptance. Working drafts are not delivered reports." : "审稿回应只代表写作处理；完整 Evaluation 决定科学验收。临时工作稿不是已交付报告。");
     for (const [kind, quota] of Object.entries(workflow.allowances || {}))
       node(section,"p",`${repairLabels[kind] || kind}: ${quota.used} / ${quota.limit} · ${en ? "remaining" : "剩余"} ${quota.remaining}`);
+    const showStageRejection = (parent, rejection) => {
+      if (rejection?.contract !== "llm-stage-repair-v1") return false;
+      const actions = en
+        ? {repair_summary:"Repair summary only; validated body retained", repair_response:"Repair authorized response", stop:"Repair stopped"}
+        : {repair_summary:"仅修复摘要，暂存合法正文", repair_response:"重做原授权响应", stop:"停止续修"};
+      node(parent,"p",`${en ? "Candidate validation failed" : "候选校验失败"} · ${actions[rejection.action]}`);
+      node(parent,"p",`${rejection.reason_code} · ${en ? "Remaining" : "剩余次数"}: ${rejection.remaining} · ${en ? "Settled tokens" : "已结算 tokens"}: ${rejection.actual_tokens}`);
+      node(parent,"p",`${en ? "Retained draft SHA" : "保留稿 SHA"} ${rejection.retained_report_sha256}`,"audit-binding");
+      if (rejection.body_sha256) node(parent,"p",`${en ? "Pending body · not evaluated" : "暂存正文 · 未核验"}: ${rejection.body_sha256}`,"audit-binding");
+      return true;
+    };
+    const showSummaryRejection = (parent, rejection) => {
+      if (!rejection || showStageRejection(parent, rejection)) return;
+      const actions = en
+        ? {evaluate_retained:"Evaluate retained draft", retry_evaluation_revision:"Continue bounded repair", stop:"No remaining repair attempts"}
+        : {evaluate_retained:"保留稿继续核验", retry_evaluation_revision:"继续验收修订", stop:"次数耗尽，无法续行"};
+      node(parent,"p",`${en ? "Candidate rejected" : "候选被拒"} · ${actions[rejection.action] || "—"}`);
+      node(parent,"p",`${en ? "Retained draft SHA" : "保留稿 SHA"} ${rejection.retained_report_sha256}`,"audit-binding");
+      node(parent,"p",`${en ? "Remaining attempts" : "拒绝时剩余次数"}: ${rejection.remaining} · ${en ? "Settled tokens" : "已结算 tokens"}: ${rejection.actual_tokens}`);
+      for (const issue of rejection.diagnostics || []) {
+        const reason = issue.reason === "unknown_frozen_card" ? (en ? "Card absent from frozen evidence" : "卡号不在冻结证据池") : issue.reason === "outside_body_dependencies" ? (en ? "Outside declared body dependencies" : "超出声明的正文依赖") : issue.code;
+        node(parent,"p",`${issue.path.join(" / ")} · ${issue.reference || "—"} · ${reason} · ${en ? "offset" : "字符偏移"} ${issue.offset ?? "—"}`);
+      }
+    };
+    const showPatchRejection = (parent, rejection) => {
+      if (!rejection || showStageRejection(parent, rejection)) return;
+      node(parent,"p",en ? "Patch candidate rejected; retained manuscript preserved" : "补丁候选被拒，保留合法稿件");
+      node(parent,"p",`${rejection.action} · ${en ? "Remaining" : "剩余次数"}: ${rejection.remaining} · tokens: ${rejection.actual_tokens}`);
+      node(parent,"p",`SHA ${rejection.retained_report_sha256}`,"audit-binding");
+      for (const issue of rejection.diagnostics || []) node(parent,"p",`${issue.target_key} · ${issue.target_id} · ${issue.action} · ${issue.reason}`);
+    };
     for (const round of workflow.reviews || []) {
       const details=node(section,"details");
-      node(details,"summary",`${en ? "Writing review" : "写作审阅"} ${round.round + 1} · ${round.status}`);
+      const status = Object.hasOwn(LABELS, round.status) ? L(round.status) : L("unavailable");
+      node(details,"summary",`${en ? "Writing review" : "写作审阅"} ${round.round + 1} · ${status}`);
       node(details,"p",`SHA ${round.source_report_sha256}`,"audit-binding");
+      showSummaryRejection(details, round.summary_rejection);
+      showPatchRejection(details, round.patch_rejection);
       node(details,"p",`${en ? "Responses" : "逐项回应"}: ${Object.entries(round.responses || {}).map(([k,v])=>`${k}: ${v}`).join(" · ") || "—"}`);
     }
     for (const round of workflow.evaluations || []) {
@@ -534,6 +632,8 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
       const label=round.kind === "repair_preflight" ? (en ? "Repair preflight · no request sent" : "修复预检 · 未发送请求") : round.kind === "repair_incomplete" ? (en ? "Repair ended · no reevaluation" : "修复终止 · 未进入复评") : `${en ? "Strict evaluation" : "严格评估"} ${round.round}`;
       node(details,"summary",`${label} · ${L(round.status)} · ${round.reason || "—"}`);
       node(details,"p",`SHA ${round.report_sha256 || "—"}`,"audit-binding");
+      showSummaryRejection(details, round.summary_rejection);
+      showPatchRejection(details, round.patch_rejection);
       node(details,"p",`${en ? "Supported / unsupported / unverified" : "支持／不支持／未核验"}: ${display(round.supported)} / ${display(round.unsupported)} / ${display(round.unverified)}`);
       if(round.promoted)node(details,"p",en ? "Improved working draft · not delivered" : "改善工作稿 · 尚未交付");
     }

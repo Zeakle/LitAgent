@@ -88,10 +88,18 @@ class NativeGateway(structured.LongScientificGateway):
         messages = body.get("input", body.get("messages"))
         payload = json.loads(messages[1]["content"])
         mode = getattr(self, "recovery_case", None)
-        if "jobs" not in payload and not (
-            "source_units" in payload
-            and payload.get("body_analysis_contract") == "body-analysis-v1"
-            and "unit_inventory" not in payload
+        coverage_only = (
+            body.get("text", {}).get("format", {}).get("name")
+            == "ragas_question_coverage"
+        )
+        if (
+            not coverage_only
+            and "jobs" not in payload
+            and not (
+                "source_units" in payload
+                and payload.get("body_analysis_contract") == "body-analysis-v1"
+                and "unit_inventory" not in payload
+            )
         ):
             return await super().__call__(request)
         self.sent.append(
@@ -101,8 +109,23 @@ class NativeGateway(structured.LongScientificGateway):
                 "payload": copy.deepcopy(payload),
             }
         )
-        response = await self.semantic.chat(messages)
-        raw = json.loads(response.content)
+        if coverage_only:
+            self.global_calls += 1
+            ids = list(payload["claims"])[:1]
+            raw = {
+                "coverage": [
+                    {
+                        "requirement_id": row["requirement_id"],
+                        "answered": bool(ids),
+                        "claim_ids": ids,
+                        "explanation": "Answers the requested method question.",
+                    }
+                    for row in payload["coverage_requirements"]
+                ]
+            }
+        else:
+            response = await self.semantic.chat(messages)
+            raw = json.loads(response.content)
         if "jobs" in payload and "context_pool" not in payload:
             for value in raw.values():
                 value["statements"] *= getattr(self, "statements_per_unit", 1)
@@ -286,10 +309,24 @@ async def test_native_ragas_real_consumers_and_two_shared_repairs(
     assert any("targets" in row["payload"] for row in result.gateway.sent)
     assert not any("cited_materials" in row["payload"] for row in result.gateway.sent)
     if uplift:
-        from litagent.eval.ragas_global_wire import CONTRACT as GLOBAL_WIRE
+        assert metrics["internal_consistency"]["status"] == "passed"
+        assert metrics["internal_consistency"]["score"] == 1.0
 
+        routes = result.report["metadata"]["config_summary"]["llm"]["model_routing"]
+        assert routes["evaluation_inventory"] != routes["evaluation"]
+        for row in result.gateway.sent:
+            payload = row["payload"]
+            if "jobs" in payload:
+                role = (
+                    "evaluation"
+                    if "context_pool" in payload
+                    else "evaluation_inventory"
+                )
+                assert row["request"]["model"] == routes[role]
+            elif payload.get("global_scope") == "report-review-no-omissions-v1":
+                assert row["request"]["model"] == routes["evaluation"]
         assert sum(
-            row["payload"].get("global_input_contract") == GLOBAL_WIRE
+            row["payload"].get("global_scope") == "report-review-no-omissions-v1"
             for row in result.gateway.sent
         ) == (2 if failures == 0 else 3)
     validate_accounting_snapshot(result.ledger, expected_plan=saved)
@@ -325,6 +362,9 @@ async def test_native_recovery_runs_full_sdk_reassessment(
         "format_agent": "agent-format-repair",
     }.get(mode, "operational-plus20")
     cfg = load_config(f"config/{config_file}.yaml")
+    cfg.eval.native_global_scope = (
+        None  # This suite exercises full-report omission recovery.
+    )
     if mode == "combined_last":
         cfg.capacity = CapacityConfig(body_json_bytes=1600)
     if mode in {"extended", "format_agent"}:

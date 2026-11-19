@@ -91,6 +91,11 @@ def validate_writer_envelope(value: dict) -> dict:
 
         fields.add("semantic_engine")
         validate_engine(value["semantic_engine"], archived=True)
+    if isinstance(value, dict) and "native_inventory_bound" in value:
+        fields.add("native_inventory_bound")
+        from litagent.eval.native_capacity import validate_bound
+
+        validate_bound(value)
         if (
             value.get("contract") != FLAT_ENVELOPE_CONTRACT
             or "repair_mapping_contract" not in value
@@ -648,6 +653,7 @@ def make_writer_envelope(
     output_tokens=None,
     run_limits=None,
     semantic_engine=None,
+    native_inventory_question=None,
 ):
     """Define explicit producer limits, not estimates of unconstrained outputs."""
     from litagent.eval.scoped import SUPPORT_VALIDATION_REVISIONS
@@ -967,7 +973,9 @@ def make_writer_envelope(
         if evaluation_result_contract != RESULT_CONTRACT or round_budget is not True:
             raise ValueError("evaluation_result_contract_invalid")
         value["evaluation_result_contract"] = evaluation_result_contract
-        value["evaluation_result_identity"] = contract_identity()
+        value["evaluation_result_identity"] = contract_identity(
+            (semantic_engine or {}).get("global_scope")
+        )
         if evaluation_dimensions_contract is not None:
             from litagent.eval.decision_output import fields as decision_fields
 
@@ -990,6 +998,15 @@ def make_writer_envelope(
         value["request_caps"] = dict.fromkeys(
             value["request_caps"], envelope_context_limit(value)
         )
+    from litagent.eval.native_capacity import inventory_input_bound, selected
+
+    if selected(value):
+        value["native_inventory_bound"] = inventory_input_bound(
+            value, native_inventory_question
+        )
+        value["request_caps"]["inventory"] = value["native_inventory_bound"][
+            "request_cap"
+        ]
     value["identity"] = _digest(value)
     return validate_writer_envelope(value)
 
@@ -1279,7 +1296,11 @@ def build_budget_plan(
             and envelope["frozen_component_reservation"]
             > min(
                 envelope["request_caps"][k]
-                for k in ("inventory", "assessment", "global")
+                for k in (
+                    ("assessment", "global")
+                    if envelope.get("native_inventory_bound")
+                    else ("inventory", "assessment", "global")
+                )
             )
             else (
                 "budget_plan_requests_exceeded"
@@ -1677,6 +1698,12 @@ def request_scope(stage: str, request_id: str):
         yield
     finally:
         _active_request.reset(token)
+
+
+def current_request_stage() -> str | None:
+    """Read the host-owned stage of this task's request, including during preflight."""
+    active = _active_request.get()
+    return active[0] if active is not None else None
 
 
 class PlannedBudget(CostBudget):

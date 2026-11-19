@@ -34,6 +34,9 @@ def test_every_declared_resource_ceiling_is_raised_without_growing_writing_targe
     baseline = yaml.safe_load(Path("config/expanded-capacity.yaml").read_text())
     expected, inventory = uplift_configuration(baseline, CapacityConfig().model_dump())
     actual = yaml.safe_load(Path("config/operational-plus20.yaml").read_text())
+    # The active profile also selects Pro inventory and the new global scope.
+    expected["llm"]["evaluation_inventory_model"] = expected["llm"]["generation_model"]
+    expected["eval"]["native_global_scope"] = "report-review-no-omissions-v1"
     assert actual == expected
     assert len(inventory) > 60
     for row in inventory.values():
@@ -74,6 +77,8 @@ def test_new_and_legacy_limit_identities_cannot_be_interchanged():
 def uplift_plan(case):
     """Exercise the actual planner, complete envelope and new RAGAS batch descriptor."""
     cfg = load_config("config/operational-plus20.yaml")
+    # This fixture replays the full-report schema and its original capacity bounds.
+    cfg.eval.native_global_scope = None
     result = native_writer_budget_plan(
         case.packet,
         case.aliases,

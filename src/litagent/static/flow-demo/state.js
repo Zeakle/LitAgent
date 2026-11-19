@@ -1,6 +1,6 @@
 export function createWorkbenchStore(initial = {}) {
   const defaultExecutionUi = () => ({
-    mode: "overview",
+    mode: "dag",
     expandedStageIds: [],
     selectedNodeId: null,
     scale: 1,

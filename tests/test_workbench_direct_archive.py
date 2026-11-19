@@ -27,7 +27,7 @@ const identity=id=>({key:'archive:'+id,runId:id,source:'archive',query:id,status
  const api={abort(){},json(p){if(p==='/workbench/context')return Promise.resolve({mode:'offline',live_enabled:false});return new Promise((resolve,reject)=>requests.push({path:p,resolve,reject}))}};
  const ctx=vm.createContext({store,api,$,context:null,historyLoading:false,eventSource:null,mobileSidebar:null,citationPreferences:new Map(),URLSearchParams,
    location:{search:scenario==='default'?'':'?run=archive%3Atarget&view=quality'},history:{replaceState:(_,__,url)=>urls.push(url)},
-   surveyVerification:{render(){}},t:x=>x,setNotice:message=>notices.push(message),
+   surveyVerification:{render(){}},t:x=>x,setNotice:message=>notices.push(message),liveViewRefresh:{cancel(){}},setInspector(){},
    ...adapters,setSection(){},refreshInteractive(){throw Error('unexpected interactive fallback')}});
  const start=app.indexOf('async function selectRun('),end=app.indexOf('async function submitReview(');
  assert(start>0&&end>start);
@@ -108,17 +108,24 @@ class Node {
  focus(){}
 }
 const elements=new Map(),$=id=>{if(!elements.has(id))elements.set(id,new Node());return elements.get(id)};
-const context=vm.createContext({$,document:{createElement:()=>new Node()},inspectorTrigger:null,t:x=>x,
- renderExecutionInspector:()=>false});
+(async()=>{
+globalThis.document={createElement:()=>new Node()};
+const {pathToFileURL}=require('node:url'),path=require('node:path');
+const {renderEvidenceInspector}=await import(pathToFileURL(path.resolve(path.dirname(process.argv[1]),'evidence-view.js')));
+const {buildEvidenceLedger}=await import(pathToFileURL(path.resolve(path.dirname(process.argv[1]),'evidence-model.js')));
+const context=vm.createContext({$,document,inspectorTrigger:null,activeInspection:null,inspectedView:null,t:x=>x,
+ store:{get:()=>({view:null})},renderExecutionInspector:()=>false,renderEvidenceInspector,buildEvidenceLedger});
 vm.runInContext(app.slice(app.indexOf('function setInspector('),app.indexOf('function summaryValue(')),context);
 const support='<script>untrusted()</script> Full original with conditions and a different number: 17%.';
 context.setInspector({kind:'evidence',id:'E:a',value:{evidence_id:'a',text:'Extracted claim.',supporting_text:support}});
-const fields=$('#inspector-content').children[0].children;
-assert(fields.some(n=>n.textContent==='supporting_text'));
+const walk=n=>[n,...n.children.flatMap(walk)];
+const fields=walk($('#inspector-content'));
+assert(fields.some(n=>n.textContent==='verificationSource'));
 assert(fields.some(n=>n.textContent===support));
 assert(fields.some(n=>n.textContent==='Extracted claim.'));
 assert.equal($('#inspector-drawer').attrs['aria-hidden'],'false');
 assert(!fields.some(n=>Object.hasOwn(n,'innerHTML')));
+})().catch(error=>{console.error(error);process.exit(1)});
 """
     completed = subprocess.run(
         [

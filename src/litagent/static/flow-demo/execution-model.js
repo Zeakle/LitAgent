@@ -6,11 +6,13 @@ const TASK_TYPES = {
   recall: { stageId: "discovery", labelKey: "taskRecall" },
   dedup: { stageId: "evidence", labelKey: "taskDedup" },
   relevance_gate: { stageId: "evidence", labelKey: "taskRelevance" },
+  relevance: { stageId: "evidence", labelKey: "taskRelevance" },
   extractor: { stageId: "evidence", labelKey: "taskExtraction" },
   graph: { stageId: "evidence", labelKey: "taskGraphAnalysis" },
   synthesis: { stageId: "writing", labelKey: "taskSynthesis" },
   reviewer: { stageId: "writing", labelKey: "taskReviewer" },
   adversarial_review: { stageId: "writing", labelKey: "taskAdversarial" },
+  adversarial: { stageId: "writing", labelKey: "taskAdversarial" },
 };
 
 const STAGES = [
@@ -53,7 +55,8 @@ function matchingExecution(nodes, taskId) {
 }
 
 function finiteDuration(execution) {
-  const direct = Number(execution?.duration_ms ?? execution?.elapsed_ms);
+  const value = execution?.duration_ms ?? execution?.elapsed_ms;
+  const direct = value == null ? NaN : Number(value);
   if (Number.isFinite(direct) && direct >= 0) return direct;
   const started = Date.parse(execution?.started_at || "");
   const completed = Date.parse(execution?.completed_at || "");
@@ -138,6 +141,7 @@ export function aggregateStageState(members = []) {
 function observationStage(node) {
   const name = `${node?.task_id || ""} ${node?.name || ""}`;
   if (/query_decomposition|planner/.test(name)) return "planning";
+  if (/synthesis|reviewer|adversarial/.test(name)) return "writing";
   if (/evaluation|evidence_rewrite|human_revision|citation_normalization/.test(name)) return "evaluation";
   if (/human\.|paper_selection|final_approval/.test(name)) return "human";
   return null;
@@ -225,7 +229,33 @@ export function buildExecutionPresentation(view = {}, { locale = "zh-CN" } = {})
   if (hasCycle([...taskIds], dependencies)) diagnostics.push({ code: "cycle_detected" });
 
   const observations = Object.entries(nodes).map(([id, node]) => normalizeObservation(id, node));
-  if (view.delivery) {
+  const rewrite = observations.find(item => item.kind === "subspan"
+    && (item.taskId === "query_decomposition" || item.name === "planner.query_decomposition"));
+  if (rewrite) {
+    rewrite.labelKey = "flowQueryRewrite";
+    rewrite.sourceQuery = view.summary?.query || null;
+  } else if (view.summary?.query && tasks.length) {
+    // This is an explicitly missing observation, not a fabricated execution.
+    observations.push({
+      id: "system:query-decomposition", kind: "planning", taskId: null,
+      parentTaskId: null, name: "planner.query_decomposition", labelKey: "flowQueryRewrite",
+      stageId: "planning", status: "unknown", durationMs: null,
+      input: null, output: null, sourceQuery: view.summary.query, raw: null,
+    });
+  }
+  const extraction = view.report?.metadata?.extraction_verification;
+  if (extraction?.status) {
+    observations.push({
+      id: "system:extraction-verification", kind: "verification", taskId: null,
+      name: "Jev", stageId: "evidence", parentTaskId: null,
+      status: ({ completed: "completed", degraded: "completed", disabled: "skipped", failed_no_replay: "failed" })[extraction.status] || "unknown",
+      durationMs: null,
+      input: extraction.candidate_ledger ?? null,
+      output: { status: extraction.status, accepted_evidence_ids: extraction.accepted_evidence_ids, rejected: extraction.rejected, jev: extraction.jev },
+      raw: extraction,
+    });
+  }
+  if (view.delivery?.status && view.delivery.status !== "pending") {
     observations.push({
       id: "system:delivery",
       kind: "delivery",

@@ -166,6 +166,9 @@ class RewriteOutcome:
     reason_code: str
     candidate_bindings: Mapping[str, Any] | None = None
     candidate_metadata: Mapping[str, Any] | None = None
+    retryable: bool = False
+    summary_rejection: Mapping[str, Any] | None = None
+    patch_rejection: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -1218,6 +1221,10 @@ class LitAgent:
                     ),
                     "candidate_quality": rewrite.candidate_quality,
                 }
+                if rewrite.patch_rejection is not None:
+                    outcome["patch_rejection"] = rewrite.patch_rejection
+                if rewrite.summary_rejection is not None:
+                    outcome["summary_rejection"] = rewrite.summary_rejection
                 if native_recovery:
                     decision = working["metadata"]["recovery_decision"]
                     metadata["recovery_decision"] = decision
@@ -1287,6 +1294,11 @@ class LitAgent:
                         ]["diagnostics"]
                         continue
                     if rewrite.reason_code == "writer_repair_duplicate":
+                        continue
+                    if rewrite.retryable:
+                        outcome["local_diagnostics"] = working["metadata"][
+                            "writer_failure"
+                        ]["diagnostics"]
                         continue
                     if review_policy.enabled(envelope) and rewrite.candidate_evaluation:
                         from litagent.review_cycles import improvement
@@ -1848,6 +1860,16 @@ class LitAgent:
     def _stage_llm(self, stage: str):
         """Keep explicit historical injections working when no views were wired."""
         return self._stage_llms.get(stage, self._llm)
+
+    def _evaluation_client(self, envelope):
+        """Scope the inventory override to the server-selected native RAGAS engine."""
+        client = self._stage_llm("evaluation")
+        model = self._config.llm.evaluation_inventory_model
+        if model is not None and (envelope or {}).get("semantic_engine"):
+            from litagent.llm.routing import NativeEvaluationClient
+
+            return NativeEvaluationClient(client, model)
+        return client
 
     def _wire_llms(self):
         """Publish the transport owner before constructing borrowed role views."""
@@ -2508,6 +2530,12 @@ class LitAgent:
                 "parent_task_id": parent_task_id,
                 "name": task_id,
                 "phase": phase,
+                "input": {
+                    "query": query,
+                    "survey": survey,
+                    "report_sha256": hashlib.sha256(survey.encode("utf-8")).hexdigest(),
+                    "extractions": self._collect_extractions(results),
+                },
             },
         )
         token = set_task_id(task_id)
@@ -2652,7 +2680,7 @@ class LitAgent:
                 frozen_eval_envelope or {}
             ).get("semantic_engine"):
                 run = await execute_evaluation(
-                    llm=self._stage_llm("evaluation"),
+                    llm=self._evaluation_client(frozen_eval_envelope),
                     survey=survey,
                     context=context,
                     config=self._config.eval,
@@ -3428,6 +3456,15 @@ class LitAgent:
             or details.get("component_errors")
             or details.get("stages", {}).get("global_check") != "completed"
         )
+        from litagent.eval import native_capacity
+
+        capacity_pending = (
+            native_capacity.selected(
+                candidate.candidate_metadata["writer_document"].get("budget_envelope")
+            )
+            and details.get("execution_error") == native_capacity.REQUIRED
+            and not details.get("component_errors")
+        )
         regressed = self._passed_metric_regressed(
             initial,
             evaluation,
@@ -3439,12 +3476,21 @@ class LitAgent:
             "committed"
             if accepted
             else (
-                "ragas_recovery_candidate_execution_failed"
-                if technical
+                "writer_candidate_failed"
+                if capacity_pending
                 else (
-                    "writer_candidate_regressed"
-                    if regressed
-                    else "writer_candidate_failed"
+                    "ragas_recovery_candidate_execution_failed"
+                    if technical
+                    else (
+                        "native_capacity_candidate_quality_failed"
+                        if report["metadata"].get("recovery_decision", {}).get("action")
+                        == "capacity"
+                        else (
+                            "writer_candidate_regressed"
+                            if regressed
+                            else "writer_candidate_failed"
+                        )
+                    )
                 )
             )
         )
@@ -3468,7 +3514,11 @@ class LitAgent:
         else:
             session.journal["failure"] = {
                 "code": reason,
-                "family": "protocol" if technical else "quality",
+                "family": (
+                    "capacity"
+                    if capacity_pending
+                    else "protocol" if technical else "quality"
+                ),
                 "candidate_sha256": record["report_sha256"],
                 "diagnostics": native_repair_diagnostics(details),
             }
@@ -3540,7 +3590,12 @@ class LitAgent:
                     decision=decision,
                 )
             if review_policy.enabled(inventory_envelope):
-                with review_policy.partition("evaluation_revision"):
+                partition = (
+                    review_policy.capacity_partition(decision["budget_partition"])
+                    if decision["action"] == "capacity"
+                    else review_policy.partition("evaluation_revision")
+                )
+                with partition:
                     candidate = await repair_report(
                         self,
                         query=query,
@@ -3554,6 +3609,13 @@ class LitAgent:
                     )
                     if candidate.reason_code != "writer_candidate_prepared":
                         return candidate
+                    if decision["action"] == "capacity":
+                        from litagent.eval.native_capacity import candidate_receipt
+
+                        candidate_receipt(
+                            candidate.candidate_metadata,
+                            candidate.candidate_bindings["report_sha256"],
+                        )
                     return await self._evaluate_writer_candidate(
                         query, report_data, results, initial_evaluation, candidate
                     )

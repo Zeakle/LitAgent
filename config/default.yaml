@@ -166,6 +166,7 @@ observability:
 
 eval:
   semantic_engine: ragas-cited-faithfulness-v1
+  native_global_scope: report-review-no-omissions-v1
   context_tokens: 131072
   max_tokens: 16384       # output cap; citation/faithfulness reasoning needs more than 8K
   thinking_mode: "disabled"  # keep evaluator JSON bounded on reasoning providers

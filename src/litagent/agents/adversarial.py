@@ -71,8 +71,10 @@ class AdversarialReviewWorker(Worker):
                 logger.debug(f"Trace hook failed for '{event}': {e}")
 
     @asynccontextmanager
-    async def _sub_span(self, parent_task_id: str, component: str, round_num: int):
-        """Trace one synthesis or review round as a nested span."""
+    async def _sub_span(
+        self, parent_task_id: str, component: str, round_num: int, *, input_data=None
+    ):
+        """Trace one round and retain its completed business output."""
         sub_tid = f"{parent_task_id}:{component}:r{round_num}"
         self._emit(
             "subspan.start",
@@ -81,13 +83,15 @@ class AdversarialReviewWorker(Worker):
                 "parent_task_id": parent_task_id,
                 "name": f"{component}.r{round_num}",
                 "round": round_num,
+                "input": input_data,
             },
         )
+        result: dict[str, Any] = {}
         token = set_task_id(sub_tid)
         error = None
         error_type = None
         try:
-            yield
+            yield result
         except asyncio.CancelledError:
             error = "cancelled"
             error_type = "CancelledError"
@@ -100,14 +104,24 @@ class AdversarialReviewWorker(Worker):
             reset_task_id(token)
             self._emit(
                 "subspan.end",
-                {"task_id": sub_tid, "error": error, "error_type": error_type},
+                {
+                    "task_id": sub_tid,
+                    "parent_task_id": parent_task_id,
+                    "round": round_num,
+                    "output": result.get("output") if error is None else None,
+                    "error": error,
+                    "error_type": error_type,
+                },
             )
 
     async def execute(self, task: SubTask) -> Any:
         """Run synthesis and bounded evidence-aware review rounds."""
         # Initial synthesis is required; only later failures may return a draft.
-        async with self._sub_span(task.task_id, "synthesis", 1):
+        async with self._sub_span(
+            task.task_id, "synthesis", 1, input_data=task.input_data
+        ) as span:
             synthesis_result = await self._synthesis.execute(task)
+            span["output"] = synthesis_result
         if task.input_data.get("generation_strategy") in (
             "body_summary_v2",
             "body_summary_v3",
@@ -120,7 +134,15 @@ class AdversarialReviewWorker(Worker):
                 return await editorial_cycle(self, task, synthesis_result)
             self._reviewer._writer_path = self._synthesis._repair_state_path_provider()
             self._reviewer._writer_run_id = self._synthesis._run_id_provider()
-            async with self._sub_span(task.task_id, "reviewer", 1):
+            async with self._sub_span(
+                task.task_id,
+                "reviewer",
+                1,
+                input_data={
+                    **task.input_data,
+                    "upstream_results": {"synthesis": synthesis_result},
+                },
+            ) as span:
                 review_task = SubTask(
                     task_id=task.task_id,
                     description="Review frozen writer v2 draft",
@@ -131,6 +153,7 @@ class AdversarialReviewWorker(Worker):
                     },
                 )
                 review = await self._reviewer.execute(review_task)
+                span["output"] = review
             selection = EvidenceSelection.from_dict(
                 synthesis_result["evidence_selection"]
             )
@@ -230,7 +253,24 @@ class AdversarialReviewWorker(Worker):
 
         try:
             for round_num in range(1, self._max_rounds + 1):
-                async with self._sub_span(task.task_id, "reviewer", round_num):
+                async with self._sub_span(
+                    task.task_id,
+                    "reviewer",
+                    round_num,
+                    input_data={
+                        "query": task.input_data.get("query", ""),
+                        "draft": draft,
+                        "evidence_selection": evidence_selection.to_dict(),
+                        "coverage_requirements": synthesis_result.get(
+                            "coverage_requirements"
+                        ),
+                        "previous_review": rounds[-1]["review"] if rounds else None,
+                        "report_language": report_language,
+                        "quality_policy": task.input_data.get(
+                            "quality_policy", "legacy"
+                        ),
+                    },
+                ) as span:
                     if round_num == 1:
                         review_task = SubTask(
                             task_id=task.task_id,
@@ -288,6 +328,8 @@ class AdversarialReviewWorker(Worker):
                             evidence_selection,
                             **review_kwargs,
                         )
+
+                    span["output"] = review
 
                 rounds.append(
                     {"round": round_num, "review": review, "draft_length": len(draft)}
@@ -372,8 +414,18 @@ class AdversarialReviewWorker(Worker):
 
                     try:
                         async with self._sub_span(
-                            task.task_id, "synthesis", round_num + 1
-                        ):
+                            task.task_id,
+                            "synthesis",
+                            round_num + 1,
+                            input_data={
+                                "query": task.input_data.get("query", ""),
+                                "previous_draft": draft,
+                                "review": review,
+                                "review_feedback": review_text,
+                                "evidence_selection": evidence_selection.to_dict(),
+                                "report_language": report_language,
+                            },
+                        ) as span:
                             kwargs: dict[str, Any] = {}
                             if strict:
                                 from litagent.quality import (
@@ -451,113 +503,127 @@ class AdversarialReviewWorker(Worker):
                             else:
                                 resp = await self._llm.chat(messages, **kwargs)
 
-                        if not staged:
-                            new_draft = (resp.content or "").strip()
-                        if strict:
-                            from litagent.quality import (
-                                project_grounded_response,
-                                render_grounded_report_traced,
-                            )
-
                             if not staged:
-                                new_draft, wire_projection = project_grounded_response(
+                                new_draft = (resp.content or "").strip()
+                            if strict:
+                                from litagent.quality import (
+                                    project_grounded_response,
+                                    render_grounded_report_traced,
+                                )
+
+                                if not staged:
+                                    new_draft, wire_projection = (
+                                        project_grounded_response(
+                                            new_draft,
+                                            response_format,
+                                            trace_hook=self._trace_hook,
+                                            parent_task_id=task.task_id,
+                                            stage="revision",
+                                        )
+                                    )
+
+                                revision_bindings = {}
+                                new_draft = render_grounded_report_traced(
                                     new_draft,
-                                    response_format,
+                                    synthesis_result["fact_cards"],
+                                    review_structure,
+                                    report_language,
+                                    evidence_selection=evidence_selection,
                                     trace_hook=self._trace_hook,
                                     parent_task_id=task.task_id,
                                     stage="revision",
+                                    require_native=True,
+                                    require_source_quotes=True,
+                                    require_full_sources=task.input_data.get(
+                                        "quality_policy"
+                                    )
+                                    == "strict_auto_v2",
+                                    analysis_mode=task.input_data.get("body_quality")
+                                    == "analysis_v1",
+                                    require_unit_citation_scope=task.input_data.get(
+                                        "body_quality"
+                                    )
+                                    == "analysis_v1",
+                                    require_scope_notices=task.input_data.get(
+                                        "quality_policy"
+                                    )
+                                    == "strict_auto_v2",
+                                    bindings=revision_bindings,
                                 )
-
-                            revision_bindings = {}
-                            new_draft = render_grounded_report_traced(
+                                if wire_projection:
+                                    revision_bindings[
+                                        "native_wire_input_projection"
+                                    ] = wire_projection
+                            if not new_draft:
+                                logger.warning(
+                                    "Revision LLM returned empty content, "
+                                    "keeping current draft"
+                                )
+                                span["output"] = {
+                                    "promoted": False,
+                                    "reason_code": "revision_empty",
+                                }
+                                degradation_reasons.append("revision_empty")
+                                break
+                            aliases = build_citation_aliases(
+                                list(evidence_selection.selected_items)
+                            )
+                            decoded = decode_citations_traced(
                                 new_draft,
-                                synthesis_result["fact_cards"],
-                                review_structure,
-                                report_language,
-                                evidence_selection=evidence_selection,
+                                aliases,
                                 trace_hook=self._trace_hook,
                                 parent_task_id=task.task_id,
                                 stage="revision",
-                                require_native=True,
-                                require_source_quotes=True,
-                                require_full_sources=task.input_data.get(
-                                    "quality_policy"
-                                )
-                                == "strict_auto_v2",
-                                analysis_mode=task.input_data.get("body_quality")
-                                == "analysis_v1",
-                                require_unit_citation_scope=task.input_data.get(
-                                    "body_quality"
-                                )
-                                == "analysis_v1",
-                                require_scope_notices=task.input_data.get(
-                                    "quality_policy"
-                                )
-                                == "strict_auto_v2",
-                                bindings=revision_bindings,
+                                round_num=round_num + 1,
+                            ).text
+                            candidate = normalize_citations_traced(
+                                decoded,
+                                evidence_selection.selected_items,
+                                trace_hook=self._trace_hook,
+                                parent_task_id=task.task_id,
+                                stage="revision",
+                                round_num=round_num + 1,
+                            ).text
+                            validate_authored_methodology(candidate, review_structure)
+                            candidate = assemble_methodology(
+                                candidate,
+                                review_structure,
+                                report_language,
+                                review_methodology,
                             )
-                            if wire_projection:
-                                revision_bindings["native_wire_input_projection"] = (
-                                    wire_projection
+                            candidate_hash = hashlib.sha256(
+                                candidate.encode("utf-8")
+                            ).hexdigest()
+                            span["output"] = {
+                                "draft": candidate,
+                                "report_sha256": candidate_hash,
+                                "evidence_selection": evidence_selection.to_dict(),
+                                "promoted": False,
+                            }
+                            if candidate_hash in seen_drafts:
+                                reason = (
+                                    "revision_no_progress"
+                                    if candidate == draft
+                                    else "revision_cycle_detected"
                                 )
-                        if not new_draft:
-                            logger.warning(
-                                "Revision LLM returned empty content, "
-                                "keeping current draft"
-                            )
-                            degradation_reasons.append("revision_empty")
-                            break
-                        aliases = build_citation_aliases(
-                            list(evidence_selection.selected_items)
-                        )
-                        decoded = decode_citations_traced(
-                            new_draft,
-                            aliases,
-                            trace_hook=self._trace_hook,
-                            parent_task_id=task.task_id,
-                            stage="revision",
-                            round_num=round_num + 1,
-                        ).text
-                        candidate = normalize_citations_traced(
-                            decoded,
-                            evidence_selection.selected_items,
-                            trace_hook=self._trace_hook,
-                            parent_task_id=task.task_id,
-                            stage="revision",
-                            round_num=round_num + 1,
-                        ).text
-                        validate_authored_methodology(candidate, review_structure)
-                        candidate = assemble_methodology(
-                            candidate,
-                            review_structure,
-                            report_language,
-                            review_methodology,
-                        )
-                        candidate_hash = hashlib.sha256(
-                            candidate.encode("utf-8")
-                        ).hexdigest()
-                        if candidate_hash in seen_drafts:
-                            reason = (
-                                "revision_no_progress"
-                                if candidate == draft
-                                else "revision_cycle_detected"
-                            )
-                            degradation_reasons.append(reason)
-                            self._emit(
-                                "revision.no_progress",
-                                {
-                                    "task_id": task.task_id,
-                                    "round": round_num + 1,
-                                    "candidate_hash": candidate_hash,
-                                    "reason_code": reason,
-                                },
-                            )
-                            break
-                        seen_drafts.add(candidate_hash)
-                        draft = candidate
-                        if strict:
-                            revision_bindings["report_sha256"] = candidate_hash
-                            strict_metadata["writing_bindings"] = revision_bindings
+                                span["output"]["reason_code"] = reason
+                                degradation_reasons.append(reason)
+                                self._emit(
+                                    "revision.no_progress",
+                                    {
+                                        "task_id": task.task_id,
+                                        "round": round_num + 1,
+                                        "candidate_hash": candidate_hash,
+                                        "reason_code": reason,
+                                    },
+                                )
+                                break
+                            seen_drafts.add(candidate_hash)
+                            draft = candidate
+                            span["output"]["promoted"] = True
+                            if strict:
+                                revision_bindings["report_sha256"] = candidate_hash
+                                strict_metadata["writing_bindings"] = revision_bindings
                     except Exception as e:
                         if (
                             strict

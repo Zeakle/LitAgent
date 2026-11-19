@@ -149,15 +149,9 @@ def build_config_summary(
         }
     if any(
         getattr(config.llm, f"{stage}_model") is not None
-        for stage in ("extraction", "generation", "evaluation")
+        for stage in ("extraction", "generation", "evaluation", "evaluation_inventory")
     ):
-        effective["llm"]["model_routing"] = {
-            "version": "stage-model-routing-v1",
-            **{
-                stage: config.llm.model_for(stage)
-                for stage in ("extraction", "generation", "evaluation")
-            },
-        }
+        effective["llm"]["model_routing"] = config.llm.routing_summary()
     # Empty policies retain historical identities and their original defaults.
     if not config.orchestrator.task_timeouts_ms:
         effective["orchestrator"].pop("task_timeouts_ms", None)

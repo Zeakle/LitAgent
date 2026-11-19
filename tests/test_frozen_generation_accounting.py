@@ -201,14 +201,19 @@ async def test_response_without_usage_cannot_be_recovered_by_a_known_flag(
 async def test_missing_operation_end_cannot_be_covered_by_receipt_totals(
     tmp_path, monkeypatch
 ):
-    parent, _, _, _, _, archive = await failed_parent(tmp_path, monkeypatch)
+    parent, _, _, _, state, archive = await failed_parent(tmp_path, monkeypatch)
+    receipt = json.loads(Path(state["extraction_receipt"]["path"]).read_text())
+    (batch,) = receipt["jev"]["batches"]
+    original_count = len(archive["events"])
     archive["events"] = [
         e
         for e in archive["events"]
         if not (
-            e["event"] == "subspan.end" and "batch_id" in e["data"].get("output", {})
+            e["event"] == "subspan.end"
+            and e["data"].get("task_id") == batch["operation_id"]
         )
     ]
+    assert len(archive["events"]) == original_count - 1
     Path("artifacts/runs/new-jev.json").write_text(json.dumps(archive))
     with pytest.raises(ValueError, match="response_binding_invalid"):
         build_accounting_correction(parent)

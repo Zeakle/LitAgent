@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -475,6 +476,12 @@ class TestEvaluationTraceContract:
                 "parent_task_id": "evidence_repair",
                 "name": "evaluation.post_rewrite",
                 "phase": "post_rewrite",
+                "input": {
+                    "query": "few-shot learning",
+                    "survey": "Survey",
+                    "report_sha256": hashlib.sha256(b"Survey").hexdigest(),
+                    "extractions": [],
+                },
             },
         )
         assert events[-1][0] == "subspan.end"

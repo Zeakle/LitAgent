@@ -137,7 +137,7 @@ export function renderReportDocument(container, projection, evidenceById, t, onE
         button.className = "citation-button"; button.textContent = anchor.textContent;
         button.dataset.evidenceIds = JSON.stringify(link.evidence_ids);
         button.setAttribute("aria-label", `Open evidence ${link.evidence_ids.join(", ")}`);
-        button.addEventListener("click", () => onEvidence(link.evidence_ids.map(id => `E:${id}`), button));
+        button.addEventListener("click", () => onEvidence(link.evidence_ids.map(id => `E:${id}`), button, link.citation_scope));
         anchor.replaceWith(button);
       }
     } else {

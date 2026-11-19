@@ -8,10 +8,59 @@ import hashlib
 import json
 import math
 import re
+from pathlib import Path
 
 from litagent.safety.budget import strict_request_reservation
 
 RESPONSES_CONTRACT = "ark-responses-mapping-v2"
+STREAM_CONTRACT = "ark-responses-sse-v1"
+
+
+def transport_identity():
+    """Freeze the receiver and dispatch implementation for the opt-in transport."""
+    files = (
+        Path(__file__),
+        Path(__file__).with_name("client.py"),
+        *[
+            Path(__file__).parents[1] / name
+            for name in (
+                "writing_v2.py",
+                "format_repair.py",
+                "stage_repair.py",
+            )
+        ],
+    )
+    return hashlib.sha256(
+        json.dumps(
+            [
+                STREAM_CONTRACT,
+                *[hashlib.sha256(p.read_bytes()).hexdigest() for p in files],
+            ]
+        ).encode()
+    ).hexdigest()
+
+
+def selected_transport(envelope):
+    """Read the server-frozen selection without upgrading an absent legacy field."""
+    value = (envelope or {}).get("run_limits", {}).get("responses_transport")
+    if value not in (None, STREAM_CONTRACT):
+        raise ValueError("responses_transport_invalid")
+    return value
+
+
+def transport_kwargs(envelope):
+    """Use the same dispatch selection for writing, repairs and receipt replay."""
+    value = selected_transport(envelope)
+    return {"responses_transport": value} if value else {}
+
+
+def response_contract(transport=None):
+    """Keep the old mapping identity unless the new transport was frozen."""
+    if transport not in (None, STREAM_CONTRACT):
+        raise ValueError("responses_transport_invalid")
+    return transport or RESPONSES_CONTRACT
+
+
 ARK_NATIVE_FIELDS = frozenset(
     {
         "model",
@@ -36,8 +85,11 @@ def build_responses_request(
     temperature,
     extra_body=None,
     reasoning_effort=None,
+    transport=None,
 ):
     """Validate the complete mapping before any reservation or HTTP attempt."""
+    if transport not in (None, STREAM_CONTRACT):
+        raise ValueError("responses_transport_invalid")
     if (
         not isinstance(messages, list)
         or not messages
@@ -89,7 +141,7 @@ def build_responses_request(
         "max_output_tokens": output_limit,
         "temperature": temperature,
         "store": False,
-        "stream": False,
+        "stream": transport == STREAM_CONTRACT,
         **(copy.deepcopy(extra_body) if extra_body else {}),
         **({"reasoning": {"effort": reasoning_effort}} if reasoning_effort else {}),
     }
@@ -263,17 +315,21 @@ def normalize_responses(raw: bytes) -> dict:
     return result
 
 
-def private_receipt(response) -> dict:
+def private_receipt(response, *, received=None, transport=None) -> dict:
     """Retain exact HTTP bytes locally, excluding credentials and cookie headers."""
+    if transport not in (None, STREAM_CONTRACT):
+        raise ValueError("responses_transport_invalid")
     request = response.request
-    sent, received = request.content, response.content
+    sent = request.content
+    if received is None:
+        received = response.content
     host = request.url.host
     host = "[" + host + "]" if ":" in host else host
     origin = request.url.scheme + "://" + host
     if request.url.port is not None:
         origin += ":" + str(request.url.port)
     return {
-        "contract": RESPONSES_CONTRACT,
+        "contract": transport or RESPONSES_CONTRACT,
         "origin": origin,
         "endpoint": request.url.path,
         "status_code": response.status_code,
@@ -297,19 +353,38 @@ def private_receipt(response) -> dict:
 def decode_private_receipt(receipt):
     """Validate stored HTTP bytes before using them as local evidence."""
     try:
-        if receipt["contract"] not in {"ark-responses-mapping-v1", RESPONSES_CONTRACT}:
+        if receipt["contract"] not in {
+            "ark-responses-mapping-v1",
+            RESPONSES_CONTRACT,
+            STREAM_CONTRACT,
+        }:
             raise ValueError("receipt_version")
         decoded = []
         for prefix in ("request", "response"):
             raw = base64.b64decode(receipt[prefix + "_body_base64"], validate=True)
             if hashlib.sha256(raw).hexdigest() != receipt[prefix + "_sha256"]:
                 raise ValueError("receipt_hash")
-            value = json.loads(
-                raw, object_pairs_hook=_object, parse_constant=_invalid_constant
-            )
+            if (
+                prefix == "response"
+                and receipt["contract"] == STREAM_CONTRACT
+                and receipt["status_code"] == 200
+            ):
+                _check_stream_content_type(receipt)
+                decoder = ResponsesStreamDecoder()
+                decoder.feed(raw)
+                value = decoder.finish()
+            else:
+                value = json.loads(
+                    raw, object_pairs_hook=_object, parse_constant=_invalid_constant
+                )
             if not isinstance(value, dict):
                 raise ValueError("receipt_object")
             decoded.append(value)
+        if (
+            receipt["contract"] == STREAM_CONTRACT
+            and decoded[0].get("stream") is not True
+        ):
+            raise ValueError("receipt_transport")
         if (
             type(receipt["status_code"]) is not int
             or not 100 <= receipt["status_code"] <= 599
@@ -322,6 +397,158 @@ def decode_private_receipt(receipt):
         return tuple(decoded)
     except (KeyError, TypeError, ValueError, UnicodeDecodeError) as exc:
         raise ValueError("responses_receipt_invalid") from exc
+
+
+class ResponsesStreamDecoder:
+    """Validate SSE framing and identity without using deltas as completed output."""
+
+    def __init__(self):
+        self._pending = bytearray()
+        self._scan = 0
+        self._data = []
+        self._event = None
+        self._sequence = None
+        self._response_id = None
+        self._model = None
+        self.terminal = None
+
+    def feed(self, chunk: bytes) -> bool:
+        """Consume complete lines; UTF-8 is decoded only after byte reassembly."""
+        self._pending.extend(chunk)
+        start = 0
+        i = self._scan
+        while i < len(self._pending):
+            byte = self._pending[i]
+            if byte not in (10, 13):
+                i += 1
+                continue
+            if byte == 13 and i + 1 == len(self._pending):
+                break
+            end = i + 1
+            if byte == 13 and self._pending[end] == 10:
+                end += 1
+            self._line(bytes(self._pending[start:i]).decode("utf-8"))
+            start = i = end
+        del self._pending[:start]
+        self._scan = i - start
+        return (
+            self.terminal is not None
+            and not self._pending
+            and not self._data
+            and self._event is None
+        )
+
+    def _line(self, line):
+        if not line:
+            if self._data:
+                self._dispatch("\n".join(self._data), self._event)
+            self._data = []
+            self._event = None
+            return
+        if line.startswith(":"):
+            return
+        field, _, value = line.partition(":")
+        if value.startswith(" "):
+            value = value[1:]
+        if field == "data":
+            self._data.append(value)
+        elif field == "event":
+            if self._event is not None:
+                raise ValueError("responses_stream_event_duplicate")
+            self._event = value
+        # SSE id/retry and unknown fields do not contain model output.
+
+    def _dispatch(self, data, event):
+        if data == "[DONE]":
+            if self.terminal is None:
+                raise ValueError("responses_stream_terminal_missing")
+            return
+        if self.terminal is not None:
+            raise ValueError("responses_stream_after_terminal")
+        item = json.loads(
+            data, object_pairs_hook=_object, parse_constant=_invalid_constant
+        )
+        if not isinstance(item, dict) or not isinstance(item.get("type"), str):
+            raise ValueError("responses_stream_event_invalid")
+        kind = item["type"]
+        if event not in (None, "", kind) or not kind.startswith("response."):
+            raise ValueError("responses_stream_event_invalid")
+        if "sequence_number" in item:
+            number = item["sequence_number"]
+            if (
+                type(number) is not int
+                or number < 0
+                or (self._sequence is not None and number <= self._sequence)
+            ):
+                raise ValueError("responses_stream_sequence_invalid")
+            self._sequence = number
+        response = item.get("response")
+        if response is not None:
+            if not isinstance(response, dict):
+                raise ValueError("responses_stream_response_invalid")
+            self._bind_identity(response.get("id"), response.get("model"))
+        if "response_id" in item:
+            self._bind_identity(item["response_id"], None)
+        terminal = {
+            "response.completed": "completed",
+            "response.incomplete": "incomplete",
+            "response.failed": "failed",
+            "response.cancelled": "cancelled",
+        }.get(kind)
+        if terminal:
+            if not isinstance(response, dict) or response.get("status") != terminal:
+                raise ValueError("responses_stream_terminal_invalid")
+            self.terminal = response
+
+    def _bind_identity(self, response_id, model):
+        if (
+            not isinstance(response_id, str)
+            or not response_id
+            or (self._response_id is not None and self._response_id != response_id)
+        ):
+            raise ValueError("responses_stream_identity_invalid")
+        self._response_id = response_id
+        if model is not None:
+            if (
+                not isinstance(model, str)
+                or not model
+                or (self._model is not None and self._model != model)
+            ):
+                raise ValueError("responses_stream_identity_invalid")
+            self._model = model
+
+    def finish(self) -> dict:
+        """Require a framed terminal event, never provisional usage or delta text."""
+        if self._pending == b"\r":
+            self._pending.clear()
+            self._line("")
+        if self._pending or self._data or self._event is not None:
+            raise ValueError("responses_stream_frame_incomplete")
+        if self.terminal is None:
+            raise ValueError("responses_stream_terminal_missing")
+        return self.terminal
+
+
+def _check_stream_content_type(receipt):
+    content_type = receipt.get("headers", {}).get("content-type", "")
+    if content_type.split(";", 1)[0].strip().lower() != "text/event-stream":
+        raise ValueError("responses_stream_content_type_invalid")
+
+
+def normalize_private_receipt(receipt):
+    """Replay authenticated bytes for either transport, preserving unknown usage."""
+    if receipt.get("contract") != STREAM_CONTRACT:
+        decode_private_receipt(receipt)
+        return normalize_responses(base64.b64decode(receipt["response_body_base64"]))
+    try:
+        _, response = decode_private_receipt(receipt)
+    except ValueError:
+        result = normalize_responses(b"")
+        result["provider_error"] = "responses_stream_invalid"
+        return result
+    # Preserve escaped surrogate values for the normal output validator; the
+    # original wire bytes, not this projection, remain the receipt authority.
+    return normalize_responses(json.dumps(response, ensure_ascii=True).encode("utf-8"))
 
 
 def receipt_diagnostic(receipt):

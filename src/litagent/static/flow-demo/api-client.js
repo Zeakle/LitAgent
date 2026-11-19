@@ -48,7 +48,7 @@ export function openEventStream(runId, handlers = {}) {
   source.addEventListener("done", settle);
   source.onerror = () => {
     handlers.onError?.();
-    source.close();
+    // Keep EventSource's native reconnect and Last-Event-ID behavior on network loss.
   };
   return source;
 }

@@ -146,12 +146,13 @@ class SeparateGateway(WorkbenchGateway):
             self.review_calls += 1
             self.events.append("review")
             uid = next(k for k in payload["units"] if ":introduction:" in k)
+            issue = {"unit_id": uid, "explanation": "Clarify the review scope."}
+            if "kind" in native_schema["properties"]["issues"]["items"]["properties"]:
+                issue.update(
+                    kind="editorial", card_ref="", report_excerpt="", source_excerpt=""
+                )
             return {
-                "issues": (
-                    [{"unit_id": uid, "explanation": "Clarify the review scope."}]
-                    if self.review_calls <= self.reviews
-                    else []
-                ),
+                "issues": [issue] if self.review_calls <= self.reviews else [],
                 "explanation": "Review the current draft only.",
             }
         if "target_responses" in native_schema["properties"]:
@@ -208,9 +209,9 @@ class SeparateGateway(WorkbenchGateway):
         return result
 
 
-async def execute(case, tmp_path, monkeypatch, gateway):
+async def execute(case, tmp_path, monkeypatch, gateway, *, config=None):
     """Submit the server-selected policy without replacing any report consumers."""
-    config = load_config("config/separate-review-evaluation.yaml")
+    config = config or load_config("config/separate-review-evaluation.yaml")
     config.observability.enabled = False
     config.llm.base_url = "https://offline.invalid/api/v3"
     monkeypatch.setenv("LLM_API_KEY", "offline-test-key")

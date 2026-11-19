@@ -3081,7 +3081,9 @@ def validate_support_basis(
     return {"status": "passed", "spans": spans}
 
 
-def _source_boundary_tokens(text: str) -> list[tuple[int, str]]:
+def _source_boundary_tokens(
+    text: str, *, quoted_ends: bool = False
+) -> list[tuple[int, str]]:
     """Locate exposed punctuation and whole citations without splitting markup."""
     tokens, stack = [], []
     pairs = {
@@ -3121,6 +3123,19 @@ def _source_boundary_tokens(text: str) -> list[tuple[int, str]]:
             continue
         if stack and char == stack[-1]:
             stack.pop()
+            if (
+                quoted_ends
+                and not stack
+                and char in '"”’」』'
+                and i > 0
+                and text[i - 1] in "。！？.!?"
+                and (
+                    text[i - 1] in "。！？"
+                    or i + 1 == len(text)
+                    or text[i + 1].isspace()
+                )
+            ):
+                tokens.append((i, text[i - 1]))
         elif char in pairs:
             stack.append(pairs[char])
         elif char == '"':

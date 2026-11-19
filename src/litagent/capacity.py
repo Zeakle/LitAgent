@@ -94,4 +94,6 @@ def apply_capacity_schema(schema, envelope):
                 visit(value)
 
     visit(result)
-    return result
+    from litagent.inline_citations import annotate
+
+    return annotate(result, envelope)

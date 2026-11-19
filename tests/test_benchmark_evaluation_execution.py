@@ -177,3 +177,167 @@ const fs=require('node:fs');
         timeout=15,
     )
     assert output.returncode == 0, output.stderr
+
+
+def test_summary_candidate_rejection_is_shared_by_four_exports(tmp_path):
+    from litagent import review_policy
+    from litagent.eval.results import CONTRACT
+    from litagent.review_cycles import SUMMARY_REJECTION_CONTRACT
+
+    value = result_fixture()
+    rejection = {
+        "contract": SUMMARY_REJECTION_CONTRACT,
+        "category": "review_revision",
+        "reason_code": "writer_inline_citation_unknown",
+        "retained_report_sha256": "a" * 64,
+        "call": "summary_repair_1",
+        "remaining": 2,
+        "actual_tokens": 12176,
+        "raw": "PRIVATE RAW RESPONSE",
+        "diagnostics": [
+            {
+                "path": ["conclusion", 0, 1],
+                "offset": 10,
+                "reference": "c29",
+                "in_frozen_pool": True,
+                "code": "writer_inline_citation_unknown",
+            },
+            {
+                "path": ["conclusion", 0, 1],
+                "offset": 20,
+                "reference": "c48",
+                "in_frozen_pool": False,
+                "code": "writer_inline_citation_unknown",
+            },
+        ],
+    }
+    value["observations"][0]["evaluation_summary"] = {
+        "contract": CONTRACT,
+        "report_sha256": "a" * 64,
+        "metrics": {"faithfulness": {"status": "unverified", "score": None}},
+        "review_workflow": {
+            "contract": review_policy.CONTRACT,
+            "report_sha256": "a" * 64,
+            "allowances": {
+                k: {
+                    "limit": 3,
+                    "used": 1 if k == "review_revision" else 0,
+                    "remaining": 2 if k == "review_revision" else 3,
+                }
+                for k in review_policy.ALLOWANCES
+            },
+            "reviews": [
+                {
+                    "round": 0,
+                    "status": "candidate_rejected",
+                    "responses": {},
+                    "source_report_sha256": "a" * 64,
+                    "summary_rejection": rejection,
+                }
+            ],
+            "evaluations": [],
+            "publishable": False,
+        },
+    }
+    original = copy.deepcopy(value)
+    export_bundle(tmp_path, value)
+    projected = json.loads((tmp_path / "benchmark.json").read_text())
+    summary = projected["observations"][0]["evaluation_summary"]
+    assert summary["metrics"]["faithfulness"]["score"] is None
+    assert (
+        summary["review_workflow"]["reviews"][0]["summary_rejection"]["remaining"] == 2
+    )
+    with (tmp_path / "benchmark.csv").open() as stream:
+        rows = list(csv.DictReader(stream))
+    assert json.loads(rows[0]["evaluation_summary"]) == summary
+    for extension in ("md", "html"):
+        text = (tmp_path / f"benchmark.{extension}").read_text()
+        assert "保留稿继续核验" in text and "c29" in text and "c48" in text
+        assert "12176" in text and "Unknown frozen card" in text
+        assert "Outside body dependencies" in text
+    assert all(
+        "PRIVATE RAW RESPONSE" not in f.read_text()
+        for f in tmp_path.glob("benchmark.*")
+    )
+    assert value == original
+
+
+def test_patch_candidate_rejection_is_shared_by_four_exports(tmp_path):
+    from litagent import review_policy
+    from litagent.eval.results import CONTRACT
+    from litagent.review_cycles import PATCH_REJECTION_CONTRACT
+
+    value = result_fixture()
+    rejection = {
+        "contract": PATCH_REJECTION_CONTRACT,
+        "category": "review_revision",
+        "reason_code": "writer_patch_response_mismatch",
+        "retained_report_sha256": "a" * 64,
+        "call": "repair_0",
+        "remaining": 2,
+        "actual_tokens": 12176,
+        "raw": "PRIVATE RAW RESPONSE",
+        "diagnostics": [
+            {
+                "target_key": "t5",
+                "target_id": "writer:methods:3:1",
+                "action": "keep",
+                "patch_index": 4,
+                "reason": "patch_for_non_replace",
+            },
+            {
+                "target_key": "t6",
+                "target_id": "writer:methods:3:2",
+                "action": "keep",
+                "patch_index": 5,
+                "reason": "patch_for_non_replace",
+            },
+        ],
+    }
+    value["observations"][0]["evaluation_summary"] = {
+        "contract": CONTRACT,
+        "report_sha256": "a" * 64,
+        "metrics": {"faithfulness": {"status": "unverified", "score": None}},
+        "review_workflow": {
+            "contract": review_policy.CONTRACT,
+            "report_sha256": "a" * 64,
+            "allowances": {
+                k: {
+                    "limit": 3,
+                    "used": 1 if k == "review_revision" else 0,
+                    "remaining": 2 if k == "review_revision" else 3,
+                }
+                for k in review_policy.ALLOWANCES
+            },
+            "reviews": [
+                {
+                    "round": 0,
+                    "status": "candidate_rejected",
+                    "responses": {},
+                    "source_report_sha256": "a" * 64,
+                    "patch_rejection": rejection,
+                }
+            ],
+            "evaluations": [],
+            "publishable": False,
+        },
+    }
+    original = copy.deepcopy(value)
+    export_bundle(tmp_path, value)
+    projected = json.loads((tmp_path / "benchmark.json").read_text())
+    summary = projected["observations"][0]["evaluation_summary"]
+    assert summary["metrics"]["faithfulness"]["score"] is None
+    assert summary["review_workflow"]["reviews"][0]["patch_rejection"]["remaining"] == 2
+    with (tmp_path / "benchmark.csv").open() as stream:
+        rows = list(csv.DictReader(stream))
+    assert json.loads(rows[0]["evaluation_summary"]) == summary
+    for extension in ("md", "html"):
+        text = (tmp_path / f"benchmark.{extension}").read_text()
+        assert "保留稿继续核验" in text and "t5" in text and "t6" in text
+        assert "12176" in text and "Patch candidate rejected" in text
+        assert "patch_for_non_replace" in text
+    assert all(
+        "PRIVATE RAW RESPONSE" not in f.read_text()
+        for f in tmp_path.glob("benchmark.*")
+    )
+    assert value == original

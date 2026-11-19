@@ -48,6 +48,7 @@ llm:
   extraction_model: doubao-seed-2-1-lite-260915
   generation_model: doubao-seed-2-1-pro-260915
   evaluation_model: doubao-seed-2-1-lite-260915
+  evaluation_inventory_model: doubao-seed-2-1-pro-260915
   max_tokens: 29492
   temperature: 0.1
   request_deadline_margin_seconds: 5.0
@@ -154,6 +155,7 @@ observability:
   payload_mode: metadata_only
 eval:
   semantic_engine: ragas-cited-faithfulness-v1
+  native_global_scope: report-review-no-omissions-v1
   native_global_unit_response: ragas-global-unit-keys-v3
   context_tokens: 235930
   max_tokens: 39322

@@ -13,6 +13,7 @@ from bisect import bisect_right
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError
 
+from litagent import inline_citations, stage_repair
 from litagent.run_limits import LOSSLESS_JSON_POLICY
 
 CONTRACT = "flat-writer-v1"
@@ -2011,7 +2012,30 @@ def project_structured_repair_guidance(
                 ]
                 if w.digest(fragment["current_target_ids"]) != w.digest(actual_targets):
                     fail("fragment_target_overlap_invalid", identity=True)
-            if d["origin"] == "current" and native[0] in current_body:
+            if (
+                d["origin"] == "current"
+                and native[0] in current_body
+                and ":scope:" in fid.split(":native:", 1)[0]
+                and native[0] in w.BODY
+            ):
+                unit = current_body[native[0]][native[1]]["sentences"][native[2]]
+                index = int(fid.split(":native:", 1)[0].rsplit(":scope:", 1)[1])
+                _, ranges = inline_citations.compile_text(
+                    unit["text"],
+                    {ref: cards[ref]["evidence_id"] for ref in unit["fact_card_refs"]},
+                    scope_contract=stage_repair.current_scope(),
+                )
+                if (
+                    not 0 <= index < len(ranges)
+                    or ranges[index]["evidence_ids"] != fragment["evidence_ids"]
+                    or ranges[index]["source_quote"] != fragment["text"]
+                ):
+                    fail("fragment_body_identity_invalid", identity=True)
+            if (
+                d["origin"] == "current"
+                and native[0] in current_body
+                and ":scope:" not in fid.split(":native:", 1)[0]
+            ):
                 unit = current_body[native[0]][native[1]]["sentences"][native[2]]
                 suffix = (
                     " " + " ".join(f"[E:{eid}]" for eid in fragment["evidence_ids"])
@@ -3568,7 +3592,16 @@ def _guidance_wire_build(payload, authority):
             metadata = {k: copy.deepcopy(v) for k, v in fragment.items() if k != "text"}
             catalog.append([fref, native_id, metadata])
             row = None
-            if origin == "current":
+            local = ":scope:" in native_id.split(":native:", 1)[0]
+            if local:
+                row = [
+                    "l",
+                    copy.deepcopy(p),
+                    fragment["text"],
+                    copy.deepcopy(fragment["cited_card_refs"]),
+                    copy.deepcopy(fragment.get("body_premise_paths", [])),
+                ]
+            if origin == "current" and not local:
                 unit = None
                 if p[0] in payload["current_body"]:
                     unit = payload["current_body"][p[0]][p[1]]["sentences"][p[2]]
@@ -4565,12 +4598,7 @@ def _structured_repair_payload(
                     counts = fields.get("assertions_by_fragment")
                     if type(counts) is not dict:
                         return False
-                    expected = {
-                        fid.split(":native:")[-1]: count
-                        for fid, count in counts.items()
-                    }
-                    if len(expected) != len(counts):
-                        return False
+                    expected = inline_citations.native_unit_counts(counts)
                 if key in {"target_assertions", "target_batches"} and key not in fields:
                     expected = (fields.get("round") or {}).get(
                         "assertions" if key == "target_assertions" else "batches"
@@ -5017,9 +5045,24 @@ def _prepare(schema):
 def prepare(schema):
     """Report an unsupported host contract without leaking incidental key errors."""
     try:
-        return _prepare(schema)
+        plan = _prepare(schema)
+        if schema.get("x-citation-contract") == inline_citations.CONTRACT:
+            plan["wire_schema"] = inline_citations.wire_schema(plan["wire_schema"])
+            plan["inline_citations"] = True
+            if schema.get("x-citation-scope-contract"):
+                plan["citation_scope_contract"] = schema["x-citation-scope-contract"]
+        return plan
     except (KeyError, TypeError, SchemaError, AttributeError) as exc:
         raise _writer().WriterError("writer_flat_contract_invalid") from exc
+
+
+def _encode_unit(unit, plan):
+    """Project authored fields without reintroducing derived references."""
+    return {
+        key: copy.deepcopy(value)
+        for key, value in unit.items()
+        if key != "fact_card_refs" or not plan.get("inline_citations")
+    }
 
 
 def encode(value, schema):
@@ -5049,7 +5092,7 @@ def encode(value, schema):
                             if "source_owner_directory" in plan
                             else {"target_id": patch["target_id"]}
                         ),
-                        **copy.deepcopy(unit),
+                        **_encode_unit(unit, plan),
                         "source_unit_ids": copy.deepcopy(relations[key]),
                     }
                 )
@@ -5082,7 +5125,7 @@ def encode(value, schema):
                         if "target_directory" in plan
                         else p["target_id"]
                     ),
-                    **copy.deepcopy(u),
+                    **_encode_unit(u, plan),
                 }
                 for p in value["patches"]
                 for u in p["sentences"]
@@ -5096,7 +5139,7 @@ def encode(value, schema):
     result = {"title": value["title"]} if "title" in value else {}
     for wire_key, key in plan["mappings"].items():
         result[wire_key] = [
-            {**copy.deepcopy(u), "paragraph_start": si == 0}
+            {**_encode_unit(u, plan), "paragraph_start": si == 0}
             for p in value[key]
             for si, u in enumerate(p["sentences"])
         ]
@@ -5290,8 +5333,9 @@ def _index(raw, tokens):
 
 
 def _reference_schema(schema):
-    """Relax only unit-reference uniqueness while checking the received shape."""
+    """Check permissions before deduplicating received reference occurrences."""
     result = copy.deepcopy(schema)
+    inline = schema.get("x-citation-contract") == inline_citations.CONTRACT
 
     def visit(node):
         if not isinstance(node, dict):
@@ -5301,6 +5345,10 @@ def _reference_schema(schema):
             for name in ("fact_card_refs", "body_unit_refs"):
                 if name in fields:
                     fields[name].pop("uniqueItems", None)
+                    if inline and name == "fact_card_refs":
+                        # Inline occurrences are bounded by text size. The canonical
+                        # schema still limits the number of distinct source IDs.
+                        fields[name].pop("maxItems", None)
         for value in node.values():
             if isinstance(value, dict):
                 visit(value)
@@ -5528,6 +5576,10 @@ def restore_reference_input(canonical, bindings, *, transport_revision=None):
                 <= record["end"]
             ):
                 raise ValueError("reference_text_span_invalid")
+            inline = (
+                bindings.get("citation_contract") == inline_citations.CONTRACT
+                and name == "fact_card_refs"
+            )
             if transport_revision is not None:
                 if record["end"] > bindings["raw_length"]:
                     raise ValueError("reference_wire_spans_invalid")
@@ -5574,7 +5626,7 @@ def restore_reference_input(canonical, bindings, *, transport_revision=None):
                             raise ValueError("reference_target_span_invalid")
                         target_spans = [target_span]
                     all_spans = sorted(
-                        [*target_spans, text_span, *spans],
+                        [*target_spans, text_span, *([] if inline else spans)],
                         key=lambda span: span["start"],
                     )
                     if any(
@@ -5582,12 +5634,17 @@ def restore_reference_input(canonical, bindings, *, transport_revision=None):
                         for left, right in zip(all_spans, all_spans[1:])
                     ):
                         raise ValueError("reference_target_span_invalid")
+            if inline and received != [
+                mark[1] for mark in inline_citations.MARK.finditer(unit["text"])
+            ]:
+                raise ValueError("reference_occurrence_invalid")
             positions = {ref: index for index, ref in enumerate(unique)}
             cursor = record["start"]
             for index, (ref, span) in enumerate(zip(received, spans, strict=True)):
                 if (
                     not _same_reference_path(
-                        span["wire_path"], [*wire_path, name, index]
+                        span["wire_path"],
+                        [*wire_path, "text"] if inline else [*wire_path, name, index],
                     )
                     or type(span["canonical_index"]) is not int
                     or span["canonical_index"] != positions[ref]
@@ -5595,7 +5652,12 @@ def restore_reference_input(canonical, bindings, *, transport_revision=None):
                     or type(span["end"]) is not int
                     or not cursor <= span["start"] < span["end"] <= record["end"]
                     or not (
-                        span["end"] <= text_span["start"]
+                        text_span["start"]
+                        < span["start"]
+                        < span["end"]
+                        < text_span["end"]
+                        if inline
+                        else span["end"] <= text_span["start"]
                         or text_span["end"] <= span["start"]
                     )
                 ):
@@ -5799,6 +5861,16 @@ def parse(
     records, canonical, source_ordinals, source_relations = [], {}, [], []
     source_map = "repair_mapping_contract" in plan
     owner_directory = plan.get("source_owner_directory")
+    if owner_directory is not None and plan.get("citation_scope_contract"):
+        from litagent.stage_repair import source_owner_diagnostics
+
+        # The host directory was validated by prepare(); these findings concern
+        # only the returned candidate, never authorization or source integrity.
+        findings = source_owner_diagnostics(value["patches"], owner_directory)
+        if findings:
+            raise w.WriterError(
+                "writer_capacity_source_map_invalid", diagnostics=findings
+            )
     derived_targets = (
         {
             ordinal: _source_owner_target(patch["source_unit_ids"], owner_directory)
@@ -5809,6 +5881,23 @@ def parse(
     )
 
     def target_at(ordinal, source):
+        if (
+            plan.get("citation_scope_contract")
+            and owner_directory is None
+            and "target_directory" in plan
+        ):
+            target_id = source["target_id"]
+            if target_id not in plan["target_directory"]:
+                raise w.WriterError(
+                    "writer_candidate_target_unknown",
+                    diagnostics=[
+                        {
+                            "path": ["patches", ordinal, "target_id"],
+                            "target_id": target_id,
+                            "reason": "outside_authorized_directory",
+                        }
+                    ],
+                )
         return (
             derived_targets[ordinal]
             if owner_directory is not None
@@ -5821,6 +5910,21 @@ def parse(
 
     def bind(unit, wire_path, canonical_path):
         found = nodes[wire_path]
+        inline = plan.get("inline_citations")
+        text_span = nodes[(*wire_path, "text")]
+        marker_spans = []
+        if inline:
+            inline_citations.references(
+                unit["text"], scope_contract=plan.get("citation_scope_contract")
+            )
+            marker_spans = inline_citations.raw_occurrences(
+                raw, unit["text"], text_span, wire_path
+            )
+            if "body_unit_refs" not in unit:
+                unit["fact_card_refs"] = [
+                    mark[1] for mark in inline_citations.MARK.finditer(unit["text"])
+                ]
+
         if found["end"] > len(raw):
             raise w.WriterError("writer_flat_original_unit_incomplete")
         try:
@@ -5857,16 +5961,21 @@ def parse(
                 "text_span": {
                     k: nodes[(*wire_path, "text")][k] for k in ("start", "end")
                 },
-                "reference_spans": [
-                    {
-                        "wire_path": [*wire_path, ref_key, i],
-                        **{
-                            k: nodes[(*wire_path, ref_key, i)][k]
-                            for k in ("start", "end")
-                        },
-                    }
-                    for i in range(len(unit[ref_key]))
-                ],
+                **({"inline_citation_spans": marker_spans} if inline else {}),
+                "reference_spans": (
+                    marker_spans
+                    if inline and ref_key == "fact_card_refs"
+                    else [
+                        {
+                            "wire_path": [*wire_path, ref_key, i],
+                            **{
+                                k: nodes[(*wire_path, ref_key, i)][k]
+                                for k in ("start", "end")
+                            },
+                        }
+                        for i in range(len(unit[ref_key]))
+                    ]
+                ),
                 "canonical_unit_sha256": w.digest(unit),
             }
         )
@@ -5988,7 +6097,7 @@ def parse(
         canonical = value
     received_canonical = copy.deepcopy(canonical)
     if reference_mode:
-        # Permissions and original array bounds are checked before deduplication.
+        # Validate permissions and bounds on model-authored arrays before deduplication.
         w.parse_response(
             json.dumps(received_canonical, ensure_ascii=False),
             _reference_schema(plan["host_schema"]),
@@ -6016,6 +6125,11 @@ def parse(
     sha = lambda s: hashlib.sha256(s.encode()).hexdigest()
     bindings = {
         "contract": CONTRACT,
+        **(
+            {"citation_contract": inline_citations.CONTRACT}
+            if plan.get("inline_citations")
+            else {}
+        ),
         "raw_sha256": sha(raw),
         "candidate_sha256": sha(candidate),
         "host_schema_sha256": w.digest(plan["host_schema"]),

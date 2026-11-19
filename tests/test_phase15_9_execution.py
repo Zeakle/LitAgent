@@ -118,11 +118,13 @@ def test_layout_fit_and_neighborhood_are_deterministic() -> None:
         "{a:[], b:['a'], c:['b']}, {}); "
         "const layout = subject.layoutExecutionGraph(graph, {direction:'LR'}); "
         "return {fit: subject.fitGraphToViewport(layout.bounds, {width: 600, height: 300}), "
+        "tallFit: subject.fitGraphToViewport({width:500,height:4000}, {width:390,height:480}), "
         "near: subject.getNodeNeighborhood(graph, 'b'), "
         "positions: layout.nodes.map(n => [n.id,n.x,n.y])}; })()",
     )
 
     assert 0.25 <= result["fit"]["scale"] <= 1
+    assert result["tallFit"]["translateY"] >= 24
     assert set(result["near"]["upstreamIds"]) == {"a"}
     assert set(result["near"]["downstreamIds"]) == {"c"}
     assert set(result["near"]["edgeIds"]) == {"a>b", "b>c"}

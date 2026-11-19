@@ -151,6 +151,7 @@ def sanitize_recovery(value):
         "prose",
         "combined",
         "inventory",
+        "capacity",
     }:
         return None
     result = {"action": value["action"]}
@@ -300,6 +301,12 @@ def recovery_decision(report, context, budget):
         "budget": {"status": "not_checked"},
     }
     try:
+        from litagent.eval import native_capacity
+
+        if native_capacity.selected(owner.plan["envelope"]) and (
+            details.get("execution_error") == native_capacity.REQUIRED
+        ):
+            return native_capacity.authorize(report, context, owner)
         state = targeted_repair_state(
             meta["targeted_repair_state"], meta["targeted_repair_state"]["run_id"]
         )
@@ -369,7 +376,11 @@ def recovery_decision(report, context, budget):
         )
         _, units, _, samples = source_samples(survey, context)
         fragments = {s["source_fragment_id"]: s for s in samples}
+        from litagent.eval.engine_policy import native_host_uncited
+
+        host_uncited = native_host_uncited(owner.plan["envelope"])
         processed = set()
+        host_claim_ids = []
         for claim in run.assertions:
             sample = fragments[claim["source_fragment_id"]]
             _require(
@@ -387,7 +398,35 @@ def recovery_decision(report, context, budget):
                 and claim["status"] in {"supported", "unsupported"},
                 "ragas_recovery_source_invalid",
             )
-            processed.add(sample["id"])
+            if host_uncited and not sample["contexts"]:
+                _require(
+                    claim.get("assessment_origin") == "host_uncited"
+                    and (
+                        claim["kind"] == "report_structure"
+                        or (
+                            claim["kind"] == "scientific"
+                            and claim["status"] == "unsupported"
+                            and claim["reason_code"] == "uncited_claim"
+                        )
+                    ),
+                    "ragas_recovery_diagnostic_invalid",
+                )
+                host_claim_ids.append(claim["claim_id"])
+            else:
+                _require(
+                    "assessment_origin" not in claim,
+                    "ragas_recovery_diagnostic_invalid",
+                )
+                processed.add(sample["id"])
+        _require(
+            [
+                batch["claim_ids"]
+                for batch in stages["batches"]
+                if batch.get("origin") == "host_uncited"
+            ]
+            == ([host_claim_ids] if host_claim_ids else []),
+            "ragas_recovery_execution_incomplete",
+        )
         for phase, expected in (
             ("inventory", {s["id"] for s in samples}),
             ("assessment", processed),
@@ -488,7 +527,15 @@ def recovery_decision(report, context, budget):
         decision["reason_code"] = (
             reason
             if reason.startswith(
-                ("ragas_", "planned_", "evaluation_", "budget_", "strict_", "writer_")
+                (
+                    "ragas_",
+                    "planned_",
+                    "evaluation_",
+                    "budget_",
+                    "strict_",
+                    "writer_",
+                    "native_capacity_",
+                )
             )
             else "ragas_recovery_identity_invalid"
         )
@@ -616,9 +663,8 @@ async def _recover_inventory(runner, *, query, report, results, decision):
 def project_guidance(diagnostics, *, delegate, host_directory, **kwargs):
     """Validate original provenance before a private, lossless codec conversion.
 
-    Only the internal diagnostic tag is adapted. The published packet restores
-    the native tag and original hashes; source locations, scientific judgments,
-    target permissions and retained explanations are never reinterpreted.
+    Adapt the internal tag and verify host-only provenance. The published packet
+    restores the native tag and original hashes without reinterpreting findings.
     """
     from litagent.writing_v2 import WriterError
 
@@ -642,6 +688,17 @@ def project_guidance(diagnostics, *, delegate, host_directory, **kwargs):
             if raw.get("diagnostic_source") == VERSION:
                 if issue["category"] != "evaluation":
                     raise ValueError("native issue category")
+                if "assessment_origin" in raw:
+                    fragment = directory["fragments"][raw["source_fragment_id"]]
+                    if (
+                        raw.pop("assessment_origin") != "host_uncited"
+                        or raw["kind"] != "scientific"
+                        or raw["status"] != "unsupported"
+                        or raw["reason_code"] != "uncited_claim"
+                        or raw["evidence_ids"]
+                        or fragment["evidence_ids"]
+                    ):
+                        raise ValueError("native host assessment provenance")
                 raw["diagnostic_source"] = "survey-evaluation-v3"
                 issue["diagnostic_sha256"] = digest(raw)
         directory["diagnostics_sha256"] = digest(normalized)

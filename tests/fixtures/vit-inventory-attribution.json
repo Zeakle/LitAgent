@@ -1,0 +1,72 @@
+{
+  "run_id": "vit14-34-card-candidate-b017d0302fea-20261119",
+  "report_sha256": "b017d0302feae3329c11d308dafbe99aad8562b62543169daeb71cfd0322ce42",
+  "model": "doubao-seed-2-1-lite-260915",
+  "question": "Vision Transformer（ViT）的基础方法与局限。请解释图像分块、位置编码和自注意力如何组成 ViT，并结合论文实际报告的实验讨论训练数据需求和计算成本的取舍。",
+  "review_guidance": "按每条断言的判据核对原文。正例是可接受的改述之一，语义等价的措辞也可通过。遗漏目标、改变主语或扩大材料范围应分别记录。",
+  "scopes": [
+    {
+      "sample_id": "u127",
+      "source_fragment_id": "unit:19:14716:scope:2:native:writer:experiments:0:0",
+      "report_range": [
+        14838,
+        14876
+      ],
+      "source_quote": "因此，本章不声称原始 ViT 论文证明了某个精确数据阈值，也不补写缺失成本。",
+      "report_context": {
+        "id": "p19",
+        "text": "实验比较沿用本综述的“结构组成—数据规模—计算成本—适用边界”分组，但在实验章只保留论文实际报告的数据集、基线、指标和资源单位。当前冻结原文没有提供原始 ViT 论文关于不同预训练规模的完整准确率表或 ViT-B/L/H 训练 TPU 核时表；因此，本章不声称原始 ViT 论文证明了某个精确数据阈值，也不补写缺失成本。针对图像分类效率，统一基准并列考察准确率、速度和内存，并指出不同实验条件下的自报结果难以直接比较。\n",
+        "start": 122,
+        "end": 160
+      },
+      "statements": [
+        {
+          "claim_id": "claim_273",
+          "observed": "本章不声称原始ViT论文证明了某个精确数据阈值。"
+        },
+        {
+          "claim_id": "claim_274",
+          "observed": "本章不补写原始ViT论文中缺失的成本数据。",
+          "dimension": "material_scope",
+          "reference": "本章不补写本次所选材料缺失的成本数据。",
+          "criterion": "须把缺少成本数据限定在本次选段中；保留本章不补写的决定。将缺口归给原始 ViT 论文属于范围扩大。"
+        }
+      ]
+    },
+    {
+      "sample_id": "u226",
+      "source_fragment_id": "unit:38:25989:scope:4:native:writer:open_problems:9:0",
+      "report_range": [
+        26568,
+        26657
+      ],
+      "source_quote": "当前冻结原文没有提供原始 ViT 论文完整的预训练规模—准确率—TPU 成本表，因此本文不给出“多少数据刚好足够”的阈值，也不把后续论文在不同任务上的摘要数字合并成统一成本排名。",
+      "report_context": {
+        "id": "p38",
+        "text": "总体而言，基础 ViT 的局限应表述为一组有条件的取舍：固定 patch 统一了视觉 token 接口，位置编码补足空间排列，全局自注意力带来长距离建模，但 token 数增长会推高注意力计算；HTR-VT 与 MedMNIST+ 分别报告小标签手写文本识别和医学数据场景需要数据高效设计或显示 CNN 仍具竞争力；部署研究可具体到 ED-ViT 的推理延迟测量；关于泛化，OoD-ViT-NAS 发现分布内准确率未必能指示其基准上的分布外准确率。当前冻结原文没有提供原始 ViT 论文完整的预训练规模—准确率—TPU 成本表，因此本文不给出“多少数据刚好足够”的阈值，也不把后续论文在不同任务上的摘要数字合并成统一成本排名。\n",
+        "start": 224,
+        "end": 313
+      },
+      "statements": [
+        {
+          "claim_id": "claim_499",
+          "observed": "当前冻结原文没有提供原始 ViT 论文完整的预训练规模—准确率—TPU 成本表。"
+        },
+        {
+          "claim_id": "claim_500",
+          "observed": "当前冻结原文不给出“多少数据刚好足够”的阈值。",
+          "dimension": "subject",
+          "reference": "本文不给出“多少数据刚好足够”的阈值。",
+          "criterion": "作出不给出阈值这一决定的是撰写综述的作者。选段缺表是作出决定的背景；不能把决定归给选段或被引论文。"
+        },
+        {
+          "claim_id": "claim_501",
+          "observed": "当前冻结原文不把后续论文在不同任务上的摘要数字合并成统一成本排名。",
+          "dimension": "subject",
+          "reference": "本文不把后续论文在不同任务上的摘要数字合并成统一成本排名。",
+          "criterion": "作出不合并跨任务数字这一决定的是综述作者；须保留跨任务、成本排名及否定含义。"
+        }
+      ]
+    }
+  ]
+}
