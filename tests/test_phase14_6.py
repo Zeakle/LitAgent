@@ -247,7 +247,7 @@ def test_readme_relative_links_resolve_to_versioned_files(filename: str) -> None
         "docs/README.md",
         "docs/design-truth.md",
         "docs/system-overview.md",
-        "docs/presentation-guide.md",
+        "docs/release.md",
     ],
 )
 def test_public_documentation_relative_links_resolve(filename: str) -> None:
