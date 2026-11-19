@@ -9,8 +9,8 @@ Find and organize papers around a research question, then write a literature rev
 with citations. Read reports, inspect sources, review revisions and export documents
 from a single workbench.
 
-[Demo](#demo) · [Architecture](#architecture-and-stack) ·
-[Experiments](#experiments-and-validation) · [Quick start](#quick-start)
+[System Architecture](#system-architecture) · [Experiments](#experiments-and-validation) ·
+[Demo](#demo) · [Quick start](#quick-start)
 
 ## Overview
 
@@ -22,17 +22,22 @@ sources, review history and evaluation results for inspection and revision.
 - **Process:** external search and local RAG → deduplication and filtering → evidence extraction → writing and review → verification and bounded repair.
 - **Output:** a structured review, references, source locations, evaluation results and a run record.
 
-## Demo
+## System Architecture
 
-![LitAgent workbench with report reading and citation inspection](./docs/images/readme-workbench-zh.jpg)
+![LitAgent survey workflow and memory read and write points](./docs/images/readme-workflow-memory-en.svg)
 
-| View | Features |
-| --- | --- |
-| Report and evidence | Prose, numbered citations, source locations and references; Markdown/PDF/Word and BibTeX/RIS/CSL JSON exports |
-| Execution and diagnostics | Task DAG, stage status, call timeline, errors and usage |
-| Verification and revision | Evaluation results, revision history and report version comparison |
+[View the full-size diagram](./docs/images/readme-workflow-memory-en.svg)
 
-[Demo guide](./docs/presentation-guide.md)
+The left side shows the runtime workflow. External search and local RAG run in parallel, as do extraction and citation analysis. Colored dashed lines connect each memory layer to its workflow nodes. Arrows into a node indicate reads, and arrows toward memory indicate writes.
+The `LLM` badge marks a generative model call. `LLM*` means the call depends on the task or configuration. `Code` marks steps without a generative LLM call. Retrieval and ranking can still use embedding or reranking models.
+Working memory keeps decisions, open issues, and recent changes scoped by run, agent, and work unit.
+Procedural memory counts successes, empty results, rate limits, and timeouts after each search.
+After delivery checks pass, episodic memory stores the survey summary for future planning.
+
+Semantic memory is read once before Extract using the research topic. The system checks recalled evidence and adds eligible items to the current evidence ledger. Writing, review, and evaluation use that ledger. After delivery checks pass, semantic memory stores the verified items cited by the final report.
+
+[Architecture guide](./docs/system-overview.md) ·
+[Features and tests](./docs/design-truth.md)
 
 ## Core capabilities
 
@@ -41,57 +46,6 @@ sources, review history and evaluation results for inspection and revision.
 - **Citation verification:** link report claims to cited papers and source passages, then check whether the citations support each conclusion.
 - **Human review:** review paper selections and final reports, and resume tasks from checkpoints.
 - **Run tracing:** record task states, model calls and usage, with history replay and LangFuse support.
-
-## Architecture and stack
-
-```mermaid
-flowchart TB
-    UI["Workbench / CLI / API"] --> RUN["LitAgent runner<br/>Run lifecycle"]
-    RUN --> DAG["Planner / TaskGraph<br/>asyncio Scheduler"]
-    DAG --> SEARCH["External paper search"]
-    DAG --> RECALL["Local RAG"]
-    SEARCH --> EVIDENCE["Dedup / Filter / Extract<br/>Select evidence"]
-    RECALL --> EVIDENCE
-    EVIDENCE --> WRITE["Writer + Reviewer<br/>Writing and editorial review"]
-    WRITE --> EVAL["Evaluation<br/>Verify / Repair / Re-evaluate"]
-    EVAL --> DELIVERY["Quality and delivery policy<br/>Optional human review"]
-    DELIVERY --> RESULT["SurveyResult<br/>Report / Evidence / Status / Exports"]
-    subgraph INFRA["Storage and observability"]
-        QD["Qdrant<br/>Vectors and claims"]
-        PG["PostgreSQL<br/>Corpus state and durable memory"]
-        REDIS["Redis<br/>Working memory"]
-        OBS["Local run records<br/>Optional LangFuse"]
-    end
-    QD -.-> RECALL
-    PG -.-> RECALL
-    REDIS -.-> RUN
-    RUN -.-> OBS
-```
-
-Dotted edges represent storage and observability. The
-[independent-loop profile](./config/separate-review-evaluation.yaml) provides separate
-controls for Reviewer edits and Evaluation repairs.
-[Detailed flow](./docs/system-overview.md#independent-review-and-evaluation-loops).
-
-| Module | Technology |
-| --- | --- |
-| Orchestration | Python 3.11, asyncio, custom TaskGraph/Scheduler; LangGraph implements the ReAct subflow |
-| Retrieval and corpus | Qdrant, dense/BM25/RRF, optional CrossEncoder, PyMuPDF; full-text chunks retain source locations |
-| State and memory | Redis and PostgreSQL; local human review uses SQLite, with file-based run artifacts and checkpoints |
-| Interfaces | FastAPI, SSE and the browser workbench; local citation styles and six export types |
-| Observability and reproduction | Local RunArtifact, optional LangFuse, Docker Compose, offline tests and versioned benchmarks |
-
-[Architecture guide](./docs/system-overview.md) ·
-[Features and tests](./docs/design-truth.md)
-
-## Engineering decisions
-
-| Design | Implementation | Documentation and tests |
-| --- | --- | --- |
-| Asynchronous scheduling | Pass upstream results along DAG dependencies and handle failed, cancelled and skipped tasks consistently | [Orchestrator tests](./tests/test_orchestrator.py) |
-| Claims linked to evidence | Preserve source locations and check each claim against its actual citations | [Evidence model](./docs/system-overview.md#paper-and-evidence-contracts) |
-| Separate review and verification | Reviewer provides editorial feedback; Evaluation verifies independently, with separate revision budgets and re-evaluation after edits | [Pipeline tests](./tests/test_separate_review_pipeline.py) |
-| Report version management | Associate prose, evidence and evaluation by SHA; retain revision history and checkpoints | [Version management](./docs/system-overview.md#evaluation-and-delivery) |
 
 ## Experiments and validation
 
@@ -113,16 +67,13 @@ returned results at 14 ms p50. The choice depends on ranking quality and respons
 requirements. The full-text profile uses section-aware chunking to compare retrieval
 with different indexed material. [Full results](./benchmarks/rag/RESULTS.md).
 
-### Review revision case
-
-In one few-shot literature review, the system used **31 fixed evidence items** to
-locate nine claims lacking citation support, then revised and re-evaluated the full
-report. All 398 scientific claims extracted in that evaluation passed the system's
-citation-support checks. [Case record](./src/litagent/static/presentation/frozen-repair-377-380.json).
-
 Pytest covers orchestration, evidence processing, evaluation and revision,
 checkpoint recovery and API behavior. See the
 [Survey benchmark documentation](./benchmarks/survey/README.md) for methods and run records.
+
+## Demo
+
+![LitAgent workbench with report reading and citation inspection](./docs/images/readme-workbench-zh.jpg)
 
 ## Quick start
 
@@ -162,18 +113,3 @@ python -m isort --check-only --profile black src tests
 ```
 
 Integration and live-model tests use the `integration` and `live` markers and can be run separately.
-
-## Status and documentation
-
-Next steps include expanding the evaluation set, improving long-report review and
-revision, and optimizing retrieval quality and running costs.
-
-[Documentation index](./docs/README.md)
-
-| Document | Contents |
-| --- | --- |
-| [System architecture](./docs/system-overview.md) | Responsibilities, data flow, two loops, persistence and degradation |
-| [Demo guide](./docs/presentation-guide.md) | Setup, walkthrough and demo materials |
-| [Features and tests](./docs/design-truth.md) | Feature implementations and corresponding tests |
-| [Retrieval results](./benchmarks/rag/RESULTS.md) / [Survey methodology](./benchmarks/survey/README.md) | Conditions, results and historical records |
-| [Timeouts and cancellation](./docs/timeouts.md) / [Release criteria](./docs/release.md) | Runtime configuration and acceptance checks |
