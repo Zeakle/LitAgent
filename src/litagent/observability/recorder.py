@@ -155,12 +155,34 @@ class RedactingTraceHook:
             flush()
 
 
+def summarize_archive(artifact: dict[str, Any]) -> dict[str, Any]:
+    """Project an archive for the run list without retaining its report or trace."""
+    report = artifact.get("report")
+    if not isinstance(report, dict):
+        report = {}
+    trace = artifact.get("trace")
+    return {
+        "run_id": artifact["run_id"],
+        "query": artifact.get("query", ""),
+        "status": artifact.get("status", "unknown"),
+        "started_at": artifact.get("started_at"),
+        "completed_at": artifact.get("completed_at"),
+        "error": artifact.get("error"),
+        "quality": report.get("quality"),
+        "delivery": report.get("delivery"),
+        "config_fingerprint": artifact.get("config_fingerprint"),
+        "partial": bool(report.get("partial", False)),
+        "trace_url": trace.get("trace_url") if isinstance(trace, dict) else None,
+    }
+
+
 class ArchiveRepository:
     """Store completed run artifacts on the local filesystem."""
 
     def __init__(self, root: Path | str = "artifacts/runs") -> None:
         """Initialize the archive repository."""
         self._root = Path(root)
+        self._summaries: dict[Path, tuple[int, int, dict[str, Any] | None]] = {}
 
     def path_for(self, run_id: str) -> Path:
         """Return the archive path for a run."""
@@ -207,11 +229,32 @@ class ArchiveRepository:
             artifacts, key=lambda item: item.get("completed_at", ""), reverse=True
         )
 
+    def list_summaries(self) -> list[dict[str, Any]]:
+        """Read one archive at a time and reuse unchanged summary projections."""
+        current = {}
+        for path in self._root.glob("*.json"):
+            try:
+                stat = path.stat()
+            except OSError:
+                continue
+            signature = (stat.st_mtime_ns, stat.st_size)
+            previous = self._summaries.get(path)
+            if previous is None or previous[:2] != signature:
+                artifact = self._read(path)
+                previous = (
+                    *signature,
+                    summarize_archive(artifact) if artifact else None,
+                )
+                del artifact
+            current[path] = previous
+        self._summaries = current
+        return [summary for _, _, summary in current.values() if summary is not None]
+
     def _read(self, path: Path) -> dict[str, Any] | None:
         """Read and validate one archived run artifact."""
         try:
             value = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             logger.warning("Ignoring unreadable flow archive %s: %s", path, exc)
             return None
         if not isinstance(value, dict) or not value.get("run_id"):

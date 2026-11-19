@@ -14,14 +14,14 @@ export function createApiClient(getOperationToken) {
       controller.abort();
       controller = new AbortController();
     },
-    async request(path, { method = "GET", body, mutate = false, signal } = {}) {
+    async request(path, { method = "GET", body, mutate = false, signal, navigation = false } = {}) {
       const headers = {};
       if (body !== undefined) headers["Content-Type"] = "application/json";
       if (mutate) headers["X-LitAgent-Operation-Token"] = getOperationToken() || "";
       const response = await fetch(path, {
         method,
         headers,
-        signal: signal || controller.signal,
+        signal: signal ?? (navigation && method === "GET" && !mutate ? controller.signal : undefined),
         body: body === undefined ? undefined : JSON.stringify(body),
       });
       if (!response.ok) {

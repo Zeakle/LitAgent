@@ -315,8 +315,8 @@ print('API imported without history scan')
 
 
 @pytest.mark.asyncio
-async def test_live_lifespan_still_indexes_history_once(monkeypatch):
-    """Use the live profile and load the archive index once during startup."""
+async def test_live_lifespan_does_not_scan_history(monkeypatch):
+    """Use the live profile and defer history parsing until it is requested."""
     from types import SimpleNamespace
     from unittest.mock import AsyncMock
 
@@ -342,10 +342,9 @@ async def test_live_lifespan_still_indexes_history_once(monkeypatch):
     application.state.interactive_repository = object()
     application.state.flow_archive_index = {}
     async with api.lifespan(application):
-        assert listed == [True]
-        assert application.state.flow_archive_index == {
-            "offline-archive": {"run_id": "offline-archive"}
-        }
+        assert listed == []
+        assert application.state.flow_archive_index == {}
+        assert application.state.flow_archive_scan is None
         assert application.state.config.safety.planned_run_limits.profile == (
             "agent-format-repair-v1"
         )
