@@ -10,6 +10,7 @@ import re
 from pathlib import Path
 from typing import Any, Literal, Mapping
 
+from litagent.eval.results import failure_explanation
 from litagent.report_render import (
     build_reader_report,
     paper_catalog_from_nodes,
@@ -216,15 +217,35 @@ def project_flow_demo_view(
     """Project one raw RunArtifact into the stable browser-facing view."""
     report = _mapping(artifact.get("report"))
     quality = _mapping(report.get("quality") or artifact.get("quality"))
+    if explanation := failure_explanation(report):
+        quality["failure_explanation"] = explanation
     delivery = _mapping(report.get("delivery") or artifact.get("delivery"))
     graph = _mapping(artifact.get("graph"))
     nodes = _mapping(artifact.get("nodes"))
     trace = _mapping(artifact.get("trace"))
-    metadata = _mapping(report.get("metadata"))
+    metadata = dict(_mapping(report.get("metadata")))
     receipt = metadata.get("extraction_verification") or artifact.get(
         "extraction_verification"
     )
-    pipeline = dict(artifact.get("pipeline_verification") or {})
+    if not receipt:
+        # Extraction publishes its receipt before a report exists. Only consume
+        # the recorded extraction result, never infer admission from trace counts.
+        output = _mapping(nodes.get("worker:extract")).get("output")
+        receipts = [
+            item["extraction_verification"]
+            for item in (output if isinstance(output, list) else [])
+            if isinstance(item, dict)
+            and isinstance(item.get("extraction_verification"), dict)
+        ]
+        if receipts and all(item == receipts[0] for item in receipts):
+            receipt = receipts[0]
+    if receipt:
+        metadata["extraction_verification"] = receipt
+    pipeline = dict(
+        metadata.get("pipeline_verification")
+        or artifact.get("pipeline_verification")
+        or {}
+    )
     evaluation_unavailable = (
         _mapping(
             _mapping(_mapping(report.get("evaluation")).get("faithfulness")).get(
@@ -296,16 +317,20 @@ def project_flow_demo_view(
             )
     if not report and receipt:
         # A sidecar is evidence of a pre-writing attempt, never a verified report.
-        metadata = {
-            "quality_policy": pipeline.get("quality_policy"),
-            "extraction_verification": receipt,
-        }
+        metadata.setdefault("quality_policy", pipeline.get("quality_policy"))
         quality = {"status": "unverified"}
-        delivery = {
-            "status": "blocked",
-            "publishable": False,
-            "reason_codes": [artifact.get("error") or "report_not_generated"],
-        }
+        if artifact.get("status") in {
+            "failed",
+            "cancelled",
+            "interrupted",
+            "rejected",
+            "completed",
+        }:
+            delivery = {
+                "status": "blocked",
+                "publishable": False,
+                "reason_codes": [artifact.get("error") or "report_not_generated"],
+            }
     survey = str(report.get("survey") or "")
     evidence = extract_report_evidence(nodes, report=report)
     evidence_by_id = {
@@ -324,6 +349,7 @@ def project_flow_demo_view(
             evidence_ledger=evidence_by_id,
             paper_catalog=paper_catalog_from_nodes(nodes),
             citation_style=citation_style,
+            writing_bindings=metadata.get("writing_bindings"),
         )
         rendered_report = reader_report_projection(reader)
     else:

@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from litagent.config import EvalConfig
-from litagent.eval.ragas_adapter import NativeRagasAdapter
+from litagent.eval.ragas_adapter import NativeRagasAdapter, planned_batches
 from litagent.llm.client import LLMResponse
 
 
@@ -154,6 +154,71 @@ async def test_keyed_assessment_rejects_unbound_or_invalid_verdicts(fault):
             ]
         )
     assert len(llm.calls) == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("all_uncited", [False, True])
+@pytest.mark.parametrize("inline", [True, False], ids=["inline", "non-inline"])
+async def test_inline_nli_admission_and_transport_exclude_uncited(all_uncited, inline):
+    """Preserve every statement in the score and admit global review without NLI."""
+    config = EvalConfig()
+    samples = [
+        {
+            "id": "u0",
+            "question": "q",
+            "response": "cited or uncited",
+            "contexts": [] if all_uncited else ["complete original"],
+        },
+        {
+            "id": "u1",
+            "question": "q",
+            "response": "uncited",
+            "contexts": [],
+        },
+    ]
+    llm = Transport(
+        {"cited or uncited": ["a"], "uncited": ["b", "c"]},
+        {"a": 1, "b": 1, "c": 1},
+    )
+    adapter = NativeRagasAdapter(
+        llm,
+        config,
+        keyed_assessment=True,
+        inline_scopes=inline,
+        host_uncited=not inline,
+    )
+    admitted = {}
+
+    def admit(phase, material):
+        batches = planned_batches(
+            phase,
+            material,
+            config,
+            adapter.batch_size,
+            4,
+            keyed_assessment=True,
+            host_uncited=adapter.host_uncited,
+        )
+        admitted[phase] = batches
+        return [ids for ids, *_ in batches]
+
+    adapter.admission = admit
+    result = await adapter.score(samples)
+    assert result["score"] == (0 if all_uncited else 1 / 3)
+    assert [v["verdict"] for v in samples[1]["verdicts"]] == [0, 0]
+    assert [v["statement"] for v in samples[1]["verdicts"]] == ["b", "c"]
+    assert samples[1]["assessment_origin"] == "host_uncited"
+    assert list(llm.calls[0][0]["jobs"]) == ["u0", "u1"]
+    if all_uncited:
+        assert not admitted["assessment"]
+        assert len(llm.calls) == 1
+    else:
+        (batch,) = admitted["assessment"]
+        payload, request = llm.calls[1]
+        assert list(payload["jobs"]) == batch[0] == ["u0"]
+        assert payload == json.loads(batch[1][1]["content"])
+        assert request["response_format"] == batch[2]
+        assert list(payload["context_pool"].values()) == ["complete original"]
 
 
 @pytest.mark.asyncio

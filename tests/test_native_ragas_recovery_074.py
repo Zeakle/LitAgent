@@ -72,6 +72,7 @@ def test_local_074_all_assertions_can_use_last_shared_round():
     snapshot["entries"][stages["global_request_id"]] = snapshot["entries"].pop(old)
     details["evidence_snapshot_sha256"] = meta["evidence_snapshot_sha256"]
     cfg = load_config("config/operational-plus20.yaml")
+    cfg.eval.native_global_scope = None  # Replay the global omissions in 074.
     plan = plan_frozen_budget(
         execution["bundle"],
         budget_policy="planned-budget-v7",

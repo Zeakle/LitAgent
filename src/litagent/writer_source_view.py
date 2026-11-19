@@ -170,8 +170,8 @@ def source_view_identity() -> str:
             _chapter_rule_catalog(),
             _chapter_rule_parts(),
             inspect.getsource(summary_json_guidance),
-            inspect.getsource(summary_request_upper_bound),
-            inspect.getsource(_summary_request_bound),
+            legacy_source(summary_request_upper_bound),
+            legacy_source(_summary_request_bound),
             inspect.getsource(body_byte_progress),
             inspect.getsource(body_byte_capacity_error),
             inspect.getsource(chapter_request_input),
@@ -731,6 +731,14 @@ def project_source_view(system, payload, packet, envelope) -> tuple:
         # The concise repair system has an existing exact identity. Keep that
         # boundary intact; this authenticated input rule grants no paper support.
         result["grounding_instruction"] = GROUNDING_INSTRUCTION
+        return system, result
+    from litagent import stage_repair
+
+    if stage == "summary" and stage_repair.enabled(envelope):
+        # The summary compiler supplies the body-only instruction. Reapplying
+        # source grounding here would change the final request during receipt binding.
+        if GROUNDING_INSTRUCTION in system:
+            _invalid()
         return system, result
     if system.count(GROUNDING_INSTRUCTION) > 1:
         _invalid()

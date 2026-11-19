@@ -66,7 +66,7 @@ def configured_output_tokens(config) -> dict[str, int] | None:
     return validate_output_tokens(value, maximum=maximum)
 
 
-def envelope_output_tokens(envelope=None) -> dict[str, int]:
+def envelope_output_tokens(envelope=None, *, archived=False) -> dict[str, int]:
     """Use frozen stage limits, falling back only when the opt-in field is absent."""
     if envelope is None or "output_tokens" not in envelope:
         return dict(LEGACY_OUTPUT_TOKENS)
@@ -74,20 +74,20 @@ def envelope_output_tokens(envelope=None) -> dict[str, int]:
 
     return validate_output_tokens(
         envelope["output_tokens"],
-        maximum=envelope_run_limits(envelope)["max_output_tokens"],
+        maximum=envelope_run_limits(envelope, archived=archived)["max_output_tokens"],
     )
 
 
-def envelope_context_tokens(envelope=None) -> int:
+def envelope_context_tokens(envelope=None, *, archived=False) -> int:
     """Bind expanded requests to a fixed, conservatively sized model context."""
     if envelope is not None and "output_tokens" in envelope:
-        envelope_output_tokens(envelope)
+        envelope_output_tokens(envelope, archived=archived)
         from litagent.run_limits import envelope_run_limits
 
-        return envelope_run_limits(envelope)["context_tokens"]
+        return envelope_run_limits(envelope, archived=archived)["context_tokens"]
     return 131072
 
 
-def envelope_context_limit(envelope=None) -> int:
+def envelope_context_limit(envelope=None, *, archived=False) -> int:
     """Retain at least ten percent context headroom for both request profiles."""
-    return int(envelope_context_tokens(envelope) * 0.9)
+    return int(envelope_context_tokens(envelope, archived=archived) * 0.9)

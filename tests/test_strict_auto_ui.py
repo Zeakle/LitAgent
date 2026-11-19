@@ -19,7 +19,7 @@ def test_new_workbench_contract_modules_share_the_bootstrap_cache_version():
     assert f'styles.css?v={version}"' in markup
     assert f'audit-controls.js?v={version}"' in script
     assert f'i18n.js?v={version}"' in script
-    assert 'report-view.js?v=15.10.260"' in script
+    assert f'report-view.js?v={version}"' in script
     # Admission controls and dictionaries changed with this bootstrap. Retain
     # the frozen revision only for the unrelated benchmark consumers.
     contract_version = "15.10.6.163-summary-contract"

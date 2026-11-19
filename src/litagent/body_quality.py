@@ -523,12 +523,12 @@ def analysis_repair_diagnostics(details):
 
 def report_repair_diagnostics(details):
     """Locate genuine report defects without treating support dependencies as defects."""
-    from litagent.eval.results import CONTRACT, contract_identity
+    from litagent.eval.results import CONTRACT, scope_identity
 
     stages = details.get("stages", {})
     if (
         details.get("evaluation_result_contract") != CONTRACT
-        or details.get("evaluation_result_identity") != contract_identity()
+        or details.get("evaluation_result_identity") != scope_identity(details)
         or stages.get("global_check") != "completed"
         or details.get("inventory_check", {}).get("status") != "passed"
     ):

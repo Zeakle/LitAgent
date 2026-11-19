@@ -435,6 +435,10 @@ class SurveyPlanner:
                 "parent_task_id": "",
                 "name": "planner.query_decomposition",
                 "round": 0,
+                "input": {
+                    "query": query,
+                    "max_sub_queries": self._config.max_sub_queries,
+                },
             },
         )
         token = set_task_id("query_decomposition")
@@ -458,6 +462,11 @@ class SurveyPlanner:
                 "subspan.end",
                 {
                     "task_id": "query_decomposition",
-                    "output": {"sub_queries": sub_queries},
+                    "output": {
+                        "sub_queries": sub_queries,
+                        "named_methods": list(self._named_methods),
+                        "coverage_constraints": list(self._coverage_constraints),
+                        "replayed": self._decomposition_override is not None,
+                    },
                 },
             )

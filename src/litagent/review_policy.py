@@ -8,6 +8,9 @@ CONTRACT = "separate-review-evaluation-v1"
 PROFILE = "separate-review-evaluation-v1"
 LIMITS_CONTRACT = "configured-run-limits-v6"
 LEDGER_CONTRACT = "independent-targeted-repair-v2"
+LEGACY_WORKFLOW_IDENTITY = (
+    "a7abfe34f9eaab9f3ad8e11d25e6dc72c933c844bb5a0f122ef163951ea62e22"
+)
 ALLOWANCES = {
     "review_revision": 3,
     "evaluation_revision": 3,
@@ -15,6 +18,7 @@ ALLOWANCES = {
     "inventory": 3,
 }
 _partition = ContextVar("litagent_review_partition", default=None)
+_capacity_parent = ContextVar("litagent_capacity_parent", default=None)
 PARTITION_STAGES = {
     "review_revision": ("repair", "summary"),
     "evaluation_revision": ("repair", "summary", "inventory", "assessment", "global"),
@@ -39,6 +43,13 @@ def stage_name(envelope, stage, category=None):
     if not enabled(envelope) or "/" in stage:
         return stage
     category = category or _partition.get()
+    from litagent.eval.native_capacity import selected
+
+    if selected(envelope) and category == "capacity":
+        if stage == "inventory":
+            return "capacity/inventory"
+        if stage in {"assessment", "global"}:
+            category = _capacity_parent.get()
     if stage in PARTITION_STAGES.get(category, set()):
         return f"{category}/{stage}"
     return stage
@@ -54,6 +65,26 @@ def partition(category):
         yield
     finally:
         _partition.reset(token)
+
+
+@contextmanager
+def capacity_partition(parent):
+    """Reextract privately while retaining the unspent parent NLI/global slots."""
+    if parent not in (None, "evaluation_revision", "inventory"):
+        raise ValueError("native_capacity_parent_invalid")
+    token = _capacity_parent.set(parent)
+    try:
+        with partition("capacity"):
+            yield
+    finally:
+        _capacity_parent.reset(token)
+
+
+def capacity_parent():
+    """Expose the active parent only while staging a capacity transaction."""
+    if _partition.get() != "capacity":
+        raise ValueError("native_capacity_partition_missing")
+    return _capacity_parent.get()
 
 
 def stage_counts(batches):
@@ -112,7 +143,7 @@ def response_contract(schema, targets, references):
     return schema
 
 
-def validate_responses(result, targets, references):
+def validate_responses(result, targets, references, *, diagnose=False):
     """Require a complete response and patches only for explicit replacements."""
     from litagent.writing_v2 import WriterError
 
@@ -141,56 +172,93 @@ def validate_responses(result, targets, references):
             # A scientific justification must identify an available premise.
             raise WriterError("writer_keep_basis_missing", "quality")
     ids = [p["target_id"] for p in result["patches"]]
-    if len(ids) != len(set(ids)) or set(ids) != replaced:
+    if len(ids) != len(set(ids)) or not set(ids) <= set(targets):
         raise WriterError("writer_patch_response_mismatch")
+    if set(ids) != replaced:
+        diagnostics = []
+        if diagnose:
+            for key, tid in directory.items():
+                if (tid in ids) != (tid in replaced):
+                    diagnostics.append(
+                        {
+                            "code": "writer_patch_response_mismatch",
+                            "target_key": key,
+                            "target_id": tid,
+                            "action": responses[key]["action"],
+                            "patch_index": ids.index(tid) if tid in ids else None,
+                            "reason": (
+                                "patch_for_non_replace"
+                                if tid in ids
+                                else "missing_replace_patch"
+                            ),
+                        }
+                    )
+        raise WriterError("writer_patch_response_mismatch", diagnostics=diagnostics)
     return {tid: targets[tid] for tid in targets if tid in replaced}
 
 
-@lru_cache(maxsize=1)
-def identity():
+@lru_cache(maxsize=2)
+def identity(*, inline=False):
     """Bind only the opted-in workflow, leaving old profile selectors unchanged."""
-    import hashlib
-    import inspect
-    from pathlib import Path
-
-    from litagent import review_cycles
-    from litagent.quality import digest
-
-    return digest(
-        [
-            CONTRACT,
-            LEDGER_CONTRACT,
-            ALLOWANCES,
-            PARTITION_STAGES,
-            *[
-                hashlib.sha256(Path(__file__).with_name(name).read_bytes()).hexdigest()
-                for name in (
-                    "writing_v2.py",
-                    "writing_flat.py",
-                    "writer_source_view.py",
-                    "review_cycles.py",
-                )
-            ],
-            *[
-                inspect.getsource(f)
-                for f in (
-                    stage_name,
-                    stage_counts,
-                    format_stages,
-                    response_contract,
-                    validate_responses,
-                    review_cycles.editorial_cycle,
-                    review_cycles.improvement,
-                )
-            ],
-        ]
-    )
+    if not inline:
+        return LEGACY_WORKFLOW_IDENTITY
+    return "90ebd7071774543313a4e5eba1614455fad65834bebba16eab2f6bba89fd6300"
 
 
 # These exact opt-in deltas are excluded only from pre-v6 source fingerprints.
 # Their complete implementations remain bound by the v6 workflow identity.
 _LEGACY_SOURCE_DELTAS = {
+    "summary_request_upper_bound": [
+        (
+            "    if not selected_summary_body_view(envelope) and not inline_citations.selected(\n"
+            "        envelope\n"
+            "    ):\n",
+            "    if not selected_summary_body_view(envelope):\n",
+        ),
+    ],
+    "_summary_request_bound": [
+        (
+            "    from litagent.writer_source_view import selected_summary_body_view\n",
+            "",
+        ),
+        (
+            "        if inline_citations.selected(envelope) and not selected_summary_body_view(\n"
+            "            envelope\n"
+            "        ):\n"
+            "            # Full premises carry two authored indices alongside each unit.\n"
+            "            # Reserve longest encodings even when not all can occur together.\n"
+            "            path = [max(BODY, key=len), count - 1, count - 1]\n"
+            '            payload["body_units"] = {\n'
+            '                uid: {**unit, "path": path} for uid, unit in units.items()\n'
+            "            }\n",
+            "",
+        ),
+        (
+            "        if inline_citations.selected(envelope):\n"
+            "            from litagent.format_repair import summary_retry_messages\n\n"
+            "            cited = inline_citations.cited_summary_probe(\n"
+            "                system, payload, schema, aliases\n"
+            "            )\n"
+            '            output = envelope_output_tokens(envelope)["summary"]\n'
+            "            measured = max(\n"
+            "                strict_request_reservation(summary_retry_messages(wire), output, native)\n"
+            "                for wire in (messages, cited)\n"
+            "                if wire is not None\n"
+            "            )\n",
+            "",
+        ),
+    ],
+    "project_structured_repair_guidance": [
+        (
+            '            if (\n                d["origin"] == "current"\n                and native[0] in current_body\n                and ":scope:" in fid.split(":native:", 1)[0]\n                and native[0] in w.BODY\n            ):\n                unit = current_body[native[0]][native[1]]["sentences"][native[2]]\n                index = int(fid.split(":native:", 1)[0].rsplit(":scope:", 1)[1])\n                _, ranges = inline_citations.compile_text(\n                    unit["text"],\n                    {ref: cards[ref]["evidence_id"] for ref in unit["fact_card_refs"]},\n                )\n                if (\n                    not 0 <= index < len(ranges)\n                    or ranges[index]["evidence_ids"] != fragment["evidence_ids"]\n                    or ranges[index]["source_quote"] != fragment["text"]\n                ):\n                    fail("fragment_body_identity_invalid", identity=True)\n            if (\n                d["origin"] == "current"\n                and native[0] in current_body\n                and ":scope:" not in fid.split(":native:", 1)[0]\n            ):\n',
+            '            if d["origin"] == "current" and native[0] in current_body:\n',
+        ),
+    ],
     "WriterSession._patch": [
+        (
+            '            # BEGIN native capacity provenance\n            from litagent.eval.native_capacity import (\n                selected as native_capacity_selected,\n            )\n\n            if (\n                native_capacity_selected(self.envelope)\n                and (capacity_diagnostic or {}).get("reason")\n                == "evaluation_native_capacity_refinement_required"\n            ):\n                # Bind the parent before sending. Completed repair entries are\n                # immutable; a later summary must not rewrite their identity.\n                entry["native_capacity"] = {\n                    "budget_partition": review_policy.capacity_parent(),\n                    "source_report_sha256": capacity_diagnostic["source_report_sha256"],\n                    "capacity_identity": capacity_diagnostic["allocation_identity"],\n                }\n            # END native capacity provenance\n',
+            "",
+        ),
         ("    async def _patch(\n", "    async def patch(\n"),
         (
             '                    self.state,\n                    (\n                        (\n                            "review_revision"\n                            if cause == "review"\n                            else (\n                                "evaluation_revision"\n                                if cause == "evaluation"\n                                else "capacity"\n                            )\n                        )\n                        if review_policy.enabled(self.envelope)\n                        else ("prose" if cause == "evaluation" else "capacity")\n                    ),\n',
@@ -225,7 +293,11 @@ _LEGACY_SOURCE_DELTAS = {
         (
             '    from litagent import review_policy\n\n    if "response_target_keys" in payload and not review_policy.enabled(envelope):\n        _invalid()\n',
             "",
-        )
+        ),
+        (
+            '    from litagent import stage_repair\n\n    if stage == "summary" and stage_repair.enabled(envelope):\n        # The summary compiler supplies the body-only instruction. Reapplying\n        # source grounding here would change the final request during receipt binding.\n        if GROUNDING_INSTRUCTION in system:\n            _invalid()\n        return system, result\n',
+            "",
+        ),
     ],
 }
 
@@ -235,8 +307,28 @@ def legacy_source(function):
     import inspect
 
     source = inspect.getsource(function)
+    from litagent.legacy_stage_sources import restore_source
+
+    source = restore_source(function.__qualname__, source)
+    if function.__qualname__ == "WriterSession._patch":
+        for added, original in _PATCH_SOURCE_DELTAS:
+            if source.count(added) != 1:
+                raise ValueError("patch_legacy_source_projection_invalid")
+            source = source.replace(added, original, 1)
     for added, original in _LEGACY_SOURCE_DELTAS.get(function.__qualname__, ()):
         if source.count(added) != 1:
             raise ValueError("review_legacy_source_projection_invalid")
         source = source.replace(added, original, 1)
     return source
+
+
+_PATCH_SOURCE_DELTAS = [
+    (
+        '        # Bind a rejection before applying any candidate; successful-patch\n        # provenance does not exist for a cross-field response conflict.\n        if inline_citations.selected(self.envelope) and cause in {\n            "review",\n            "evaluation",\n        }:\n            entry["patch_request"] = {\n                "contract": "bound-patch-rejection-v1",\n                "body_sha256": digest(body),\n                "summary_only": summary_body is not None,\n                "targets": copy.deepcopy(targets),\n                "references": list(references),\n                "schema": copy.deepcopy(schema),\n                "messages": copy.deepcopy(messages),\n                "response_format": copy.deepcopy(rf),\n            }\n            entry["patch_request_sha256"] = digest(entry["patch_request"])\n',
+        "",
+    ),
+    (
+        "                targets = review_policy.validate_responses(\n                    result,\n                    targets,\n                    references,\n                    diagnose=inline_citations.selected(self.envelope),\n                )\n",
+        "                targets = review_policy.validate_responses(result, targets, references)\n",
+    ),
+]

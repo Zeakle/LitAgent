@@ -389,6 +389,31 @@ def validate_recovery_record(entry):
     try:
         original = state["original"]
         attempts = state["attempts"]
+        from litagent.llm.responses import STREAM_CONTRACT, normalize_private_receipt
+
+        for saved in (original, *attempts, entry):
+            receipt = saved.get("provider_receipt") or {}
+            if receipt and (entry.get("responses_transport") == STREAM_CONTRACT) != (
+                receipt.get("contract") == STREAM_CONTRACT
+            ):
+                raise ValueError("format stream transport identity")
+            if receipt.get("contract") != STREAM_CONTRACT:
+                continue
+            if saved.get("usage", {}).get("usage_available") is not True:
+                if saved.get("status") == "accepted":
+                    raise ValueError("format stream usage unavailable")
+                continue
+            normalized = normalize_private_receipt(receipt)
+            if any(
+                normalized[field] != saved.get(key)
+                for field, key in (
+                    ("content", "raw"),
+                    ("model", "model"),
+                    ("usage", "usage"),
+                    ("finish_reason", "finish_reason"),
+                )
+            ):
+                raise ValueError("format stream receipt identity")
         kinds = [attempt["kind"] for attempt in attempts]
         if (
             original["raw_sha256"] != raw_sha(original["raw"])
@@ -532,12 +557,19 @@ async def recover_response(
     async def send(
         kind, client, wire_messages, wire_format, kwargs, identity, *, contract=None
     ):
+        from litagent.llm.responses import transport_kwargs
+
+        selection = transport_kwargs(session.envelope)
+        kwargs = {**kwargs, **selection}
+        if selection and kind != "regeneration":
+            identity = digest([identity, selection])
         request_id = session.identity + ":" + name + ":format:" + kind
         attempt = {
             "kind": kind,
             "status": "rejected_not_sent",
             "input_sha256": identity,
             "ledger_request_id": request_id,
+            **selection,
         }
         if contract is not None:
             attempt["request_contract"] = contract

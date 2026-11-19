@@ -59,9 +59,14 @@ class LocalReportExporter:
             else report.survey
         )
         if (
-            format != "md"
-            and reader_report is not None
+            reader_report is not None
             and citation_style != "evidence"
+            and (
+                format != "md"
+                or any(
+                    "citation_scope" in link for link in reader_report.citation_links
+                )
+            )
         ):
             markdown = _export_reader_markdown(reader_report)
         content = await asyncio.to_thread(

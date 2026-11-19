@@ -87,6 +87,7 @@ def _envelope(value):
         "identity",
     }
     optional = {
+        "native_inventory_bound",
         "run_limits",
         "semantic_engine",
         "output_tokens",
@@ -134,7 +135,7 @@ def _envelope(value):
     _keys(value, required, optional)
     if "output_tokens" in value:
         _require(flat and "repair_mapping_contract" in value, "output_policy_invalid")
-        envelope_output_tokens(value)
+        envelope_output_tokens(value, archived=True)
     _require(
         value["contract"] in {"flat-writer-envelope-v1", "budgeted-writer-envelope-v1"},
         "envelope_invalid",
@@ -156,9 +157,15 @@ def _envelope(value):
             {"contract", "ragas_version", "identity", "batch_size"},
             {
                 "global_findings_contract",
+                "global_scope",
                 "global_input_contract",
                 "global_unit_response_contract",
                 "assessment_response_contract",
+                "citation_contract",
+                "global_status_contract",
+                "capacity_recovery_contract",
+                "inventory_context_contract",
+                "organization_contract",
             },
         )
         _require(
@@ -169,6 +176,29 @@ def _envelope(value):
             "ragas_engine_invalid",
         )
         _require(
+            "global_scope" not in engine
+            or engine["global_scope"]
+            in ("question-coverage-v1", "report-review-no-omissions-v1"),
+            "ragas_global_scope_invalid",
+        )
+        _require(
+            "capacity_recovery_contract" not in engine
+            or engine["capacity_recovery_contract"] == "native-capacity-recovery-v1"
+            and engine.get("citation_contract") == "flat-writer-v2",
+            "native_capacity_contract_invalid",
+        )
+        from litagent.eval.native_capacity import validate_bound
+
+        _require(
+            "inventory_context_contract" not in engine
+            or engine["inventory_context_contract"]
+            == "ragas-inventory-local-context-v1"
+            and engine.get("capacity_recovery_contract")
+            == "native-capacity-recovery-v1",
+            "native_inventory_context_contract_invalid",
+        )
+        validate_bound(value, live=False)
+        _require(
             "global_findings_contract" not in engine
             or engine["global_findings_contract"] == "anchored-global-findings-v2",
             "ragas_global_findings_contract_invalid",
@@ -176,7 +206,11 @@ def _envelope(value):
         _require(
             "global_input_contract" not in engine
             or (
-                engine["global_input_contract"] == "ragas-global-unit-input-v2"
+                (
+                    engine["global_input_contract"] == "ragas-global-unit-input-v2"
+                    or engine["global_input_contract"] == "ragas-global-unit-input-v3"
+                    and engine.get("citation_contract") == "flat-writer-v2"
+                )
                 and engine.get("global_findings_contract")
                 == "anchored-global-findings-v2"
             ),
@@ -203,11 +237,114 @@ def _envelope(value):
             == "ragas-assessment-statement-keys-v1",
             "ragas_assessment_response_contract_invalid",
         )
+        if "citation_contract" in engine:
+            from litagent.inline_citations import CONTRACT as INLINE_CONTRACT
+
+            _require(
+                engine["citation_contract"] == INLINE_CONTRACT,
+                "ragas_citation_contract_invalid",
+            )
+        if {"citation_contract", "organization_contract"}.intersection(engine):
+            from litagent.eval.engine_policy import validate_engine
+
+            validate_engine(engine, archived=True)
+        _require(
+            "global_status_contract" not in engine
+            or (
+                engine["global_status_contract"] == "ragas-global-status-codes-v1"
+                and engine.get("citation_contract") == "flat-writer-v2"
+            ),
+            "ragas_global_status_contract_invalid",
+        )
     if "run_limits" in value:
         from litagent.run_limits import validate_run_limits
 
-        validate_run_limits(value["run_limits"])
+        limits = validate_run_limits(value["run_limits"], archived=True)
+        if "citation_contract" in limits:
+            from litagent.eval.engine_policy import (
+                ARCHIVED_INLINE_CANDIDATE_ENGINE,
+                ARCHIVED_INLINE_DEPENDENCY_ENGINE,
+                ARCHIVED_INLINE_EDITORIAL_ENGINES,
+                ARCHIVED_INLINE_PATCH_ENGINE,
+                ARCHIVED_INLINE_RETRY_ENGINE,
+                ARCHIVED_INLINE_STATUS_ENGINE,
+                ARCHIVED_INLINE_SUMMARY_ENGINE,
+                ARCHIVED_INLINE_UNCITED_ENGINE,
+                ARCHIVED_INLINE_VIT_ENGINE,
+            )
+            from litagent.run_limits import (
+                ARCHIVED_INLINE_CANDIDATE_WORKFLOW,
+                ARCHIVED_INLINE_CITATION_IDENTITY,
+                ARCHIVED_INLINE_DEPENDENCY_WORKFLOW,
+                ARCHIVED_INLINE_PATCH_WORKFLOW,
+                ARCHIVED_INLINE_RETRY_WORKFLOW,
+                ARCHIVED_INLINE_SUMMARY_WORKFLOW,
+            )
+
+            workflow = limits["workflow_identity"]
+            old_workflows = {
+                "83672a7b02e85acd5142f8a6fa404f18cdf0d91cd217d6579b19dca7f62558c2": (
+                    ARCHIVED_INLINE_VIT_ENGINE,
+                    ARCHIVED_INLINE_UNCITED_ENGINE,
+                    ARCHIVED_INLINE_STATUS_ENGINE,
+                ),
+                "aa9f3d9666a59259087cceb4c95392129f30913d903a8f465d43e77a9da50314": (
+                    ARCHIVED_INLINE_EDITORIAL_ENGINES
+                ),
+            }
+            engine = value.get("semantic_engine")
+            citation = limits["citation_identity"]
+            legacy = old_workflows.get(workflow, ())
+            _require(
+                (citation == ARCHIVED_INLINE_CITATION_IDENTITY and engine in legacy)
+                or (
+                    (citation, workflow) == ARCHIVED_INLINE_SUMMARY_WORKFLOW
+                    and engine == ARCHIVED_INLINE_SUMMARY_ENGINE
+                )
+                or (
+                    (citation, workflow) == ARCHIVED_INLINE_DEPENDENCY_WORKFLOW
+                    and engine == ARCHIVED_INLINE_DEPENDENCY_ENGINE
+                )
+                or (
+                    (citation, workflow) == ARCHIVED_INLINE_RETRY_WORKFLOW
+                    and engine == ARCHIVED_INLINE_RETRY_ENGINE
+                )
+                or (
+                    (citation, workflow) == ARCHIVED_INLINE_CANDIDATE_WORKFLOW
+                    and engine == ARCHIVED_INLINE_CANDIDATE_ENGINE
+                )
+                or (
+                    (citation, workflow) == ARCHIVED_INLINE_PATCH_WORKFLOW
+                    and engine == ARCHIVED_INLINE_PATCH_ENGINE
+                )
+                or (
+                    workflow not in old_workflows
+                    and workflow != ARCHIVED_INLINE_PATCH_WORKFLOW[1]
+                    and workflow != ARCHIVED_INLINE_SUMMARY_WORKFLOW[1]
+                    and workflow != ARCHIVED_INLINE_DEPENDENCY_WORKFLOW[1]
+                    and workflow != ARCHIVED_INLINE_RETRY_WORKFLOW[1]
+                    and workflow != ARCHIVED_INLINE_CANDIDATE_WORKFLOW[1]
+                    and engine
+                    not in (
+                        ARCHIVED_INLINE_PATCH_ENGINE,
+                        ARCHIVED_INLINE_VIT_ENGINE,
+                        ARCHIVED_INLINE_UNCITED_ENGINE,
+                        ARCHIVED_INLINE_STATUS_ENGINE,
+                        *ARCHIVED_INLINE_EDITORIAL_ENGINES,
+                        ARCHIVED_INLINE_SUMMARY_ENGINE,
+                        ARCHIVED_INLINE_DEPENDENCY_ENGINE,
+                        ARCHIVED_INLINE_RETRY_ENGINE,
+                        ARCHIVED_INLINE_CANDIDATE_ENGINE,
+                    )
+                ),
+                "archived_inline_identity_pair_invalid",
+            )
         _require(flat and "repair_mapping_contract" in value, "run_limits_invalid")
+    _require(
+        value.get("semantic_engine", {}).get("citation_contract")
+        == value.get("run_limits", {}).get("citation_contract"),
+        "ragas_citation_contract_mismatch",
+    )
     cap = resolve_capacity(value["capacity"]) if "capacity" in value else None
     limits = {
         "body_max_units": (5, 256 if cap else 66),
@@ -703,7 +840,7 @@ def _plan(plan):
     _require(
         isinstance(plan, dict) and plan.get("contract") in _CONTRACTS, "plan_invalid"
     )
-    context_limit = envelope_context_limit(plan.get("envelope"))
+    context_limit = envelope_context_limit(plan.get("envelope"), archived=True)
     if "joint_round_escrow" in plan:
         _joint_plan(plan)
         return
@@ -734,7 +871,7 @@ def _plan(plan):
         repair_allowances,
     )
 
-    resources = envelope_run_limits(plan.get("envelope"))
+    resources = envelope_run_limits(plan.get("envelope"), archived=True)
     maximum_requests, maximum_repairs = (
         resources["max_requests"],
         resources["max_repairs"],
@@ -800,12 +937,12 @@ def _plan(plan):
         )
     else:
         _require(envelope is None, "plan_invalid")
-    format_stages = format_recovery_stages(envelope)
+    format_stages = format_recovery_stages(envelope, archived=True)
     if adaptive:
         outputs = (
             {
-                **envelope_output_tokens(envelope),
-                "body_initial": envelope_output_tokens(envelope)["body"],
+                **envelope_output_tokens(envelope, archived=True),
+                "body_initial": envelope_output_tokens(envelope, archived=True)["body"],
             }
             if envelope and "output_tokens" in envelope
             else _OUTPUTS
@@ -825,7 +962,7 @@ def _plan(plan):
             body in {(5, 0), (4, 1)}
             and counts
             == (
-                extended_repair_stages(envelope, repairs)
+                extended_repair_stages(envelope, repairs, archived=True)
                 or {
                     "summary": 1 + repairs,
                     "reviewer": 1,
@@ -881,7 +1018,11 @@ def _plan(plan):
             and envelope["frozen_component_reservation"]
             <= min(
                 envelope["request_caps"][key]
-                for key in ("inventory", "assessment", "global")
+                for key in (
+                    ("assessment", "global")
+                    if envelope.get("native_inventory_bound")
+                    else ("inventory", "assessment", "global")
+                )
             ),
             "plan_envelope_invalid",
         )
@@ -906,7 +1047,9 @@ def _plan(plan):
         from litagent.run_limits import validate_run_limits
 
         _require(contract == "planned-budget-v7", "run_limits_invalid")
-        maximum = validate_run_limits(envelope["run_limits"])["max_tokens"]
+        maximum = validate_run_limits(envelope["run_limits"], archived=True)[
+            "max_tokens"
+        ]
     _require(
         requests <= maximum_requests and _margin(required) <= maximum, "plan_unadmitted"
     )
@@ -921,7 +1064,7 @@ def _plan(plan):
         "maximum_tokens": maximum,
         "planned_requests": requests,
         "maximum_requests": maximum_requests,
-        "context_tokens": envelope_context_tokens(plan.get("envelope")),
+        "context_tokens": envelope_context_tokens(plan.get("envelope"), archived=True),
         "context_reservation_limit": context_limit,
         "context_margin": 0.1,
         "spent_tokens": spent,
@@ -956,7 +1099,7 @@ def _plan(plan):
         )
     if envelope:
         result["envelope"] = envelope
-        if limits := repair_allowances(envelope):
+        if limits := repair_allowances(envelope, archived=True):
             result["scope_bounds"]["repair_allowances"] = limits
         result["scope_bounds"].update(
             report_max_units=envelope["body_max_units"]

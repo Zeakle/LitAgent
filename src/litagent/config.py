@@ -120,6 +120,8 @@ class LLMConfig(BaseModel):
         value = handler(self)
         if self.resource_revision is None:
             value.pop("resource_revision", None)
+        if self.evaluation_inventory_model is None:
+            value.pop("evaluation_inventory_model", None)
         return value
 
     base_url: str = "https://api.deepseek.com"
@@ -127,6 +129,7 @@ class LLMConfig(BaseModel):
     extraction_model: str | None = Field(default=None, min_length=1)
     generation_model: str | None = Field(default=None, min_length=1)
     evaluation_model: str | None = Field(default=None, min_length=1)
+    evaluation_inventory_model: str | None = Field(default=None, min_length=1)
     # This cap applies when a task does not provide a narrower override.
     max_tokens: int = Field(default=20000, gt=0)
     temperature: float = Field(default=0.1, ge=0, le=2.0)
@@ -155,7 +158,7 @@ class LLMConfig(BaseModel):
             v > 600 for v in self.request_timeouts_seconds.values()
         ):
             raise ValueError("request timeout requires an explicit resource revision")
-        for stage in ("extraction", "generation", "evaluation"):
+        for stage in ("extraction", "generation", "evaluation", "evaluation_inventory"):
             value = getattr(self, f"{stage}_model")
             if value is not None and value != value.strip():
                 raise ValueError("stage model IDs must not contain outer whitespace")
@@ -163,15 +166,29 @@ class LLMConfig(BaseModel):
 
     def model_for(self, stage: str) -> str:
         """Resolve a fixed stage model while preserving omitted legacy settings."""
+        if stage == "evaluation_inventory":
+            return self.evaluation_inventory_model or self.model_for("evaluation")
         if stage not in {"extraction", "generation", "evaluation"}:
             raise ValueError("unknown LLM stage")
         return getattr(self, f"{stage}_model") or self.model
+
+    def routing_summary(self) -> dict[str, str]:
+        """Describe enabled model roles for both run identity and capabilities."""
+        stages = ["extraction", "generation", "evaluation"]
+        version = "stage-model-routing-v1"
+        if self.evaluation_inventory_model is not None:
+            stages.append("evaluation_inventory")
+            version = "stage-model-routing-v2"
+        return {
+            "version": version,
+            **{stage: self.model_for(stage) for stage in stages},
+        }
 
     def uses_single_model(self, model: str) -> bool:
         """Guard replay scripts that explicitly bind one model for every stage."""
         return self.model == model and all(
             self.model_for(s) == model
-            for s in ("extraction", "generation", "evaluation")
+            for s in ("extraction", "generation", "evaluation", "evaluation_inventory")
         )
 
 
@@ -454,7 +471,13 @@ class EvalConfig(BaseModel):
     """Configure evaluator and evidence-rewrite limits."""
 
     semantic_engine: Literal["ragas-cited-faithfulness-v1"] | None = None
-    native_global_input: Literal["ragas-global-unit-input-v2"] | None = None
+    native_global_scope: (
+        Literal["question-coverage-v1", "report-review-no-omissions-v1"] | None
+    ) = None
+    native_capacity_recovery: bool = False
+    native_global_input: (
+        Literal["ragas-global-unit-input-v2", "ragas-global-unit-input-v3"] | None
+    ) = None
     native_global_unit_response: (
         Literal[
             "ragas-global-unit-keys-v1",
@@ -469,6 +492,10 @@ class EvalConfig(BaseModel):
     def preserve_historical_engine(self, handler):
         """Leave old configuration identities unchanged when the new engine is absent."""
         value = handler(self)
+        if self.native_global_scope is None:
+            value.pop("native_global_scope", None)
+        if not self.native_capacity_recovery:
+            value.pop("native_capacity_recovery", None)
         if self.semantic_engine is None:
             value.pop("semantic_engine", None)
         if self.native_global_input is None:
@@ -550,6 +577,10 @@ class AppConfig(BaseModel):
         )
 
         run_limits = configured_run_limits(self)
+        if (run_limits or {}).get("citation_contract") and (
+            self.capacity is None or not self.eval.semantic_engine
+        ):
+            raise ValueError("inline_citations_require_native_evaluation")
         if (run_limits or {}).get("syntax_policy") == FORMAT_JSON_POLICY:
             if (
                 self.llm.model_for("evaluation"),
@@ -740,6 +771,10 @@ def load_config(
         raw = yaml.safe_load(f)
 
     raw = _apply_env_overrides(raw)
+    if citation_contract := os.environ.get("LITAGENT_WRITER_CITATION_CONTRACT"):
+        raw.setdefault("safety", {}).setdefault("planned_run_limits", {})[
+            "citation_contract"
+        ] = citation_contract
 
     try:
         return AppConfig(**raw)

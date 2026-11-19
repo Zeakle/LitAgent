@@ -67,7 +67,8 @@ function normalizeInteractive(item) {
 
 function normalizeArchive(item) {
   if (!item || typeof item !== "object" || !text(item.run_id)) return null;
-  const source = item.source === "sample" ? "sample" : "archive";
+  const source = item.source === "sample" ? "sample"
+    : item.source === "live" && ["queued", "running", "cancelling"].includes(item.status) ? "legacy" : "archive";
   return {
     key: `${source}:${item.run_id}`,
     runId: item.run_id,
@@ -130,7 +131,7 @@ export function adaptArchiveView(raw, identity) {
       canCancel: false,
       canReview: false,
       canExport: (identity.source === "archive" || raw?.presentation === true) && Boolean(raw?.report?.survey),
-      canDownloadArtifact: identity.source === "archive",
+      canDownloadArtifact: raw?.capabilities?.can_download_artifact ?? identity.source === "archive",
       hasTrace: Boolean(raw?.trace?.trace_url),
     },
   };
@@ -139,6 +140,7 @@ export function adaptArchiveView(raw, identity) {
 export function adaptInteractiveView(raw, identity) {
   const capabilities = raw?.capabilities || {};
   return {
+    displayWarnings: raw?.display_warnings || [],
     identity: { ...identity, status: raw?.summary?.status || identity.status },
     summary: raw?.summary || {},
     report: raw?.report || null,

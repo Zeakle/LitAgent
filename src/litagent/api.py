@@ -857,13 +857,7 @@ async def get_workbench_context():
             else "live" if live_enabled else "offline"
         ),
         "live_enabled": live_enabled,
-        "model_routing": {
-            "version": "stage-model-routing-v1",
-            **{
-                stage: config.llm.model_for(stage)
-                for stage in ("extraction", "generation", "evaluation")
-            },
-        },
+        "model_routing": config.llm.routing_summary(),
         "report_languages": ["zh-CN", "en"],
         "export_formats": ["md", "pdf", "docx"],
         "format_capabilities": format_capabilities(),
@@ -1095,6 +1089,24 @@ async def list_survey_versions(task_id: str):
 @app.get("/survey/{task_id}/view")
 async def get_survey_view(task_id: str, citation_style: CitationStyle | None = None):
     """Return the complete durable projection used by the research workbench."""
+    if not presentation_enabled() and isinstance(
+        app.state.tasks.get(task_id), SurveyTaskEntry
+    ):
+        view = await get_flow_demo_view(task_id, citation_style)
+        active = view["summary"]["status"] not in _TERMINAL_STATUSES
+        return {
+            **view,
+            "graph": view["dag"],
+            "review": None,
+            "versions": [],
+            "capabilities": {
+                "can_cancel": active,
+                "can_review": False,
+                "can_export": not active and bool(view["report"]["survey"]),
+                "can_download_artifact": view["capabilities"]["can_download_artifact"],
+                "has_trace": bool(view["trace"].get("trace_url")),
+            },
+        }
     try:
         return await (await _interactive_service()).get_view(
             task_id, **({"citation_style": citation_style} if citation_style else {})
@@ -1395,6 +1407,9 @@ async def export_survey(
                     evidence_ledger=ledger,
                     paper_catalog=catalog,
                     citation_style=citation_style,
+                    writing_bindings=(report.get("metadata") or {}).get(
+                        "writing_bindings"
+                    ),
                 )
                 exported = await LocalReportExporter().export(
                     version,
@@ -1458,8 +1473,14 @@ async def create_flow_demo():
 def _flow_artifact(run_id: str) -> dict[str, Any] | None:
     """Load one live or archived flow-demo artifact."""
     entry = app.state.flow_runs.get(run_id)
-    if entry is not None:
-        return entry.recorder.snapshot()
+    if entry is None and not presentation_enabled():
+        entry = app.state.tasks.get(run_id)
+    if isinstance(entry, SurveyTaskEntry):
+        artifact = entry.recorder.snapshot()
+        # The task owner knows queued/cancelling state before terminal recording.
+        artifact["status"] = entry.status
+        artifact["error"] = entry.error
+        return artifact
     artifact = app.state.flow_archive_index.get(run_id)
     if artifact is None:
         artifact = app.state.flow_repository.get(run_id)
@@ -1473,6 +1494,9 @@ def _flow_artifact(run_id: str) -> dict[str, Any] | None:
 def _flow_source(run_id: str) -> Literal["sample", "archive", "live"]:
     """Identify the owner of a flow-demo run without trusting its payload."""
     if run_id in app.state.flow_runs:
+        return "live"
+    entry = app.state.tasks.get(run_id) if not presentation_enabled() else None
+    if isinstance(entry, SurveyTaskEntry) and entry.status not in _TERMINAL_STATUSES:
         return "live"
     if run_id in app.state.flow_samples:
         return "sample"
@@ -1529,7 +1553,14 @@ async def list_flow_demo_runs():
     artifacts.update(
         {item["run_id"]: item for item in app.state.flow_repository.list()}
     )
-    for run_id in app.state.flow_runs:
+    live_ids = set(app.state.flow_runs)
+    if not presentation_enabled():
+        live_ids.update(
+            run_id
+            for run_id, entry in app.state.tasks.items()
+            if isinstance(entry, SurveyTaskEntry)
+        )
+    for run_id in live_ids:
         artifact = _flow_artifact(run_id)
         if artifact:
             artifacts[run_id] = artifact
@@ -1569,6 +1600,13 @@ async def get_flow_demo_view(run_id: str, citation_style: CitationStyle | None =
         view["format_capabilities"] = format_capabilities()
         view["citation_style"] = style
         view["presentation"] = presentation_enabled()
+        view["capabilities"] = {
+            "can_download_artifact": (
+                artifact.get("status") in _TERMINAL_STATUSES
+                and _flow_source(run_id) != "sample"
+                and app.state.flow_repository.get(run_id) is not None
+            ),
+        }
         return view
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
@@ -1578,6 +1616,8 @@ async def get_flow_demo_view(run_id: str, citation_style: CitationStyle | None =
 async def stream_flow_demo_events(run_id: str):
     """Stream flow-demo trace events over server-sent events."""
     entry = app.state.flow_runs.get(run_id)
+    if entry is None and not presentation_enabled():
+        entry = app.state.tasks.get(run_id)
     if entry is not None:
         return await stream_survey_events(run_id)
     artifact = _flow_artifact(run_id)

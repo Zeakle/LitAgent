@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from threading import Lock
 from urllib.parse import urlsplit
 
-from openai import APIStatusError, APITimeoutError, AsyncOpenAI
+from openai import APIConnectionError, APIStatusError, APITimeoutError, AsyncOpenAI
 
 from litagent.logging import get_logger
 from litagent.observability.context import get_task_id, remaining_deadline_seconds
@@ -145,7 +145,11 @@ async def _await_request(call, *, timeout, stage):
     except TimeoutError as exc:
         # An inner provider TimeoutError must retain its original provenance.
         if deadline.expired():
-            raise LLMRequestTimeout(stage, timeout) from exc
+            failure = LLMRequestTimeout(stage, timeout)
+            partial = getattr(exc.__cause__, "response", None)
+            if isinstance(partial, ResponsesLLMResponse):
+                failure.response = partial
+            raise failure from exc
         raise
     finally:
         _active_request_deadline.reset(tokens[2])
@@ -154,7 +158,7 @@ async def _await_request(call, *, timeout, stage):
 
 
 def _failure_timeout_metadata(exc):
-    """Classify cancellation at the point where its owning deadline is visible."""
+    """Retain deadline and transport provenance without exposing request data."""
     result = {"request_stage": _active_request_stage.get() or _timeout_stage()}
     timeout = _active_timeout.get()
     if timeout is not None:
@@ -173,6 +177,37 @@ def _failure_timeout_metadata(exc):
         result.update(
             reason_code="provider_transport_timeout", timeout_scope="transport"
         )
+    elif isinstance(exc, APIConnectionError):
+        result["reason_code"] = "transport_connection_error"
+        cause, seen = exc.__cause__, set()
+        for _ in range(8):
+            if cause is None or id(cause) in seen:
+                break
+            seen.add(id(cause))
+            kind = type(cause)
+            # Only library-owned type labels leave the client. Exception messages
+            # can contain URLs, proxy credentials or portions of the request.
+            if kind.__module__.split(".")[0] in {
+                "httpx",
+                "httpx2",
+                "httpcore",
+                "httpcore2",
+            } and kind.__name__ in {
+                "ConnectError",
+                "ReadError",
+                "WriteError",
+                "CloseError",
+                "RemoteProtocolError",
+                "LocalProtocolError",
+                "ProxyError",
+                "ConnectTimeout",
+                "ReadTimeout",
+                "WriteTimeout",
+                "PoolTimeout",
+            }:
+                result["transport_error_type"] = kind.__name__
+                break
+            cause = cause.__cause__
     return result
 
 
@@ -386,6 +421,8 @@ class OpenAICompatibleClient(BaseLLMClient):
         provider_api = kwargs.get("provider_api", "chat")
         if provider_api not in ("chat", "responses"):
             raise ValueError("provider_api_invalid")
+        if "responses_transport" in kwargs and provider_api != "responses":
+            raise ValueError("responses_transport_requires_responses")
         limit_parameter, output_limit = _output_limit(kwargs, self._max_tokens)
         if provider_api == "responses":
             from litagent.llm.responses import build_responses_request
@@ -406,6 +443,7 @@ class OpenAICompatibleClient(BaseLLMClient):
                 "extra_body",
                 "reasoning_effort",
                 "transport_max_attempts",
+                "responses_transport",
             }:
                 raise ValueError("responses_arguments_unsupported")
             build_responses_request(
@@ -416,6 +454,7 @@ class OpenAICompatibleClient(BaseLLMClient):
                 temperature=kwargs.get("temperature", self._temperature),
                 extra_body=kwargs.get("extra_body"),
                 reasoning_effort=kwargs.get("reasoning_effort"),
+                transport=kwargs.get("responses_transport"),
             )
         elif limit_parameter == "max_output_tokens":
             raise ValueError("chat_output_limit_invalid")
@@ -440,6 +479,24 @@ class OpenAICompatibleClient(BaseLLMClient):
             )
 
             planned = planned_backend(self._cost_budget)
+            if planned is not None and provider_api == "responses":
+                from litagent.llm.responses import selected_transport
+
+                stage, _ = planned._owner()
+                authored = stage.removeprefix("format_").split("/")[-1] in {
+                    "body",
+                    "body_initial",
+                    "summary",
+                    "repair",
+                    "reviewer",
+                }
+                expected_transport = (
+                    selected_transport(planned.plan.get("envelope"))
+                    if authored
+                    else None
+                )
+                if kwargs.get("responses_transport") != expected_transport:
+                    raise ValueError("planned_responses_transport_conflict")
             if locked_writer_envelope(self._cost_budget) is not None:
                 planned.check_wire(
                     messages, output_limit, kwargs.get("response_format")
@@ -738,6 +795,7 @@ class OpenAICompatibleClient(BaseLLMClient):
         """Use one owned SDK request, retaining known charges on invalid output."""
         from litagent.llm.responses import (
             build_responses_request,
+            normalize_private_receipt,
             normalize_responses,
             private_receipt,
         )
@@ -752,6 +810,7 @@ class OpenAICompatibleClient(BaseLLMClient):
             temperature=kwargs.get("temperature", self._temperature),
             extra_body=kwargs.get("extra_body"),
             reasoning_effort=kwargs.get("reasoning_effort"),
+            transport=kwargs.get("responses_transport"),
         )
         op_id, started = uuid.uuid4().hex, time.perf_counter()
         metadata = {
@@ -780,14 +839,24 @@ class OpenAICompatibleClient(BaseLLMClient):
                     self, _timeout_stage()
                 )
             try:
-                raw = await self._client.responses.with_raw_response.create(**body)
-                http_response = raw.http_response
+                if kwargs.get("responses_transport"):
+                    http_response, receipt = await self._receive_responses_stream(body)
+                else:
+                    raw = await self._client.responses.with_raw_response.create(**body)
+                    http_response = raw.http_response
+                    receipt = private_receipt(http_response)
             except APIStatusError as exc:
                 # A received error can still carry billing; normalize before deciding
                 # whether the outer owner must retain an unknown reservation.
                 http_response = exc.response
-            receipt = private_receipt(http_response)
-            fields = normalize_responses(http_response.content)
+                receipt = private_receipt(
+                    http_response, transport=kwargs.get("responses_transport")
+                )
+            fields = (
+                normalize_private_receipt(receipt)
+                if kwargs.get("responses_transport")
+                else normalize_responses(http_response.content)
+            )
             rejection = self._observe_provider_rejection(http_response)
             if (
                 fields["usage"]["usage_available"]
@@ -840,6 +909,79 @@ class OpenAICompatibleClient(BaseLLMClient):
                 },
             )
             raise
+
+    async def _receive_responses_stream(self, body):
+        """Keep original SSE bytes local and close at the authenticated terminal."""
+        from litagent.llm.responses import (
+            STREAM_CONTRACT,
+            ResponsesStreamDecoder,
+            normalize_private_receipt,
+            private_receipt,
+        )
+
+        async with self._client.responses.with_streaming_response.create(**body) as raw:
+            http_response = raw.http_response
+            received = bytearray()
+            decoder = ResponsesStreamDecoder()
+
+            def receipt():
+                return private_receipt(
+                    http_response, received=bytes(received), transport=STREAM_CONTRACT
+                )
+
+            try:
+                async for chunk in raw.iter_bytes():
+                    received.extend(chunk)
+                    try:
+                        if decoder.feed(chunk):
+                            break
+                    except (ValueError, UnicodeDecodeError):
+                        # Invalid events are recorded, never repaired into output.
+                        break
+            except BaseException as exc:
+                partial = receipt()
+                fields = normalize_private_receipt(partial)
+                fields.update(
+                    content="",
+                    finish_reason="invalid",
+                    provider_error="responses_stream_interrupted",
+                    usage={
+                        "prompt_tokens": 0,
+                        "completion_tokens": 0,
+                        "usage_available": False,
+                    },
+                )
+                response = ResponsesLLMResponse(
+                    **fields,
+                    provider_receipt=partial,
+                    request_id=http_response.headers.get("x-request-id"),
+                )
+                if type(exc).__module__.split(".")[0] in {
+                    "httpx",
+                    "httpx2",
+                    "httpcore",
+                    "httpcore2",
+                }:
+                    # The SDK does not wrap failures raised while iterating raw
+                    # bytes. Preserve its normal connection-error interface.
+                    wrapped = (
+                        APITimeoutError(request=http_response.request)
+                        if type(exc).__name__
+                        in {
+                            "TimeoutException",
+                            "ReadTimeout",
+                            "WriteTimeout",
+                            "ConnectTimeout",
+                            "PoolTimeout",
+                        }
+                        else APIConnectionError(request=http_response.request)
+                    )
+                    wrapped.response = response
+                    raise wrapped from exc
+                if isinstance(exc, asyncio.CancelledError):
+                    exc.response = response
+                raise
+            return http_response, receipt()
 
     async def score_ragas_faithfulness(
         self,

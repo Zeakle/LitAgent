@@ -10,6 +10,7 @@ import re
 from dataclasses import dataclass
 
 from litagent.body_quality import validate_analysis_decisions
+from litagent.eval import question_coverage
 from litagent.eval.batched import (
     global_review_schema,
     limitations_check,
@@ -17,20 +18,25 @@ from litagent.eval.batched import (
 )
 from litagent.eval.engine_policy import (
     ANCHORED_GLOBAL_REVIEW,
+    BOUND_ORGANIZATION,
     KEYED_ASSESSMENT,
     KEYED_GLOBAL_ANCHORS,
     KEYED_GLOBAL_LOCATED_OMISSIONS,
     KEYED_GLOBAL_QUOTED_OMISSIONS,
     KEYED_GLOBAL_UNITS,
     anchored_native_review,
+    native_global_input_contract,
+    native_host_uncited,
     native_unit_response_contract,
-    unit_native_review,
 )
 from litagent.eval.ragas_adapter import CONTRACT, NativeRagasAdapter
 from litagent.eval.ragas_adapter import _parse as _parse_ragas_json
 from litagent.eval.ragas_adapter import planned_batches
+from litagent.eval.ragas_global_wire import ORDERED_UNIT_CONTRACT, UNIT_CONTRACT
 from litagent.eval.responsibilities import (
     GLOBAL_INSTRUCTION,
+    REPORT_REVIEW_INSTRUCTION,
+    REPORT_REVIEW_SCOPE,
     parse_global_response,
     project_global_schema,
 )
@@ -71,7 +77,7 @@ class NativeEvaluationRunResult(EvaluationRunResult):
         return values
 
 
-def source_samples(survey, context):
+def source_samples(survey, context, *, inventory_context=False):
     """Bind each authored occurrence without borrowing its neighbor's citations."""
     units = build_report_source_units(survey)
     managed = _managed_span(survey, context.get("review_methodology"))
@@ -98,7 +104,7 @@ def source_samples(survey, context):
             context["fact_cards"], ledger, context["evidence_snapshot_sha256"]
         )
     samples = []
-    for unit in authored:
+    for unit_index, unit in enumerate(authored):
         for fragment in native.get(unit.unit_id) or build_source_fragments(unit):
             quote = fragment["source_quote"]
             start, end = unit.start + fragment["start"], unit.start + fragment["end"]
@@ -142,6 +148,21 @@ def source_samples(survey, context):
                     "evidence_ids": refs,
                 }
             )
+            if inventory_context:
+                # Identical sentences may occur at different positions. Derive
+                # the clean offset from the bound prefix, never a text search.
+                target = re.sub(r"\[E:[^\]]+\]", "", quote)
+                prefix = re.sub(r"\[E:[^\]]+\]", "", unit.text[: fragment["start"]])
+                offset = len(prefix) + len(target) - len(target.lstrip())
+                samples[-1]["report_context"] = {
+                    "id": f"p{unit_index}",
+                    "text": re.sub(r"\[E:[^\]]+\]", "", unit.text),
+                    "start": offset,
+                    "end": offset + len(samples[-1]["response"]),
+                }
+                from litagent.eval.ragas_adapter import report_context
+
+                report_context(samples[-1])
     return units, authored, host, samples
 
 
@@ -156,7 +177,11 @@ def _issue_anchor_choices(payload):
         for claim in payload["assertions"]
     }
     return {
-        "missing_assertion": units,
+        **(
+            {"missing_assertion": units}
+            if payload.get("global_scope") != REPORT_REVIEW_SCOPE
+            else {}
+        ),
         "repetition": claims,
         "category_count": {**units, **claims},
     }
@@ -296,9 +321,21 @@ def global_review_request(
     force_compact=False,
     anchored=False,
     unit_view=False,
+    input_contract=None,
     unit_response_contract=None,
+    global_scope=None,
 ):
     """Build the exact provider request while retaining canonical host input."""
+    if global_scope == question_coverage.CONTRACT:
+        return question_coverage.build_request(context, units, assertions)
+    no_omissions = global_scope == REPORT_REVIEW_SCOPE
+    if global_scope is not None and not no_omissions:
+        raise ValueError("ragas_global_scope_invalid")
+    if no_omissions:
+        anchored = True
+    if input_contract not in (None, UNIT_CONTRACT, ORDERED_UNIT_CONTRACT):
+        raise ValueError("ragas_global_input_contract_invalid")
+    unit_view = unit_view or input_contract is not None
     if unit_response_contract is not None and (
         not anchored
         or unit_response_contract
@@ -354,7 +391,19 @@ def global_review_request(
     for unit in payload["source_units"]:
         unit["extracted_claim_ids"] = claim_ids_by_unit[unit["source_unit_id"]]
     schema = project_global_schema(global_review_schema(payload))
-    if unit_response_contract:
+    if no_omissions:
+        query = context.get("query")
+        if not isinstance(query, str) or not query.strip() or not requirements:
+            raise ValueError("evaluation_core_coverage_input_invalid")
+        payload.update(global_scope=global_scope, query=query)
+        for index, unit in enumerate(payload["source_units"], 1):
+            unit["coverage_key"] = f"u{index}"
+        schema["description"] = "Question coverage, contradictions and report quality."
+        del schema["properties"]["units"]
+        schema["required"].remove("units")
+        del schema["$defs"]["UnitDecision"]
+        _project_issue_anchors(schema, payload)
+    elif unit_response_contract:
         payload["global_unit_response_contract"] = unit_response_contract
         unit_schema = schema["$defs"]["UnitDecision"]
         del unit_schema["properties"]["source_unit_id"]
@@ -383,43 +432,47 @@ def global_review_request(
     messages = [
         {
             "role": "system",
-            "content": GLOBAL_INSTRUCTION
-            + (
-                "\nUse each unit's local claims list for omission checks. "
-                "Mark that unit incomplete only for a specific unrepresented "
-                "proposition or qualifier. Never use paper evidence to rewrite the inventory. "
-                if unit_view
-                else "\nFor omissions compare each source unit with every statement listed "
-                "in its extracted_claim_ids. Supported and unsupported statements both "
-                "count as extracted. Only report a specific unrepresented proposition "
-                "or qualifier; mark that unit incomplete. Check units with no claims "
-                "too. Never use paper evidence to rewrite the inventory. "
-            )
-            + (
-                (
-                    "In issues use anchor_ids exactly as permitted by the schema. "
-                    "For missing_assertion select the original unit's coverage_key (uN). "
-                    "For repetition select the affected claim_id at each location. "
-                    "For category_count select a coverage_key or claim_id. "
-                    "Do not copy source_unit_id or add prefixes. "
-                    if short_anchors
-                    else "In issues use anchor_ids copied exactly from claim_id or source_unit_id. "
-                    "Do not add prefixes. Give only source_unit_id anchors for missing assertions. "
-                    "For repetition include the affected claim anchors at each location; "
-                    "the host derives their parent units. "
+            "content": (
+                REPORT_REVIEW_INSTRUCTION
+                if no_omissions
+                else GLOBAL_INSTRUCTION
+                + (
+                    "\nUse each unit's local claims list for omission checks. "
+                    "Mark that unit incomplete only for a specific unrepresented "
+                    "proposition or qualifier. Never use paper evidence to rewrite the inventory. "
+                    if unit_view
+                    else "\nFor omissions compare each source unit with every statement listed "
+                    "in its extracted_claim_ids. Supported and unsupported statements both "
+                    "count as extracted. Only report a specific unrepresented proposition "
+                    "or qualifier; mark that unit incomplete. Check units with no claims "
+                    "too. Never use paper evidence to rewrite the inventory. "
                 )
-                + "Do not return source_unit_id or claim_ids inside issues. "
-                "For each answered requirement list only "
-                "the minimum sufficient supported scientific claims that together "
-                "answer it. If supported claims do not cover every required part, "
-                "mark it unanswered. Do not use the whole inventory as a witness."
-                if anchored
-                else "For omissions use the original source_unit_id and an empty claim_ids list."
+                + (
+                    (
+                        "In issues use anchor_ids exactly as permitted by the schema. "
+                        "For missing_assertion select the original unit's coverage_key (uN). "
+                        "For repetition select the affected claim_id at each location. "
+                        "For category_count select a coverage_key or claim_id. "
+                        "Do not copy source_unit_id or add prefixes. "
+                        if short_anchors
+                        else "In issues use anchor_ids copied exactly from claim_id or source_unit_id. "
+                        "Do not add prefixes. Give only source_unit_id anchors for missing assertions. "
+                        "For repetition include the affected claim anchors at each location; "
+                        "the host derives their parent units. "
+                    )
+                    + "Do not return source_unit_id or claim_ids inside issues. "
+                    "For each answered requirement list only "
+                    "the minimum sufficient supported scientific claims that together "
+                    "answer it. If supported claims do not cover every required part, "
+                    "mark it unanswered. Do not use the whole inventory as a witness."
+                    if anchored
+                    else "For omissions use the original source_unit_id and an empty claim_ids list."
+                )
             ),
         },
         {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
     ]
-    if unit_response_contract:
+    if unit_response_contract and not no_omissions:
         messages[0]["content"] += (
             "\nReturn units as an object keyed by each source unit's coverage_key. "
             "Fill every required key with complete and explanation. "
@@ -432,7 +485,7 @@ def global_review_request(
             messages[0][
                 "content"
             ] += "Use the original source_unit_id only for issue anchors."
-    if unit_response_contract == KEYED_GLOBAL_QUOTED_OMISSIONS:
+    if not no_omissions and unit_response_contract == KEYED_GLOBAL_QUOTED_OMISSIONS:
         messages[0]["content"] += (
             "\nInventory coverage is independent of verdicts. Compare the quoted "
             "report proposition to ALL extracted statements in that unit, including "
@@ -441,7 +494,7 @@ def global_review_request(
             "missing_assertion use exactly one unit key and put only the exact "
             "unrepresented clause from that unit in explanation, without citations."
         )
-    if unit_response_contract == KEYED_GLOBAL_LOCATED_OMISSIONS:
+    if not no_omissions and unit_response_contract == KEYED_GLOBAL_LOCATED_OMISSIONS:
         messages[0]["content"] += (
             "\nFor each missing_assertion select exactly one unit key. In explanation "
             "describe the specific unrepresented proposition or qualifier and why "
@@ -452,7 +505,12 @@ def global_review_request(
         )
     if unit_view or compact or force_compact:
         from litagent.eval.ragas_global_wire import (
+            INLINE_INSTRUCTION,
+            INLINE_SOURCE_INSTRUCTION,
             INSTRUCTION,
+            ORDER_INSTRUCTION,
+            REPORT_UNIT_INSTRUCTION,
+            STATUS_INSTRUCTION,
             UNIT_INSTRUCTION,
             pack_global_input,
             unpack_global_input,
@@ -465,12 +523,40 @@ def global_review_request(
             or force_compact
             or strict_request_reservation(messages, config.max_tokens, fmt) > limit
         ):
-            wire = pack_global_input(payload, by_unit=unit_view)
+            from litagent.inline_citations import CONTRACT as INLINE_CONTRACT
+
+            inline_sources = (context.get("writing_bindings") or {}).get(
+                "citation_contract"
+            ) == INLINE_CONTRACT
+            wire = pack_global_input(
+                payload,
+                by_unit=unit_view,
+                inline_sources=inline_sources,
+                status_codes=inline_sources,
+                unit_contract=input_contract or UNIT_CONTRACT,
+            )
             if unpack_global_input(wire) != payload:
                 raise ValueError("ragas_global_projection_roundtrip_invalid")
             messages[0]["content"] += "\n" + (
-                UNIT_INSTRUCTION if unit_view else INSTRUCTION
+                (REPORT_UNIT_INSTRUCTION if no_omissions else UNIT_INSTRUCTION).replace(
+                    UNIT_CONTRACT, input_contract or UNIT_CONTRACT
+                )
+                if unit_view
+                else INSTRUCTION
             )
+            if inline_sources:
+                messages[0]["content"] += (
+                    "\n"
+                    + (
+                        INLINE_SOURCE_INSTRUCTION
+                        if no_omissions
+                        else INLINE_INSTRUCTION
+                    )
+                    + "\n"
+                    + STATUS_INSTRUCTION
+                )
+            if input_contract == ORDERED_UNIT_CONTRACT:
+                messages[0]["content"] += "\n" + ORDER_INSTRUCTION
             messages[1]["content"] = json.dumps(
                 wire, ensure_ascii=False, separators=(",", ":")
             )
@@ -497,6 +583,8 @@ def parse_native_global_response(content, payload, progress):
                     "reason": str(exc).splitlines()[0],
                 }
             raise
+        if not isinstance(raw, dict):
+            raise ValueError("evaluation_global_response_invalid")
         if keyed:
             decisions = raw.get("units") if isinstance(raw, dict) else None
             directory = {
@@ -545,7 +633,7 @@ def parse_native_global_response(content, payload, progress):
                 {**decisions[key], "source_unit_id": source_id}
                 for key, source_id in directory.items()
             ]
-        if short_anchors:
+        if short_anchors or payload.get("global_scope") == REPORT_REVIEW_SCOPE:
             _restore_issue_anchors(raw, payload, progress)
         elif anchored and isinstance(raw, dict) and isinstance(raw.get("issues"), list):
             aliases = {
@@ -593,7 +681,10 @@ async def _global_review(
         compact=budget_resource_profile(budget) == PROFILE,
         force_compact=force_compact,
         anchored=anchored_native_review(envelope),
-        unit_view=unit_native_review(envelope),
+        global_scope=((envelope or {}).get("semantic_engine") or {}).get(
+            "global_scope"
+        ),
+        input_contract=native_global_input_contract(envelope),
         unit_response_contract=native_unit_response_contract(envelope),
     )
     key = hashlib.sha256(
@@ -629,6 +720,22 @@ async def _global_review(
         raise ValueError("ragas_global_incomplete_response")
     if not response.usage or response.usage.get("usage_available") is False:
         raise ValueError("ragas_global_usage_unknown")
+    if fmt["json_schema"]["name"] == "ragas_question_coverage":
+        rows = question_coverage.parse_response(response.content, payload)
+        progress.update(
+            global_check="completed",
+            global_usage=response.usage,
+            global_request_id=key,
+            global_sections={"coverage": {"status": "passed", "reason_codes": []}},
+        )
+        return {
+            "core_coverage": rows,
+            "inventory_check": {
+                "status": "passed" if assertions else "failed",
+                "scope": "processed_assertions",
+            },
+            "global_issues": [],
+        }
     parsed = parse_native_global_response(response.content, payload, progress)
     supported = {a["claim_id"] for a in assertions if a["status"] == "supported"}
     complete_units = {u.source_unit_id for u in parsed.units if u.complete}
@@ -643,7 +750,7 @@ async def _global_review(
     )
     if payload["global_findings_contract"] == ANCHORED_GLOBAL_REVIEW:
         progress["global_findings_contract"] = ANCHORED_GLOBAL_REVIEW
-    if unit_native_review(envelope):
+    if native_global_input_contract(envelope):
         progress["global_input_contract"] = envelope["semantic_engine"][
             "global_input_contract"
         ]
@@ -651,21 +758,29 @@ async def _global_review(
         progress["global_unit_response_contract"] = payload[
             "global_unit_response_contract"
         ]
+    no_omissions = payload.get("global_scope") == REPORT_REVIEW_SCOPE
     return {
         "conflicts": [x.model_dump() for x in parsed.conflicts],
         "core_coverage": [x.model_dump() for x in parsed.coverage],
         "global_issues": [{**x.model_dump(), "owner": x.owner} for x in parsed.issues],
-        "inventory_check": {
-            "conflicting_unit_ids": sorted(
-                (complete_units & omission_units) | disputed_units
-            ),
-            "status": (
-                "passed"
-                if all(u.complete for u in parsed.units)
-                and not any(x.owner == "inventory" for x in parsed.issues)
-                else "failed"
-            ),
-        },
+        "inventory_check": (
+            {
+                "status": "passed" if assertions else "failed",
+                "scope": "processed_assertions",
+            }
+            if no_omissions
+            else {
+                "conflicting_unit_ids": sorted(
+                    (complete_units & omission_units) | disputed_units
+                ),
+                "status": (
+                    "passed"
+                    if all(u.complete for u in parsed.units)
+                    and not any(x.owner == "inventory" for x in parsed.issues)
+                    else "failed"
+                ),
+            }
+        ),
         "analysis_check": validate_analysis_decisions(
             parsed.analyses, assertions, supported, payload["report_structure"]
         ),
@@ -695,7 +810,33 @@ def _host_organization(statement, quote):
     )
 
 
-def canonical_assertions(samples, *, host_organization=False):
+def organization_options(envelope, survey, context):
+    """Match trusted template headings without interpreting scientific prose."""
+    engine = (envelope or {}).get("semantic_engine", {})
+    if engine.get("organization_contract") == BOUND_ORGANIZATION:
+        from litagent.review_structure import structure_sections, top_level_sections
+
+        language = context.get("report_language", "en")
+        headings = {row["section"] for row in top_level_sections(survey)}
+        statements = frozenset(
+            (
+                f"本文包含“{title}”一节"
+                if language == "zh-CN"
+                else f'The report includes the section "{title}"'
+            )
+            for _, title in structure_sections(
+                context.get("review_structure", "academic_v2"), language
+            )
+            if title in headings
+        )
+        return {"bound_organization": statements}
+    return {
+        "host_organization": native_unit_response_contract(envelope)
+        in (KEYED_GLOBAL_QUOTED_OMISSIONS, KEYED_GLOBAL_LOCATED_OMISSIONS)
+    }
+
+
+def canonical_assertions(samples, *, host_organization=False, bound_organization=()):
     """Preserve every generated statement and any completed NLI without a score."""
     assertions, groups = [], {}
     for sample in samples:
@@ -710,9 +851,13 @@ def canonical_assertions(samples, *, host_organization=False):
                 if verdict is None
                 else "supported" if verdict["verdict"] == 1 else "unsupported"
             )
-            organization = host_organization and _host_organization(
-                statement, sample["source_quote"]
-            )
+            text = statement.strip().rstrip("。.")
+            quote = sample["source_quote"]
+            organization = (
+                text in bound_organization
+                and not sample["evidence_ids"]
+                and text == quote.strip().rstrip("。.")
+            ) or (host_organization and _host_organization(statement, quote))
             if organization and verdict is not None:
                 status = "supported"
             assertions.append(
@@ -744,13 +889,22 @@ def canonical_assertions(samples, *, host_organization=False):
                     "alignment_status": "exact",
                     "citation_scope": "exact",
                     "status": status,
+                    **(
+                        {"assessment_origin": "host_uncited"}
+                        if sample.get("assessment_origin") == "host_uncited"
+                        else {}
+                    ),
                     "reason_code": (
                         "ragas_nli_incomplete"
                         if verdict is None
                         else (
                             "supported"
                             if status == "supported"
-                            else "insufficient_support"
+                            else (
+                                "uncited_claim"
+                                if sample.get("assessment_origin") == "host_uncited"
+                                else "insufficient_support"
+                            )
                         )
                     ),
                     "explanation": (
@@ -780,7 +934,10 @@ def _check_native_admission(
     state = progress.setdefault("capacity_admission", {})
     stage = phase
     try:
-        if adapter.batch_size != envelope["semantic_engine"]["batch_size"]:
+        if (
+            adapter.config.strict_batch_size
+            != envelope["semantic_engine"]["batch_size"]
+        ):
             raise ValueError("ragas_capacity_batch_mismatch")
         batches = planned_batches(
             phase,
@@ -789,6 +946,8 @@ def _check_native_admission(
             adapter.batch_size,
             phase_batches(envelope),
             keyed_assessment=adapter.keyed_assessment,
+            host_uncited=adapter.host_uncited,
+            inventory_context=adapter.inventory_context,
         )
         reservations = []
         for ids, messages, fmt, _ in batches:
@@ -801,14 +960,13 @@ def _check_native_admission(
         if reservations:
             budget.check_stage_requests(phase, reservations)
         state[phase] = {"batch_reservations": reservations, "context_limit": limit}
-        if phase == "assessment" and reservations:
+        if phase == "assessment" and (reservations or adapter.host_uncited):
             stage = "global"
-            # Pending verdicts have the longest status label. The schema depends
-            # on claim identities and sections, so either verdict only shrinks the wire.
+            # Pending verdicts have the longest label (or code -1 for inline
+            # input). NLI only changes these cells to shorter final verdicts.
             assertions, _ = canonical_assertions(
                 samples,
-                host_organization=native_unit_response_contract(envelope)
-                in (KEYED_GLOBAL_QUOTED_OMISSIONS, KEYED_GLOBAL_LOCATED_OMISSIONS),
+                **organization_options(envelope, survey, context),
             )
             _, messages, fmt = global_review_request(
                 survey,
@@ -818,13 +976,53 @@ def _check_native_admission(
                 assertions,
                 force_compact=True,
                 anchored=anchored_native_review(envelope),
-                unit_view=unit_native_review(envelope),
+                global_scope=((envelope or {}).get("semantic_engine") or {}).get(
+                    "global_scope"
+                ),
+                input_contract=native_global_input_contract(envelope),
                 unit_response_contract=native_unit_response_contract(envelope),
             )
             from litagent.safety.budget import strict_request_reservation
 
             amount = strict_request_reservation(messages, config.max_tokens, fmt)
             state["global"] = {"reservation": amount, "context_limit": limit}
+            if adapter.inline_scopes:
+                cap = envelope["request_caps"]["global"]
+                state["global"].update(
+                    request_cap=cap,
+                    output_tokens=config.max_tokens,
+                    status=(
+                        "preflight_rejected" if amount > min(cap, limit) else "admitted"
+                    ),
+                )
+                if amount > min(cap, limit):
+                    state["rejection"] = {
+                        "code": "global_request_preflight_exceeded",
+                        "stage": "global",
+                        "reservation": amount,
+                        "context_limit": limit,
+                        "request_cap": cap,
+                        "unexecuted_stages": ["assessment", "global"],
+                    }
+                    from litagent.eval import native_capacity
+
+                    if native_capacity.selected(envelope):
+                        from litagent import review_policy
+
+                        stage_name = review_policy.stage_name(envelope, "global")
+                        parent = (
+                            stage_name.split("/", 1)[0] if "/" in stage_name else None
+                        )
+                        progress["capacity"] = native_capacity.capacity_record(
+                            survey,
+                            assertions,
+                            envelope=envelope,
+                            plan_identity=budget.plan["identity"],
+                            parent=parent,
+                            amount=amount,
+                            limit=min(cap, limit),
+                        )
+                        raise native_capacity.NativeCapacityRequired()
             with request_scope("global", "ragas-preflight:global"):
                 check_request_budget(
                     llm, messages, config.max_tokens, limit, response_format=fmt
@@ -836,6 +1034,7 @@ def _check_native_admission(
             }
     except ValueError as exc:
         state["rejected_stage"] = stage
+        state["sample_count"] = len(samples)
         state["reason"] = str(exc)
         if getattr(exc, "diagnostics", None):
             state["diagnostics"] = exc.diagnostics
@@ -888,19 +1087,54 @@ async def execute_native(*, llm, survey, context, config):
     budget = getattr(llm, "_cost_budget", None)
     envelope = locked_writer_envelope(budget)
     engine = (envelope or {}).get("semantic_engine")
+    global_scope = (engine or {}).get("global_scope")
+    if global_scope:
+        progress["global_scope"] = global_scope
     keyed_assessment = (
         engine is None or engine.get("assessment_response_contract") == KEYED_ASSESSMENT
     )
-    adapter = NativeRagasAdapter(llm, config, keyed_assessment=keyed_assessment)
+    from litagent.inline_citations import selected
+
+    inline = selected(envelope)
+    from litagent.eval.ragas_adapter import INVENTORY_CONTEXT_CONTRACT
+
+    local_context = (engine or {}).get("inventory_context_contract") == (
+        INVENTORY_CONTEXT_CONTRACT
+    )
+    adapter = NativeRagasAdapter(
+        llm,
+        config,
+        keyed_assessment=keyed_assessment,
+        **({"inline_scopes": True} if inline else {}),
+        **(
+            {"host_uncited": True}
+            if native_host_uncited(envelope) and not inline
+            else {}
+        ),
+        **({"inventory_context": True} if local_context else {}),
+    )
     if keyed_assessment:
         progress["assessment_response_contract"] = KEYED_ASSESSMENT
     adapter.evaluation_identity = context.get("native_evaluation_identity")
     if adapter.evaluation_identity is not None:
         progress["evaluation_identity"] = adapter.evaluation_identity
     adapter.before_send = context.get("recovery_on_send")
+    from litagent.eval import native_capacity
+
+    native_timeout = None
+    if native_capacity.selected(envelope):
+        from litagent.eval.engine_policy import phase_batches
+
+        native_timeout = config.timeout_seconds * (2 * phase_batches(envelope) + 1)
+        if (
+            config.total_timeout_seconds is not None
+            and config.total_timeout_seconds < native_timeout
+        ):
+            raise ValueError("native_capacity_evaluation_deadline_insufficient")
     try:
         async with asyncio.timeout(
             config.total_timeout_seconds
+            or native_timeout
             or config.timeout_seconds
             * (
                 2
@@ -911,7 +1145,19 @@ async def execute_native(*, llm, survey, context, config):
                 + 1
             )
         ):
-            all_units, units, host, samples = source_samples(survey, context)
+            if inline and (context.get("writing_bindings") or {}).get(
+                "citation_contract"
+            ) != (envelope["run_limits"]["citation_contract"]):
+                raise ValueError("ragas_inline_citation_binding_missing")
+            all_units, units, host, samples = source_samples(
+                survey, context, inventory_context=local_context
+            )
+            from litagent.eval import native_capacity
+
+            if native_capacity.selected(envelope):
+                native_capacity.check_inventory_inputs(
+                    samples, envelope["native_inventory_bound"]
+                )
             details["coverage"] = {
                 "source_units": len(all_units),
                 "processed_units": len(host),
@@ -928,7 +1174,7 @@ async def execute_native(*, llm, survey, context, config):
                     checkpoint(progress)
 
             adapter.checkpoint = save
-            if budget_resource_profile(budget) == PROFILE and engine:
+            if engine and (budget_resource_profile(budget) == PROFILE or inline):
 
                 def admit(phase, material):
                     """Keep all legal inventory until the full consumer preflight."""
@@ -947,15 +1193,16 @@ async def execute_native(*, llm, survey, context, config):
 
                 adapter.admission = admit
             result = await adapter.score(samples)
-            organization_enabled = (engine or {}).get(
-                "global_unit_response_contract"
-            ) in (KEYED_GLOBAL_QUOTED_OMISSIONS, KEYED_GLOBAL_LOCATED_OMISSIONS)
             assertions, claim_groups = canonical_assertions(
-                result["samples"], host_organization=organization_enabled
+                result["samples"], **organization_options(envelope, survey, context)
             )
             scientific = [a for a in assertions if a["kind"] == "scientific"]
             details.update(
-                validation_semantics="official-statement-generation-and-nli;host-locators;independent-global-omission-check",
+                validation_semantics=(
+                    f"official-statement-generation-and-nli;host-locators;{global_scope}"
+                    if global_scope
+                    else "official-statement-generation-and-nli;host-locators;independent-global-omission-check"
+                ),
                 assertions=assertions,
                 ragas_score=result["score"],
                 ragas_version=result["ragas_version"],
@@ -972,26 +1219,40 @@ async def execute_native(*, llm, survey, context, config):
                     if scientific
                     else None
                 )
+            batches = [
+                {
+                    "index": index,
+                    "status": "completed",
+                    "claim_ids": [
+                        cid
+                        for sample_id in request["sample_ids"]
+                        for cid in claim_groups[sample_id]
+                    ],
+                }
+                for index, request in enumerate(
+                    r for r in result["requests"] if r["phase"] == "assessment"
+                )
+            ]
+            host_claims = [
+                a["claim_id"]
+                for a in assertions
+                if a.get("assessment_origin") == "host_uncited"
+            ]
+            if host_claims:
+                # This coverage row has no provider request or budget settlement.
+                batches.append(
+                    {
+                        "index": len(batches),
+                        "status": "completed",
+                        "origin": "host_uncited",
+                        "claim_ids": host_claims,
+                    }
+                )
             progress.update(
                 expected_assertions=len(assertions),
                 processed_assertions=len(assertions),
-                expected_batches=sum(
-                    r["phase"] == "assessment" for r in result["requests"]
-                ),
-                batches=[
-                    {
-                        "index": index,
-                        "status": "completed",
-                        "claim_ids": [
-                            cid
-                            for sample_id in request["sample_ids"]
-                            for cid in claim_groups[sample_id]
-                        ],
-                    }
-                    for index, request in enumerate(
-                        r for r in result["requests"] if r["phase"] == "assessment"
-                    )
-                ],
+                expected_batches=len(batches),
+                batches=batches,
             )
             details["coverage"].update(
                 processed_units=len(all_units), model_processed_units=len(units)
@@ -1016,11 +1277,20 @@ async def execute_native(*, llm, survey, context, config):
     except Exception as exc:
         error = (
             str(exc)
-            if str(exc).startswith(("ragas_", "evaluation_", "planned_", "budget_"))
+            if str(exc).startswith(
+                ("ragas_", "evaluation_", "planned_", "budget_", "native_capacity_")
+            )
             else "ragas_execution_error:" + type(exc).__name__
         )
         details.update(execution_error=error, unverified_reason=error)
-        details["assertions"], _ = canonical_assertions(adapter.samples)
+        details["assertions"], _ = canonical_assertions(
+            adapter.samples,
+            **(
+                organization_options(envelope, survey, context)
+                if native_capacity.selected(envelope)
+                else {}
+            ),
+        )
         details["partial_samples"] = [
             {
                 key: copy.deepcopy(sample.get(key))

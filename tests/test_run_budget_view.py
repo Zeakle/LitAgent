@@ -367,7 +367,7 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
  const mocks={createApiClient:()=>api,openEventStream(){throw Error('Unexpected event stream');},createExecutionWorkspace:()=>({render(){},bind(){}}),
   bindAuditControls(){},bindSurveyVerification:()=>({render(){},options:()=>({})}),bindFormatControls(){},
   createBenchmarkController:()=>({load(){},select(){},selectObservation(){}}),renderBenchmarkDetail(){},renderBenchmarkList(){},renderBenchmarkObservation(){},
-  evidenceMap:()=>new Map(),renderEvidenceList(){},renderExecutionInspector(){},renderHistory(){},renderReview(){},
+  evidenceMap:()=>new Map(),renderEvidenceList(){}, renderEvidenceInspector(){}, buildEvidenceLedger:()=>[], filterEvidence:x=>x, createLiveViewRefresh:()=>({schedule(){},cancel(){}}),renderExecutionInspector(){},renderHistory(){},renderReview(){},
   renderOutline(){},navigateReportHeading(){},renderReportDocument:()=>({headings:[]}),renderSearchRecords(){}};
  const real=new Set(['app.js','adapters.js','state.js','quality-view.js','i18n.js']),cache=new Map();
  async function load(filename){if(cache.has(filename))return cache.get(filename);

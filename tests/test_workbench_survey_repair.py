@@ -213,6 +213,9 @@ async def test_workbench_survey_repairs_and_stops_after_full_reassessment(
     config = (
         api._load_runtime_config() if expanded else load_config("config/default.yaml")
     )
+    if repetition:
+        # This regression replays a finding the historical global reviewer produced.
+        config.eval.native_global_scope = None
     max_requests, max_repairs = (226, 11) if expanded else (200, 2)
     config.observability.enabled = False
     config.llm.base_url = "https://offline.invalid/api/v3"
@@ -240,8 +243,6 @@ async def test_workbench_survey_repairs_and_stops_after_full_reassessment(
         mixed_summary=expanded and not repetition,
         repetition=repetition,
     )
-    if expanded and not repetition:
-        gateway.recovery_case = "combined"
     real_init = httpx.AsyncClient.__init__
 
     def offline_client(self, *args, **kwargs):
@@ -302,7 +303,9 @@ async def test_workbench_survey_repairs_and_stops_after_full_reassessment(
         assert response.status_code == 202, response.text
         run_id = response.json()["task_id"]
         try:
-            await asyncio.wait_for(api.app.state.tasks[run_id].task, timeout=240)
+            # Budget construction and complete reassessments are CPU-bound in
+            # this test, including when the default suite runs in parallel.
+            await asyncio.wait_for(api.app.state.tasks[run_id].task, timeout=900)
             state = (await client.get(f"/survey/{run_id}")).json()
             terminal = await client.get(f"/survey/{run_id}/report")
         finally:
@@ -320,16 +323,15 @@ async def test_workbench_survey_repairs_and_stops_after_full_reassessment(
     assert initial["unsupported_count"] == (2 if expanded and not repetition else 1)
     assert initial["coverage"]["complete"]
     assert initial["stages"]["global_check"] == "completed"
-    if expanded:
+    if repetition:
         assert (
             initial["stages"]["global_unit_response_contract"]
             == KEYED_GLOBAL_QUOTED_OMISSIONS
         )
-    if expanded and not repetition:
-        (omission,) = initial["global_issues"]
-        assert omission["code"] == "missing_assertion"
-        assert omission["source_unit_id"].startswith("unit:")
-        assert omission["claim_ids"] == []
+    else:
+        assert initial["stages"]["global_scope"] == "report-review-no-omissions-v1"
+        assert initial["global_issues"] == []
+        assert all(row["answered"] for row in initial["core_coverage"])
     *rejected, passed = history["attempts"]
     assert len(rejected) == failing_candidates + repetition
     if repetition:
@@ -346,8 +348,8 @@ async def test_workbench_survey_repairs_and_stops_after_full_reassessment(
         assert failed["reason_code"] == "writer_candidate_failed"
         assert not failed["committed"] and "FLOPs by 45%" in failed["candidate"]
     assert passed["committed"] and passed["candidate"] == report["survey"]
-    if expanded and not repetition:
-        assert passed["recovery_decision"]["action"] == "combined"
+    if not repetition:
+        assert passed["recovery_decision"]["action"] == "prose"
     assert "FLOPs by" not in report["survey"]
     expected_attempts = failing_candidates + 1 + repetition
     expected_assessments = expected_attempts + 1

@@ -20,6 +20,7 @@ from litagent.benchmark.survey_models import (
     SurveyJudgeMetrics,
 )
 from litagent.body_quality import APPLICABILITY_CONTRACT, APPLICABILITY_INSTRUCTION
+from litagent.eval.results import required_metrics
 from litagent.evidence import extract_evidence_refs_ordered
 from litagent.quality import digest, strict_acceptance, validate_fact_snapshot
 from litagent.report_render import build_report_source_units
@@ -106,6 +107,18 @@ def _funded_partitioned_native_capacity(report: dict, owner, run_id: str) -> dic
 
         _settled_evaluation(stages, entries, identity)
         requests = stages["requests"]
+        from litagent.eval import native_capacity
+
+        capacity_round = native_capacity.selected(envelope) and any(
+            entries[row["request_id"]]["stage"] == "capacity/inventory"
+            for row in requests
+        )
+        if capacity_round:
+            if identity != revision:
+                raise ValueError("native capacity round identity mismatch")
+            partition = native_capacity.candidate_receipt(report["metadata"], sha)[
+                "budget_partition"
+            ]
         expected = {row["request_id"]: row["phase"] for row in requests}
         expected[stages["global_request_id"]] = "global"
         if (
@@ -115,9 +128,13 @@ def _funded_partitioned_native_capacity(report: dict, owner, run_id: str) -> dic
             or any(
                 entries[key]["stage"]
                 != (
-                    review_policy.stage_name(envelope, phase, partition)
-                    if partition
-                    else phase
+                    "capacity/inventory"
+                    if capacity_round and phase == "inventory"
+                    else (
+                        review_policy.stage_name(envelope, phase, partition)
+                        if partition
+                        else phase
+                    )
                 )
                 for key, phase in expected.items()
             )
@@ -302,10 +319,18 @@ def freeze_automatic_inputs(
     metadata = report.get("metadata", {})
     details = report.get("evaluation", {}).get("faithfulness", {}).get("details", {})
     evaluation = report.get("evaluation", {})
+    from litagent.safety.planned_budget import planned_backend
+
+    owner = planned_backend(budget)
+    engine = (
+        (owner.plan.get("envelope", {}).get("semantic_engine") or {}) if owner else {}
+    )
+    if details.get("stages", {}).get("global_scope") != engine.get("global_scope"):
+        raise ValueError("automatic_global_scope_mismatch")
     if any(
         evaluation.get(metric, {}).get("passed") is not True
         or evaluation.get(metric, {}).get("skipped")
-        for metric in ("citation_accuracy", "faithfulness", "internal_consistency")
+        for metric in required_metrics(details)
     ):
         raise ValueError("automatic_evaluation_incomplete")
     if (
@@ -460,6 +485,11 @@ def freeze_automatic_inputs(
         "ledger": dict(ledger),
         "artifact": {"run_id": run_id, "quality_policy": policy},
         "frozen_inventory": {
+            **(
+                {"global_scope": engine["global_scope"]}
+                if engine.get("global_scope")
+                else {}
+            ),
             **(
                 {"capacity_authorization": capacity_receipt} if capacity_receipt else {}
             ),
@@ -878,10 +908,12 @@ def automatic_acceptance(
     if strict_acceptance(details)["status"] != "passed" or any(
         evaluation.get(metric, {}).get("passed") is not True
         or evaluation.get(metric, {}).get("skipped")
-        for metric in ("citation_accuracy", "faithfulness", "internal_consistency")
+        for metric in required_metrics(details)
     ):
         failures.append("evaluation_not_passed")
     frozen = snapshot.get("frozen_inventory", {})
+    if details.get("stages", {}).get("global_scope") != frozen.get("global_scope"):
+        failures.append("automatic_global_scope_mismatch")
     inventory = frozen.get("inventory", {})
     claims = inventory.get("claims", [])
     if optional and not claims:

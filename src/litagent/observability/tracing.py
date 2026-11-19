@@ -349,6 +349,7 @@ class LangFuseTracer:
                                 "request_stage",
                                 "request_timeout_seconds",
                                 "timeout_scope",
+                                "transport_error_type",
                             )
                             if key in data
                         },

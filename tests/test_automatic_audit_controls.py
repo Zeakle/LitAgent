@@ -29,7 +29,7 @@ const fs = require('node:fs'); const vm = require('node:vm'); const path = requi
  });
  let state={locale:'zh-CN',runs:[],view:null,draftReviewState:{},activeSection:'report'};
  const mocks={createWorkbenchStore:()=>({get:()=>state,subscribe(){},update:patch=>{state={...state,...patch};}}),createExecutionWorkspace:()=>({render(){},bind(){}}),
-   evidenceMap:()=>new Map(),renderEvidenceList(){},renderExecutionInspector(){},renderHistory(){},renderQuality(){},locateReportDiagnostic:()=>false,renderReview(){},renderOutline(){},renderSearchRecords(){},renderReportDocument:()=>({headings:[]}),navigateReportHeading:()=>false,
+   evidenceMap:()=>new Map(),renderEvidenceList(){}, renderEvidenceInspector(){}, buildEvidenceLedger:()=>[], filterEvidence:x=>x, createLiveViewRefresh:()=>({schedule(){},cancel(){}}),renderExecutionInspector(){},renderHistory(){},renderQuality(){},locateReportDiagnostic:()=>false,renderReview(){},renderOutline(){},renderSearchRecords(){},renderReportDocument:()=>({headings:[]}),navigateReportHeading:()=>false,
    renderBenchmarkDetail(){},renderBenchmarkList(){},renderBenchmarkObservation(){},adaptArchiveView(){},adaptInteractiveView(){},chooseDefaultSection:()=> 'report',normalizeRunList:()=>[],bindFormatControls(){} };
  const real=new Set(['app.js','audit-controls.js','api-client.js','i18n.js','benchmark-controller.js']); const cache=new Map();
  async function load(filename) {

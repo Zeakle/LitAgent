@@ -735,6 +735,10 @@ def profile_description(profile, summary, *, writing_plan=None):
             for role in ("extraction", "generation", "evaluation")
         },
     }
+    if "evaluation_inventory" in routing:
+        result["configured_models"]["evaluation_inventory"] = routing[
+            "evaluation_inventory"
+        ]
     if profile in PLANNED_PROFILES:
         from litagent.writing_v2 import EOF_CONTAINER_POLICY
 

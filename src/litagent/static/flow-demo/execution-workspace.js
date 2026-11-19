@@ -1,12 +1,12 @@
-import { buildExecutionPresentation } from "./execution-model.js";
+import { buildExecutionPresentation } from "./execution-model.js?v=15.10.6.431";
+import { buildBusinessFlow } from "./execution-flow.js?v=15.10.6.431";
 import { renderStageOverview } from "./execution-overview.js";
 import { buildCallTimeline, renderCallTimeline } from "./execution-timeline.js";
 import {
-  buildExecutionGraph,
   fitGraphToViewport,
   layoutExecutionGraph,
   renderExecutionGraph,
-} from "./execution-view.js";
+} from "./execution-view.js?v=15.10.6.431";
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -84,22 +84,15 @@ export function createExecutionWorkspace({ store, t, onInspect }) {
     const ui = store.getExecutionUi(runId);
     const presentation = buildExecutionPresentation(view || {}, { locale: store.get().locale });
     const source = view?.graph || { tasks: {}, dependencies: {}, nodes: {} };
-    const definitions = Object.fromEntries(presentation.tasks.map((task) => [task.id, {
-      ...task.task,
-      labelKey: task.labelKey,
-      summaryFacts: task.summaryFacts,
-      durationMs: task.durationMs,
-      error: task.error,
-    }]));
-    const dependencies = Object.fromEntries(presentation.tasks.map((task) => [task.id, []]));
-    for (const edge of presentation.dependencies) dependencies[edge.to].push(edge.from);
-    const graph = buildExecutionGraph(definitions, dependencies, source.nodes);
-    currentLayout = layoutExecutionGraph(graph, { direction: "LR" });
+    const graph = buildBusinessFlow(presentation, source.nodes);
+    graph.signature = `TB:${graph.signature}`;
+    currentLayout = layoutExecutionGraph(graph, { direction: "TB" });
 
     const diagnostic = $("#graph-diagnostic");
     const messages = presentation.diagnostics.map((item) => item.code === "missing_dependency"
       ? `Missing dependency: ${item.taskId} ← ${item.dependencyId}`
       : item.code);
+    messages.push(t("flowLegend"));
     diagnostic.hidden = !messages.length;
     diagnostic.textContent = messages.join(" ");
     for (const button of document.querySelectorAll("[data-execution-mode]")) {
@@ -109,6 +102,8 @@ export function createExecutionWorkspace({ store, t, onInspect }) {
     $("#execution-graph").hidden = ui.mode !== "dag";
     $("#execution-timeline").hidden = ui.mode !== "timeline";
     $("#graph-tools").hidden = ui.mode !== "dag";
+    $("#graph-search-control").hidden = ui.mode !== "dag";
+    $("#graph-search").value = ui.graphQuery || "";
     $("#timeline-filter-control").hidden = ui.mode !== "timeline";
     $("#timeline-filter").value = ui.timelineFilter;
     $("#graph-scale").textContent = `${Math.round(ui.scale * 100)}%`;
@@ -132,12 +127,16 @@ export function createExecutionWorkspace({ store, t, onInspect }) {
       selectedId: ui.selectedNodeId,
       label: (key, fallback) => key ? t(key) : fallback,
       summary: (node) => {
+        if (node.role) return node.execution ? `${t("flowRound")} ${node.round}` : t("flowStageSummaryOnly");
         const fact = node.summaryFacts?.[0];
         return fact
           ? `${t(fact.labelKey)} ${Number(fact.value).toLocaleString()}`
           : t("outputNotRecorded");
       },
       status,
+      edgeLabel: edge => edge.labelKey ? `${t(edge.labelKey)}${edge.rounds ? ` · ${edge.rounds} ${t("flowRounds")}` : ""}` : "",
+      matches: node => !ui.graphQuery || [node.id, node.name, t(node.labelKey), node.status]
+        .some(value => String(value || "").toLowerCase().includes(ui.graphQuery.toLowerCase())),
     });
     renderCallTimeline(
       $("#timeline"),
@@ -159,6 +158,7 @@ export function createExecutionWorkspace({ store, t, onInspect }) {
   }
 
   function bind() {
+    $("#graph-search").addEventListener("input", event => update({ graphQuery: event.target.value }));
     document.querySelectorAll("[data-execution-mode]").forEach((button) => {
       button.addEventListener("click", () => update({ mode: button.dataset.executionMode }));
     });

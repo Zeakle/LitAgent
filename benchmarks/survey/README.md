@@ -33,7 +33,7 @@ litagent benchmark survey --stage pilot \
   --case-id few-shot-metric --profile-id external-fulltext --dry-run
 ```
 
-To browse the packaged records, start the [offline workbench](../../docs/presentation-guide.md)
+To browse the packaged records, start the [offline workbench](../../README.en.md#offline-demonstration-without-api-keys)
 and open Benchmark.
 
 ## Historical Judge runs

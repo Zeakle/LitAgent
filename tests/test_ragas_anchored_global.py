@@ -19,11 +19,13 @@ from litagent.eval.engine_policy import (
     ARCHIVED_LIST_ENGINES,
     ARCHIVED_LONG_ANCHOR_ENGINES,
     ARCHIVED_PREFIXED_ENGINE_IDENTITY,
+    BOUND_ORGANIZATION,
     KEYED_ASSESSMENT,
     KEYED_GLOBAL_ANCHORS,
     KEYED_GLOBAL_QUOTED_OMISSIONS,
     KEYED_GLOBAL_UNITS,
     configured_engine,
+    engine_descriptor,
     validate_engine,
 )
 from litagent.eval.ragas_global_wire import (
@@ -400,20 +402,31 @@ def test_archived_engine_is_readable_without_admitting_new_requests():
     assert configured["global_findings_contract"] == ANCHORED_GLOBAL_REVIEW
     assert configured["global_unit_response_contract"] == KEYED_GLOBAL_QUOTED_OMISSIONS
     assert configured["assessment_response_contract"] == KEYED_ASSESSMENT
+    assert configured["organization_contract"] == BOUND_ORGANIZATION
     assert validate_engine(configured) == configured
-    echo_descriptor = {
-        k: v for k, v in configured.items() if k != "assessment_response_contract"
-    }
-    echo_descriptor["global_unit_response_contract"] = KEYED_GLOBAL_UNITS
+    echo_descriptor = engine_descriptor(
+        configured["batch_size"],
+        global_findings_contract=ANCHORED_GLOBAL_REVIEW,
+        global_unit_response_contract=KEYED_GLOBAL_UNITS,
+    )
     echo_descriptor["identity"] = ARCHIVED_ECHO_ENGINES[
         ANCHORED_GLOBAL_REVIEW, None, KEYED_GLOBAL_UNITS
     ]
     assert validate_engine(echo_descriptor, archived=True) == echo_descriptor
     with pytest.raises(ValueError, match="ragas_engine_identity_invalid"):
         validate_engine(echo_descriptor)
+    with pytest.raises(ValueError, match="ragas_organization_contract_invalid"):
+        validate_engine(
+            {**echo_descriptor, "organization_contract": BOUND_ORGANIZATION},
+            archived=True,
+        )
     v1 = {
-        **configured,
-        "global_unit_response_contract": KEYED_GLOBAL_UNITS,
+        **engine_descriptor(
+            configured["batch_size"],
+            global_findings_contract=ANCHORED_GLOBAL_REVIEW,
+            global_unit_response_contract=KEYED_GLOBAL_UNITS,
+            assessment_response_contract=KEYED_ASSESSMENT,
+        ),
         "identity": ARCHIVED_LONG_ANCHOR_ENGINES[
             ANCHORED_GLOBAL_REVIEW, None, KEYED_GLOBAL_UNITS
         ][1],
@@ -450,6 +463,9 @@ def test_archived_engine_is_readable_without_admitting_new_requests():
 
 def test_unit_wire_is_explicit_and_preserves_old_read_only_identity():
     cfg = load_config("config/agent-format-repair.yaml")
+    cfg.eval.native_global_scope = (
+        None  # Compare the historical full-review identities.
+    )
     assert "native_global_input" not in cfg.eval.model_dump()
     cfg.eval = cfg.eval.model_copy(update={"native_global_unit_response": None})
     old = configured_engine(cfg)
