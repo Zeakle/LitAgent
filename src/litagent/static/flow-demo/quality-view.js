@@ -270,10 +270,10 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
   const planningRejected = options.execution?.reason_codes?.includes("strict_usage_unknown") &&
     options.providerFailures?.some(failure => failure.task_id === "query_decomposition");
   let missingReportNote = en ? "No report was generated. Evaluation did not run." : "报告未生成。Evaluation 未运行。";
-  if (currentFailure) {
-    missingReportNote = currentFailure.code === "writer_flat_schema_invalid"
-      ? (en ? "Writing validation failed. Evaluation did not run." : "写作校验失败。Evaluation 未运行。")
-      : (en ? "The writing stage ended without a report. Evaluation did not run." : "写作阶段未生成报告。Evaluation 未运行。");
+  if (currentFailure?.code === "writer_flat_schema_invalid" || options.pipelineVerification?.writing_diagnostics?.length) {
+    missingReportNote = en ? "Writing validation failed; Evaluation was not run." : "写作校验失败；Evaluation 未运行。";
+  } else if (currentFailure) {
+    missingReportNote = en ? "The writing stage ended without a report. Evaluation did not run." : "写作阶段未生成报告。Evaluation 未运行。";
   } else if (planningRejected) {
     missingReportNote = en ? "The provider rejected query decomposition. Evaluation did not run." : "查询拆分请求被供应商拒绝。Evaluation 未运行。";
   }
