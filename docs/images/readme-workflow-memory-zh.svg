@@ -1,0 +1,287 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1098 918" width="1098" height="918" role="img" aria-labelledby="title description" xml:lang="zh-CN">
+  <title id="title">LitAgent 全流程与四层记忆设计</title>
+  <desc id="description">左侧为研究问题到交付的流程。节点角标区分生成式模型调用、条件调用与代码步骤。右侧四层记忆用彩色虚线接到左侧节点。箭头指向节点表示读取，指向记忆表示写入。</desc>
+
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+        <path d="M1 1 L9 5 L1 9 Z" fill="#49709c"/>
+      </marker>
+      <marker id="return-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+        <path d="M1 1 L9 5 L1 9 Z" fill="#13756e"/>
+      </marker>
+      <marker id="muted-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M1 1 L9 5 L1 9 Z" fill="#738399"/>
+      </marker>
+      <marker id="episodic-tip" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1 L9 5 L1 9 Z" fill="#6c4f96"/></marker>
+      <marker id="procedural-tip" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1 L9 5 L1 9 Z" fill="#8a5b20"/></marker>
+      <marker id="semantic-tip" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1 L9 5 L1 9 Z" fill="#178074"/></marker>
+      <marker id="working-tip" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1 L9 5 L1 9 Z" fill="#3e6aa8"/></marker>
+      <style>
+        text { font-family: Arial, "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", sans-serif; fill: #182d45; }
+        .panel { fill: #f5f8fd; stroke: #dbe5f1; }
+        .section { font-size: 22px; font-weight: 700; }
+        .legend { font-size: 13px; fill: #4c6078; }
+        .node > rect { fill: #fff; stroke: #9db4d0; stroke-width: 1.25px; }
+        .node.loop-node > rect { fill: #edf4ff; stroke: #567fae; }
+        .node.outcome > rect { fill: #eaf7ef; stroke: #63a181; }
+        .node.draft > rect { fill: #f4f6fa; stroke: #9baabd; }
+        .node-title { font-size: 17px; font-weight: 700; text-anchor: middle; }
+        .node-subtitle { font-size: 14px; fill: #4c6078; text-anchor: middle; }
+        .flow { fill: none; stroke: #49709c; stroke-width: 1.55px; marker-end: url(#arrow); }
+        .flow.loop, .flow.return { stroke-width: 1.9px; }
+        .flow.return { stroke: #13756e; marker-end: url(#return-arrow); }
+        .flow.muted { stroke: #738399; marker-end: url(#muted-arrow); }
+        .arc-forward, .arc-return, .edge-label { font-size: 13px; }
+        .arc-forward { fill: #315d91; }
+        .arc-return { fill: #13756e; }
+        .edge-label { fill: #465b74; paint-order: stroke; stroke: #f5f8fd; stroke-width: 4px; stroke-linejoin: round; }
+        .memory-card { fill: #fff; stroke: #dbe5f1; stroke-width: 1.25px; }
+        .memory-title { font-size: 18px; font-weight: 700; }
+        .backend { font-size: 14px; fill: #4c6078; }
+        .memory-row { font-size: 13px; }
+        .read-write { font-size: 12px; font-weight: 700; }
+        .read { fill: #315d91; }
+        .write { fill: #13756e; }
+      .memory-link { fill: none; stroke-width: 2.35px; stroke-dasharray: 6 4; stroke-linecap: round; stroke-linejoin: round; }
+      .memory-rail { opacity: .87; }
+      .badge-label { font-size: 14px; font-weight: 700; text-anchor: middle; }
+      .badge-llm rect { fill: #5b338c; stroke: #5b338c; }
+      .badge-llm text { fill: #fff; }
+      .badge-conditional rect { fill: #f1e5fa; stroke: #9064b7; }
+      .badge-conditional text { fill: #5e3a88; }
+      .badge-code rect { fill: #e2ecf9; stroke: #9bb4cb; }
+      .badge-code text { fill: #36526e; }
+      </style>
+    </defs>
+  <rect width="1098" height="918" rx="20" fill="#fff"/>
+  <rect class="panel" x="18" y="16" width="592" height="886" rx="16"/>
+  <text class="section" x="38" y="47">系统流程</text>
+  <text class="section" x="738" y="47">四层记忆设计</text>
+  <text class="legend" x="738" y="68" xml:space="preserve">← 读入流程     → 写入记忆</text>
+  <text class="legend" x="38" y="67" xml:space="preserve">LLM 生成式调用　 LLM* 按任务或配置　 代码 无生成式 LLM</text>
+  <g id="workflow-arrows" transform="translate(608 0) scale(-1 1)">
+    <path data-from="QUERY" data-to="PLAN" class="flow" d="M304 130 V158"/>
+    <path data-from="PLAN" data-to="SEARCH" class="flow" d="M296 210 C296 226 154 214 154 238"/>
+    <path data-from="PLAN" data-to="RAG" class="flow" d="M312 210 C312 226 454 214 454 238"/>
+    <path data-from="SEARCH" data-to="FILTER" class="flow" d="M154 290 C154 314 294 298 294 318"/>
+    <path data-from="RAG" data-to="FILTER" class="flow" d="M454 290 C454 314 314 298 314 318"/>
+    <path data-from="FILTER" data-to="EXTRACT" class="flow" d="M296 370 C296 387 154 374 154 398"/>
+    <path data-from="FILTER" data-to="GRAPH" class="flow" d="M312 370 C312 387 454 374 454 398"/>
+    <path data-from="EXTRACT" data-to="LEDGER" class="flow" d="M154 450 V478"/>
+    <path data-from="LEDGER" data-to="SYNTHESIS" class="flow" d="M154 530 V558"/>
+    <path data-from="GRAPH" data-to="SYNTHESIS" class="flow" d="M454 450 C454 512 230 514 209 558"/>
+    <path data-from="SYNTHESIS" data-to="REVIEW" class="flow loop" d="M246 575 C274 548 334 548 362 575"/>
+    <path data-from="REVIEW" data-to="SYNTHESIS" class="flow return" d="M362 594 C334 621 274 621 246 594"/>
+    <path data-from="REVIEW" data-to="EVALUATION" class="flow" d="M454 610 V638"/>
+    <path data-from="EVALUATION" data-to="REVISE" class="flow loop" d="M362 655 C334 628 274 628 246 655"/>
+    <path data-from="REVISE" data-to="EVALUATION" class="flow return" d="M246 674 C274 701 334 701 362 674"/>
+    <path data-from="EVALUATION" data-to="GATE" class="flow" d="M454 690 V718"/>
+    <path data-from="EVALUATION" data-to="HOLD" class="flow muted" d="M396 690 C318 715 143 722 122 798"/>
+    <path data-from="GATE" data-to="READY" class="flow" d="M454 770 V798"/>
+    <path data-from="GATE" data-to="HOLD" class="flow muted" d="M342 752 C275 754 243 789 198 798"/>
+  </g>
+  <g id="workflow-nodes">
+    <g id="QUERY" class="node">
+      <rect x="184" y="78" width="240" height="52" rx="9"/>
+      <text class="node-title" x="304" y="101">Query</text>
+      <text class="node-subtitle" x="304" y="119">研究问题</text>
+    </g>
+    <g id="PLAN" class="node">
+      <rect x="186" y="158" width="236" height="52" rx="9"/>
+      <text class="node-title" x="304" y="181">Planner</text>
+      <text class="node-subtitle" x="304" y="199">分解为子查询</text>
+      <g class="badge-conditional" data-stage-kind="conditional">
+        <rect x="362" y="146" width="52" height="20" rx="7"/>
+        <text class="badge-label" x="388" y="161">LLM*</text>
+      </g>
+    </g>
+    <g id="SEARCH" class="node">
+      <rect x="344" y="238" width="220" height="52" rx="9"/>
+      <text class="node-title" x="454" y="261">外部论文搜索</text>
+      <text class="node-subtitle" x="454" y="279">分配搜索源优先级</text>
+      <g class="badge-code" data-stage-kind="code">
+        <rect x="508" y="226" width="48" height="20" rx="7"/>
+        <text class="badge-label" x="532" y="241">代码</text>
+      </g>
+    </g>
+    <g id="RAG" class="node">
+      <rect x="44" y="238" width="220" height="52" rx="9"/>
+      <text class="node-title" x="154" y="261">本地 RAG</text>
+      <text class="node-subtitle" x="154" y="279">向量与关键词召回</text>
+      <g class="badge-code" data-stage-kind="code">
+        <rect x="208" y="226" width="48" height="20" rx="7"/>
+        <text class="badge-label" x="232" y="241">代码</text>
+      </g>
+    </g>
+    <g id="FILTER" class="node">
+      <rect x="177" y="318" width="254" height="52" rx="9"/>
+      <text class="node-title" x="304" y="341">去重与筛选</text>
+      <text class="node-subtitle" x="304" y="359">按相关性筛选论文</text>
+      <g class="badge-code" data-stage-kind="code">
+        <rect x="375" y="306" width="48" height="20" rx="7"/>
+        <text class="badge-label" x="399" y="321">代码</text>
+      </g>
+    </g>
+    <g id="EXTRACT" class="node">
+      <rect x="344" y="398" width="220" height="52" rx="9"/>
+      <text class="node-title" x="454" y="421">Extract</text>
+      <text class="node-subtitle" x="454" y="439">证据抽取与核对</text>
+      <g class="badge-llm" data-stage-kind="llm">
+        <rect x="508" y="386" width="48" height="20" rx="7"/>
+        <text class="badge-label" x="532" y="401">LLM</text>
+      </g>
+    </g>
+    <g id="GRAPH" class="node">
+      <rect x="44" y="398" width="220" height="52" rx="9"/>
+      <text class="node-title" x="154" y="421">Graph Analysis</text>
+      <text class="node-subtitle" x="154" y="439">引用网络分析</text>
+      <g class="badge-code" data-stage-kind="code">
+        <rect x="208" y="386" width="48" height="20" rx="7"/>
+        <text class="badge-label" x="232" y="401">代码</text>
+      </g>
+    </g>
+    <g id="LEDGER" class="node">
+      <rect x="344" y="478" width="220" height="52" rx="9"/>
+      <text class="node-title" x="454" y="501">证据账本</text>
+      <text class="node-subtitle" x="454" y="519">筛选并冻结本轮证据</text>
+      <g class="badge-code" data-stage-kind="code">
+        <rect x="508" y="466" width="48" height="20" rx="7"/>
+        <text class="badge-label" x="532" y="481">代码</text>
+      </g>
+    </g>
+    <g id="SYNTHESIS" class="node loop-node">
+      <rect x="362" y="558" width="184" height="52" rx="9"/>
+      <text class="node-title" x="454" y="581">Synthesis</text>
+      <text class="node-subtitle" x="454" y="599">写作与编辑修订</text>
+      <g class="badge-llm" data-stage-kind="llm">
+        <rect x="490" y="546" width="48" height="20" rx="7"/>
+        <text class="badge-label" x="514" y="561">LLM</text>
+      </g>
+    </g>
+    <g id="REVIEW" class="node loop-node">
+      <rect x="62" y="558" width="184" height="52" rx="9"/>
+      <text class="node-title" x="154" y="581">Review</text>
+      <text class="node-subtitle" x="154" y="599">编辑审阅</text>
+      <g class="badge-llm" data-stage-kind="llm">
+        <rect x="190" y="546" width="48" height="20" rx="7"/>
+        <text class="badge-label" x="214" y="561">LLM</text>
+      </g>
+    </g>
+    <g id="REVISE" class="node loop-node">
+      <rect x="362" y="638" width="184" height="52" rx="9"/>
+      <text class="node-title" x="454" y="661">Revise</text>
+      <text class="node-subtitle" x="454" y="679">定向修复</text>
+      <g class="badge-llm" data-stage-kind="llm">
+        <rect x="490" y="626" width="48" height="20" rx="7"/>
+        <text class="badge-label" x="514" y="641">LLM</text>
+      </g>
+    </g>
+    <g id="EVALUATION" class="node loop-node">
+      <rect x="62" y="638" width="184" height="52" rx="9"/>
+      <text class="node-title" x="154" y="661">Evaluation</text>
+      <text class="node-subtitle" x="154" y="679">核验当前报告版本</text>
+      <g class="badge-conditional" data-stage-kind="conditional">
+        <rect x="186" y="626" width="52" height="20" rx="7"/>
+        <text class="badge-label" x="212" y="641">LLM*</text>
+      </g>
+    </g>
+    <g id="GATE" class="node">
+      <rect x="42" y="718" width="224" height="52" rx="9"/>
+      <text class="node-title" x="154" y="741">交付检查</text>
+      <text class="node-subtitle" x="154" y="759">可选人工审核</text>
+      <g class="badge-code" data-stage-kind="code">
+        <rect x="210" y="706" width="48" height="20" rx="7"/>
+        <text class="badge-label" x="234" y="721">代码</text>
+      </g>
+    </g>
+    <g id="HOLD" class="node draft">
+      <rect x="342" y="798" width="224" height="52" rx="9"/>
+      <text class="node-title" x="454" y="830">保留草稿与诊断</text>
+    </g>
+    <g id="READY" class="node outcome">
+      <rect x="42" y="798" width="224" height="52" rx="9"/>
+      <text class="node-title" x="154" y="830">可交付报告</text>
+    </g>
+  </g>
+  <g id="workflow-labels">
+    <text class="arc-forward" x="304" y="580" text-anchor="middle">送审当前草稿</text>
+    <text class="arc-return" x="304" y="599" text-anchor="middle">限额内回修</text>
+    <text class="arc-forward" x="304" y="660" text-anchor="middle">限额内修复</text>
+    <text class="arc-return" x="304" y="679" text-anchor="middle">候选完整复评</text>
+    <text class="edge-label" x="138" y="709" text-anchor="end">质量通过</text>
+    <text class="edge-label" x="138" y="789" text-anchor="end">可交付</text>
+    <text class="edge-label" x="396" y="724" text-anchor="middle">核验失败且无法继续</text>
+    <text class="edge-label" x="335" y="758" text-anchor="middle">交付条件未满足</text>
+  </g>
+  <g id="memory-layers">
+    <g id="episodic-memory">
+      <rect class="memory-card" x="728" y="84" width="352" height="174" rx="13"/>
+      <rect x="739" y="100" width="4" height="35" rx="2" fill="#6c4f96"/>
+      <text class="memory-title" x="754" y="112">情景记忆</text>
+      <text class="backend" x="754" y="131">Qdrant</text>
+      <path d="M748 143 H1059" stroke="#e0e8f2"/>
+      <text class="read-write read" x="749" y="165">← 读</text>
+      <text class="memory-row" x="806" y="165">Planner 分解前召回相似调研</text>
+      <text class="read-write write" x="749" y="188">→ 写</text>
+      <text class="memory-row" x="806" y="188">交付后保存调研摘要</text>
+    </g>
+    <g id="procedural-memory">
+      <rect class="memory-card" x="728" y="278" width="352" height="174" rx="13"/>
+      <rect x="739" y="294" width="4" height="35" rx="2" fill="#7c541d"/>
+      <text class="memory-title" x="754" y="306">程序性记忆</text>
+      <text class="backend" x="754" y="325">PostgreSQL</text>
+      <path d="M748 337 H1059" stroke="#e0e8f2"/>
+      <text class="read-write read" x="749" y="359">← 读</text>
+      <text class="memory-row" x="806" y="359">创建外部搜索任务前排列搜索源</text>
+      <text class="read-write write" x="749" y="382">→ 写</text>
+      <text class="memory-row" x="806" y="382">外部搜索结束后更新来源统计</text>
+    </g>
+    <g id="semantic-memory">
+      <rect class="memory-card" x="728" y="472" width="352" height="174" rx="13"/>
+      <rect x="739" y="488" width="4" height="35" rx="2" fill="#13756e"/>
+      <text class="memory-title" x="754" y="500">语义记忆</text>
+      <text class="backend" x="754" y="519">PostgreSQL + pgvector</text>
+      <path d="M748 531 H1059" stroke="#e0e8f2"/>
+      <text class="read-write read" x="749" y="553">← 读</text>
+      <text class="memory-row" x="806" y="553">Extract 前按研究主题召回</text>
+      <text class="memory-row" x="806" y="576">核对后纳入本轮证据账本</text>
+      <text class="read-write write" x="749" y="609">→ 写</text>
+      <text class="memory-row" x="806" y="609">交付后保存已引用且核验通过的证据</text>
+    </g>
+    <g id="working-memory">
+      <rect class="memory-card" x="728" y="666" width="352" height="174" rx="13"/>
+      <rect x="739" y="682" width="4" height="35" rx="2" fill="#345f9c"/>
+      <text class="memory-title" x="754" y="694">工作记忆</text>
+      <text class="backend" x="754" y="713">Redis</text>
+      <path d="M748 725 H1059" stroke="#e0e8f2"/>
+      <text class="read-write read" x="749" y="747">← 读</text>
+      <text class="memory-row" x="806" y="747">Synthesis 和 Revise 前读取局部记录</text>
+      <text class="read-write write" x="749" y="770">→ 写</text>
+      <text class="memory-row" x="806" y="770">Synthesis、Revise 后更新记录</text>
+      <text class="read-write write" x="749" y="793">→ 写</text>
+      <text class="memory-row" x="806" y="793">收到 Review 反馈后更新记录</text>
+    </g>
+  </g>
+  <g id="memory-connections">
+    <path class="memory-link memory-rail" data-memory="episodic" stroke="#6c4f96" d="M632 121 V870"/>
+    <path class="memory-link" stroke="#6c4f96" d="M632 121 H733"/>
+    <circle cx="733" cy="121" r="3" fill="#6c4f96"/>
+    <path class="memory-link memory-rail" data-memory="procedural" stroke="#8a5b20" d="M653 264 V315"/>
+    <path class="memory-link" stroke="#8a5b20" d="M653 315 H733"/>
+    <circle cx="733" cy="315" r="3" fill="#8a5b20"/>
+    <path class="memory-link memory-rail" data-memory="semantic" stroke="#178074" d="M676 424 V882"/>
+    <path class="memory-link" stroke="#178074" d="M676 509 H733"/>
+    <circle cx="733" cy="509" r="3" fill="#178074"/>
+    <path class="memory-link memory-rail" data-memory="working" stroke="#3e6aa8" d="M698 584 V703"/>
+    <path class="memory-link" stroke="#3e6aa8" d="M698 703 H733"/>
+    <circle cx="733" cy="703" r="3" fill="#3e6aa8"/>
+    <path class="memory-link" data-memory="episodic" data-node="PLAN" data-operation="read" stroke="#6c4f96" marker-end="url(#episodic-tip)" d="M632 184 H416"/>
+    <path class="memory-link" data-memory="episodic" data-node="READY" data-operation="write" stroke="#6c4f96" marker-end="url(#episodic-tip)" d="M230 844 V863 Q230 870 237 870 H632"/>
+    <path class="memory-link" data-memory="procedural" data-node="SEARCH" data-operation="read write" stroke="#8a5b20" marker-end="url(#procedural-tip)" marker-start="url(#procedural-tip)" d="M653 264 H558"/>
+    <path class="memory-link" data-memory="semantic" data-node="EXTRACT" data-operation="read" stroke="#178074" marker-end="url(#semantic-tip)" d="M676 424 H558"/>
+    <path class="memory-link" data-memory="semantic" data-node="READY" data-operation="write" stroke="#178074" marker-end="url(#semantic-tip)" d="M248 844 V872 Q248 882 258 882 H676"/>
+    <path class="memory-link" data-memory="working" data-node="SYNTHESIS" data-operation="read write" stroke="#3e6aa8" marker-end="url(#working-tip)" marker-start="url(#working-tip)" d="M698 584 H540"/>
+    <path class="memory-link" data-memory="working" data-node="REVIEW" data-operation="write" stroke="#3e6aa8" marker-end="url(#working-tip)" d="M232 605 V615 Q232 622 239 622 H698"/>
+    <path class="memory-link" data-memory="working" data-node="REVISE" data-operation="read write" stroke="#3e6aa8" marker-end="url(#working-tip)" marker-start="url(#working-tip)" d="M698 664 H540"/>
+  </g>
+</svg>

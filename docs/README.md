@@ -2,7 +2,7 @@
 
 | 想了解什么 | 从这里开始 |
 | --- | --- |
-| 使用工作台和查看案例 | [演示指南](presentation-guide.md) |
+| 启动工作台 | [快速开始](../README.md#快速开始) |
 | 系统模块、数据流和持久化 | [系统架构](system-overview.md) |
 | 已实现能力及对应测试 | [能力与测试索引](design-truth.md) |
 | 评估指标和交付条件 | [Evaluation 说明](evaluation-results.md) |

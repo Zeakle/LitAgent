@@ -12,7 +12,7 @@ Reviewer 返回 `responses_incomplete`，用完了单次调用的 4,096 个输�
 
 ## 查看结果
 
-在[离线工作台](presentation-guide.md)的首页打开「历史固定收尾」，可查看保留的草稿、引用来源、检索附录和用量。
+在[离线工作台](../README.md#无密钥离线演示)的首页打开「历史固定收尾」，可查看保留的草稿、引用来源、检索附录和用量。
 
 [JSON](../src/litagent/static/presentation/closeout.json) · [CSV](../src/litagent/static/presentation/closeout.csv) · [Markdown](../src/litagent/static/presentation/closeout.md) · [HTML](../src/litagent/static/presentation/closeout.html)
 

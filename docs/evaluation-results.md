@@ -31,4 +31,4 @@
 
 Reviewer 在写作阶段提出编辑意见。Evaluation 在此之后检查断言、引用和整篇报告。若诊断允许修订，候选稿须完成复评才能进入交付。前置 Jev 默认检查提取候选的合法性与格式，终稿 Judge 已停用。
 
-[工作台使用指南](presentation-guide.md) · [系统架构](system-overview.md#evaluation-and-delivery) · [055 未完成评估记录](closeout.md)
+[启动离线工作台](../README.md#无密钥离线演示) · [系统架构](system-overview.md#evaluation-and-delivery) · [055 未完成评估记录](closeout.md)
