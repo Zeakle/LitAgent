@@ -25,7 +25,7 @@ const identity=id=>({key:'archive:'+id,runId:id,source:'archive',query:id,status
  const store=createWorkbenchStore(),requests=[],notices=[],urls=[],elements=new Map();
  const $=s=>{if(!elements.has(s))elements.set(s,{dataset:{},attributes:{},hidden:false,disabled:false,textContent:'',setAttribute(name,value){this.attributes[name]=value;}});return elements.get(s)};
  const api={abort(){},json(p){if(p==='/workbench/context')return Promise.resolve({mode:'offline',live_enabled:false});return new Promise((resolve,reject)=>requests.push({path:p,resolve,reject}))}};
- const ctx=vm.createContext({store,api,$,context:null,historyLoading:false,eventSource:null,mobileSidebar:null,citationPreferences:new Map(),URLSearchParams,
+ const ctx=vm.createContext({store,api,$,context:null,historyLoading:false,submittingSurvey:false,eventSource:null,mobileSidebar:null,citationPreferences:new Map(),URLSearchParams,
    location:{search:scenario==='default'?'':'?run=archive%3Atarget&view=quality'},history:{replaceState:(_,__,url)=>urls.push(url)},
    surveyVerification:{render(){}},t:x=>x,setNotice:message=>notices.push(message),liveViewRefresh:{cancel(){}},setInspector(){},
    ...adapters,setSection(){},refreshInteractive(){throw Error('unexpected interactive fallback')}});

@@ -178,7 +178,8 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
         failure.task_id,
         `HTTP ${failure.provider_http_status}`,
         failure.provider_error_code,
-        failure.usage_available === false ? (en ? "Usage unknown" : "用量未知") : null,
+        failure.usage_available === false ? (en ? "Usage unknown" : "用量未知") :
+          failure.usage_available === true ? (en ? "Usage recorded" : "已记录用量") : null,
         failure.provider_request_id,
       ].filter(Boolean).join(" · "));
     }
@@ -265,6 +266,17 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
   node(gate, "h3", `${quality?.status || "unverified"} / ${delivery?.status || "pending"}`);
   node(gate, "p", `${L("gate")} · ${L("reasons")}: ${(delivery?.reason_codes || []).join(", ") || L("noReasons")}`);
   const currentFailure = options.writerFailure;
+  const en = options.locale === "en";
+  const planningRejected = options.execution?.reason_codes?.includes("strict_usage_unknown") &&
+    options.providerFailures?.some(failure => failure.task_id === "query_decomposition");
+  let missingReportNote = en ? "No report was generated. Evaluation did not run." : "报告未生成。Evaluation 未运行。";
+  if (currentFailure?.code === "writer_flat_schema_invalid" || options.pipelineVerification?.writing_diagnostics?.length) {
+    missingReportNote = en ? "Writing validation failed; Evaluation was not run." : "写作校验失败；Evaluation 未运行。";
+  } else if (currentFailure) {
+    missingReportNote = en ? "The writing stage ended without a report. Evaluation did not run." : "写作阶段未生成报告。Evaluation 未运行。";
+  } else if (planningRejected) {
+    missingReportNote = en ? "The provider rejected query decomposition. Evaluation did not run." : "查询拆分请求被供应商拒绝。Evaluation 未运行。";
+  }
   if (noFinalReport && currentFailure?.code === "writer_flat_schema_invalid") {
     const en=options.locale === "en";
     for (const issue of currentFailure.diagnostics || []) {
@@ -281,7 +293,7 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
     }
     node(gate,"p",en ? "A rejected repair is not a scientific verdict; incomplete assessment remains unverified." : "修复候选被拒不等于科学事实不支持；未完成核验仍显示未核验。");
   }
-  node(gate, "p", noFinalReport ? (options.locale === "en" ? "Writing validation failed; Evaluation was not run." : "写作校验失败；Evaluation 未运行。") : details.evaluation_version === "survey-evaluation-ragas-v1" ? (options.locale === "en" ? "Native RAGAS · cited-context Faithfulness and independent global review" : "原生 RAGAS · 实际引用 Faithfulness 与独立全局检查") : details.evaluation_version === "survey-evaluation-v3" ? `${options.locale === "en" ? "Evaluation v3 · complete batched assessment" : "评估 v3 · 完整分批核验"}` : v2 ? `${L(details.support_contract === "host-support-passages-v2" ? "current" : details.support_contract === "cited-support-spans-v1" ? "previousSupport" : "historicalV2")} · ${details.evaluation_version}` : hasPipeline && !Object.keys(evaluation || {}).length ? (options.locale === "en" ? "Evaluation was not run; no report scores were produced." : "Evaluation 未运行；尚未产生正文评分。") : L("historical"));
+  node(gate, "p", noFinalReport ? missingReportNote : details.evaluation_version === "survey-evaluation-ragas-v1" ? (en ? "Native RAGAS · cited-context Faithfulness and independent global review" : "原生 RAGAS · 实际引用 Faithfulness 与独立全局检查") : details.evaluation_version === "survey-evaluation-v3" ? (en ? "Evaluation v3 · complete batched assessment" : "评估 v3 · 完整分批核验") : v2 ? `${L(details.support_contract === "host-support-passages-v2" ? "current" : details.support_contract === "cited-support-spans-v1" ? "previousSupport" : "historicalV2")} · ${details.evaluation_version}` : hasPipeline && !Object.keys(evaluation || {}).length ? (en ? "Evaluation was not run; no report scores were produced." : "Evaluation 未运行；尚未产生正文评分。") : L("historical"));
   if (options.revision) node(gate, "p", `r${options.revision}${options.sha ? ` · SHA ${options.sha}` : ""}`, "audit-binding");
   if (v2) node(gate,"p",`${L("support")}: ${details.support_contract || L("unavailable")}`);
   if (!noFinalReport && (options.bodyDiagnostics || details.body_analysis_contract)) {

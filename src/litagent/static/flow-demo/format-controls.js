@@ -6,7 +6,7 @@ export function bindFormatControls({ store, api, t, setNotice, citationPreferenc
     const revision = Number(event.target.value); const epoch = store.beginRequest();
     store.update({ loading: true, view: { ...view, displayRevision: revision, reportSha: null, report: null, renderedReport: {html: "", headings: []}, runtimeEvaluation: {}, quality: null, delivery: null, summary: {...view.summary, quality_status: null, delivery_status: null} } });
     try {
-      const version = await api.json(`/survey/${encodeURIComponent(view.identity.runId)}/versions/${revision}?citation_style=${$("#export-style").value}`);
+      const version = await api.json(`/survey/${encodeURIComponent(view.identity.runId)}/versions/${revision}?citation_style=${$("#export-style").value}`, { navigation: true });
       if (!store.isCurrent(epoch)) return;
       store.update({ loading: false, view: { ...view, displayRevision: revision, reportSha: version.report_sha256, report: version.report, renderedReport: version.rendered_report, runtimeEvaluation: version.report.evaluation || {}, quality: version.report.quality, delivery: version.report.delivery, summary: {...view.summary, quality_status: version.report.quality?.status, delivery_status: version.report.delivery?.status} } });
       setNotice();
@@ -39,7 +39,7 @@ export function bindFormatControls({ store, api, t, setNotice, citationPreferenc
     const epoch = store.beginRequest();
     try {
       const path = view.identity.source === "interactive" ? `/survey/${encodeURIComponent(view.identity.runId)}/versions/${revision}` : `/flow-demo/runs/${encodeURIComponent(view.identity.runId)}/view`;
-      const raw = await api.json(`${path}?citation_style=${style}`);
+      const raw = await api.json(`${path}?citation_style=${style}`, { navigation: true });
       if (!store.isCurrent(epoch)) return;
       citationPreferences.set(view.identity.runId, style);
       store.update({view: {...view, renderedReport: raw.rendered_report}, loading: false});
