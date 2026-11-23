@@ -78,28 +78,49 @@ did not meet the strict delivery criteria.
 
 ### Offline demonstration without API keys
 
-Requires Python 3.11. Demo mode needs no API key or Docker.
+From the repository root, create and activate a Python 3.11 virtual environment. On macOS or Linux, run:
 
 ```sh
-python -m venv .venv
-# macOS / Linux
+python3.11 -m venv .venv
 source .venv/bin/activate
-# Windows PowerShell: .venv\Scripts\Activate.ps1
+```
+
+On Windows PowerShell, run:
+
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+```
+
+Install the dependencies in the activated environment and start the demo. The first install requires internet access. Replay uses bundled data and needs no API key, Docker, or frontend build.
+
+```sh
 python -m pip install -c requirements/release-constraints.txt -e ".[api]"
 litagent demo --presentation
 ```
 
+Leave the terminal running. The command tries to open your browser. You can also open the [research workbench](http://127.0.0.1:8000/flow-demo) yourself.
+Open the [sample execution graph](http://127.0.0.1:8000/flow-demo?run=sample%3Asample-ready&view=execution) and select a node to inspect its recorded inputs and outputs. The Evidence tab shows the evidence ledger, and the Report tab offers file exports. This sample includes the claim and extractor score. The source passage used for verification and the Jev confidence score were not recorded.
+The [presentation page](http://127.0.0.1:8000/presentation) shows the benchmark results.
+
 ### Optional live run
+
+Stop the offline demo with `Ctrl+C` and install the live dependencies in the same environment:
 
 ```sh
 python -m pip install -c requirements/release-constraints.txt -e ".[dev]"
-# Copy .env.example to .env and configure an OpenAI-compatible provider key.
+```
+
+Start Docker. If you do not have a `.env` file yet, copy [.env.example](./.env.example) to `.env`.
+Before submitting a survey, set `LLM_API_KEY` (or `OPENAI_API_KEY`) and verify that your provider URL and models match your account. The workbench defaults to [config/agent-format-repair.yaml](./config/agent-format-repair.yaml), which enables Jev verification and requires `TYPESAFE_API_KEY` for that step.
+
+```sh
 docker compose up -d
 litagent demo --live
 ```
 
-Live runs require a configured model service and incur charges from that provider.
-See `.env.example` for environment variables and `config/default.yaml` for defaults.
+Return to the [research workbench](http://127.0.0.1:8000/flow-demo) and select **New research**. After submission, the Execution tab shows the current step and run status. Model calls incur provider charges.
+To keep the offline demo running, activate the environment in a second terminal, run `litagent demo --live --port 8001`, and open the [live workbench on port 8001](http://127.0.0.1:8001/flow-demo).
 
 ### Development checks
 

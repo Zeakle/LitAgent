@@ -70,28 +70,49 @@ RRF + reranker 的 nDCG@10 达到 0.9406，p50 延迟为 647 ms；MiniLM + RRF
 
 ### 无密钥离线演示
 
-需要 Python 3.11。演示模式无需 API key 或 Docker。
+在仓库根目录使用 Python 3.11 创建并激活虚拟环境。macOS / Linux 用户运行：
 
 ```sh
-python -m venv .venv
-# macOS / Linux
+python3.11 -m venv .venv
 source .venv/bin/activate
-# Windows PowerShell: .venv\Scripts\Activate.ps1
+```
+
+Windows PowerShell 用户运行：
+
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+```
+
+在已激活的环境中安装依赖并启动演示。首次安装需要联网；回放使用随项目提供的数据，无需 API key、Docker 或前端构建。
+
+```sh
 python -m pip install -c requirements/release-constraints.txt -e ".[api]"
 litagent demo --presentation
 ```
 
+保持终端运行。命令会尝试打开浏览器，也可以手动打开[研究工作台](http://127.0.0.1:8000/flow-demo)。
+直接进入[示例执行图](http://127.0.0.1:8000/flow-demo?run=sample%3Asample-ready&view=execution)，点击节点查看已记录的输入和输出，切换到「证据」查看证据详情，或在「报告」中导出文件。此示例保留了 claim 和提取器评分，未保存核验原文与 Jev 置信度。
+基准结果可在[工程演示页](http://127.0.0.1:8000/presentation)查看。
+
 ### 可选真实运行
+
+按 `Ctrl+C` 停止离线演示，在同一虚拟环境中安装 Live 依赖：
 
 ```sh
 python -m pip install -c requirements/release-constraints.txt -e ".[dev]"
-# 复制 .env.example 为 .env，填写 OpenAI-compatible provider key。
+```
+
+启动 Docker。如果尚无 `.env`，将 [.env.example](./.env.example) 复制为 `.env`。
+提交真实研究前，填写 `LLM_API_KEY`（或 `OPENAI_API_KEY`），并确认服务地址和模型与你的账号匹配。工作台默认使用 [config/agent-format-repair.yaml](./config/agent-format-repair.yaml)，其中启用的 Jev 核验还需要 `TYPESAFE_API_KEY`。
+
+```sh
 docker compose up -d
 litagent demo --live
 ```
 
-真实运行需要配置模型服务，费用由所选服务商收取。
-环境变量示例在 `.env.example`，默认配置在 `config/default.yaml`。
+回到[研究工作台](http://127.0.0.1:8000/flow-demo)，点击「新建研究」。提交后在「执行」中查看当前步骤和运行状态，模型调用按服务商计费。
+若要同时保留离线演示，可在另一个已激活虚拟环境的终端运行 `litagent demo --live --port 8001`，打开 [8001 端口的 Live 工作台](http://127.0.0.1:8001/flow-demo)。
 
 ### 开发验证
 
