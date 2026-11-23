@@ -172,6 +172,8 @@ class InteractiveRunService:
             if report is None and checkpoint.report_data:
                 report = dict(checkpoint.report_data)
 
+        # The timeline cursor must not acknowledge events newer than the graph.
+        timeline = await self._repository.list_events(run_id)
         archived = self._archive_repository.get(run_id)
         artifact = await self.get_audit_artifact(run_id)
         artifact["status"] = row["status"]
@@ -213,7 +215,6 @@ class InteractiveRunService:
                     "metadata", {}
                 )
 
-        timeline = await self._repository.list_events(run_id)
         versions = await self._repository.list_report_versions(run_id)
         evaluation = dict((report or {}).get("evaluation") or {})
         quality = archive_view.get("quality") or (report or {}).get("quality") or None

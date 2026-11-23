@@ -1,5 +1,8 @@
 const dictionaries = {
   "zh-CN": {
+    flowCurrentSteps: "当前步骤", flowAwaitingStep: "等待下一步执行记录", flowLocateStep: "在图中定位此步骤",
+    flowPaperSelection: "人工筛选论文", flowFinalApproval: "人工确认最终报告", flowLiveRun: "实时运行",
+    statusCancelling: "正在取消", statusInterrupted: "已中断", statusRejected: "已拒绝",
     ioRawInput: "输入 · 原始 JSON",
     ioRawOutput: "输出 · 原始 JSON",
     ioFullDraft: "完整正文",
@@ -175,6 +178,9 @@ const dictionaries = {
     focusSelected: "定位选中节点", toggleFullscreen: "切换全屏", timelineCategory: "时间线类别", secondsShort: "秒",
   },
   en: {
+    flowCurrentSteps: "Current step", flowAwaitingStep: "Waiting for the next recorded step", flowLocateStep: "Locate this step in the graph",
+    flowPaperSelection: "Paper selection review", flowFinalApproval: "Final report approval", flowLiveRun: "Live run",
+    statusCancelling: "Cancelling", statusInterrupted: "Interrupted", statusRejected: "Rejected",
     ioRawInput: "Input · raw JSON",
     ioRawOutput: "Output · raw JSON",
     ioFullDraft: "Complete draft",

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
   <title>LitAgent Research Workbench</title>
-  <link rel="stylesheet" href="/static/flow-demo/styles.css?v=15.10.6.432">
+  <link rel="stylesheet" href="/static/flow-demo/styles.css?v=15.10.6.434">
 </head>
 <body>
   <div class="app-shell">
@@ -83,6 +83,11 @@
             </div>
             <label id="timeline-filter-control" class="timeline-filter-control" hidden><span class="sr-only" data-i18n="eventCategory">事件类别</span><select id="timeline-filter" aria-label="Timeline category" data-i18n-label="timelineCategory"><option value="all" data-i18n="allEvents">全部事件</option><option value="worker">Worker</option><option value="llm">LLM</option><option value="tool">Tool</option><option value="rag">RAG</option><option value="memory">Memory</option><option value="evaluation">Evaluation</option><option value="rewrite">Rewrite</option><option value="error">Error</option></select></label>
           </header>
+          <div id="execution-progress" class="execution-progress" aria-live="polite" aria-atomic="true" hidden>
+            <strong id="execution-run-state"></strong>
+            <span id="execution-current-label"></span>
+            <div id="execution-current-steps"></div>
+          </div>
           <label id="graph-search-control" class="ledger-controls" hidden><span class="sr-only" data-i18n="graphSearch">筛选节点</span><input id="graph-search" type="search" data-i18n-placeholder="graphSearch" placeholder="按节点名称、ID 或状态高亮"></label>
           <div id="graph-diagnostic" class="graph-diagnostic" hidden></div>
           <div class="execution-panels">
@@ -136,6 +141,6 @@
     </form>
   </dialog>
   <div id="sidebar-scrim" class="sidebar-scrim" hidden></div>
-  <script type="module" src="/static/flow-demo/app.js?v=15.10.6.432"></script>
+  <script type="module" src="/static/flow-demo/app.js?v=15.10.6.434"></script>
 </body>
 </html>

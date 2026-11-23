@@ -1,4 +1,4 @@
-import { buildExecutionGraph } from "./execution-view.js?v=15.10.6.431";
+import { buildExecutionGraph } from "./execution-view.js?v=15.10.6.434";
 
 const STAGE_ORDER = { planning: 0, discovery: 10, evidence: 30, other: 55, writing: 60, evaluation: 80, human: 90, delivery: 100 };
 const TASK_ORDER = { planner: 0, search: 10, recall: 10, dedup: 20, relevance: 30, relevance_gate: 30, extractor: 40, graph: 40, synthesis: 60, reviewer: 70, adversarial: 60, adversarial_review: 60 };
@@ -21,7 +21,7 @@ export function buildBusinessFlow(presentation = {}, executionNodes = {}) {
   }]));
   const observations = (presentation.observations || []).filter(item => item.stageId
     && ["subspan", "delivery", "human", "verification", "planning"].includes(item.kind)
-    && !item.parentTaskId && !tasks.some(task => task.id === item.taskId))
+    && (!item.parentTaskId || item.stageId === "evaluation") && !tasks.some(task => task.id === item.taskId))
     .sort((a, b) => String(a.startedAt || "").localeCompare(String(b.startedAt || "")) || a.id.localeCompare(b.id));
   for (const item of observations) definitions[item.id] = {
     task_id: item.taskId || item.id, agent_type: item.name, labelKey: item.labelKey, observation: item,
@@ -72,6 +72,12 @@ export function buildBusinessFlow(presentation = {}, executionNodes = {}) {
         }
       }
     }
+    // The parent may be retrieving evidence or preparing a new round. Only a
+    // child span can identify which synthesis or review round is executing.
+    if (node.status === "running") {
+      roles.unshift({ ...node });
+      roles.forEach((role, index) => { role.rank = rank + index; });
+    }
     replacements.set(task.id, [roles[0].id, roles.at(-1).id]);
     for (let index = 1; index < roles.length; index += 1) {
       const previous = roles[index - 1], current = roles[index];
@@ -83,7 +89,8 @@ export function buildBusinessFlow(presentation = {}, executionNodes = {}) {
       });
     }
     if (rounds.size === 1) loopEdges.push({
-      id: `${task.id}:feedback`, from: roles.at(-1).id, to: roles[0].id, kind: "feedback",
+      id: `${task.id}:feedback`, from: roles.findLast(role => role.role === "reviewer").id,
+      to: roles.find(role => role.role === "synthesis").id, kind: "feedback",
       labelKey: "flowFeedbackConditional",
     });
     return roles;

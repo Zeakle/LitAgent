@@ -295,6 +295,8 @@ export function renderExecutionGraph(container, graph, onSelect, options = {}) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "graph-node";
+    const current = options.activeIds?.has(node.id);
+    if (current) button.setAttribute("aria-current", "step");
     button.dataset.nodeId = node.id;
     button.dataset.status = node.status;
     button.dataset.selected = String(node.id === options.selectedId);
@@ -311,6 +313,7 @@ export function renderExecutionGraph(container, graph, onSelect, options = {}) {
     const status = document.createElement("small");
     status.textContent = options.status?.(node)
       || `${node.status}${node.durationMs == null ? "" : ` · ${node.durationMs} ms`}`;
+    if (current) status.textContent = `${options.activeLabel} · ${status.textContent}`;
     button.append(name, summary, status);
     button.addEventListener("click", () => onSelect?.({ kind: "node", id: node.id, value: node }, button));
     stage.append(button);

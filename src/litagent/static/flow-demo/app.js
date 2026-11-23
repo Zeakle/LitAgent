@@ -1,20 +1,20 @@
-import { bindAuditControls, bindSurveyVerification } from "./audit-controls.js?v=15.10.6.432";
+import { bindAuditControls, bindSurveyVerification } from "./audit-controls.js?v=15.10.6.434";
 import { bindFormatControls } from "./format-controls.js?v=15.10.11";
-import { createApiClient, openEventStream } from "./api-client.js?v=15.10.6.432";
+import { createApiClient, openEventStream } from "./api-client.js?v=15.10.6.434";
 import { createBenchmarkController } from "./benchmark-controller.js?v=15.10.6.163-summary-contract";
 import { renderBenchmarkDetail, renderBenchmarkList, renderBenchmarkObservation } from "./benchmark-view.js?v=15.10.6.163-summary-contract";
-import { adaptArchiveView, adaptInteractiveView, chooseDefaultSection, normalizeRunList } from "./adapters.js?v=15.10.6.432";
-import { evidenceMap, renderEvidenceList, renderEvidenceInspector } from "./evidence-view.js?v=15.10.6.432";
-import { buildEvidenceLedger, filterEvidence } from "./evidence-model.js?v=15.10.6.432";
-import { createLiveViewRefresh } from "./live-view.js?v=15.10.6.432";
-import { createExecutionWorkspace } from "./execution-workspace.js?v=15.10.6.432";
-import { renderExecutionInspector } from "./execution-inspector.js?v=15.10.6.432";
-import { renderHistory } from "./history-view.js";
-import { applyTranslations, translator } from "./i18n.js?v=15.10.6.432";
-import { renderQuality, locateReportDiagnostic } from "./quality-view.js?v=15.10.6.432";
-import { navigateReportHeading, renderOutline, renderReportDocument, renderSearchRecords } from "./report-view.js?v=15.10.6.432";
+import { adaptArchiveView, adaptInteractiveView, chooseDefaultSection, normalizeRunList } from "./adapters.js?v=15.10.6.434";
+import { evidenceMap, renderEvidenceList, renderEvidenceInspector } from "./evidence-view.js?v=15.10.6.434";
+import { buildEvidenceLedger, filterEvidence } from "./evidence-model.js?v=15.10.6.434";
+import { createLiveViewRefresh } from "./live-view.js?v=15.10.6.434";
+import { createExecutionWorkspace } from "./execution-workspace.js?v=15.10.6.434";
+import { renderExecutionInspector } from "./execution-inspector.js?v=15.10.6.434";
+import { renderHistory } from "./history-view.js?v=15.10.6.434";
+import { applyTranslations, translator } from "./i18n.js?v=15.10.6.434";
+import { renderQuality, locateReportDiagnostic } from "./quality-view.js?v=15.10.6.434";
+import { navigateReportHeading, renderOutline, renderReportDocument, renderSearchRecords } from "./report-view.js?v=15.10.6.434";
 import { renderReview } from "./review-view.js?v=15.10.5-strict";
-import { createWorkbenchStore } from "./state.js?v=15.10.6.432";
+import { createWorkbenchStore } from "./state.js?v=15.10.6.434";
 const $ = (selector) => document.querySelector(selector);
 const locale = localStorage.getItem("litagent-locale") || "zh-CN";
 const store = createWorkbenchStore({ locale });
@@ -119,7 +119,8 @@ function summaryValue(value, suffix = "") { return value == null || value === ""
 function renderSummary(view) {
   const summary = view?.summary || {};
   $("#run-query").textContent = view?.identity?.query || t("noRun");
-  $("#run-source-label").textContent = view ? `${view.identity.source} / ${summary.report_language || view.identity.reportLanguage || "—"}` : "LITAGENT";
+  const source = view?.identity?.source === "legacy" ? t("flowLiveRun") : view?.identity?.source;
+  $("#run-source-label").textContent = view ? `${source} / ${summary.report_language || view.identity.reportLanguage || "—"}` : "LITAGENT";
   $("#summary-status").textContent = view?.identity?.status === "completed" ? t("executionCompleted") : summaryValue(view?.identity?.status);
   $("#summary-delivery").textContent = summaryValue(view?.delivery?.status || summary.delivery_status);
   $("#summary-quality").textContent = summaryValue(view?.quality?.status || summary.quality_status);
@@ -178,7 +179,7 @@ function render() {
   document.documentElement.lang = state.locale;
   $("#locale-toggle").textContent = state.locale === "zh-CN" ? "EN" : "中文";
   $("#run-count").textContent = state.runs.length;
-  renderHistory($("#run-list"), state.runs, state.selectedRunKey, $("#run-search").value, state.locale, t, selectRun);
+  renderHistory($("#run-list"), state.runs, state.selectedRunKey, $("#run-search").value, state.locale, t, selectRun, view?.identity?.status);
   renderSummary(view); renderControls(view);
   if (view?.displayWarnings?.some((item) => item.code === "nonfinite_numeric_values")) {
     setNotice(store.get().locale === "zh-CN"
@@ -274,15 +275,7 @@ function connectEvents(runId, kind = "interactive") {
   eventSource = openEventStream(runId, {
     onTrace(event) {
       const view = store.get().view; if (!view || view.identity.runId !== runId || store.get().selectedRunKey !== key) return;
-      const sequence = event.seq ?? event.sequence;
-      const source = event.source || "sse";
-      const known = view.events.some((item) => (
-        sequence != null
-        && (item.seq ?? item.sequence) === sequence
-        && (item.source || "sse") === source
-      ));
-      if (!known) store.update({ view: { ...view, events: [...view.events, { ...event, source }] } });
-      liveViewRefresh.schedule();
+      liveViewRefresh.receive(event);
     },
     onError() { if (store.get().selectedRunKey === key) liveViewRefresh.schedule(); },
     async onSettle() {

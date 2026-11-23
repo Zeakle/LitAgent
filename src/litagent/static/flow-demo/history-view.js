@@ -1,4 +1,5 @@
 function sourceLabel(item, t) {
+  if (item.source === "legacy") return t("flowLiveRun");
   if (item.source === "interactive") return t("interactive");
   if (item.source === "sample") return t("sample");
   return t("runArtifact");
@@ -11,7 +12,7 @@ function readableTime(item, locale) {
   return Number.isNaN(date.valueOf()) ? "" : date.toLocaleString(locale, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
-export function renderHistory(container, runs, selectedKey, query, locale, t, onSelect) {
+export function renderHistory(container, runs, selectedKey, query, locale, t, onSelect, selectedStatus) {
   container.replaceChildren();
   const needle = query.trim().toLocaleLowerCase();
   const visible = runs.filter((run) => !needle || `${run.query} ${run.runId}`.toLocaleLowerCase().includes(needle));
@@ -20,7 +21,7 @@ export function renderHistory(container, runs, selectedKey, query, locale, t, on
     button.type = "button";
     button.className = "run-item";
     button.dataset.active = String(run.key === selectedKey);
-    button.dataset.status = run.status;
+    button.dataset.status = (run.key === selectedKey && selectedStatus) || run.status;
     const heading = document.createElement("strong");
     heading.textContent = run.query || run.runId;
     const meta = document.createElement("span");
@@ -30,7 +31,7 @@ export function renderHistory(container, runs, selectedKey, query, locale, t, on
     time.textContent = readableTime(run, locale);
     meta.append(source, time);
     const status = document.createElement("small");
-    status.textContent = run.status;
+    status.textContent = button.dataset.status;
     button.append(heading, meta, status);
     button.addEventListener("click", () => onSelect(run.key));
     container.append(button);

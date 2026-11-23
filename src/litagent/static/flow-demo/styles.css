@@ -170,6 +170,17 @@ h3 { font-size: 13px; }
 .section-header select { max-width: 135px; border: 1px solid #bdc8c5; border-radius: 4px; padding: 5px; background: #fff; font-size: 10px; }
 .graph-diagnostic { border-bottom: 1px solid #e4b86a; padding: 8px 16px; background: #fff7e7; color: #734b05; font-size: 11px; }
 .execution-panels { flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
+.execution-progress { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 12px; padding: 8px 16px; background: white; border-bottom: 1px solid #dce5e3; font-size: 13px; }
+.execution-progress[hidden] { display: none; }
+#execution-run-state { display: inline-flex; align-items: center; gap: 7px; }
+#execution-run-state::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: #647477; }
+.execution-progress[data-status="running"] #execution-run-state::before { background: #2667a0; }
+.execution-progress[data-status="awaiting_human"] #execution-run-state::before,
+.execution-progress[data-status="cancelling"] #execution-run-state::before { background: #ab690e; }
+.execution-progress[data-status="completed"] #execution-run-state::before { background: #16806f; }
+.execution-progress[data-status="failed"] #execution-run-state::before { background: #bd4038; }
+#execution-current-steps { display: flex; flex-wrap: wrap; gap: 5px; min-width: 0; }
+#execution-current-steps button { background: #eff6fc; border: 1px solid #b8d0e5; color: #194d75; border-radius: 5px; padding: 3px 8px; font: inherit; cursor: pointer; overflow-wrap: anywhere; }
 .stage-overview, .execution-timeline { width: 100%; height: 100%; overflow: auto; }
 .stage-overview { max-width: 1080px; margin: 0 auto; padding: 28px 34px 70px; }
 .stage-row { display: grid; grid-template-columns: 42px minmax(0, 1fr); border-bottom: 1px solid var(--line); background: #fff; }
@@ -210,6 +221,8 @@ h3 { font-size: 13px; }
 .graph-node small { color: #657377; font-size: 12px; }
 .graph-node[data-status="completed"], .graph-node[data-status="done"] { border-left-color: #16806f; }
 .graph-node[data-status="running"] { border-left-color: #2d72a7; }
+.graph-node[aria-current="step"] { opacity: 1; outline: 2px solid #276fa7; outline-offset: 2px; background: #edf6fd; }
+.graph-node[aria-current="step"] small { color: #194d75; font-weight: 650; }
 .graph-node[data-status="failed"] { border-left-color: #bd4038; }
 .graph-node[data-status="cancelled"], .graph-node[data-status="skipped"] { border-left-color: #c4821d; }
 .timeline { max-width: 1100px; margin: 0 auto; padding: 22px 32px 70px; }

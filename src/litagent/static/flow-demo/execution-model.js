@@ -254,6 +254,18 @@ export function buildExecutionPresentation(view = {}, { locale = "zh-CN" } = {})
       output: { status: extraction.status, accepted_evidence_ids: extraction.accepted_evidence_ids, rejected: extraction.rejected, jev: extraction.jev },
       raw: extraction,
     });
+  } else {
+    const latest = view.events?.findLast(event => [
+      "extraction_verification.start", "extraction_verification.complete",
+      "extraction_verification.degraded", "extraction_verification.failed",
+    ].includes(event.event));
+    if (latest) observations.push({
+      id: "system:extraction-verification", kind: "verification", name: "Jev",
+      stageId: "evidence", parentTaskId: null,
+      status: latest.event.endsWith(".start") ? "running"
+        : latest.event.endsWith(".failed") ? "failed" : "completed",
+      raw: latest, input: null, output: null,
+    });
   }
   if (view.delivery?.status && view.delivery.status !== "pending") {
     observations.push({
@@ -277,7 +289,7 @@ export function buildExecutionPresentation(view = {}, { locale = "zh-CN" } = {})
       stageId: "delivery",
     });
   }
-  if (view.review && !observations.some((item) => item.stageId === "human")) {
+  if (view.review && !observations.some((item) => item.stageId === "human" && item.status === "awaiting_human")) {
     observations.push({
       id: "system:human-review",
       kind: "human",
@@ -285,6 +297,8 @@ export function buildExecutionPresentation(view = {}, { locale = "zh-CN" } = {})
       parentTaskId: null,
       operationId: null,
       name: "human review",
+      labelKey: view.review.stage === "paper_selection" ? "flowPaperSelection"
+        : view.review.stage === "final_report" ? "flowFinalApproval" : "stageHumanReview",
       status: "awaiting_human",
       startedAt: null,
       completedAt: null,
