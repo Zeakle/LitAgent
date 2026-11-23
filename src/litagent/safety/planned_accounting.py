@@ -165,7 +165,9 @@ def _envelope(value):
                 "global_status_contract",
                 "capacity_recovery_contract",
                 "inventory_context_contract",
+                "inventory_prompt_contract",
                 "organization_contract",
+                "stage_batch_contract",
             },
         )
         _require(
@@ -178,7 +180,11 @@ def _envelope(value):
         _require(
             "global_scope" not in engine
             or engine["global_scope"]
-            in ("question-coverage-v1", "report-review-no-omissions-v1"),
+            in (
+                "question-coverage-v1",
+                "report-review-no-omissions-v1",
+                "scientific-conflicts-v1",
+            ),
             "ragas_global_scope_invalid",
         )
         _require(
@@ -244,7 +250,12 @@ def _envelope(value):
                 engine["citation_contract"] == INLINE_CONTRACT,
                 "ragas_citation_contract_invalid",
             )
-        if {"citation_contract", "organization_contract"}.intersection(engine):
+        if {
+            "citation_contract",
+            "organization_contract",
+            "inventory_prompt_contract",
+            "stage_batch_contract",
+        }.intersection(engine):
             from litagent.eval.engine_policy import validate_engine
 
             validate_engine(engine, archived=True)
@@ -840,7 +851,9 @@ def _plan(plan):
     _require(
         isinstance(plan, dict) and plan.get("contract") in _CONTRACTS, "plan_invalid"
     )
-    context_limit = envelope_context_limit(plan.get("envelope"), archived=True)
+    envelope = plan.get("envelope")
+    baseline_context_limit = envelope_context_limit(envelope, archived=True)
+    context_limit = envelope_context_limit(envelope, stage="global", archived=True)
     if "joint_round_escrow" in plan:
         _joint_plan(plan)
         return
@@ -896,7 +909,9 @@ def _plan(plan):
             and all(
                 _integer(spec[k], 1) for k in ("count", "request_cap", "output_tokens")
             )
-            and spec["output_tokens"] <= spec["request_cap"] <= context_limit
+            and spec["output_tokens"]
+            <= spec["request_cap"]
+            <= (context_limit if name == "global" else baseline_context_limit)
             and spec["bound"]
             in (
                 {"exact_wire", "context_upper_bound", "host_envelope_upper_bound"}
@@ -1064,7 +1079,9 @@ def _plan(plan):
         "maximum_tokens": maximum,
         "planned_requests": requests,
         "maximum_requests": maximum_requests,
-        "context_tokens": envelope_context_tokens(plan.get("envelope"), archived=True),
+        "context_tokens": envelope_context_tokens(
+            envelope, stage="global", archived=True
+        ),
         "context_reservation_limit": context_limit,
         "context_margin": 0.1,
         "spent_tokens": spent,

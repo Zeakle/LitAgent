@@ -11,7 +11,7 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel, ConfigDict, Field
 
 from litagent.config import AppConfig
-from litagent.operational_limits import configured_ceiling
+from litagent.operational_limits import configured_ceiling, increase
 from litagent.quality import WRITING_VERSION
 from litagent.safety.budget import STRICT_EXTRACTION_OUTPUT_TOKENS
 
@@ -226,8 +226,10 @@ def build_config_summary(
             ],
             "strict_eval": strict_fields,
         }
-        effective["extractor"]["strict_max_output_tokens"] = configured_ceiling(
-            config, STRICT_EXTRACTION_OUTPUT_TOKENS
+        effective["extractor"]["strict_max_output_tokens"] = (
+            config.extractor.max_tokens
+            if config.extractor.max_tokens > increase(STRICT_EXTRACTION_OUTPUT_TOKENS)
+            else configured_ceiling(config, STRICT_EXTRACTION_OUTPUT_TOKENS)
         )
         if quality_policy in {"strict_auto_v1", "strict_auto_v2"}:
             effective["extractor"]["automatic_transport_timeout_ms"] = int(

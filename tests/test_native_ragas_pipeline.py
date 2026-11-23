@@ -14,6 +14,7 @@ from test_writer_v2 import case  # noqa: F401
 
 from litagent.capacity import CapacityConfig
 from litagent.config import load_config
+from litagent.eval.conflict_review import CONTRACT as CONFLICT_ONLY_SCOPE
 from litagent.eval.engine_policy import (
     ANCHORED_GLOBAL_REVIEW,
     CONTRACT,
@@ -92,8 +93,10 @@ class NativeGateway(structured.LongScientificGateway):
             body.get("text", {}).get("format", {}).get("name")
             == "ragas_question_coverage"
         )
+        conflict_only = payload.get("global_scope") == CONFLICT_ONLY_SCOPE
         if (
             not coverage_only
+            and not conflict_only
             and "jobs" not in payload
             and not (
                 "source_units" in payload
@@ -126,6 +129,8 @@ class NativeGateway(structured.LongScientificGateway):
         else:
             response = await self.semantic.chat(messages)
             raw = json.loads(response.content)
+        if conflict_only:
+            self.global_calls += 1
         if "jobs" in payload and "context_pool" not in payload:
             for value in raw.values():
                 value["statements"] *= getattr(self, "statements_per_unit", 1)
@@ -323,10 +328,10 @@ async def test_native_ragas_real_consumers_and_two_shared_repairs(
                     else "evaluation_inventory"
                 )
                 assert row["request"]["model"] == routes[role]
-            elif payload.get("global_scope") == "report-review-no-omissions-v1":
+            elif payload.get("global_scope") == CONFLICT_ONLY_SCOPE:
                 assert row["request"]["model"] == routes["evaluation"]
         assert sum(
-            row["payload"].get("global_scope") == "report-review-no-omissions-v1"
+            row["payload"].get("global_scope") == CONFLICT_ONLY_SCOPE
             for row in result.gateway.sent
         ) == (2 if failures == 0 else 3)
     validate_accounting_snapshot(result.ledger, expected_plan=saved)

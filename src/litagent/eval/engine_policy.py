@@ -5,6 +5,7 @@ import json
 from importlib.metadata import version
 from pathlib import Path
 
+from litagent.eval.conflict_review import CONTRACT as CONFLICT_ONLY_SCOPE
 from litagent.eval.ragas_global_wire import (
     ORDERED_UNIT_CONTRACT,
     STATUS_CONTRACT,
@@ -20,6 +21,8 @@ KEYED_GLOBAL_QUOTED_OMISSIONS = "ragas-global-unit-keys-v3"
 KEYED_GLOBAL_LOCATED_OMISSIONS = "ragas-global-unit-keys-v4"
 KEYED_ASSESSMENT = "ragas-assessment-statement-keys-v1"
 BOUND_ORGANIZATION = "host-report-heading-claims-v1"
+DIRECT_INVENTORY_PROMPT = "ragas-direct-inventory-v1"
+STAGE_BATCH_LIMITS = "ragas-stage-batch-limits-v1"
 PRE_INLINE_FILE_HASHES = (
     "b7e6c8746519096c8b42d47791a43679f740dff6e712d56a2171aa17837730a2",
     "1fbadf4d02d9a748b44ef35e0554580c4cc7e72da624b65df888c36b08c1808b",
@@ -28,6 +31,23 @@ PRE_INLINE_FILE_HASHES = (
     "731f8cffeff389df497e990732241a311f306420968f312371dbe39f7e2aac1c",
     "86ef11d49ec17a8943585f56fafc432dd6e300dd9eff3be32f04f1dfb5e77a24",
 )
+# The contradiction-only branches do not change any older request contract.
+PRE_CONFLICT_ONLY_FILE_HASHES = {
+    "ragas_native.py": "c31f27f3018136639bfb8483e8d4623053e4e22568db35095647c1a2a143ef95",
+    "ragas_repair.py": "959aab5725451a5c3e0c88d9d5750195c8ab289d47dfe049f152ad5e3b5e0c9a",
+    "engine_policy.py": "e15608ee0bfb86b3d6feebb9ab975b3fd5c716bde69da22f31a3ed69866882d2",
+}
+# Profiles whose inventory prompt did not change keep their existing wire identity.
+PRE_DIRECT_INVENTORY_FILE_HASHES = {
+    "ragas_adapter.py": "81e11a74cfe54a3f4a807813a5ec406f7ba89e6e7bf2e3c8a5e74e46523c9395",
+    "ragas_native.py": "4bbb88c8bb4a6e2f99bd1e4c09bc2ddc598701f3c84d2628404c1bd10c12ef21",
+    "engine_policy.py": "80583368fdee3a06099b009f04eb498e1df189db6fc26eb29346ce7ff7d9a05e",
+}
+PRE_STAGE_BATCH_FILE_HASHES = {
+    "ragas_adapter.py": "e454d7ea1cf980c03697c34e475ed53de3fdd0ca0e8ef6bccfd01fa66f47a911",
+    "ragas_native.py": "93271806308feaabf43e9daca08a085f4450b961380e44b463fa2599fdad79a2",
+    "engine_policy.py": "f7be35da453853647a212bc43f08f5839418e22c27e12d63b1c756da48e0dbc8",
+}
 # The first inline ViT trials used provider NLI even for empty citation scopes.
 ARCHIVED_INLINE_VIT_ENGINE = {
     "contract": CONTRACT,
@@ -189,13 +209,20 @@ def engine_descriptor(
     citation_contract=None,
     capacity_recovery_contract=None,
     organization_contract=None,
+    _previous_inventory_prompt=False,
+    _previous_stage_batch_policy=False,
 ):
     """Bind the installed processor and the complete adapter implementation."""
     from litagent import inline_citations
     from litagent.eval.native_capacity import CONTRACT as CAPACITY_RECOVERY
     from litagent.eval.native_capacity import INVENTORY_CONTEXT_CONTRACT
 
-    if global_scope not in (None, "question-coverage-v1", REPORT_REVIEW_SCOPE):
+    scope_modules = {
+        "question-coverage-v1": "question_coverage.py",
+        REPORT_REVIEW_SCOPE: "responsibilities.py",
+        CONFLICT_ONLY_SCOPE: "conflict_review.py",
+    }
+    if global_scope is not None and global_scope not in scope_modules:
         raise ValueError("ragas_global_scope_invalid")
     if capacity_recovery_contract not in (None, CAPACITY_RECOVERY) or (
         capacity_recovery_contract is not None and citation_contract is None
@@ -250,6 +277,25 @@ def engine_descriptor(
     files.extend([Path(__file__), Path(__file__).parents[1] / "writing_flat.py"])
     if capacity_recovery_contract:
         files.append(Path(__file__).with_name("native_capacity.py"))
+    direct_inventory = (
+        global_scope == CONFLICT_ONLY_SCOPE
+        and capacity_recovery_contract is None
+        and not _previous_inventory_prompt
+    )
+    frozen_hashes = {} if direct_inventory else PRE_DIRECT_INVENTORY_FILE_HASHES
+    stage_batch_limits = direct_inventory and not _previous_stage_batch_policy
+    if direct_inventory and not stage_batch_limits:
+        frozen_hashes = PRE_STAGE_BATCH_FILE_HASHES
+    if global_scope != CONFLICT_ONLY_SCOPE:
+        frozen_hashes = {**frozen_hashes, **PRE_CONFLICT_ONLY_FILE_HASHES}
+    file_hashes = [
+        (
+            frozen_hashes[p.name]
+            if p.name in frozen_hashes
+            else hashlib.sha256(p.read_bytes()).hexdigest()
+        )
+        for p in files
+    ]
     identity = hashlib.sha256(
         json.dumps(
             [
@@ -261,11 +307,7 @@ def engine_descriptor(
                         global_scope,
                         hashlib.sha256(
                             Path(__file__)
-                            .with_name(
-                                "responsibilities.py"
-                                if global_scope == REPORT_REVIEW_SCOPE
-                                else "question_coverage.py"
-                            )
+                            .with_name(scope_modules[global_scope])
                             .read_bytes()
                         ).hexdigest(),
                     ]
@@ -273,6 +315,8 @@ def engine_descriptor(
                     else []
                 ),
                 *([global_input_contract] if global_input_contract is not None else []),
+                *([DIRECT_INVENTORY_PROMPT] if direct_inventory else []),
+                *([STAGE_BATCH_LIMITS] if stage_batch_limits else []),
                 *(
                     [global_unit_response_contract]
                     if global_unit_response_contract is not None
@@ -294,7 +338,7 @@ def engine_descriptor(
                         ),
                         *([organization_contract] if organization_contract else []),
                         inline_citations.identity(),
-                        *[hashlib.sha256(p.read_bytes()).hexdigest() for p in files],
+                        *file_hashes,
                     ]
                     if citation_contract
                     else (
@@ -302,10 +346,7 @@ def engine_descriptor(
                         *(
                             [
                                 organization_contract,
-                                *[
-                                    hashlib.sha256(p.read_bytes()).hexdigest()
-                                    for p in files
-                                ],
+                                *file_hashes,
                             ]
                             if organization_contract
                             else []
@@ -321,6 +362,12 @@ def engine_descriptor(
         "identity": identity,
         "batch_size": batch_size,
         **({"global_scope": global_scope} if global_scope else {}),
+        **(
+            {"inventory_prompt_contract": DIRECT_INVENTORY_PROMPT}
+            if direct_inventory
+            else {}
+        ),
+        **({"stage_batch_contract": STAGE_BATCH_LIMITS} if stage_batch_limits else {}),
         **({"citation_contract": citation_contract} if citation_contract else {}),
         **({"global_status_contract": STATUS_CONTRACT} if citation_contract else {}),
         **(
@@ -477,8 +524,8 @@ def validate_engine(value, *, archived=False):
         ARCHIVED_INLINE_CANDIDATE_ENGINE,
     ):
         return dict(value)
-    current = engine_descriptor(
-        value.get("batch_size"),
+    options = dict(
+        batch_size=value.get("batch_size"),
         global_scope=value.get("global_scope"),
         global_findings_contract=value.get("global_findings_contract"),
         global_input_contract=value.get("global_input_contract"),
@@ -488,6 +535,21 @@ def validate_engine(value, *, archived=False):
         capacity_recovery_contract=value.get("capacity_recovery_contract"),
         organization_contract=value.get("organization_contract"),
     )
+    current = engine_descriptor(**options)
+    if (
+        archived
+        and "inventory_prompt_contract" in current
+        and "inventory_prompt_contract" not in value
+        and value == engine_descriptor(**options, _previous_inventory_prompt=True)
+    ):
+        return dict(value)
+    if (
+        archived
+        and "stage_batch_contract" in current
+        and "stage_batch_contract" not in value
+        and value == engine_descriptor(**options, _previous_stage_batch_policy=True)
+    ):
+        return dict(value)
     historical = (
         ARCHIVED_PREFIXED_ENGINE_IDENTITY
         if current.get("global_findings_contract") == ANCHORED_GLOBAL_REVIEW

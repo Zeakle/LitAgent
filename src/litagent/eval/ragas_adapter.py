@@ -120,7 +120,12 @@ def report_context(sample):
 
 
 def batch_request(
-    phase: str, jobs: list[dict], *, keyed_assessment=False, inventory_context=False
+    phase: str,
+    jobs: list[dict],
+    *,
+    keyed_assessment=False,
+    inventory_context=False,
+    direct_inventory=False,
 ) -> tuple[list[dict], dict, tuple[str, ...]]:
     """Share full originals without mixing any job's permitted evidence contexts."""
     generator = phase == "inventory"
@@ -183,17 +188,25 @@ def batch_request(
                     statements, example["output"]["statements"], strict=True
                 )
             }
-    scope_instruction = (
-        "Extract statements only from each job's answer. Its report_context_ref "
-        "selects one full report passage in report_contexts; answer_start and "
-        "answer_end are character offsets identifying the target in that passage. "
-        "Use that background only to resolve references such as pronouns in the "
-        "target, never to add facts from outside it or to infer support. "
-        "Never borrow a subject or method from another job. If a reference is "
-        "ambiguous, preserve that uncertainty instead of inventing an entity. "
-        "Return the official statements output for each job.\n"
-        if generator and inventory_context
-        else (
+    if generator and inventory_context:
+        scope_instruction = (
+            "Extract statements only from each job's answer. Its report_context_ref "
+            "selects one full report passage in report_contexts; answer_start and "
+            "answer_end are character offsets identifying the target in that passage. "
+            "Use that background only to resolve references such as pronouns in the "
+            "target, never to add facts from outside it or to infer support. "
+            "Never borrow a subject or method from another job. If a reference is "
+            "ambiguous, preserve that uncertainty instead of inventing an entity. "
+            "Return the official statements output for each job.\n"
+        )
+    elif generator and direct_inventory:
+        scope_instruction = (
+            "Extract statements only from this job's answer. Keep the original "
+            "subjects, conditions and qualifiers. Use the question only to "
+            "interpret the answer. Return the statements for this job.\n"
+        )
+    else:
+        scope_instruction = (
             "For NLI, context is the newline join of context_pool[ref] for that job's "
             "context_refs IN ORDER; every original is supplied in full. "
             + (
@@ -203,7 +216,6 @@ def batch_request(
                 else "Echo each statement word-for-word and in order, exactly once, with verdict 0 or 1.\n"
             )
         )
-    )
     system = (
         prompt.instruction
         + "\nApply that RAGAS task independently to each job. Return one output per "
@@ -236,15 +248,24 @@ def batch_request(
     return messages, fmt, tuple(inputs)
 
 
-def _fit_batch(phase, jobs, config, *, keyed_assessment=False, inventory_context=False):
+def _fit_batch(
+    phase,
+    jobs,
+    config,
+    *,
+    limit,
+    keyed_assessment=False,
+    inventory_context=False,
+    direct_inventory=False,
+):
     """Use the same deterministic prefix splitting in planning and transmission."""
-    limit = int(config.context_tokens * (1 - config.strict_context_margin))
     while True:
         messages, fmt, sample_ids = batch_request(
             phase,
             jobs,
             keyed_assessment=keyed_assessment,
             inventory_context=inventory_context,
+            direct_inventory=direct_inventory,
         )
         reservation = strict_request_reservation(messages, config.max_tokens, fmt)
         if reservation <= limit:
@@ -261,12 +282,16 @@ def planned_batches(
     batch_size,
     max_batches,
     *,
+    limit=None,
     keyed_assessment=False,
     inline_scopes=False,
     host_uncited=False,
     inventory_context=False,
+    direct_inventory=False,
 ):
     """Measure complete deterministic batches without sending or taking reservations."""
+    if limit is None:
+        limit = int(config.context_tokens * (1 - config.strict_context_margin))
     pending = [
         {"sample": sample}
         for sample in samples
@@ -282,8 +307,10 @@ def planned_batches(
             phase,
             pending[:batch_size],
             config,
+            limit=limit,
             keyed_assessment=keyed_assessment,
             inventory_context=inventory_context,
+            direct_inventory=direct_inventory,
         )
         batches.append(([j["sample"]["id"] for j in jobs], messages, fmt, reservation))
         if len(batches) > max_batches:
@@ -319,6 +346,8 @@ class NativeRagasAdapter(InstructorBaseRagasLLM):
         inline_scopes=False,
         host_uncited=False,
         inventory_context=False,
+        direct_inventory=False,
+        stage_batch_limits=False,
     ):
         """Keep the provider, retries, accounting and cancellation under LitAgent."""
         # Evaluation uses only the configured provider and local/approved traces.
@@ -341,6 +370,8 @@ class NativeRagasAdapter(InstructorBaseRagasLLM):
         self.inline_scopes = inline_scopes
         self.host_uncited = inline_scopes or host_uncited
         self.inventory_context = inventory_context
+        self.direct_inventory = direct_inventory
+        self.stage_batch_limits = stage_batch_limits
         self.evaluation_identity = None
         self.before_send = None
         self.queue = []
@@ -350,6 +381,20 @@ class NativeRagasAdapter(InstructorBaseRagasLLM):
         self.samples = []
         self.admission = None
         self.assessment_batches = None
+
+    def request_limit(self, phase):
+        """Use the same effective stage cap as the planned wire admission."""
+        from litagent.review_policy import stage_name
+        from litagent.safety.planned_budget import planned_backend
+
+        limit = int(
+            self.config.context_tokens * (1 - self.config.strict_context_margin)
+        )
+        budget = planned_backend(getattr(self.llm, "_cost_budget", None))
+        if self.stage_batch_limits and budget is not None:
+            stage = stage_name(budget.plan["envelope"], phase)
+            limit = min(limit, budget.effective_stages[stage]["request_cap"])
+        return limit
 
     def generate(self, prompt, response_model):
         """Disallow an implicit synchronous loop or untracked provider client."""
@@ -445,15 +490,15 @@ class NativeRagasAdapter(InstructorBaseRagasLLM):
                 active = [job for job in self.queue if job["phase"] == phase][
                     : self.batch_size
                 ]
-                limit = int(
-                    self.config.context_tokens * (1 - self.config.strict_context_margin)
-                )
+                limit = self.request_limit(phase)
                 active, messages, fmt, sample_ids, reservation = _fit_batch(
                     phase,
                     active,
                     self.config,
+                    limit=limit,
                     keyed_assessment=self.keyed_assessment,
                     inventory_context=self.inventory_context,
+                    direct_inventory=self.direct_inventory,
                 )
                 if phase == "assessment" and self.assessment_batches is not None:
                     ids = [job["sample"]["id"] for job in active]

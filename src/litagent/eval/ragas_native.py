@@ -10,7 +10,7 @@ import re
 from dataclasses import dataclass
 
 from litagent.body_quality import validate_analysis_decisions
-from litagent.eval import question_coverage
+from litagent.eval import conflict_review, question_coverage
 from litagent.eval.batched import (
     global_review_schema,
     limitations_check,
@@ -19,11 +19,13 @@ from litagent.eval.batched import (
 from litagent.eval.engine_policy import (
     ANCHORED_GLOBAL_REVIEW,
     BOUND_ORGANIZATION,
+    DIRECT_INVENTORY_PROMPT,
     KEYED_ASSESSMENT,
     KEYED_GLOBAL_ANCHORS,
     KEYED_GLOBAL_LOCATED_OMISSIONS,
     KEYED_GLOBAL_QUOTED_OMISSIONS,
     KEYED_GLOBAL_UNITS,
+    STAGE_BATCH_LIMITS,
     anchored_native_review,
     native_global_input_contract,
     native_host_uncited,
@@ -328,6 +330,8 @@ def global_review_request(
     """Build the exact provider request while retaining canonical host input."""
     if global_scope == question_coverage.CONTRACT:
         return question_coverage.build_request(context, units, assertions)
+    if global_scope == conflict_review.CONTRACT:
+        return conflict_review.build_request(units, assertions)
     no_omissions = global_scope == REPORT_REVIEW_SCOPE
     if global_scope is not None and not no_omissions:
         raise ValueError("ragas_global_scope_invalid")
@@ -720,6 +724,22 @@ async def _global_review(
         raise ValueError("ragas_global_incomplete_response")
     if not response.usage or response.usage.get("usage_available") is False:
         raise ValueError("ragas_global_usage_unknown")
+    if payload.get("global_scope") == conflict_review.CONTRACT:
+        conflicts = conflict_review.parse_response(response.content, payload)
+        progress.update(
+            global_check="completed",
+            global_usage=response.usage,
+            global_request_id=key,
+            global_sections={"conflicts": {"status": "passed", "reason_codes": []}},
+        )
+        return {
+            "conflicts": conflicts,
+            "inventory_check": {
+                "status": "passed" if assertions else "failed",
+                "scope": "processed_assertions",
+            },
+            "global_issues": [],
+        }
     if fmt["json_schema"]["name"] == "ragas_question_coverage":
         rows = question_coverage.parse_response(response.content, payload)
         progress.update(
@@ -939,27 +959,37 @@ def _check_native_admission(
             != envelope["semantic_engine"]["batch_size"]
         ):
             raise ValueError("ragas_capacity_batch_mismatch")
+        phase_limit = adapter.request_limit(phase)
         batches = planned_batches(
             phase,
             samples,
             config,
             adapter.batch_size,
             phase_batches(envelope),
+            limit=phase_limit,
             keyed_assessment=adapter.keyed_assessment,
             host_uncited=adapter.host_uncited,
             inventory_context=adapter.inventory_context,
+            direct_inventory=adapter.direct_inventory,
         )
         reservations = []
         for ids, messages, fmt, _ in batches:
             with request_scope(phase, "ragas-preflight:" + ids[0]):
                 reservations.append(
                     check_request_budget(
-                        llm, messages, config.max_tokens, limit, response_format=fmt
+                        llm,
+                        messages,
+                        config.max_tokens,
+                        phase_limit,
+                        response_format=fmt,
                     )
                 )
         if reservations:
             budget.check_stage_requests(phase, reservations)
-        state[phase] = {"batch_reservations": reservations, "context_limit": limit}
+        state[phase] = {
+            "batch_reservations": reservations,
+            "context_limit": phase_limit,
+        }
         if phase == "assessment" and (reservations or adapter.host_uncited):
             stage = "global"
             # Pending verdicts have the longest label (or code -1 for inline
@@ -1050,11 +1080,6 @@ async def execute_native(*, llm, survey, context, config):
         "evaluation_version": "survey-evaluation-ragas-v1",
         "source_report_sha256": sha,
         "quality_policy": context.get("quality_policy", "legacy"),
-        "body_analysis_contract": "body-analysis-v1",
-        "coverage_requirements": context.get("coverage_requirements") or [],
-        "structure_checks": context.get("structure_checks", {}),
-        "method_checks": context.get("method_checks", {}),
-        "language_checks": context.get("language_checks", {}),
         "assertions": [],
         "stages": progress,
         "coverage": {},
@@ -1090,6 +1115,14 @@ async def execute_native(*, llm, survey, context, config):
     global_scope = (engine or {}).get("global_scope")
     if global_scope:
         progress["global_scope"] = global_scope
+    if global_scope != conflict_review.CONTRACT:
+        details.update(
+            body_analysis_contract="body-analysis-v1",
+            coverage_requirements=context.get("coverage_requirements") or [],
+            structure_checks=context.get("structure_checks", {}),
+            method_checks=context.get("method_checks", {}),
+            language_checks=context.get("language_checks", {}),
+        )
     keyed_assessment = (
         engine is None or engine.get("assessment_response_contract") == KEYED_ASSESSMENT
     )
@@ -1101,10 +1134,14 @@ async def execute_native(*, llm, survey, context, config):
     local_context = (engine or {}).get("inventory_context_contract") == (
         INVENTORY_CONTEXT_CONTRACT
     )
+    inventory_prompt = (engine or {}).get("inventory_prompt_contract")
+    batch_contract = (engine or {}).get("stage_batch_contract")
     adapter = NativeRagasAdapter(
         llm,
         config,
         keyed_assessment=keyed_assessment,
+        direct_inventory=inventory_prompt == DIRECT_INVENTORY_PROMPT,
+        stage_batch_limits=batch_contract == STAGE_BATCH_LIMITS,
         **({"inline_scopes": True} if inline else {}),
         **(
             {"host_uncited": True}
@@ -1115,6 +1152,10 @@ async def execute_native(*, llm, survey, context, config):
     )
     if keyed_assessment:
         progress["assessment_response_contract"] = KEYED_ASSESSMENT
+    if inventory_prompt:
+        progress["inventory_prompt_contract"] = inventory_prompt
+    if batch_contract:
+        progress["stage_batch_contract"] = batch_contract
     adapter.evaluation_identity = context.get("native_evaluation_identity")
     if adapter.evaluation_identity is not None:
         progress["evaluation_identity"] = adapter.evaluation_identity

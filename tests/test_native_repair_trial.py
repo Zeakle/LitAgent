@@ -14,6 +14,7 @@ from test_native_ragas_evaluation import SemanticTransport, verdict_pairs
 from test_native_responses import envelope, owner_for
 from test_writer_v2 import case  # noqa: F401
 
+from litagent.config import AppConfig, load_config
 from litagent.eval.citation import CitationEvaluator
 from litagent.eval.ragas_global_wire import unpack_global_input
 from litagent.llm.routing import ModelBoundClient
@@ -88,7 +89,19 @@ def native_078():
         )
     )
     inputs = json.loads(archive[base.INPUT])
-    cfg = base.configuration()
+    # The trial adds one repair to the sealed ledger under its resource limits.
+    # Loading today's expanded defaults would change both the plan and the wire.
+    recorded = report["metadata"]["config_summary"]
+    config = load_config(str(base.CONFIG)).model_dump(mode="json")
+    for section in ("adversarial", "capacity", "eval", "extractor", "rag", "safety"):
+        config[section] = recorded[section]
+    config["observability"]["enabled"] = False
+    config["llm"].update(
+        base_url="https://offline.invalid/api/v3",
+        max_tokens=recorded["llm"]["max_tokens"],
+        evaluation_inventory_model=None,
+    )
+    cfg = AppConfig.model_validate(config)
     plan = base.plan_frozen_budget(
         inputs["bundle"],
         budget_policy="planned-budget-v7",

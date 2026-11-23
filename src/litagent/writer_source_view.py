@@ -181,7 +181,11 @@ def source_view_identity() -> str:
                 "",
                 legacy_source(WriterSession._patch),
             ),
-            inspect.getsource(repair_capacity_snapshot),
+            re.sub(
+                r"(?ms)^ +# BEGIN initial capacity recovery\n.*?^ +# END initial capacity recovery\n",
+                "",
+                inspect.getsource(repair_capacity_snapshot),
+            ),
             _CHAPTER_HOST_PLAN_FIELDS,
             _PAIR,
             _LOOKUP_FIELDS,

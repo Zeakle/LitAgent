@@ -78,16 +78,22 @@ def envelope_output_tokens(envelope=None, *, archived=False) -> dict[str, int]:
     )
 
 
-def envelope_context_tokens(envelope=None, *, archived=False) -> int:
+def envelope_context_tokens(envelope=None, *, stage=None, archived=False) -> int:
     """Bind expanded requests to a fixed, conservatively sized model context."""
     if envelope is not None and "output_tokens" in envelope:
         envelope_output_tokens(envelope, archived=archived)
         from litagent.run_limits import envelope_run_limits
 
-        return envelope_run_limits(envelope, archived=archived)["context_tokens"]
+        limits = envelope_run_limits(envelope, archived=archived)
+        context = limits["context_tokens"]
+        return (
+            limits.get("global_context_tokens", context)
+            if stage == "global"
+            else context
+        )
     return 131072
 
 
-def envelope_context_limit(envelope=None, *, archived=False) -> int:
+def envelope_context_limit(envelope=None, *, stage=None, archived=False) -> int:
     """Retain at least ten percent context headroom for both request profiles."""
-    return int(envelope_context_tokens(envelope, archived=archived) * 0.9)
+    return envelope_context_tokens(envelope, stage=stage, archived=archived) * 9 // 10

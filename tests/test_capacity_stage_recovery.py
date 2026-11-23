@@ -80,11 +80,16 @@ async def test_capacity_candidate_repair_is_bounded_and_settled(
         if mode == "unknown_usage":
             reply.pop("usage")
 
+    config = configuration()
+    # The retained ViT replay uses the full report-review request. Compact
+    # transport fits this fixture without ever exercising capacity recovery.
+    config.eval.native_global_scope = None
+    config.eval.native_global_input = None
     report, gateway, plan = await replay(
         tmp_path,
         monkeypatch,
         mode="candidate",
-        config=configuration(),
+        config=config,
         capacity_response=capacity_response,
     )
     expected = {"recovered": 2, "repeated": 2, "exhausted": 3, "unknown_usage": 1}[mode]

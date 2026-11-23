@@ -15,7 +15,7 @@ from pathlib import Path
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError
 
-from litagent import inline_citations, review_policy, stage_repair
+from litagent import capacity_recovery, inline_citations, review_policy, stage_repair
 from litagent.body_quality import (
     NATIVE_REPORT_INPUT_CONTRACT,
     ROLES,
@@ -7218,6 +7218,65 @@ async def repair_capacity_snapshot(
             session.save()
             from litagent.safety.planned_budget import EnvelopeExceeded
 
+            # BEGIN initial capacity recovery
+            if (
+                byte_capacity is not None
+                and isinstance(exc, WriterError)
+                and exc.code == capacity_recovery.ERROR_CODE
+                and len(session.state["attempts"]) == before + 1
+            ):
+                rejection = capacity_recovery.authenticate_rejection(
+                    session,
+                    f"repair_{before}",
+                    document,
+                    targets,
+                    record["failure"],
+                )
+                if rejection is not None:
+                    rejections = record.setdefault("source_map_rejections", [])
+                    remaining = min(
+                        session.repair_limit - len(session.state["attempts"]),
+                        repair_attempts_remaining(session.state, "capacity"),
+                    )
+                    repeated = any(
+                        item["patches_sha256"] == rejection["patches_sha256"]
+                        for item in rejections
+                    )
+                    rejection.update(
+                        remaining_attempts=remaining,
+                        next_action=(
+                            "stop_repeated_candidate"
+                            if repeated
+                            else "retry" if remaining > 0 else "stop_capacity_exhausted"
+                        ),
+                    )
+                    rejections.append(rejection)
+                    session.save()
+                    if repeated or remaining <= 0:
+                        raise WriterError(
+                            exc.code, exc.family, rejection["diagnostics"]
+                        ) from exc
+                    capacity_issue["diagnostics"] = capacity_recovery.feedback(
+                        rejection
+                    )
+                    local = current_repair_guidance_context(
+                        None,
+                        None,
+                        {
+                            "packet": session.packet,
+                            "aliases": session.aliases,
+                            "body": document,
+                            "summaries": {},
+                            "budget_envelope": session.envelope,
+                            "generation_writing_plan": session.writing_plan,
+                        },
+                        targets,
+                        [capacity_issue],
+                        diagnostic_categories=["capacity"],
+                    )
+                    guidance_context = {"current": local, "prior_candidate": None}
+                    continue
+            # END initial capacity recovery
             issues = getattr(exc, "diagnostics", [])
             # This overflow describes the rejected candidate. The preserved
             # original intentionally has a different measured byte count.
@@ -8884,6 +8943,7 @@ async def _repair_report(
     prepare_only=False,
 ):
     """Stage a complete candidate and commit only after independent full evaluation."""
+    from litagent.eval.conflict_review import selected as conflict_only
     from litagent.eval.ragas_repair import native_repair_diagnostics
     from litagent.runner import RewriteOutcome
 
@@ -9009,6 +9069,7 @@ async def _repair_report(
     if (
         not combined
         and not review_policy.enabled(session.envelope)
+        and not conflict_only(session.envelope)
         and review.get("source_report_sha256")
         == hashlib.sha256(original.encode()).hexdigest()
     ):

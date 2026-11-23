@@ -10,6 +10,7 @@ from test_quality_view import render_repair_state
 
 from litagent.config import EvalConfig, load_config
 from litagent.eval import question_coverage, ragas_native
+from litagent.eval.conflict_review import CONTRACT as CONFLICT_ONLY_SCOPE
 from litagent.eval.engine_policy import configured_engine, validate_engine
 from litagent.eval.responsibilities import REPORT_REVIEW_SCOPE
 from litagent.eval.results import (
@@ -26,7 +27,7 @@ from litagent.safety.budget import strict_request_reservation
 def test_default_freezes_scope_and_isolates_previous_checkpoint(live):
     profile = load_config(live_workbench=live)
     engine = configured_engine(profile)
-    assert engine["global_scope"] == REPORT_REVIEW_SCOPE
+    assert engine["global_scope"] == CONFLICT_ONLY_SCOPE
     assert validate_engine(engine) == engine
     profile.eval.native_global_scope = None
     old = configured_engine(profile)

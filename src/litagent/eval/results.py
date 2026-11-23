@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any
 
+from litagent.eval.conflict_review import CONTRACT as CONFLICT_ONLY_SCOPE
+
 CONTRACT = "independent-evaluation-v1"
 FIELDS = ("evaluation_result_contract", "evaluation_result_identity")
 IMPLEMENTATION = "litagent-actual-citation-support-v1"
@@ -59,7 +61,7 @@ def historical_checks(details, report_sha256):
     return copy.deepcopy(checks)
 
 
-@lru_cache(maxsize=3)
+@lru_cache(maxsize=4)
 def contract_identity(global_scope=None) -> str:
     """Bind responsibilities, state semantics and formulas without changing old IDs."""
     if global_scope is None:
@@ -67,33 +69,18 @@ def contract_identity(global_scope=None) -> str:
         return FULL_REVIEW_IDENTITY
     if global_scope == "question-coverage-v1":
         return "938db468a626ef977d3a2274f8c50a486236147b037b9cfb349e5771fb335783"
-    if global_scope != "report-review-no-omissions-v1":
+    if global_scope == "report-review-no-omissions-v1":
+        return "007967e7f81d376ae225569978e058523a9207ddf527c0481d2a68af4057a9ea"
+    if global_scope != CONFLICT_ONLY_SCOPE:
         raise ValueError("evaluation_global_scope_invalid")
-    from litagent.body_quality import (
-        bound_repair_diagnostics,
-        report_repair_diagnostics,
-    )
-    from litagent.eval.responsibilities import (
-        FORBIDDEN_CODES,
-        GLOBAL_INSTRUCTION,
-        parse_global_response,
-        project_global_schema,
-    )
 
     value = [
         CONTRACT,
         global_scope,
         IMPLEMENTATION,
-        GLOBAL_INSTRUCTION,
-        sorted(FORBIDDEN_CODES),
-        inspect.getsource(report_repair_diagnostics),
-        inspect.getsource(bound_repair_diagnostics),
-        inspect.getsource(project_global_schema),
-        inspect.getsource(parse_global_response),
         inspect.getsource(result),
         inspect.getsource(check),
-        inspect.getsource(_legacy_execute_evaluation),
-        inspect.getsource(question_only),
+        inspect.getsource(three_metrics_only),
         inspect.getsource(required_metrics),
         inspect.getsource(derive_quality),
         inspect.getsource(EvaluationRunResult),
@@ -151,6 +138,14 @@ def question_only(details):
     return (
         details.get("evaluation_version") == "survey-evaluation-ragas-v1"
         and details.get("stages", {}).get("global_scope") == "question-coverage-v1"
+    )
+
+
+def three_metrics_only(details):
+    """Read the scope recorded by the native engine for this report version."""
+    return (
+        details.get("evaluation_version") == "survey-evaluation-ragas-v1"
+        and details.get("stages", {}).get("global_scope") == CONFLICT_ONLY_SCOPE
     )
 
 
@@ -285,7 +280,7 @@ class EvaluationRunResult:
             unverified_count=counts["unverifiable"],
         )
         sections = self.details.get("stages", {}).get("global_sections", {})
-        measured_conflicts_required = (
+        measured_conflicts_required = three_metrics_only(self.details) or (
             self.details.get("stages", {}).get("global_scope")
             == "report-review-no-omissions-v1"
         )
@@ -335,28 +330,6 @@ class EvaluationRunResult:
         d, claims = self.details, self.assertions
         stages = d.get("stages") or {}
         global_sections = stages.get("global_sections") or {}
-        supported = {
-            c.get("claim_id")
-            for c in claims
-            if c.get("kind") == "scientific" and c.get("status") == "supported"
-        }
-        requirements, rows = (
-            d.get("coverage_requirements") or [],
-            d.get("core_coverage") or [],
-        )
-        coverage_valid = bool(
-            requirements
-            and len(rows) == len(requirements)
-            and len({r.get("requirement_id") for r in rows}) == len(rows)
-            and {r.get("requirement_id") for r in rows}
-            == {r.get("requirement_id") for r in requirements}
-        )
-        coverage_passed = coverage_valid and all(
-            r.get("answered") is True
-            and r.get("claim_ids")
-            and set(r["claim_ids"]).issubset(supported)
-            for r in rows
-        )
         out = {
             "execution": check(
                 (
@@ -393,22 +366,48 @@ class EvaluationRunResult:
                 ),
                 *([] if self.inventory_valid() else ["inventory_invalid"]),
             ),
-            "core_coverage": check(
-                (
-                    "passed"
-                    if coverage_passed
-                    else "failed" if coverage_valid else "unverified"
-                ),
-                *([] if coverage_passed else ["core_coverage_unverified"]),
-                answered=sum(
-                    r.get("answered") is True
-                    and bool(r.get("claim_ids"))
-                    and set(r["claim_ids"]).issubset(supported)
-                    for r in rows
-                ),
-                expected=len(requirements),
-            ),
         }
+        if d.get("inventory_check", {}).get("scope") == "processed_assertions":
+            out["inventory"]["scope"] = "processed_assertions"
+        if three_metrics_only(d):
+            return out
+        supported = {
+            c.get("claim_id")
+            for c in claims
+            if c.get("kind") == "scientific" and c.get("status") == "supported"
+        }
+        requirements, rows = (
+            d.get("coverage_requirements") or [],
+            d.get("core_coverage") or [],
+        )
+        coverage_valid = bool(
+            requirements
+            and len(rows) == len(requirements)
+            and len({r.get("requirement_id") for r in rows}) == len(rows)
+            and {r.get("requirement_id") for r in rows}
+            == {r.get("requirement_id") for r in requirements}
+        )
+        coverage_passed = coverage_valid and all(
+            r.get("answered") is True
+            and r.get("claim_ids")
+            and set(r["claim_ids"]).issubset(supported)
+            for r in rows
+        )
+        out["core_coverage"] = check(
+            (
+                "passed"
+                if coverage_passed
+                else "failed" if coverage_valid else "unverified"
+            ),
+            *([] if coverage_passed else ["core_coverage_unverified"]),
+            answered=sum(
+                r.get("answered") is True
+                and bool(r.get("claim_ids"))
+                and set(r["claim_ids"]).issubset(supported)
+                for r in rows
+            ),
+            expected=len(requirements),
+        )
         for name, field in (
             ("structure", "structure_checks"),
             ("method", "method_checks"),
@@ -463,8 +462,6 @@ class EvaluationRunResult:
         ):
             if global_sections.get(key, {}).get("status") == "error":
                 out[target] = copy.deepcopy(global_sections[key])
-        if d.get("inventory_check", {}).get("scope") == "processed_assertions":
-            out["inventory"]["scope"] = "processed_assertions"
         if question_only(d):
             for name in ("global_report", "analysis", "limitations"):
                 out[name] = check("not_applicable", "outside_global_review_scope")
@@ -494,6 +491,7 @@ def acceptance(details):
     checks, failures = run.checks(), []
     metrics = run.metrics()
     support, consistency = metrics["faithfulness"], metrics["internal_consistency"]
+    three_metrics = three_metrics_only(details)
     if (
         support["status"] not in {"passed", "failed"}
         or checks["execution"]["status"] != "passed"
@@ -507,21 +505,26 @@ def acceptance(details):
         consistency["status"] not in {"passed", "failed"}
         or consistency["details"].get("conflict_count")
     ):
-        failures.append("global_inconsistency")
-    names = {
-        "core_coverage": "core_coverage_unverified",
-        "analysis": "body_analysis_incomplete",
-        "structure": "structure_checks",
-        "method": "method_checks",
-        "language": "language_checks",
-        "method_statements": "method_assertion_errors",
-        "organization": "organization_errors",
-        "global_report": "global_inconsistency",
-        "limitations": "scientific_limitations_missing",
-    }
-    for name, reason in names.items():
-        if checks[name].get("status") not in {"passed", "not_applicable"}:
-            failures.append(reason)
+        failures.append(
+            "internal_consistency_not_passed"
+            if three_metrics
+            else "global_inconsistency"
+        )
+    if not three_metrics:
+        names = {
+            "core_coverage": "core_coverage_unverified",
+            "analysis": "body_analysis_incomplete",
+            "structure": "structure_checks",
+            "method": "method_checks",
+            "language": "language_checks",
+            "method_statements": "method_assertion_errors",
+            "organization": "organization_errors",
+            "global_report": "global_inconsistency",
+            "limitations": "scientific_limitations_missing",
+        }
+        for name, reason in names.items():
+            if checks[name].get("status") not in {"passed", "not_applicable"}:
+                failures.append(reason)
     if not details.get("fact_card_map"):
         failures.append("fact_cards_unavailable")
     return {
@@ -592,7 +595,7 @@ def sanitize_request_preflight(value):
 # Only report-local, machine-issued identifiers may enter public exports.
 _GATE_REASONS = frozenset(
     """incomplete_verification science_not_fully_supported inventory_invalid
-    global_inconsistency core_coverage_unverified body_analysis_incomplete
+    global_inconsistency internal_consistency_not_passed core_coverage_unverified body_analysis_incomplete
     structure_checks method_checks language_checks method_assertion_errors
     organization_errors scientific_limitations_missing fact_cards_unavailable""".split()
 )

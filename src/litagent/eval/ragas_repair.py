@@ -276,6 +276,7 @@ def _followup_budget(snapshot, *, edit, summary):
 
 def recovery_decision(report, context, budget):
     """Select one bounded recovery from current native results and paid receipts."""
+    from litagent.eval.conflict_review import selected as conflict_only
     from litagent.eval.ragas_native import source_samples
     from litagent.eval.results import EvaluationRunResult
     from litagent.quality import remaining_repair_allowances, targeted_repair_state
@@ -476,6 +477,7 @@ def recovery_decision(report, context, budget):
         if (
             not inventory
             and not review_policy.enabled(owner.plan["envelope"])
+            and not conflict_only(owner.plan["envelope"])
             and review.get("source_report_sha256") == sha
         ):
             diagnostics.extend(review.get("issues", []))

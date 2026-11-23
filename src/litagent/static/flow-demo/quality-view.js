@@ -70,6 +70,8 @@ const LABELS = {
   evaluation_analysis_claim_ownership_invalid: ["章节断言归属无效，整体未核验", "Invalid chapter claim ownership; overall evaluation unverified"],
   support_basis_quote_invalid: ["支持原文与所选来源字段不匹配", "Support text does not match the selected source field"],
   science_not_fully_supported: ["科学支持未达到严格交付要求", "Strict scientific support requirement unmet"],
+  internal_consistency_not_passed: ["内部一致性未通过", "Internal consistency requirement unmet"],
+  unknown_evidence_ids: ["存在未知引用 ID", "Unknown citation IDs"],
   science_support_unverified: ["全篇科学支持率尚未核验", "Report-wide scientific support is unverified"],
   body_analysis_incomplete: ["章节分析核验未通过", "Chapter analysis check failed"],
   incomplete_verification: ["核验未完成", "Verification incomplete"],
@@ -130,9 +132,10 @@ function renderRunBudget(container, value, runId, en, plan) {
 }
 function renderIndependentChecks(container, details, options, onSelect, L) {
   const en = options.locale === "en";
+  const threeMetrics = details.stages?.global_scope === "scientific-conflicts-v1";
   const panel = node(container, "section", null, "quality-section");
-  node(panel, "h3", en ? "Independent checks" : "独立检查与交付门禁");
-  node(panel, "p", en ? "Scores describe completed measurements; delivery requires every mandatory check. Unverified results have no score." : "评分描述已完成的测量；交付要求所有必要检查通过。未核验结果没有分数。");
+  node(panel, "h3", threeMetrics ? (en ? "Evaluation criteria" : "三项评分规则") : (en ? "Independent checks" : "独立检查与交付门禁"));
+  if (!threeMetrics) node(panel, "p", en ? "Scores describe completed measurements; delivery requires every mandatory check. Unverified results have no score." : "评分描述已完成的测量；交付要求所有必要检查通过。未核验结果没有分数。");
   const formulas = {citation_accuracy: ["有效去重引用 ID／全部去重引用 ID 与格式错误项", "Valid unique IDs / all unique IDs and malformed markers"], faithfulness: ["获支持科学断言／全部科学断言；严格交付要求 1.0", "Supported scientific assertions / all scientific assertions; delivery requires 1.0"], internal_consistency: ["max(0, 1 − 0.2 × 矛盾对数)；严格交付要求无矛盾", "max(0, 1 − 0.2 × conflict pairs); delivery requires no conflicts"]};
   const questionOnly = details.stages?.global_scope === "question-coverage-v1";
   if (questionOnly) {
@@ -143,6 +146,7 @@ function renderIndependentChecks(container, details, options, onSelect, L) {
     node(panel, "p", en ? "Internal consistency counts contradictory claim pairs under matching conditions. Inventory completeness tracks processing of the extracted claims. Extraction recall is unmeasured." : "内部一致性统计同一条件下互相矛盾的断言对。清单完整性指已抽取断言的处理情况。本次未评测断言抽取召回率。");
   }
   for (const [name, labels] of Object.entries(formulas)) node(panel, "p", `${L(name)}: ${labels[en ? 1 : 0]}`);
+  if (threeMetrics) return;
   const titles = {execution: ["执行完整性", "Execution completeness"], inventory: ["清单有效性", "Inventory validity"], core_coverage: ["核心问题覆盖", "Core coverage"], structure: ["结构", "Structure"], method: ["方法披露", "Method disclosure"], language: ["语言", "Language"], analysis: ["章节分析", "Chapter analysis"], method_statements: ["运行方法陈述", "Runtime statements"], organization: ["组织陈述", "Organization"], global_report: ["全局正文问题", "Global report issues"], limitations: ["具体局限", "Concrete limitations"]};
   const table = node(panel, "table", null, "quality-distribution quality-batches"), head = node(table, "thead"), header = node(head, "tr");
   if (details.stages?.global_scope === "report-review-no-omissions-v1") titles.inventory = ["已抽取断言处理完整性", "Extracted claim processing"];
@@ -163,6 +167,7 @@ function renderIndependentChecks(container, details, options, onSelect, L) {
 export function renderQuality(container, evaluation, quality, delivery, onSelect, t = key => key, options = {}) {
   const L = key => LABELS[key]?.[options.locale === "en" ? 1 : 0] || key;
   const details = evaluation?.faithfulness?.details || {};
+  const threeMetrics = details.stages?.global_scope === "scientific-conflicts-v1";
   const v2 = ["survey-evaluation-v2", "survey-evaluation-v3", "survey-evaluation-ragas-v1"].includes(details.evaluation_version);
   const noFinalReport = details.skipped_reason === "final_report_unavailable";
   const hasPipeline = options.pipelineVerification && Object.keys(options.pipelineVerification).length > 0;
@@ -296,7 +301,7 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
   node(gate, "p", noFinalReport ? missingReportNote : details.evaluation_version === "survey-evaluation-ragas-v1" ? (en ? "Native RAGAS · cited-context Faithfulness and independent global review" : "原生 RAGAS · 实际引用 Faithfulness 与独立全局检查") : details.evaluation_version === "survey-evaluation-v3" ? (en ? "Evaluation v3 · complete batched assessment" : "评估 v3 · 完整分批核验") : v2 ? `${L(details.support_contract === "host-support-passages-v2" ? "current" : details.support_contract === "cited-support-spans-v1" ? "previousSupport" : "historicalV2")} · ${details.evaluation_version}` : hasPipeline && !Object.keys(evaluation || {}).length ? (en ? "Evaluation was not run; no report scores were produced." : "Evaluation 未运行；尚未产生正文评分。") : L("historical"));
   if (options.revision) node(gate, "p", `r${options.revision}${options.sha ? ` · SHA ${options.sha}` : ""}`, "audit-binding");
   if (v2) node(gate,"p",`${L("support")}: ${details.support_contract || L("unavailable")}`);
-  if (!noFinalReport && (options.bodyDiagnostics || details.body_analysis_contract)) {
+  if (!threeMetrics && !noFinalReport && (options.bodyDiagnostics || details.body_analysis_contract)) {
     const section=node(container,"section",null,"quality-section"),en=options.locale === "en";
     node(section,"h3",en ? "Academic body · analytical depth" : "学术正文 · 分析质量");
     const d=options.bodyDiagnostics;
@@ -379,9 +384,9 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
     for (const batch of stages.batches || []) { const row = node(body, "tr"); node(row, "th", `${en ? "Batch" : "批次"} ${Number.isInteger(batch.index) ? batch.index + 1 : L("unavailable")}`); node(row, "td", L(batch.status)); node(row, "td", `${batch.claim_ids?.length || 0} ${L("claims")}`); }
     const questionOnly = stages.global_scope === "question-coverage-v1";
     const scopedReview = questionOnly || stages.global_scope === "report-review-no-omissions-v1";
-    const globalLabel = questionOnly ? (en ? "User question coverage" : "用户问题覆盖") : (en ? "Global consistency" : "全局一致性");
+    const globalLabel = threeMetrics ? (en ? "Contradiction check" : "矛盾核验") : questionOnly ? (en ? "User question coverage" : "用户问题覆盖") : (en ? "Global consistency" : "全局一致性");
     node(strict, "p", `${globalLabel}: ${L(stages.global_check || "unverified")}`);
-    if (details.global_findings_contract) {
+    if (!threeMetrics && details.global_findings_contract) {
       const processing = stages.global_scope === "report-review-no-omissions-v1";
       const inventoryLabel = processing ? (en ? "Extracted claim processing" : "已抽取断言处理完整性") : (en ? "Inventory validity" : "抽取清单有效性");
       node(strict,"p",`${inventoryLabel}: ${L((processing ? details.evaluation_checks?.inventory?.status : details.inventory_check?.status) || "unverified")}`);
@@ -392,8 +397,8 @@ export function renderQuality(container, evaluation, quality, delivery, onSelect
       }
     }
     if(stages.global_reason_code)node(strict,"p",L(stages.global_reason_code));
-    if(details.scope_notice_contract && !questionOnly)node(strict,"p",`${en ? "Substantive limitations" : "具体科学局限"}: ${L(details.limitations_check?.adequate === true ? "passed" : "unverified")} · ${details.limitations_check?.explanation || L("unavailable")}`);
-    for (const requirement of details.coverage_requirements || []) {
+    if(details.scope_notice_contract && !questionOnly && !threeMetrics)node(strict,"p",`${en ? "Substantive limitations" : "具体科学局限"}: ${L(details.limitations_check?.adequate === true ? "passed" : "unverified")} · ${details.limitations_check?.explanation || L("unavailable")}`);
+    for (const requirement of threeMetrics ? [] : details.coverage_requirements || []) {
       const verdict = (details.core_coverage || []).find(c => c.requirement_id === requirement.requirement_id);
       const supportedIds = new Set((details.assertions || []).filter(c => c.kind === "scientific" && c.status === "supported").map(c => c.claim_id));
       const verified = details.coverage?.complete === true && verdict?.answered === true && Array.isArray(verdict.claim_ids) && verdict.claim_ids.length > 0 && verdict.claim_ids.every(id => supportedIds.has(id));

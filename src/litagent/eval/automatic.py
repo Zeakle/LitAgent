@@ -20,7 +20,7 @@ from litagent.benchmark.survey_models import (
     SurveyJudgeMetrics,
 )
 from litagent.body_quality import APPLICABILITY_CONTRACT, APPLICABILITY_INSTRUCTION
-from litagent.eval.results import required_metrics
+from litagent.eval.results import required_metrics, three_metrics_only
 from litagent.evidence import extract_evidence_refs_ordered
 from litagent.quality import digest, strict_acceptance, validate_fact_snapshot
 from litagent.report_render import build_report_source_units
@@ -340,6 +340,7 @@ def freeze_automatic_inputs(
         raise ValueError("automatic_evaluation_not_passed")
     if (
         metadata.get("body_quality") == "analysis_v1"
+        and not three_metrics_only(details)
         and details.get("body_analysis_contract") != "body-analysis-v1"
     ):
         raise ValueError("automatic_analysis_not_verified")
@@ -528,15 +529,21 @@ def freeze_automatic_inputs(
             ),
             "inventory": inventory.model_dump(mode="json"),
             "assertions": assertions,
-            "coverage_requirements": details["coverage_requirements"],
-            "host_validation": {
-                key: details.get(key)
-                for key in (
-                    "structure_checks",
-                    "method_checks",
-                    "language_checks",
-                )
-            },
+            "coverage_requirements": (
+                [] if three_metrics_only(details) else details["coverage_requirements"]
+            ),
+            "host_validation": (
+                {}
+                if three_metrics_only(details)
+                else {
+                    key: details.get(key)
+                    for key in (
+                        "structure_checks",
+                        "method_checks",
+                        "language_checks",
+                    )
+                }
+            ),
         },
     }
 
@@ -888,9 +895,13 @@ async def evaluate_frozen_judge(
 
 
 def automatic_acceptance(
-    snapshot: dict, evaluation: dict, audit: dict | None = None
+    snapshot: dict,
+    evaluation: dict,
+    audit: dict | None = None,
+    *,
+    preflight_failure: str | None = None,
 ) -> dict:
-    """Require exact complete denominators and all three semantic gates without averaging."""
+    """Evaluate delivery gates or record why inputs could not be frozen."""
     failures = []
     policy = (
         snapshot.get("report", {})
@@ -912,12 +923,15 @@ def automatic_acceptance(
     ):
         failures.append("evaluation_not_passed")
     frozen = snapshot.get("frozen_inventory", {})
-    if details.get("stages", {}).get("global_scope") != frozen.get("global_scope"):
-        failures.append("automatic_global_scope_mismatch")
     inventory = frozen.get("inventory", {})
     claims = inventory.get("claims", [])
-    if optional and not claims:
-        failures.append("automatic_inventory_missing")
+    if preflight_failure is None or "frozen_inventory" in snapshot:
+        if details.get("stages", {}).get("global_scope") != frozen.get("global_scope"):
+            failures.append("automatic_global_scope_mismatch")
+        if optional and not claims:
+            failures.append("automatic_inventory_missing")
+    if preflight_failure is not None:
+        failures.append(preflight_failure)
     if not audit:
         audit = {}
         if judge_required:

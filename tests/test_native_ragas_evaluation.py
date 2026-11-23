@@ -9,6 +9,7 @@ from test_writer_v2 import case  # noqa: F401
 
 from litagent.body_quality import ROLES
 from litagent.config import EvalConfig
+from litagent.eval.conflict_review import CONTRACT as CONFLICT_ONLY_SCOPE
 from litagent.eval.ragas_global_wire import CONTRACT as GLOBAL_WIRE
 from litagent.eval.ragas_global_wire import unpack_global_input
 from litagent.eval.ragas_native import completed_repair, execute_native
@@ -69,6 +70,8 @@ class SemanticTransport:
                             for s in statements
                         ]
                     raw[key] = {"statements": decisions}
+        elif payload.get("global_scope") == CONFLICT_ONLY_SCOPE:
+            raw = {"conflicts": []}
         else:
             ids = [c["claim_id"] for c in payload["assertions"]]
             titles = dict(structure_sections("academic_v2", "en"))

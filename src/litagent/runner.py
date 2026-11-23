@@ -54,6 +54,7 @@ from litagent.eval.base import (
     CTX_UNRESOLVED_EVIDENCE_IDS,
 )
 from litagent.eval.citation import CitationEvaluator
+from litagent.eval.conflict_review import selected as conflict_only
 from litagent.eval.consistency import ConsistencyEvaluator
 from litagent.eval.ragas_eval import RagasFaithfulnessEvaluator
 from litagent.eval.scoped import check_request_budget
@@ -1124,6 +1125,7 @@ class LitAgent:
             or (
                 options.generation_strategy in ("body_summary_v2", "body_summary_v3")
                 and not review_policy.enabled(envelope)
+                and not conflict_only(envelope)
                 and metadata.get("reviewer_diagnostics", {}).get("issues")
             )
             or (
@@ -1255,6 +1257,7 @@ class LitAgent:
                     }:
                         if rewrite.candidate_quality.get("status") == "passed" and (
                             review_policy.enabled(envelope)
+                            or conflict_only(envelope)
                             or not metadata.get("reviewer_diagnostics", {}).get(
                                 "issues"
                             )
@@ -1412,6 +1415,7 @@ class LitAgent:
             if (
                 options.generation_strategy in ("body_summary_v2", "body_summary_v3")
                 and not review_policy.enabled(envelope)
+                and not conflict_only(envelope)
                 and metadata.get("reviewer_diagnostics", {}).get("issues")
                 and not metadata.get("evidence_rewrite", {}).get("committed")
             ):
@@ -1544,11 +1548,18 @@ class LitAgent:
                     "audit_id": submitted["audit_id"],
                     "status": "result_unavailable",
                 }
-            acceptance = automatic_acceptance(
-                snapshot, report.get("evaluation", {}), audit
-            )
-            acceptance["failure_codes"].append(reason)
-            acceptance.update(status="failed", publishable=False)
+            if "frozen_inventory" in snapshot:
+                acceptance = automatic_acceptance(
+                    snapshot, report.get("evaluation", {}), audit
+                )
+                acceptance["failure_codes"].append(reason)
+                acceptance.update(status="failed", publishable=False)
+            else:
+                acceptance = automatic_acceptance(
+                    snapshot,
+                    report.get("evaluation", {}),
+                    preflight_failure=reason,
+                )
         if report["metadata"].get("body_quality") == "analysis_v1":
             from litagent.body_quality import body_diagnostics
 
@@ -2690,7 +2701,12 @@ class LitAgent:
                     for ev in self._evaluators
                     if ev.metric_name == "citation_accuracy"
                 )
-                cited = await citation.evaluate(survey, context)
+                id_only = conflict_only(frozen_eval_envelope)
+                cited = (
+                    citation.evaluate_ids(survey, context[CTX_EVIDENCE], strict=True)
+                    if id_only
+                    else await citation.evaluate(survey, context)
+                )
                 output = {
                     "citation_accuracy": metric_result(
                         (
@@ -2700,9 +2716,16 @@ class LitAgent:
                         ),
                         score=None if cited.skipped else cited.score,
                         reasons=(
-                            [cited.details["skipped_reason"]] if cited.skipped else []
+                            [cited.details["skipped_reason"]]
+                            if cited.skipped
+                            else (
+                                cited.details.get("reason_codes", []) if id_only else []
+                            )
                         ),
-                        **{**cited.details, "threshold": citation._threshold},
+                        **{
+                            **cited.details,
+                            "threshold": 1.0 if id_only else citation._threshold,
+                        },
                     ),
                     **run.metrics(),
                 }
@@ -2868,12 +2891,29 @@ class LitAgent:
             if isinstance(adversarial, Mapping)
             else "en"
         )
-        audit_context = SurveyAuditContext(
-            query=query,
-            report_language=language,
-            review_structure=structure,
-            review_methodology=methodology,
-        )
+        from litagent.safety.planned_budget import locked_writer_envelope
+
+        editorial_checks = {}
+        if not conflict_only(locked_writer_envelope(self._cost_budget)):
+            audit_context = SurveyAuditContext(
+                query=query,
+                report_language=language,
+                review_structure=structure,
+                review_methodology=methodology,
+            )
+            editorial_checks = {
+                "language_checks": check_report_language(
+                    survey, language, methodology, evidence=ledger
+                ),
+                "structure_checks": check_structure(
+                    survey,
+                    audit_context,
+                    selected_evidence_ids=[i["evidence_id"] for i in selected],
+                ),
+                "method_checks": check_methodology(
+                    survey, structure, language, methodology
+                ),
+            }
         return {
             "evaluation_version": (
                 "survey-evaluation-v3"
@@ -2899,18 +2939,8 @@ class LitAgent:
             ),
             "review_structure": structure,
             "report_language": language,
-            "language_checks": check_report_language(
-                survey, language, methodology, evidence=ledger
-            ),
             "review_methodology": methodology,
-            "structure_checks": check_structure(
-                survey,
-                audit_context,
-                selected_evidence_ids=[i["evidence_id"] for i in selected],
-            ),
-            "method_checks": check_methodology(
-                survey, structure, language, methodology
-            ),
+            **editorial_checks,
             CTX_QUERY: query,
             CTX_PAPERS: extractions,
             CTX_CLAIMS: claims,

@@ -85,6 +85,10 @@ EXCEPTIONS = {
 }
 
 
+LIVE_EXTRACTION_OUTPUT_LIMIT = 12288
+LIVE_EXTRACTION_CONTEXT_TOKENS = 196608
+
+
 def increase(value):
     """Increase a positive resource ceiling without floating-point under-rounding."""
     if type(value) not in (int, float) or value <= 0:

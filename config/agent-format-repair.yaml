@@ -28,7 +28,7 @@ extractor:
   max_concurrent: 6
   enable_llm: true
   max_papers: 60
-  max_tokens: 9831
+  max_tokens: 12288
   thinking_mode: disabled
   per_paper_timeout_ms: 144000
   task_timeout_ms: 1440000
@@ -49,7 +49,7 @@ llm:
   generation_model: doubao-seed-2-1-pro-260915
   evaluation_model: doubao-seed-2-1-lite-260915
   evaluation_inventory_model: doubao-seed-2-1-pro-260915
-  max_tokens: 29492
+  max_tokens: 32768
   temperature: 0.1
   request_deadline_margin_seconds: 5.0
   request_timeouts_seconds:
@@ -116,7 +116,7 @@ rag:
 adversarial:
   max_rounds: 4
   pass_threshold: 0.8
-  review_max_tokens: 19661
+  review_max_tokens: 24576
   thinking_mode: disabled
   # Cover four sends per authored response plus Reviewer and request margins.
   task_timeout_ms: 27000000
@@ -125,11 +125,13 @@ safety:
   planned_run_limits:
     profile: agent-format-repair-v1
     syntax_policy: agent-format-recovery-v1
+    initial_capacity_recovery: initial-capacity-source-retry-v1
     max_tokens: 47420000
     max_requests: 226
     max_repairs: 11
-    context_tokens: 235930
-    max_output_tokens: 39322
+    context_tokens: 245760
+    global_context_tokens: 307200
+    max_output_tokens: 45056
   max_cost_tokens: 600000
   cost_warn_ratio: 0.8
   tool_policy:
@@ -155,10 +157,10 @@ observability:
   payload_mode: metadata_only
 eval:
   semantic_engine: ragas-cited-faithfulness-v1
-  native_global_scope: report-review-no-omissions-v1
+  native_global_scope: scientific-conflicts-v1
   native_global_unit_response: ragas-global-unit-keys-v3
-  context_tokens: 235930
-  max_tokens: 39322
+  context_tokens: 307200
+  max_tokens: 45056
   thinking_mode: disabled
   timeout_seconds: 360.0
   total_timeout_seconds: 8640.0
@@ -176,7 +178,7 @@ eval:
 planner:
   decompose_enabled: true
   max_sub_queries: 4
-  max_tokens: 19661
+  max_tokens: 24576
   thinking_mode: disabled
   temperature: 0.3
   use_procedural_profiles: false
@@ -200,8 +202,8 @@ capacity:
   batch_size: 20
   max_assertions: null
   max_assessment_batches: null
-  body_json_bytes: 38400
-  summary_json_bytes: 4800
+  body_json_bytes: 48000
+  summary_json_bytes: 6000
   claim_json_bytes: 36000
   claim_max_json_bytes: 2400
   diagnostic_json_bytes: 14746
