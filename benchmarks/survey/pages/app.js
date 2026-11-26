@@ -243,6 +243,35 @@ function renderMetrics(view) {
   byId("archive-stages").hidden = timings.childElementCount === 0;
 }
 
+function linkReportReferences(documentBody) {
+  const bibliography = [...documentBody.querySelectorAll(":scope > h2")].findLast(
+    heading => /^(References|参考文献)$/i.test(heading.textContent.trim()),
+  );
+  const references = new Map();
+  for (let entry = bibliography?.nextElementSibling; entry && !/^H[12]$/.test(entry.tagName); entry = entry.nextElementSibling) {
+    const number = entry.tagName === "P" && /^\s*\[([1-9]\d*)\]/.exec(entry.textContent)?.[1];
+    if (!number) continue;
+    const leadingText = entry.firstChild;
+    if (leadingText?.nodeType === Node.TEXT_NODE) {
+      leadingText.data = leadingText.data.replace(/^(\s*\[[1-9]\d*\])(?!\s)/, "$1 ");
+    }
+    entry.id = `archive-ieee-reference-${number}`;
+    entry.tabIndex = -1;
+    references.set(number, entry.id);
+  }
+  for (const citation of documentBody.querySelectorAll('a[href^="#citation-"]')) {
+    const parts = citation.textContent.split(/(\[[1-9]\d*\])/);
+    citation.replaceWith(...parts.map((part, index) => {
+      const destination = index % 2 ? references.get(part.slice(1, -1)) : null;
+      if (!destination) return part;
+      const link = document.createElement("a");
+      link.href = `#${destination}`;
+      link.textContent = part;
+      return link;
+    }));
+  }
+}
+
 function renderReport(report) {
   const documentBody = byId("archive-report-document");
   const status = byId("archive-report-status");
@@ -262,6 +291,7 @@ function renderReport(report) {
   if (report.html) {
     renderReportDocument(documentBody, report, new Map(), t);
     if (documentBody.childElementCount && !documentBody.classList.contains("render-fallback")) {
+      linkReportReferences(documentBody);
       // Citation IDs remain readable without implying they failed a ledger lookup.
       for (const citation of documentBody.querySelectorAll(".citation-unresolved")) {
         citation.replaceWith(citation.textContent);
@@ -469,7 +499,10 @@ for (const button of viewButtons) {
     if (button.hasAttribute("aria-current")) return;
     const url = route();
     if (button.dataset.archiveView === "report") url.searchParams.set("view", "report");
-    else url.searchParams.delete("view");
+    else {
+      url.searchParams.delete("view");
+      url.hash = "";
+    }
     history.pushState(null, "", url);
     closeInspector(false);
     renderViewRoute();
@@ -478,6 +511,7 @@ for (const button of viewButtons) {
 select.addEventListener("change", () => {
   const url = route();
   url.searchParams.set("run", select.value);
+  url.hash = "";
   history.pushState(null, "", url);
   void loadRun(select.value);
 });

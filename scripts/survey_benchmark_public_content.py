@@ -6,8 +6,15 @@ import hashlib
 import re
 from urllib.parse import urlsplit
 
+from litagent.citation_formats import REF_PATTERN
+from litagent.demo import extract_report_evidence
 from litagent.observability.recorder import _redact_trace_value
-from litagent.report_render import render_report_html
+from litagent.report_render import (
+    build_reader_report,
+    paper_catalog_from_nodes,
+    render_report_html,
+)
+from litagent.workbench import ReportVersion
 
 PUBLIC_FIELDS = set(
     """
@@ -171,8 +178,9 @@ def project_step(
     return entry if len(entry) > 1 else None
 
 
-def project_report(report, expected_sha256) -> dict | None:
-    """Keep the exact generated manuscript and reject unresolved source bindings."""
+def project_report(archive, expected_sha256) -> dict | None:
+    """Keep the exact manuscript and render an IEEE citation view from the archive."""
+    report = archive.get("report")
     if not isinstance(report, dict):
         return None
     markdown = report.get("survey")
@@ -187,9 +195,36 @@ def project_report(report, expected_sha256) -> dict | None:
     digest = hashlib.sha256(markdown.encode()).hexdigest()
     if digest != expected_sha256 or not public_text(markdown):
         raise ValueError("Public report text failed its archive or publication check")
+
+    display_markdown = markdown
+    bibliography_span = None
+    if REF_PATTERN.search(markdown):
+        nodes = archive["nodes"]
+        metadata = report.get("metadata") or {}
+        reader = build_reader_report(
+            ReportVersion(
+                run_id=archive["run_id"],
+                revision=1,
+                report_language=metadata.get("report_language") or "en",
+                survey=markdown,
+            ),
+            evidence_ledger={
+                item["evidence_id"]: item
+                for item in extract_report_evidence(nodes, report=report)
+            },
+            paper_catalog=paper_catalog_from_nodes(nodes),
+            citation_style="ieee",
+            writing_bindings=metadata.get("writing_bindings"),
+        )
+        display_markdown = reader.markdown
+        bibliography_span = reader.bibliography_span
+        if not public_text(display_markdown):
+            raise ValueError("Public IEEE reference text failed its publication check")
     return {
         "markdown": markdown,
         "source_sha256": digest,
         "state": "partial" if report.get("partial") is True else "complete",
-        "html": render_report_html(markdown).html,
+        "html": render_report_html(
+            display_markdown, bibliography_span=bibliography_span
+        ).html,
     }
