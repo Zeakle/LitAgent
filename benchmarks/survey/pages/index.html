@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>LitAgent · Survey Benchmark</title>
+  <link rel="stylesheet" href="./workbench/styles.css">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body class="archive-page">
+  <div class="app-shell archive-shell">
+    <main class="workspace archive-workspace">
+      <header class="archive-header">
+        <div class="run-heading">
+          <p class="run-kicker">LitAgent · Survey Benchmark</p>
+          <h1 id="archive-title" data-i18n="publishedExecution">执行归档</h1>
+        </div>
+        <div class="archive-controls">
+          <label class="archive-select">
+            <span data-i18n="archiveRun">运行</span>
+            <select id="archive-run" disabled></select>
+          </label>
+          <a class="quiet-button" href="https://github.com/Zeakle/LitAgent/blob/main/benchmarks/survey/results/latency-faithfulness-95/README.md" data-i18n="archiveBenchmark">基准总表</a>
+          <button id="archive-language" class="quiet-button" type="button" aria-label="Switch to English">EN</button>
+        </div>
+      </header>
+
+      <noscript><p class="notice">请启用 JavaScript 以查看交互执行归档。 Enable JavaScript to view the execution archive.</p></noscript>
+      <p id="archive-message" class="notice" role="status" aria-live="polite">正在载入执行归档…</p>
+      <div id="archive-content" class="archive-content" hidden>
+        <section class="archive-metrics" aria-label="Run metrics" data-i18n-label="archiveMetrics">
+          <dl id="archive-metrics"></dl>
+        </section>
+
+        <section id="section-execution" class="workbench-section execution-section" aria-labelledby="execution-title">
+          <header class="execution-toolbar">
+            <div><h2 id="execution-title" data-i18n="executionFlow">Agent 执行流程</h2></div>
+            <div id="execution-mode" class="segmented-control" role="group" aria-label="Execution view" data-i18n-label="executionView">
+              <button type="button" data-execution-mode="overview" aria-pressed="false" data-i18n="stageOverview">阶段总览</button>
+              <button type="button" data-execution-mode="dag" aria-pressed="true" data-i18n="taskDag">任务 DAG</button>
+              <button type="button" data-execution-mode="timeline" aria-pressed="false" data-i18n="callTimeline">调用时间轴</button>
+            </div>
+            <div id="graph-tools" class="graph-tools">
+              <button id="graph-zoom-out" class="icon-command" type="button" title="Zoom out" aria-label="Zoom out" data-i18n-label="zoomOut">−</button>
+              <output id="graph-scale" aria-live="polite">100%</output>
+              <button id="graph-zoom-in" class="icon-command" type="button" title="Zoom in" aria-label="Zoom in" data-i18n-label="zoomIn">＋</button>
+              <button id="graph-fit" class="icon-command" type="button" title="Fit graph" aria-label="Fit graph" data-i18n-label="fitGraph">⊙</button>
+              <button id="graph-focus" class="icon-command" type="button" title="Focus selected node" aria-label="Focus selected node" data-i18n-label="focusSelected">⌖</button>
+              <button id="graph-fullscreen" class="icon-command" type="button" title="Toggle full screen" aria-label="Toggle full screen" data-i18n-label="toggleFullscreen">⛶</button>
+            </div>
+            <label id="timeline-filter-control" class="timeline-filter-control" hidden>
+              <span class="sr-only" data-i18n="eventCategory">事件类别</span>
+              <select id="timeline-filter" aria-label="Timeline category" data-i18n-label="timelineCategory">
+                <option value="all" data-i18n="allEvents">全部事件</option>
+                <option value="worker">Worker</option>
+                <option value="llm">LLM</option>
+                <option value="tool">Tool</option>
+                <option value="rag">RAG</option>
+                <option value="memory">Memory</option>
+                <option value="evaluation">Evaluation</option>
+                <option value="rewrite">Rewrite</option>
+                <option value="error">Error</option>
+              </select>
+            </label>
+          </header>
+          <div id="execution-progress" class="execution-progress" aria-live="polite" aria-atomic="true" hidden>
+            <strong id="execution-run-state"></strong>
+            <span id="execution-current-label"></span>
+            <div id="execution-current-steps"></div>
+          </div>
+          <label id="graph-search-control" class="ledger-controls"><span class="sr-only" data-i18n="graphSearch">筛选节点</span><input id="graph-search" type="search" data-i18n-placeholder="graphSearch" placeholder="按节点名称、ID 或状态高亮"></label>
+          <div id="graph-diagnostic" class="graph-diagnostic" hidden></div>
+          <div class="execution-panels">
+            <div id="stage-overview" class="stage-overview" hidden></div>
+            <div id="execution-graph" class="execution-graph" tabindex="0" aria-label="Agent task dependency graph" data-i18n-label="archiveGraph"></div>
+            <div id="execution-timeline" class="execution-timeline" hidden><div id="timeline" class="timeline"></div></div>
+          </div>
+          <button id="history-collapse" type="button" hidden></button>
+        </section>
+
+        <details id="archive-stages" class="archive-stages" hidden>
+          <summary data-i18n="recordedStages">阶段耗时</summary>
+          <dl id="archive-stage-times"></dl>
+        </details>
+      </div>
+    </main>
+
+    <aside id="inspector-drawer" class="inspector-drawer" aria-labelledby="inspector-title" aria-hidden="true" inert>
+      <header>
+        <div><span class="section-eyebrow" data-i18n="inspect">检查详情</span><h2 id="inspector-title">—</h2></div>
+        <button id="close-inspector" class="icon-command" type="button" aria-label="Close inspector" data-i18n-label="close">×</button>
+      </header>
+      <div id="inspector-content" class="inspector-content"></div>
+    </aside>
+  </div>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
