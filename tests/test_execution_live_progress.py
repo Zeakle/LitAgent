@@ -29,6 +29,7 @@ const marked=()=>walk(elements.get('#execution-graph')).filter(n=>n.attrs['aria-
 const bar=()=>words(elements.get('#execution-current-steps'));
 const state=()=>elements.get('#execution-run-state').textContent;
 assert.equal(state(),'Queued'); assert.deepEqual(marked(),[]);
+assert.equal(elements.get('#execution-progress').dataset.runId,'one');
 send('subspan.start',{task_id:'query_decomposition',name:'planner.query_decomposition',round:0});
 assert.equal(state(),'Running'); assert.match(bar(),/Query rewriting/);
 send('subspan.end',{task_id:'query_decomposition',output:{sub_queries:['one']}});
@@ -62,6 +63,8 @@ for (const status of ['completed','failed','rejected','interrupted','cancelled']
   assert.deepEqual(marked(),[]); assert.equal(bar(),''); assert(!state().startsWith('status'));
 }
 refresh.cancel();
+workspace.render(null);
+assert.equal(elements.get('#execution-progress').dataset.runId,undefined);
 """
     )
 

@@ -7,7 +7,7 @@ import hashlib
 import inspect
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import lru_cache
 from typing import Any
 
@@ -16,6 +16,12 @@ from litagent.eval.conflict_review import CONTRACT as CONFLICT_ONLY_SCOPE
 CONTRACT = "independent-evaluation-v1"
 FIELDS = ("evaluation_result_contract", "evaluation_result_identity")
 IMPLEMENTATION = "litagent-actual-citation-support-v1"
+BENCHMARK_FAITHFULNESS_POLICY = "benchmark-faithfulness-95-v1"
+BENCHMARK_POLICY_FIELD = "benchmark_faithfulness_policy"
+BENCHMARK_IDENTITY_FIELD = "benchmark_faithfulness_identity"
+CONFLICT_ONLY_IDENTITY = (
+    "1d068a341969e2e5c333772b2a1a47292711aaec9d1e64ede9a162532a3f89ad"
+)
 FULL_REVIEW_IDENTITY = (
     "567a9318619118471476bca87c005714784ae56670c176d071041145980108f8"
 )
@@ -61,9 +67,17 @@ def historical_checks(details, report_sha256):
     return copy.deepcopy(checks)
 
 
-@lru_cache(maxsize=4)
-def contract_identity(global_scope=None) -> str:
+@lru_cache(maxsize=5)
+def contract_identity(global_scope=None, benchmark_policy=None) -> str:
     """Bind responsibilities, state semantics and formulas without changing old IDs."""
+    if benchmark_policy is not None:
+        if (
+            benchmark_policy != BENCHMARK_FAITHFULNESS_POLICY
+            or global_scope != CONFLICT_ONLY_SCOPE
+        ):
+            raise ValueError("evaluation_benchmark_faithfulness_policy_invalid")
+    elif global_scope == CONFLICT_ONLY_SCOPE:
+        return CONFLICT_ONLY_IDENTITY
     if global_scope is None:
         # The full-review contract remains versioned at its published identity.
         return FULL_REVIEW_IDENTITY
@@ -77,6 +91,7 @@ def contract_identity(global_scope=None) -> str:
     value = [
         CONTRACT,
         global_scope,
+        benchmark_policy,
         IMPLEMENTATION,
         inspect.getsource(result),
         inspect.getsource(check),
@@ -85,6 +100,7 @@ def contract_identity(global_scope=None) -> str:
         inspect.getsource(derive_quality),
         inspect.getsource(EvaluationRunResult),
         inspect.getsource(acceptance),
+        inspect.getsource(benchmark_support_passed),
     ]
     return hashlib.sha256(json.dumps(value, ensure_ascii=False).encode()).hexdigest()
 
@@ -101,7 +117,8 @@ def selected(envelope) -> bool:
         envelope.get(FIELDS[0]) != CONTRACT
         or envelope.get(FIELDS[1])
         != contract_identity(
-            (envelope.get("semantic_engine") or {}).get("global_scope")
+            (envelope.get("semantic_engine") or {}).get("global_scope"),
+            envelope.get(BENCHMARK_POLICY_FIELD),
         )
         or envelope.get("global_findings_contract") != "anchored-global-findings-v2"
         or envelope.get("support_validation_revision") != "host-support-receipts-v2"
@@ -130,7 +147,15 @@ def check(status, *reasons, **scope) -> dict:
 
 def scope_identity(details):
     """Use the same scope for result projection and the frozen budget owner."""
-    return contract_identity(details.get("stages", {}).get("global_scope"))
+    return contract_identity(
+        details.get("stages", {}).get("global_scope"),
+        details.get(BENCHMARK_POLICY_FIELD),
+    )
+
+
+def benchmark_support_passed(supported: int, total: int) -> bool:
+    """Compare the exact fraction to 19/20 without display rounding."""
+    return total > 0 and supported * 20 >= total * 19
 
 
 def question_only(details):
@@ -262,10 +287,19 @@ class EvaluationRunResult:
         if any(c.get("status") not in {"supported", "unsupported"} for c in science):
             reasons.append("scientific_assertions_unverified")
         score = counts["supported"] / len(science) if not reasons else None
+        benchmark = (
+            self.details.get(BENCHMARK_POLICY_FIELD) == BENCHMARK_FAITHFULNESS_POLICY
+        )
+        threshold = 0.95 if benchmark else self.details.get("threshold", 0.8)
+        passed = score is not None and (
+            benchmark_support_passed(counts["supported"], len(science))
+            if benchmark
+            else score >= threshold
+        )
         status = (
             ("error" if self.execution_error else "unverified")
             if reasons
-            else ("passed" if score >= self.details.get("threshold", 0.8) else "failed")
+            else ("passed" if passed else "failed")
         )
         support = result(
             status,
@@ -273,7 +307,7 @@ class EvaluationRunResult:
             reasons=reasons,
             implementation=IMPLEMENTATION,
             display_name="LitAgent 实际引用支持率",
-            threshold=self.details.get("threshold", 0.8),
+            threshold=threshold,
             factual_claim_count=len(science),
             supported_count=counts["supported"],
             unsupported_count=counts["unsupported"],
@@ -497,7 +531,11 @@ def acceptance(details):
         or checks["execution"]["status"] != "passed"
     ):
         failures.append("incomplete_verification")
-    if support["score"] != 1.0:
+    benchmark = details.get(BENCHMARK_POLICY_FIELD) == BENCHMARK_FAITHFULNESS_POLICY
+    science_passed = (
+        support["status"] == "passed" if benchmark else support["score"] == 1.0
+    )
+    if not science_passed:
         failures.append("science_not_fully_supported")
     if checks["inventory"]["status"] != "passed":
         failures.append("inventory_invalid")
@@ -530,7 +568,10 @@ def acceptance(details):
     return {
         "policy": details.get("quality_policy"),
         "status": "failed" if failures else "passed",
-        "science_required_ratio": 1.0,
+        "science_required_ratio": 0.95 if benchmark else 1.0,
+        **(
+            {BENCHMARK_POLICY_FIELD: BENCHMARK_FAITHFULNESS_POLICY} if benchmark else {}
+        ),
         "failure_codes": list(dict.fromkeys(failures)),
         "human_approval_required": details.get("quality_policy")
         not in {"strict_auto_v1", "strict_auto_v2"},
@@ -1173,6 +1214,9 @@ async def execute_evaluation(*, llm, survey, context, config):
 
     envelope = locked_writer_envelope(getattr(llm, "_cost_budget", None))
     engine = (envelope or {}).get("semantic_engine")
+    benchmark_policy = getattr(config, BENCHMARK_POLICY_FIELD, None)
+    if benchmark_policy != (envelope or {}).get(BENCHMARK_POLICY_FIELD):
+        raise ValueError("evaluation_benchmark_faithfulness_policy_mismatch")
     if engine is None:
         return await _legacy_execute_evaluation(
             llm=llm, survey=survey, context=context, config=config
@@ -1180,4 +1224,18 @@ async def execute_evaluation(*, llm, survey, context, config):
     validate_engine(engine)
     from litagent.eval.ragas_native import execute_native
 
-    return await execute_native(llm=llm, survey=survey, context=context, config=config)
+    run = await execute_native(llm=llm, survey=survey, context=context, config=config)
+    if benchmark_policy is None:
+        return run
+    details = {
+        **run.details,
+        BENCHMARK_POLICY_FIELD: benchmark_policy,
+        "threshold": 0.95,
+    }
+    # Early native failures can precede the global span. The frozen scope still
+    # owns the unavailable result and its policy identity.
+    details["stages"] = {**details["stages"], "global_scope": engine["global_scope"]}
+    details[FIELDS[1]] = scope_identity(details)
+    if details[FIELDS[1]] != envelope.get(BENCHMARK_IDENTITY_FIELD):
+        raise ValueError("evaluation_benchmark_faithfulness_identity_mismatch")
+    return replace(run, details=details)

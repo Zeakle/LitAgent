@@ -319,12 +319,19 @@ def freeze_automatic_inputs(
     metadata = report.get("metadata", {})
     details = report.get("evaluation", {}).get("faithfulness", {}).get("details", {})
     evaluation = report.get("evaluation", {})
+    from litagent.eval.results import BENCHMARK_IDENTITY_FIELD, BENCHMARK_POLICY_FIELD
     from litagent.safety.planned_budget import planned_backend
 
     owner = planned_backend(budget)
-    engine = (
-        (owner.plan.get("envelope", {}).get("semantic_engine") or {}) if owner else {}
-    )
+    envelope = owner.plan.get("envelope", {}) if owner else {}
+    engine = envelope.get("semantic_engine") or {}
+    policy = envelope.get(BENCHMARK_POLICY_FIELD)
+    if details.get(BENCHMARK_POLICY_FIELD) != policy or (
+        policy
+        and details.get("evaluation_result_identity")
+        != envelope.get(BENCHMARK_IDENTITY_FIELD)
+    ):
+        raise ValueError("automatic_benchmark_faithfulness_policy_mismatch")
     if details.get("stages", {}).get("global_scope") != engine.get("global_scope"):
         raise ValueError("automatic_global_scope_mismatch")
     if any(

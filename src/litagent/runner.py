@@ -352,6 +352,12 @@ class LitAgent:
         self._session_id = str(uuid.uuid4())[:8]
         self._trace_hook = trace_hook
         self._run_policy = run_policy or RunPolicy()
+        if config.eval.benchmark_faithfulness_policy and (
+            self._run_policy != RunPolicy.isolated_benchmark()
+            or config.eval.semantic_engine != "ragas-cited-faithfulness-v1"
+            or config.eval.native_global_scope != "scientific-conflicts-v1"
+        ):
+            raise ValueError("benchmark_faithfulness_requires_isolated_native_run")
         self._external_inputs = external_inputs
         self._audit_service = audit_service
 
@@ -396,6 +402,16 @@ class LitAgent:
     async def __aexit__(self, *args: Any) -> None:
         """Exit the LitAgent context and close owned resources."""
         await self.cleanup()
+
+    def benchmark_accounting(self) -> dict:
+        """Return the last authoritative counters, including pre-write requests."""
+        state = self._cost_budget.snapshot() if self._cost_budget is not None else {}
+        return {
+            "known_tokens": state.get("used_tokens"),
+            "requests": state.get("requests_sent"),
+            "usage_uncertain": state.get("usage_uncertain", True),
+            "stop_reason": state.get("stop_reason"),
+        }
 
     @staticmethod
     def _apply_run_options_to_graph(
@@ -817,6 +833,17 @@ class LitAgent:
         if not isinstance(query, str) or not query.strip() or len(query) > 2000:
             raise ValueError("invalid_research_question")
         options = options or RunOptions()
+        benchmark_policy = getattr(
+            self._config.eval, "benchmark_faithfulness_policy", None
+        )
+        if benchmark_policy and (
+            options.quality_policy != "strict_auto_v2"
+            or options.budget_policy != "planned-budget-v7"
+            or options.generation_strategy != "body_summary_v3"
+            or verification_enabled(options.model_dump(), "judge")
+            or verification_enabled(options.model_dump(), "jev")
+        ):
+            raise ValueError("benchmark_faithfulness_requires_strict_run_options")
         if options.human_review:
             raise ValueError("human_review_requires_interactive_service")
         if self._external_inputs is not None and query != self._external_inputs.query:
@@ -1084,6 +1111,13 @@ class LitAgent:
             )
         )
         initial_quality = self._derive_quality(initial_evaluation)
+        from litagent.eval.results import BENCHMARK_POLICY_FIELD
+
+        benchmark_policy = (
+            initial_evaluation.get("faithfulness", {})
+            .get("details", {})
+            .get(BENCHMARK_POLICY_FIELD)
+        )
         report_data.update(
             {"evaluation": initial_evaluation, "quality": initial_quality}
         )
@@ -1114,6 +1148,7 @@ class LitAgent:
             )
             or (
                 is_strict_policy(options.quality_policy)
+                and not (benchmark_policy and initial_quality["status"] == "passed")
                 and self._completed_bound_repair(
                     initial_evaluation,
                     report_data["survey"],
@@ -1578,10 +1613,15 @@ class LitAgent:
                 "status": "failed",
                 "automatic_failure_codes": acceptance["failure_codes"],
             }
-        atomic_json(
-            Path("artifacts/automatic-acceptance") / f"{self._session_id}.json",
-            acceptance,
-        )
+        acceptance_root = Path("artifacts/automatic-acceptance")
+        if (
+            self._config.eval.benchmark_faithfulness_policy
+            and self._targeted_repair_state_path is not None
+        ):
+            acceptance_root = (
+                self._targeted_repair_state_path.parent.parent / "automatic-acceptance"
+            )
+        atomic_json(acceptance_root / f"{self._session_id}.json", acceptance)
         self._emit("automatic_acceptance", acceptance)
 
     async def _finalize_report(
@@ -2093,6 +2133,9 @@ class LitAgent:
                 protocol=ADMISSION_VERSION, trace_hook=self._trace_hook
             ),
             run_id_provider=lambda: self._session_id,
+            fulltext_trace_hook=(
+                self._emit if cfg.eval.benchmark_faithfulness_policy else None
+            ),
         )
         workers.append(self._extractor)
 
@@ -2132,6 +2175,7 @@ class LitAgent:
             output_tokens_provider=lambda: configured_output_tokens(cfg),
             run_limits_provider=lambda: configured_run_limits(cfg),
             semantic_engine_provider=lambda: configured_engine(cfg),
+            benchmark_faithfulness_policy=cfg.eval.benchmark_faithfulness_policy,
             context_config=cfg.context,
             trace_hook=self._trace_hook,
             thinking_mode=cfg.adversarial.thinking_mode,
@@ -2377,6 +2421,15 @@ class LitAgent:
             infra = Infra()
         await self._connect_rankers(cfg, infra)
 
+        if cfg.eval.benchmark_faithfulness_policy:
+            if cfg.rag.enabled:
+                from qdrant_client import AsyncQdrantClient
+
+                client = AsyncQdrantClient(url=mem_cfg.qdrant_url)
+                infra._qdrant_client = client
+                await self._connect_paper_retriever(cfg, infra, client)
+            return infra
+
         try:
             working = await WorkingMemory.connect(mem_cfg)
             infra._working_memory = working
@@ -2423,21 +2476,7 @@ class LitAgent:
             try:
                 if not cfg.rag.enabled:
                     raise ConfigError("RAG disabled by configuration")
-                paper_identity = CollectionIdentity.from_config(cfg.rag)
-                paper_embedder = build_retrieval_embedder(cfg.rag)
-                paper_dim = await asyncio.to_thread(lambda: paper_embedder.dim)
-                vector_store = await QdrantVectorStore.ensure_compatible(
-                    qdrant_client,
-                    paper_identity.collection_name,
-                    paper_dim,
-                    identity=paper_identity,
-                    embedder=paper_embedder,
-                )
-                infra.retriever = HybridRetriever(
-                    vector_store,
-                    infra.reranker,
-                    trace_hook=self._trace_hook,
-                )
+                await self._connect_paper_retriever(cfg, infra, qdrant_client)
             except Exception as exc:
                 logger.warning("Infra: RAG unavailable (%s)", exc)
             logger.info("Infra: Qdrant connected (Episodic + Claims + Papers)")
@@ -2504,6 +2543,22 @@ class LitAgent:
             logger.warning("Infra: MemoryManager skipped — Working unavailable (Redis)")
 
         return infra
+
+    async def _connect_paper_retriever(self, cfg, infra, client) -> None:
+        """Connect the corpus with the exact effective retrieval profile."""
+        paper_identity = CollectionIdentity.from_config(cfg.rag)
+        paper_embedder = build_retrieval_embedder(cfg.rag)
+        paper_dim = await asyncio.to_thread(lambda: paper_embedder.dim)
+        vector_store = await QdrantVectorStore.ensure_compatible(
+            client,
+            paper_identity.collection_name,
+            paper_dim,
+            identity=paper_identity,
+            embedder=paper_embedder,
+        )
+        infra.retriever = HybridRetriever(
+            vector_store, infra.reranker, trace_hook=self._trace_hook
+        )
 
     @staticmethod
     def _get_embedding_dim() -> int:

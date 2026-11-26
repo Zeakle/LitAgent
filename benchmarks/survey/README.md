@@ -36,6 +36,93 @@ litagent benchmark survey --stage pilot \
 To browse the packaged records, start the [offline workbench](../../README.en.md#offline-demonstration-without-api-keys)
 and open Benchmark.
 
+## Survey latency and the 0.95 delivery experiment
+
+From the repository root, create a dry-run manifest and the single-table report:
+
+```sh
+python scripts/run_survey_latency.py --dry-run \
+  --output artifacts/benchmarks/survey/latency-faithfulness-95
+```
+
+The manifest lists three workbench captures and eighteen controlled replays. It
+records per-run and campaign limits, model configuration, input hashes, and the
+approval hash. To use tighter campaign limits, pass `--max-tokens` and
+`--max-requests` to both invocations. Use `--max-runs 1` in both invocations
+to authorize only the first workbench capture while keeping all 21 table rows.
+Each new run requires enough unspent
+budget for its complete configured maximum. Once the totals are approved,
+replace `--dry-run` with `--approve-manifest <approval_sha256>` to run the same
+manifest. The live campaign needs the configured model credentials, local
+corpus services, and Chromium. Use `--chrome` if Chromium is installed at a
+custom path.
+
+To continue from a terminal segment with settled usage, use a new output
+directory and pass `--resume-from <previous-output>` to both invocations.
+The new manifest validates and preserves prior snapshot bytes and schedules only
+the remaining rows. Campaign limits apply to new requests.
+
+If one request in a prior row has unknown usage, pass `--usage-receipt <json>`
+to both invocations with the authenticated Ark `GetInferenceRequestUsage`
+response for the recorded provider request ID. The response must contain
+explicit token counts. An empty result leaves usage unresolved. The new
+manifest binds the receipt bytes, and the table links the receipt and displays
+the reconciled total alongside the original recorded usage.
+[Ark request usage API](https://docs.volcengine.com/docs/ark/get-inference-request-usage-api?lang=zh)
+
+After a stop for unknown usage, an explicitly approved continuation can pass
+`--carry-unsettled` to both invocations. It keeps the previous usage unknown,
+reserves that run's full token and request limits, and caps the new segment at
+the balance of the preceding approval. A new unresolved request stops the
+new segment in the same way.
+
+For a separate repair comparison, use a fully observed baseline with
+`--resume-from` and pass `--retry-replay-slot <slot-key>` for each selected
+blocked replay with settled usage. Pass both new budget limits to each
+invocation. The original external-input snapshots are reused. The comparison
+directory records the new outcomes with distinct run IDs. The manifest binds
+each retry to its original run ID and archive hash.
+
+The compact report is written to `benchmark.md` in the output directory. It
+shows delivery, Faithfulness, citation ID validity, consistency, duration and
+tokens for each run. Launch the local viewer to open the
+workbench links or browse the same table at `/benchmark`:
+
+```sh
+python scripts/view_survey_latency.py --campaign artifacts/benchmarks/survey/latency-faithfulness-95-final-run
+```
+
+The viewer uses port 8765 by default. Add `--diagnostics <campaign>` to show
+completed diagnostic runs and `--revalidation <json>` to show verified offline
+delivery checks. Add `--retries <campaign>` to show completed repair retries
+beside their original executions and compare strict delivery across the same
+matrix. The campaign retains its original artifacts and detailed measurements.
+Browser and replay samples have distinct latency boundaries.
+
+The five archived summary-length failures have a separate continuation entry
+point. It authenticates the original writer responses and settled ledger, keeps
+the accepted body and evidence, and preflights a summary repair before any
+model request. It continues through review and Evaluation under the original
+strict delivery policy. Its latency starts at the summary checkpoint.
+
+```sh
+python -m scripts.run_survey_summary_recovery \
+  --baseline artifacts/benchmarks/survey/latency-faithfulness-95-final-run \
+  --output artifacts/benchmarks/survey/latency-faithfulness-95-summary-checkpoint \
+  --dry-run
+```
+
+Once the aggregate limits are approved, replace `--dry-run` with
+`--approve-manifest <approval_sha256>`. Pass `--retries` once per comparison
+campaign to view the full rerun and the summary continuations together.
+
+If the terminal five-case campaign contains one settled summary-length failure
+after all three local attempts, use `--fallback-from <checkpoint-campaign>` with
+the original baseline and a fresh output directory. The preflight carries the
+three receipts and repair history forward, checks the remaining approved budget,
+and validates a fresh summary request against the frozen body. The continuation
+retains the failed attempt and has its own Workbench link.
+
 ## Historical Judge runs
 
 These commands describe the historical benchmark workflow. Adding `--live`

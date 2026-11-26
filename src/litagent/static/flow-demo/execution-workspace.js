@@ -93,7 +93,7 @@ export function createExecutionWorkspace({ store, t, onInspect }) {
   function renderProgress(view, steps) {
     const bar = $("#execution-progress");
     bar.hidden = !view;
-    if (!view) { progressSignature = null; return; }
+    if (!view) { delete bar.dataset.runId; progressSignature = null; return; }
     const runStatus = view.identity?.status || view.summary?.status || "unknown";
     const names = steps.map(node => {
       const name = node.labelKey && node.labelKey !== "taskOther" ? t(node.labelKey) : node.name;
@@ -102,6 +102,7 @@ export function createExecutionWorkspace({ store, t, onInspect }) {
     const signature = JSON.stringify([view.identity?.key, store.get().locale, runStatus, steps.map(node => node.id), names]);
     if (signature === progressSignature) return;
     progressSignature = signature;
+    bar.dataset.runId = view.identity?.runId || "";
     bar.dataset.status = runStatus;
     $("#execution-run-state").textContent = t(statusKey(runStatus));
     const label = $("#execution-current-label");

@@ -369,6 +369,42 @@ class RunRecorder:
             },
         }
 
+    def capture_worker_checkpoint(
+        self, graph: Any, *, source_run_id: str, source_snapshot_sha256: str
+    ) -> None:
+        """Expose inherited Worker outputs without recording new executions."""
+        nodes = self._artifact["nodes"]
+        if nodes or not source_run_id or source_run_id == self.run_id:
+            raise ArtifactContractError("worker_checkpoint_source_invalid")
+        self.capture_graph(graph)
+        results = graph.get_results()
+        for task_id, output in results.items():
+            task = self._artifact["graph"]["tasks"][task_id]
+            node_id = f"worker:{task_id}"
+            nodes[node_id] = {
+                "id": node_id,
+                "kind": "worker",
+                "task_id": task_id,
+                "name": task["agent_type"],
+                "status": "completed",
+                "started_at": None,
+                "completed_at": None,
+                "input": task["input"],
+                "output": _snapshot(output),
+                "error": None,
+                "elapsed_ms": None,
+                "usage": None,
+                "metadata": {"checkpoint_source_run_id": source_run_id},
+            }
+        self(
+            "benchmark.summary_checkpoint",
+            {
+                "source_run_id": source_run_id,
+                "source_snapshot_sha256": source_snapshot_sha256,
+                "reused_task_ids": sorted(results),
+            },
+        )
+
     def capture_graph_state(self, graph: Any) -> None:
         """Synchronize terminal task states after execution."""
         if not self._artifact["graph"]["tasks"]:

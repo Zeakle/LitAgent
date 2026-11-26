@@ -471,6 +471,7 @@ class RAGConfig(BaseModel):
 class EvalConfig(BaseModel):
     """Configure evaluator and evidence-rewrite limits."""
 
+    benchmark_faithfulness_policy: Literal["benchmark-faithfulness-95-v1"] | None = None
     semantic_engine: Literal["ragas-cited-faithfulness-v1"] | None = None
     native_global_scope: (
         Literal[
@@ -498,6 +499,8 @@ class EvalConfig(BaseModel):
     def preserve_historical_engine(self, handler):
         """Leave old configuration identities unchanged when the new engine is absent."""
         value = handler(self)
+        if self.benchmark_faithfulness_policy is None:
+            value.pop("benchmark_faithfulness_policy", None)
         if self.native_global_scope is None:
             value.pop("native_global_scope", None)
         if not self.native_capacity_recovery:

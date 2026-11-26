@@ -287,6 +287,83 @@ async def execute(case, tmp_path, monkeypatch, gateway, *, config=None):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("outcome", ["repaired", "still_overlong", "regular_run"])
+async def test_benchmark_repairs_only_the_overlong_summary_before_evaluation(
+    case, tmp_path, monkeypatch, outcome
+):
+    from litagent.eval.results import BENCHMARK_FAITHFULNESS_POLICY
+
+    class Gateway(SeparateGateway):
+        def answer(self, payload, native_schema):
+            if "issues" in native_schema["properties"] and self.review_calls == 0:
+                self.first_review_units = payload["units"]
+            result = super().answer(payload, native_schema)
+            if payload.get("cause") == "local" and "body_units" in payload:
+                self.summary_repair = payload
+                for patch in result["patches"]:
+                    patch.pop("fact_card_refs", None)
+                if outcome == "still_overlong":
+                    result["patches"][0]["text"] = "evidence " * 251
+            return result
+
+    gateway = Gateway(case, reviews=0)
+    oversize = "evidence " * 251
+    abstract = "The cited work compares images with a learned relation function."
+    gateway.summary_responses = (
+        json.dumps(
+            {
+                "abstract": [
+                    {
+                        "text": abstract,
+                        "body_unit_refs": ["u1"],
+                        "paragraph_start": True,
+                    }
+                ],
+                "conclusion": [
+                    {
+                        "text": oversize,
+                        "body_unit_refs": ["u1"],
+                        "paragraph_start": True,
+                    }
+                ],
+            }
+        ),
+    )
+    config = load_config("config/agent-format-repair.yaml")
+    if outcome != "regular_run":
+        config.eval.benchmark_faithfulness_policy = BENCHMARK_FAITHFULNESS_POLICY
+    report = await execute(case, tmp_path, monkeypatch, gateway, config=config)
+    (journal_file,) = (tmp_path / "artifacts/targeted-repairs").glob(
+        "*.json.writer-v2.json"
+    )
+    journal = json.loads(journal_file.read_bytes())
+    initial = journal["calls"]["summary_initial"]
+    assert json.loads(initial["raw"])["conclusion"][0]["text"] == oversize
+    if outcome == "regular_run":
+        assert not hasattr(gateway, "summary_repair")
+    else:
+        assert {
+            tuple(t["path"]) for t in gateway.summary_repair["targets"].values()
+        } == {("conclusion", 0, 0)}
+    if outcome == "repaired":
+        assert initial["length_repair"]["call"] == "repair_0"
+        receipt = journal["calls"]["repair_0"]["provider_receipt"]
+        request = json.loads(base64.b64decode(receipt["request_body_base64"]))
+        sent_payload = json.loads(request["input"][1]["content"])
+        assert (
+            "Its maximum applies across all replacement paragraphs"
+            in sent_payload["previous_local_failure"]["instruction"]
+        )
+        assert abstract in json.dumps(gateway.first_review_units)
+        assert gateway.global_calls and report["delivery"]["publishable"]
+        assert report["evaluation"]["faithfulness"]["details"]["threshold"] == 0.95
+    else:
+        assert not report["delivery"]["publishable"]
+        assert gateway.global_calls == 0
+        assert "length_repair" not in initial
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "reviews,failures,keep,format_fault",
     [

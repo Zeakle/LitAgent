@@ -66,6 +66,25 @@ Pytest covers orchestration, evidence processing, evaluation and revision,
 checkpoint recovery and API behavior.
 Retrieval results and feature verification records are in `benchmarks/rag/RESULTS.md` and `docs/design-truth.md`.
 
+### Survey quality and latency benchmark
+
+The benchmark covers Few-shot, ViT and NeRF across **3 Workbench runs and 18 controlled replays**.
+The replays compared external search alone, external search with local abstracts, and external search with local full text. Strict delivery requires Faithfulness (supported scientific claims ÷ total scientific claims) ≥ 0.95, complete verification, valid citation IDs and zero contradictions.
+
+The original matrix had **11/21** strict passes. The count rose to **12/21** after the first live retry and **16/21 (76.19%)** after the summary checkpoint continuations. The five slots affected by summary length took six continuation runs. The table lists the latest result for each slot.
+
+| Topic | Configuration | Faithfulness | Strict delivery | Continuation time (s) |
+| --- | --- | ---: | --- | ---: |
+| `few-shot-metric` | `external-abstract` r1 | 99.80% (510/511) | Passed | 875.1 |
+| `few-shot-metric` | `external-fulltext` r1 | 99.62% (531/533) | Passed | 831.2 |
+| `vit-foundations` | `external-abstract` r1 | 100.00% (587/587) | Passed | 414.0 |
+| `few-shot-metric` | `external-only` r2 | 94.14% (626/665) | Failed | 2,745.6 |
+| `vit-foundations` | `external-fulltext` r2 | 98.79% (652/660) | Passed | 506.9 |
+
+All five reports scored 100% for citation ID validity and internal consistency. Final-report citation recall for required papers was 0% in all five. The rebuilt `few-shot-metric / external-only / r2` abstract and conclusion each passed the 250-word check at 104 words. The retained draft still had 39 unsupported claims.
+
+Continuation time runs from the summary checkpoint to Survey completion. The six continuation runs added 111 model requests and 2,771,754 tokens, all accounted for. The local viewer lists each run and its Workbench link. [Experiment and viewer instructions](./benchmarks/survey/README.md#survey-latency-and-the-095-delivery-experiment) · [Local Benchmark](http://127.0.0.1:8765/benchmark)
+
 ## Demo
 
 ![A generated Vision Transformer survey with its outline, abstract and inline citations](./docs/images/readme-workbench-zh.jpg)

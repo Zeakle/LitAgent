@@ -123,6 +123,8 @@ def _envelope(value):
         "evaluation_dimensions_identity",
         "evaluation_result_contract",
         "evaluation_result_identity",
+        "benchmark_faithfulness_policy",
+        "benchmark_faithfulness_identity",
         "assessment_decision_contract",
         "assessment_decision_identity",
         "closeout_profile",
@@ -133,6 +135,21 @@ def _envelope(value):
     if flat:
         required |= {"diagnostic_json_bytes", "claim_max_json_bytes"}
     _keys(value, required, optional)
+    benchmark_fields = {
+        "benchmark_faithfulness_policy",
+        "benchmark_faithfulness_identity",
+    }
+    if benchmark_fields.intersection(value):
+        _require(
+            flat
+            and value.get("benchmark_faithfulness_policy")
+            == "benchmark-faithfulness-95-v1"
+            and _hashed(value.get("benchmark_faithfulness_identity"))
+            and isinstance(value.get("semantic_engine"), dict)
+            and value["semantic_engine"].get("global_scope")
+            == "scientific-conflicts-v1",
+            "benchmark_faithfulness_policy_invalid",
+        )
     if "output_tokens" in value:
         _require(flat and "repair_mapping_contract" in value, "output_policy_invalid")
         envelope_output_tokens(value, archived=True)

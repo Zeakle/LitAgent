@@ -68,7 +68,7 @@ from litagent.report_render import (
     reader_report_projection,
 )
 from litagent.run_limits import configured_run_limits, repair_allowances
-from litagent.runner import LitAgent, derive_delivery
+from litagent.runner import LitAgent, RunPolicy, derive_delivery
 from litagent.workbench import (
     AutoAuditMode,
     CitationStyle,
@@ -292,7 +292,10 @@ def _load_runtime_config() -> AppConfig:
 @asynccontextmanager
 async def lifespan(application: FastAPI):
     """Initialize stable runtime state and close every owned task on shutdown."""
-    application.state.config = _load_runtime_config()
+    application.state.config = (
+        getattr(application.state, "latency_benchmark_config", None)
+        or _load_runtime_config()
+    )
     application.state.flow_archive_scan = None
     if presentation_enabled():
         application.state.flow_repository = PresentationRepository()
@@ -524,21 +527,38 @@ async def _run_survey(entry: SurveyTaskEntry) -> None:
                 entry.status = "running"
                 entry.progress = "planning"
                 trace_hook = _build_survey_trace_hook(config, entry)
-                async with LitAgent(
+                agent = LitAgent(
                     config,
                     trace_hook=trace_hook,
-                ) as agent:
-                    if entry.options.quality_policy in {
-                        "strict_auto_v1",
-                        "strict_auto_v2",
-                    }:
-                        agent._session_id = entry.task_id
-                    result = await agent.run(
-                        entry.query,
-                        cancellation=entry.cancellation,
-                        options=entry.options,
+                    **(
+                        {"run_policy": RunPolicy.isolated_benchmark()}
+                        if config.eval.benchmark_faithfulness_policy
+                        else {}
+                    ),
+                )
+                benchmark_root = getattr(app.state, "latency_benchmark_root", None)
+                if config.eval.benchmark_faithfulness_policy and benchmark_root:
+                    agent._evaluation_progress_root = benchmark_root / "evaluations"
+                    agent._targeted_repair_state_path = (
+                        benchmark_root / "repairs" / f"{entry.task_id}.json"
                     )
-
+                try:
+                    async with agent:
+                        if entry.options.quality_policy in {
+                            "strict_auto_v1",
+                            "strict_auto_v2",
+                        }:
+                            agent._session_id = entry.task_id
+                        result = await agent.run(
+                            entry.query,
+                            cancellation=entry.cancellation,
+                            options=entry.options,
+                        )
+                finally:
+                    if config.eval.benchmark_faithfulness_policy:
+                        entry.recorder(
+                            "benchmark.accounting", agent.benchmark_accounting()
+                        )
             _capture_trace_reference(entry)
 
             cancelled = entry.cancellation.is_cancelled or (

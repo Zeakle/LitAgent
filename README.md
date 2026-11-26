@@ -60,6 +60,25 @@ RRF + reranker 的 nDCG@10 达到 0.9406，p50 延迟为 647 ms；MiniLM + RRF
 项目使用 pytest 覆盖任务编排、证据处理、评估修订、断点恢复及 API 行为。
 检索结果和功能验证记录分别保存在 `benchmarks/rag/RESULTS.md` 和 `docs/design-truth.md`。
 
+### Survey 综述质量与延迟实验
+
+使用 Few-shot、ViT 和 NeRF 三个题目，完成 **3 次工作台实测和 18 次受控回放**。
+回放比较仅外部搜索、加本地摘要和加本地全文三种配置。严格交付要求 Faithfulness（获支持科学断言数 ÷ 全部科学断言数）≥ 0.95，同时要求核验完整、引用 ID 有效、零矛盾。
+
+原始矩阵严格通过 **11/21**，计入首条真实复跑后为 **12/21**，再计入摘要检查点续跑后为 **16/21（76.19%）**。5 个受摘要长度影响的槽位共执行 6 次续跑，下表列出各槽位的最新结果。
+
+| 题目 | 配置 | Faithfulness | 严格交付 | 续跑耗时（秒） |
+| --- | --- | ---: | --- | ---: |
+| `few-shot-metric` | `external-abstract` r1 | 99.80%（510/511） | 通过 | 875.1 |
+| `few-shot-metric` | `external-fulltext` r1 | 99.62%（531/533） | 通过 | 831.2 |
+| `vit-foundations` | `external-abstract` r1 | 100.00%（587/587） | 通过 | 414.0 |
+| `few-shot-metric` | `external-only` r2 | 94.14%（626/665） | 未通过 | 2,745.6 |
+| `vit-foundations` | `external-fulltext` r2 | 98.79%（652/660） | 通过 | 506.9 |
+
+五份报告的引用 ID 有效性和内部一致性均为 100%，必覆盖论文的终稿引用召回均为 0%。`few-shot-metric / external-only / r2` 重建后摘要和结论各为 104 词，均通过 250 词检查。保留稿仍有 39 条断言未获支持。
+
+续跑耗时从摘要检查点算至 Survey 完成。6 次续跑共新增 111 次模型请求，已结算 2,771,754 Token。逐次记录和工作台入口可通过本地查看器访问。[实验与查看器说明](./benchmarks/survey/README.md#survey-latency-and-the-095-delivery-experiment) · [本地 Benchmark](http://127.0.0.1:8765/benchmark)
+
 ## 效果展示
 
 ![真实生成的 Vision Transformer 综述，显示目录、摘要与行内引用](./docs/images/readme-workbench-zh.jpg)

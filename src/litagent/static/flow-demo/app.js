@@ -248,6 +248,10 @@ const { load: loadBenchmarks, select: selectBenchmark, selectObservation: select
 });
 
 function setSection(section, user = true) {
+  if (section === "benchmark" && context?.benchmark_overview === "/benchmark") {
+    window.location.assign("/benchmark");
+    return;
+  }
   store.update({ activeSection: section, sectionWasUserSelected: user || store.get().sectionWasUserSelected });
   const params = new URLSearchParams(location.search); params.set("view", section); history.replaceState(null, "", `?${params}`);
   if (section === "benchmark" && !benchmarkState.loaded) loadBenchmarks();

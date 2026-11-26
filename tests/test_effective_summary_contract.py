@@ -22,7 +22,9 @@ from litagent.writing_v2 import (
     provider_response_format,
     refresh_summaries,
     request_messages,
+    summary_length_repair_targets,
     summary_request_input,
+    validate_targets,
     writer_budget_plan,
 )
 
@@ -36,6 +38,35 @@ def plan_for(case, maximum=2):
         budget_policy="planned-budget-v7",
         capacity=CapacityConfig(max_summary_units=maximum),
     )
+
+
+def test_overlong_summary_authorizes_every_paragraph_only_in_that_section():
+    def paragraph(count):
+        return {
+            "sentences": [
+                {"text": " ".join(["finding"] * count), "body_unit_refs": ["u1"]}
+            ]
+        }
+
+    original = {
+        "abstract": [paragraph(250)],
+        "conclusion": [paragraph(125), paragraph(126)],
+    }
+    targets, issues = summary_length_repair_targets(original, "en", SUMMARY_RULES)
+    validate_targets(original, targets, summary_repair=True, allow_ranges=True)
+    assert [target["path"] for target in targets.values()] == [
+        ["conclusion", 0, 0],
+        ["conclusion", 1, 0],
+    ]
+    assert issues == [
+        {
+            "code": "writer_summary_capacity_exceeded",
+            "field": "conclusion_words",
+            "actual": 251,
+            "maximum": 250,
+            "target_ids": list(targets),
+        }
+    ]
 
 
 @pytest.mark.parametrize("maximum", [1, 2, 3])

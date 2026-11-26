@@ -21,21 +21,25 @@ from litagent.capacity import CapacityConfig
 from litagent.capacity_recovery import CONTRACT as INITIAL_CAPACITY_RECOVERY
 from litagent.closeout import PROFILE, profile_flags
 from litagent.config import load_config
-from litagent.eval.results import CONTRACT
+from litagent.eval.results import BENCHMARK_FAITHFULNESS_POLICY, CONTRACT
+from litagent.llm.responses import decode_private_receipt
 from litagent.quality import digest
 from litagent.safety.planned_budget import (
     EnvelopeExceeded,
     nested_json_size,
     planned_backend,
 )
-from litagent.writing_flat import _canonical_task_payload
+from litagent.writing_flat import _canonical_task_payload, parse
 from litagent.writing_v2 import (
     BODY,
     RANGE_WRITING_PLAN,
+    WriterError,
     body_byte_capacity_error,
     body_byte_progress,
     chapter_request_input,
+    prepare_planned_input,
     repair_request_input,
+    request_messages,
     writer_budget_plan,
 )
 
@@ -365,9 +369,58 @@ def test_real_118_replays_two_distinct_source_ownership_errors():
     assert journal_file.read_bytes() == before
 
 
+def test_benchmark_archive_keeps_original_regeneration_wire_and_source_validation():
+    root = Path(
+        "artifacts/benchmarks/survey/latency-faithfulness-95-final-run/snapshots/"
+        "replay-few-shot-metric-external-abstract-r2"
+    )
+    journal_path = root / "writer-revisions.json"
+    run_path = root / "run.json"
+    if not (journal_path.is_file() and run_path.is_file()):
+        pytest.skip("requires the local immutable Benchmark archive")
+    journal = json.loads(journal_path.read_bytes())
+    envelope = json.loads(run_path.read_bytes())["budget_plan"]["envelope"]
+    call = journal["calls"]["repair_0"]
+    record = journal["capacity_candidates"][0]
+    guide = call["guidance_wire_record"]
+    packet = guide["authority"]["packet"]
+    aliases = list(packet["cards"])
+    system, payload, schema = repair_request_input(
+        packet,
+        record["original"],
+        record["targets"],
+        aliases,
+        cause="capacity",
+        previous_failure=guide["arguments"]["previous_failure"],
+        writing_plan=RANGE_WRITING_PLAN,
+        envelope=envelope,
+        wire_contract="flat-writer-v1",
+        capacity_diagnostic=guide["arguments"]["capacity_diagnostic"],
+        guidance_context=guide["authority"]["guidance_context"],
+    )
+    system, payload = prepare_planned_input(
+        system, payload, packet, aliases, RANGE_WRITING_PLAN, envelope
+    )
+    messages = request_messages(system, payload, schema, wire_contract="flat-writer-v1")
+    regeneration = call["format_recovery"]["attempts"][-1]
+    assert regeneration["kind"] == "regeneration"
+    for entry in (call, regeneration):
+        request, _ = decode_private_receipt(entry["provider_receipt"])
+        assert request["input"] == messages
+    assert "source_owner_instruction" not in payload["previous_local_failure"]
+    findings = capacity_recovery.source_findings(
+        regeneration["raw"], schema, record["targets"]
+    )
+    assert [item["source_unit_ids"] for item in findings["diagnostics"]] == [
+        ["open_problems", "3", "0"]
+    ]
+    with pytest.raises(WriterError, match="writer_capacity_source_map_invalid"):
+        parse(regeneration["raw"], schema)
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "scenario", ["fixed", "repeat", "exhausted", "legacy", "unknown"]
+    "scenario", ["fixed", "benchmark", "repeat", "exhausted", "legacy", "unknown"]
 )
 async def test_live_byte_refinement_retries_only_authentic_source_owner_failures(
     case, tmp_path, monkeypatch, scenario
@@ -378,6 +431,8 @@ async def test_live_byte_refinement_retries_only_authentic_source_owner_failures
     )
     if scenario == "legacy":
         config.safety.planned_run_limits.initial_capacity_recovery = None
+    if scenario == "benchmark":
+        config.eval.benchmark_faithfulness_policy = BENCHMARK_FAITHFULNESS_POLICY
     config.capacity = config.capacity.model_copy(update={"body_json_bytes": 1600})
     if scenario == "fixed":
         authenticate = capacity_recovery.authenticate_rejection
@@ -414,11 +469,25 @@ async def test_live_byte_refinement_retries_only_authentic_source_owner_failures
     attempts = stored["state"]["attempts"]
     record = journal["capacity_candidates"][0]
     rejections = record.get("source_map_rejections", [])
-    expected = {"fixed": 2, "repeat": 2, "exhausted": 3, "legacy": 1, "unknown": 1}[
-        scenario
-    ]
+    expected = {
+        "fixed": 2,
+        "benchmark": 2,
+        "repeat": 2,
+        "exhausted": 3,
+        "legacy": 1,
+        "unknown": 1,
+    }[scenario]
     assert gateway.capacity_calls == expected, journal.get("failure")
     assert all(a["cause"] == "capacity" for a in attempts[:expected])
+    sent_failures = [row["previous_local_failure"] for row in gateway.refinements]
+    if scenario == "benchmark":
+        assert all(
+            '["open_problems:3:0"]' in row["source_owner_instruction"]
+            and "Never split" in row["source_owner_instruction"]
+            for row in sent_failures
+        )
+    else:
+        assert all("source_owner_instruction" not in row for row in sent_failures)
     if scenario == "unknown":
         assert budget["usage_uncertain"]
         assert not rejections and gateway.global_calls == 0
@@ -426,7 +495,9 @@ async def test_live_byte_refinement_retries_only_authentic_source_owner_failures
         return
     assert all(entry["status"] == "settled" for entry in budget["entries"].values())
     assert len(rejections) == (
-        0 if scenario == "legacy" else 1 if scenario == "fixed" else expected
+        0
+        if scenario == "legacy"
+        else 1 if scenario in {"fixed", "benchmark"} else expected
     )
     for row in rejections:
         assert row["body_sha256"] == record["snapshot_sha256"]
@@ -434,7 +505,7 @@ async def test_live_byte_refinement_retries_only_authentic_source_owner_failures
             "multiple_authorized_targets",
             "unknown_sources",
         ]
-    if scenario == "fixed":
+    if scenario in {"fixed", "benchmark"}:
         assert gateway.global_calls >= 1
         assert record["status"] == "locally_valid_unverified"
         assert (
