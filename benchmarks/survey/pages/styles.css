@@ -95,6 +95,61 @@
 .archive-metrics [data-status="ready"] dd { color: var(--accent); }
 .archive-metrics [data-status="blocked"] dd { color: var(--danger); }
 
+.archive-views {
+  margin-bottom: 10px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+}
+
+.archive-views button { font-size: 13px; }
+.archive-views button:focus-visible { outline-offset: -3px; }
+
+.archive-report {
+  max-width: 920px;
+  margin-inline: auto;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--surface);
+  overflow-wrap: anywhere;
+}
+
+.archive-report-header {
+  border-bottom: 1px solid var(--line);
+  padding: 12px clamp(16px, 4vw, 32px);
+}
+
+.archive-report-header h2 { margin: 0; font-size: 15px; }
+.archive-report-header p { margin: 7px 0 0; color: var(--muted); font-size: 13px; }
+.archive-report .report-document { padding-bottom: 36px; }
+.archive-report .report-document:has(> .archive-report-source) { padding-top: 20px; }
+
+.archive-report-markdown {
+  border-top: 1px solid var(--line);
+  padding: 12px clamp(16px, 4vw, 32px);
+}
+
+.archive-report-markdown summary { width: fit-content; font-size: 13px; font-weight: 700; cursor: pointer; }
+
+.archive-report .archive-report-source,
+.archive-io-value {
+  max-width: 100%;
+  margin: 10px 0 0;
+  color: var(--ink);
+  font: 12px/1.55 ui-monospace, SFMono-Regular, Consolas, monospace;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.archive-io-note { margin: 5px 0; color: var(--muted); font-size: 12px; }
+
+.archive-io-value {
+  max-height: 26rem;
+  border-radius: 4px;
+  padding: 10px;
+  overflow: auto;
+  background: var(--surface-soft);
+}
+
 .archive-content .execution-section {
   height: clamp(560px, 77vh, 940px);
   border: 1px solid var(--line);

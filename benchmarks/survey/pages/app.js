@@ -1,6 +1,7 @@
 import { renderExecutionInspector } from "./workbench/execution-inspector.js";
 import { createExecutionWorkspace } from "./workbench/execution-workspace.js";
 import { applyTranslations, translator } from "./workbench/i18n.js";
+import { renderReportDocument } from "./workbench/report-view.js";
 import { createWorkbenchStore } from "./workbench/state.js";
 
 const copy = {
@@ -9,6 +10,19 @@ const copy = {
     archiveRun: "运行",
     archiveBenchmark: "基准总表",
     archiveMetrics: "运行指标",
+    archiveViews: "运行视图",
+    archiveExecutionTab: "执行过程",
+    archiveReportTab: "报告正文",
+    archiveReportSource: "原始 Markdown",
+    archiveReportPartial: "归档中只有部分报告内容。",
+    archiveReportMissing: "本次运行没有已归档的 Survey 报告。",
+    archiveInputMissing: "此步骤没有已归档的输入。",
+    archiveOutputMissing: "此步骤没有已归档的输出。",
+    archiveIOReused: "以下记录来自复用的执行步骤。",
+    archiveIOPlanned: "以下内容来自执行计划。",
+    archiveIOOmitted: "公开归档省略了部分字段。",
+    archiveIOWithheld: "此项内容未公开。",
+    outputNotRecorded: "查看步骤详情",
     archiveGraph: "Agent 任务依赖图",
     recordedStages: "阶段与里程碑耗时",
     archiveLoading: "正在载入执行归档…",
@@ -38,6 +52,19 @@ const copy = {
     archiveRun: "Run",
     archiveBenchmark: "Benchmark results",
     archiveMetrics: "Run metrics",
+    archiveViews: "Run views",
+    archiveExecutionTab: "Execution",
+    archiveReportTab: "Survey report",
+    archiveReportSource: "Original Markdown",
+    archiveReportPartial: "The archive contains a partial report.",
+    archiveReportMissing: "This run has no archived Survey report.",
+    archiveInputMissing: "This step has no archived input.",
+    archiveOutputMissing: "This step has no archived output.",
+    archiveIOReused: "These records come from a reused step.",
+    archiveIOPlanned: "These fields come from the execution plan.",
+    archiveIOOmitted: "The public archive omits some fields.",
+    archiveIOWithheld: "This content was withheld from the public archive.",
+    outputNotRecorded: "Open step details",
     archiveGraph: "Agent task dependency graph",
     recordedStages: "Stage durations and milestones",
     archiveLoading: "Loading execution archive…",
@@ -90,6 +117,9 @@ const select = byId("archive-run");
 const title = byId("archive-title");
 const message = byId("archive-message");
 const content = byId("archive-content");
+const executionSection = byId("section-execution");
+const reportSection = byId("section-report");
+const viewButtons = [...byId("archive-views").querySelectorAll("button")];
 const drawer = byId("inspector-drawer");
 const closeButton = byId("close-inspector");
 const inspector = byId("inspector-content");
@@ -213,11 +243,109 @@ function renderMetrics(view) {
   byId("archive-stages").hidden = timings.childElementCount === 0;
 }
 
+function renderReport(report) {
+  const documentBody = byId("archive-report-document");
+  const status = byId("archive-report-status");
+  const markdown = byId("archive-report-markdown");
+  const available = typeof report?.markdown === "string" && report.markdown.length > 0;
+  const statusKey = !available ? "archiveReportMissing" : report.state === "partial" ? "archiveReportPartial" : null;
+  status.hidden = !statusKey;
+  status.textContent = statusKey ? t(statusKey) : "";
+  documentBody.hidden = !available;
+  documentBody.replaceChildren();
+  documentBody.classList.remove("render-fallback");
+  markdown.hidden = true;
+  markdown.open = false;
+  const original = markdown.querySelector("pre");
+  original.textContent = "";
+  if (!available) return;
+  if (report.html) {
+    renderReportDocument(documentBody, report, new Map(), t);
+    if (documentBody.childElementCount && !documentBody.classList.contains("render-fallback")) {
+      // Citation IDs remain readable without implying they failed a ledger lookup.
+      for (const citation of documentBody.querySelectorAll(".citation-unresolved")) {
+        citation.replaceWith(citation.textContent);
+      }
+      original.textContent = report.markdown;
+      markdown.hidden = false;
+      return;
+    }
+  }
+  documentBody.classList.remove("render-fallback");
+  const source = document.createElement("pre");
+  source.className = "archive-report-source";
+  source.textContent = report.markdown;
+  documentBody.replaceChildren(source);
+}
+
+function renderViewRoute() {
+  const report = route().searchParams.get("view") === "report";
+  executionSection.hidden = report;
+  reportSection.hidden = !report;
+  for (const button of viewButtons) {
+    if (button.dataset.archiveView === (report ? "report" : "execution")) button.setAttribute("aria-current", "page");
+    else button.removeAttribute("aria-current");
+  }
+  const view = store.get().view;
+  if (view && !report) workspace.render(view);
+}
+
+function archivedStepIO(view, selection) {
+  const entries = view.step_io;
+  if (!entries) return null;
+  const value = selection.value;
+  // Role cards and presentation-only nodes can have IDs different from the recorded span.
+  let keys = [selection.id];
+  if (selection.kind === "node") {
+    if (value?.role) keys = [value.execution?.id];
+    else if (value?.task?.observation) keys = [value.task.observation.id];
+    else keys = [value?.execution?.id, `worker:${selection.id}`, selection.id];
+  }
+  const key = keys.find(id => typeof id === "string" && Object.hasOwn(entries, id));
+  return key ? entries[key] : null;
+}
+
+function appendIONote(target, key) {
+  const note = document.createElement("p");
+  note.className = "archive-io-note";
+  note.textContent = t(key);
+  target.append(note);
+}
+
+function renderArchivedStepIO(entry) {
+  const sections = [...inspector.querySelectorAll(":scope > .execution-business")];
+  for (const section of sections) {
+    const direction = section.dataset.direction;
+    const heading = section.querySelector("h3");
+    const value = entry?.[direction];
+    const omitted = entry?.omitted?.includes(direction);
+    section.replaceChildren(heading);
+    if (value == null) {
+      const missing = direction === "input" ? "archiveInputMissing" : "archiveOutputMissing";
+      appendIONote(section, omitted ? "archiveIOWithheld" : missing);
+      continue;
+    }
+    if (entry.status === "reused") appendIONote(section, "archiveIOReused");
+    if (entry.status === "planned") appendIONote(section, "archiveIOPlanned");
+    if (omitted) appendIONote(section, "archiveIOOmitted");
+    const source = document.createElement("pre");
+    source.className = "archive-io-value";
+    source.tabIndex = 0;
+    source.textContent = typeof value === "string" && value.length ? value : JSON.stringify(value, null, 2);
+    section.append(source);
+  }
+  const rawLabels = [t("ioRawInput"), t("ioRawOutput")];
+  for (const summary of inspector.querySelectorAll(":scope > .inspector-json > summary")) {
+    if (rawLabels.includes(summary.textContent)) summary.parentElement.remove();
+  }
+}
+
 function inspect(selection, trigger, moveFocus = true) {
   const view = store.get().view;
   if (!view) return;
   inspector.replaceChildren();
   if (!renderExecutionInspector(inspector, selection, t, { view, onSelect: inspect })) return;
+  renderArchivedStepIO(archivedStepIO(view, selection));
   currentSelection = selection;
   if (drawer.dataset.open !== "true") inspectorTrigger = trigger;
   const value = selection.value || {};
@@ -250,7 +378,7 @@ async function json(path) {
 
 async function loadRun(id) {
   closeInspector(false);
-  byId("section-execution").classList.remove("execution-fullscreen");
+  executionSection.classList.remove("execution-fullscreen");
   store.update({ view: null });
   const epoch = store.beginRequest();
   const record = records.get(id);
@@ -331,10 +459,22 @@ store.subscribe(({ view }) => {
   if (!view) return;
   if (view !== displayedView) {
     renderMetrics(view);
+    renderReport(view.report);
     displayedView = view;
   }
-  workspace.render(view);
+  if (!executionSection.hidden) workspace.render(view);
 });
+for (const button of viewButtons) {
+  button.addEventListener("click", () => {
+    if (button.hasAttribute("aria-current")) return;
+    const url = route();
+    if (button.dataset.archiveView === "report") url.searchParams.set("view", "report");
+    else url.searchParams.delete("view");
+    history.pushState(null, "", url);
+    closeInspector(false);
+    renderViewRoute();
+  });
+}
 select.addEventListener("change", () => {
   const url = route();
   url.searchParams.set("run", select.value);
@@ -348,8 +488,12 @@ document.addEventListener("keydown", event => {
 });
 addEventListener("popstate", () => {
   const url = route();
-  setLocale(url.searchParams.get("lang") === "en" ? "en" : "zh-CN");
-  void loadRun(url.searchParams.get("run"));
+  const locale = url.searchParams.get("lang") === "en" ? "en" : "zh-CN";
+  closeInspector(false);
+  renderViewRoute();
+  if (locale !== store.get().locale) setLocale(locale);
+  if (url.searchParams.get("run") !== select.value) void loadRun(url.searchParams.get("run"));
 });
+renderViewRoute();
 setLocale(store.get().locale);
 void boot();

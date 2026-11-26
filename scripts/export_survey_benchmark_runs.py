@@ -17,6 +17,7 @@ from litagent.benchmark.survey_latency import (
     _evaluation_score,
     write_bytes,
 )
+from scripts.survey_benchmark_public_content import project_report, project_step
 from scripts.view_survey_latency import read_campaign, retry_rows
 
 RESULTS = "benchmarks/survey/results/latency-faithfulness-95/execution-data"
@@ -246,7 +247,7 @@ def project_metrics(row):
 
 
 def project_execution(row, archive, public_run_ids):
-    """Build the public Workbench view without carrying raw archive payloads."""
+    """Build the Workbench view from authenticated reports and step observations."""
     summary = scoped_identity(row)
     run_id = summary["run_id"]
     summary.update(
@@ -254,7 +255,7 @@ def project_execution(row, archive, public_run_ids):
         completed_at=timestamp(archive["completed_at"]),
     )
 
-    tasks = {}
+    tasks, step_io = {}, {}
     for key, item in archive["graph"]["tasks"].items():
         if not TASK_LABEL.fullmatch(key) or item.get("agent_type") not in AGENT_TYPES:
             raise ValueError("unrecognized benchmark task")
@@ -263,6 +264,8 @@ def project_execution(row, archive, public_run_ids):
             "agent_type": item["agent_type"],
             "status": label(item.get("status"), STATES, "unknown"),
         }
+        if entry := project_step(input=item.get("input"), status="planned"):
+            step_io[key] = entry
     dependencies = {}
     for key, required in archive["graph"]["dependencies"].items():
         if key not in tasks or any(dependency not in tasks for dependency in required):
@@ -310,6 +313,15 @@ def project_execution(row, archive, public_run_ids):
         if kind == "worker" and source in public_run_ids:
             node["metadata"] = {"checkpoint_source_run_id": source}
         nodes[node_id] = node
+        if entry := project_step(
+            input=item.get("input"),
+            output=item.get("output"),
+            status="reused" if kind == "worker" and source else "recorded",
+            withhold_output=kind == "llm",
+        ):
+            step_io[node_id] = entry
+            if kind == "worker":
+                step_io.pop(key, None)
 
     events, active_spans = [], {}
     span_number = 0
@@ -364,6 +376,8 @@ def project_execution(row, archive, public_run_ids):
             }
             active_spans[key] = node
             nodes[node_id] = node
+            if entry := project_step(input=raw.get("input")):
+                step_io[node_id] = entry
         elif event == "subspan.end" and key in active_spans:
             node = active_spans.pop(key)
             data["operation_id"] = node["operation_id"]
@@ -383,6 +397,12 @@ def project_execution(row, archive, public_run_ids):
                     else integer(int(elapsed.total_seconds() * 1000))
                 ),
             )
+            if entry := project_step(output=raw.get("output")):
+                previous = step_io.setdefault(node["id"], {"status": "recorded"})
+                omitted = previous.get("omitted", []) + entry.pop("omitted", [])
+                previous.update(entry)
+                if omitted:
+                    previous["omitted"] = omitted
         if event == "benchmark.summary_checkpoint":
             source = label(raw.get("source_run_id"), public_run_ids)
             if source:
@@ -393,9 +413,32 @@ def project_execution(row, archive, public_run_ids):
             if source:
                 summary["continued_from_run_id"] = source
                 data["source_run_id"] = source
-        events.append(
-            {"sequence": len(events) + 1, "event": event, "at": at, "data": data}
-        )
+        sequence = len(events) + 1
+        events.append({"sequence": sequence, "event": event, "at": at, "data": data})
+        if event == "llm.complete" and "operation_id" in data:
+            model_step = step_io.get(f"llm:{data['operation_id']}")
+            if model_step is not None:
+                output = {
+                    field: raw[field]
+                    for field in (*USAGE_COUNTS[:3], "finish_reason", "output_size")
+                    if field in raw
+                }
+                if entry := project_step(output=output or None):
+                    model_step.update(entry)
+        if event in MILESTONES - {"worker.input", "subspan.start", "subspan.end"} or (
+            event.endswith((".retry", ".failed", ".cancelled", ".error"))
+        ):
+            event_payload = {
+                field: value
+                for field, value in raw.items()
+                if field not in {"output", "input", "operation_id", "session_id"}
+            }
+            if event.endswith(".start") or event == "external_inputs_ready":
+                entry = project_step(input=event_payload)
+            else:
+                entry = project_step(output=event_payload)
+            if entry:
+                step_io[f"event:sequence:{sequence}"] = entry
 
     quality = (archive.get("quality") or {}).get("status")
     reasons = [
@@ -416,6 +459,8 @@ def project_execution(row, archive, public_run_ids):
         "delivery": {"status": summary["delivery"], "reason_codes": reasons},
         "quality": {"status": label(quality, STATES)} if quality in STATES else None,
         "metrics": project_metrics(row),
+        "report": project_report(archive.get("report"), row.get("report_sha256")),
+        "step_io": step_io,
     }
 
 

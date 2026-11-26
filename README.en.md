@@ -83,7 +83,7 @@ The original matrix had **11/21** strict passes. The count rose to **12/21** aft
 
 All five reports scored 100% for citation ID validity and internal consistency. Final-report citation recall for required papers was 0% in all five. The rebuilt `few-shot-metric / external-only / r2` abstract and conclusion each passed the 250-word check at 104 words. The retained draft still had 39 unsupported claims.
 
-Continuation time runs from the summary checkpoint to Survey completion. The six continuation runs added 111 model requests and 2,771,754 tokens, all accounted for. The benchmark lists the metrics and links to the interactive execution Workbench for each run. [Survey Benchmark](./benchmarks/survey/results/latency-faithfulness-95/README.md)
+Continuation time runs from the summary checkpoint to Survey completion. The six continuation runs added 111 model requests and 2,771,754 tokens, all accounted for. The benchmark lists metrics for each run. Open its Workbench to see archived step inputs and outputs and any available report body. [Survey Benchmark](./benchmarks/survey/results/latency-faithfulness-95/README.md)
 
 ## Demo
 
