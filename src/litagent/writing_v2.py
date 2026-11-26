@@ -15,7 +15,7 @@ from pathlib import Path
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError
 
-from litagent import inline_citations, review_policy, stage_repair
+from litagent import capacity_recovery, inline_citations, review_policy, stage_repair
 from litagent.body_quality import (
     NATIVE_REPORT_INPUT_CONTRACT,
     ROLES,
@@ -48,6 +48,7 @@ EXECUTION_CONTRACT = "grounded-writer-execution-v11"
 PROVIDER_SCHEMA_CONTRACT = "ark-structured-schema-v1"
 PROMPT_CONTRACT = "grounded-writer-native-intent-v3"
 STRATEGY = "body_summary_v2"
+CHECKPOINT_SUMMARY_REBUILD = "summary_repair_capacity_fallback"
 SCOPE = "frozen_union_v1"
 SHAPE_RECOVERY_CONTRACT = "lossless-array-reemission-v1"
 LEGACY_INTACT_UNIT_REEMISSION_CONTRACT = "intact-unit-reemission-v1"
@@ -1868,11 +1869,15 @@ def validate_targets(
         intervals.append((section, pi, si, end))
 
 
+def _summary_length(texts, language):
+    """Measure authored summary prose using the publication length unit."""
+    text = " ".join(texts)
+    return len(text) if language == "zh-CN" else len(text.split())
+
+
 def _check_summary_capacity(texts, language, *, envelope=None, section=None):
     """Apply the same summary bounds before recovery and final compilation."""
-    length = (
-        len(" ".join(texts)) if language == "zh-CN" else len(" ".join(texts).split())
-    )
+    length = _summary_length(texts, language)
     limits = effective_summary_limits(envelope)
     maximum = limits["max_units"] if limits else SUMMARY_RULES["max_sentence_units"]
     if len(texts) > maximum or length > SUMMARY_RULES["length"][language]["max"]:
@@ -1895,6 +1900,44 @@ def _check_summary_capacity(texts, language, *, envelope=None, section=None):
                 else None
             ),
         )
+
+
+def summary_length_repair_targets(summaries, language, limits):
+    """Authorize the original paragraphs of each summary section over its cap."""
+    rule = limits["length"][language]
+    targets, issues = {}, []
+    for section in ("abstract", "conclusion"):
+        paragraphs = summaries[section]
+        length = _summary_length(
+            [unit["text"] for page in paragraphs for unit in page["sentences"]],
+            language,
+        )
+        if length <= rule["max"]:
+            continue
+        target_ids = []
+        for index, paragraph in enumerate(paragraphs):
+            key = f"summary-length:{section}:{index}"
+            original = paragraph["sentences"]
+            target_ids.append(key)
+            targets[key] = {
+                "path": [section, index, 0],
+                "end": len(original),
+                "maximum": len(original),
+                "original": copy.deepcopy(original),
+                "original_sha256": digest(original),
+                "snapshot_sha256": digest(summaries),
+                "explanation": "Shorten this paragraph within the combined section length allowance, using only actual frozen body premises.",
+            }
+        issues.append(
+            {
+                "code": "writer_summary_capacity_exceeded",
+                "field": f"{section}_{rule['unit']}",
+                "actual": length,
+                "maximum": rule["max"],
+                "target_ids": target_ids,
+            }
+        )
+    return targets, issues
 
 
 def compile_document(
@@ -2442,6 +2485,7 @@ def writer_budget_plan(
     writer_source_view=None,
     evaluation_dimensions_contract=None,
     evaluation_result_contract=None,
+    benchmark_faithfulness_policy=None,
     closeout_profile=None,
     output_tokens=None,
     run_limits=None,
@@ -2639,6 +2683,11 @@ def writer_budget_plan(
                 else {}
             ),
             **(
+                {"benchmark_faithfulness_policy": benchmark_faithfulness_policy}
+                if benchmark_faithfulness_policy is not None
+                else {}
+            ),
+            **(
                 {"closeout_profile": closeout_profile}
                 if closeout_profile is not None
                 else {}
@@ -2746,6 +2795,7 @@ def budgeted_writer_plan(
     writer_source_view=None,
     evaluation_dimensions_contract=None,
     evaluation_result_contract=None,
+    benchmark_faithfulness_policy=None,
     closeout_profile=None,
     output_tokens=None,
     run_limits=None,
@@ -3184,6 +3234,8 @@ def budgeted_writer_plan(
             kwargs["evaluation_dimensions_contract"] = evaluation_dimensions_contract
         if evaluation_result_contract is not None:
             kwargs["evaluation_result_contract"] = evaluation_result_contract
+        if benchmark_faithfulness_policy is not None:
+            kwargs["benchmark_faithfulness_policy"] = benchmark_faithfulness_policy
         if closeout_profile is not None:
             kwargs["closeout_profile"] = closeout_profile
         if output_tokens is not None:
@@ -3358,7 +3410,11 @@ def repair_request_input(
         "previous_local_failure": previous_failure,
     }
     if cause == "capacity":
-        payload["capacity_diagnostic"] = capacity_diagnostic or {}
+        payload["capacity_diagnostic"] = {
+            key: value
+            for key, value in (capacity_diagnostic or {}).items()
+            if key != "source_owner_instruction"
+        }
     if wire_contract == "flat-writer-v1":
         from litagent.writing_flat import repair_projection
 
@@ -3381,6 +3437,15 @@ def repair_request_input(
                 else {}
             ),
         )
+    if cause == "capacity" and (capacity_diagnostic or {}).get(
+        "source_owner_instruction"
+    ):
+        # Replay uses the recorded diagnostic, so earlier receipts reconstruct
+        # the original input. Keep prose outside the numeric diagnostic itself.
+        payload["previous_local_failure"] = {
+            **(payload["previous_local_failure"] or {}),
+            "source_owner_instruction": capacity_diagnostic["source_owner_instruction"],
+        }
     system = (
         INSTRUCTION
         + "\nRepair ONLY the authorized target units and their actual scientific premises. Preserve every unaffected unit and core requirement. Split compound claims if necessary; do not replace a diagnosis by unrelated facts. Explicitly decline when these sources cannot safely repair it."
@@ -3456,6 +3521,18 @@ def repair_request_input(
         if writing_plan == RANGE_WRITING_PLAN:
             payload["summary_source_body_sha256"] = digest(summary_body)
         system += "\nSummary premises must be actual frozen body units, supplied as untrusted data."
+        if (
+            cause == "local"
+            and (envelope or {}).get("benchmark_faithfulness_policy")
+            and (previous_failure or {}).get("code")
+            == "writer_summary_capacity_exceeded"
+            and "instruction" in previous_failure
+        ):
+            # Authenticate the host instruction after guidance projection
+            # compacts the failure to its code and guidance pointer.
+            payload["previous_local_failure"]["instruction"] = previous_failure[
+                "instruction"
+            ]
     if writing_plan == RANGE_WRITING_PLAN:
         system += "\nSome host targets authorize a complete continuous original range within one paragraph. Replace exactly that range, preserving every unaffected unit and paragraph. Respect each maximum; never drop a core requirement, hide independent assertions in one unit, or delete conditions. The replacement remains independently unverified."
     capture = None
@@ -6301,8 +6378,19 @@ class WriterSession:
         system, payload, schema = summary_request_input(
             self.packet, units, self.envelope
         )
+        if (
+            self.journal.get("benchmark_summary_checkpoint")
+            and name.startswith("summary_repair_")
+            and self.packet["language"] == "en"
+            and self.wire_contract == "flat-writer-v1"
+            and (self.envelope or {}).get("benchmark_faithfulness_policy")
+            and not self.reemission_contract
+            and not review_policy.enabled(self.envelope)
+            and not inline_citations.selected(self.envelope)
+        ):
+            return await self.checkpoint_summary(name, system, payload, schema)
         try:
-            return await self.call(name, system, payload, schema, stage="summary")
+            value = await self.call(name, system, payload, schema, stage="summary")
         except WriterError as exc:
             if not self.reemission_contract or exc.code not in {
                 "writer_json_invalid",
@@ -6323,7 +6411,7 @@ class WriterSession:
                     "claim_count": 128,
                 }
             try:
-                return await self.reemit_native(
+                value = await self.reemit_native(
                     name,
                     payload,
                     schema,
@@ -6341,6 +6429,138 @@ class WriterSession:
                     }
                 self.save()
                 raise
+        if (
+            name == "summary_initial"
+            and self.writing_plan == RANGE_WRITING_PLAN
+            and (self.envelope or {}).get("benchmark_faithfulness_policy")
+        ):
+            return await self.repair_initial_summary_length(body, value, name)
+        return value
+
+    async def checkpoint_summary(self, name, system, payload, schema):
+        """Keep a revised summary inside its frozen capacity without modifying the body repair."""
+        from litagent.safety.planned_budget import EnvelopeExceeded, planned_backend
+
+        if name == CHECKPOINT_SUMMARY_REBUILD:
+            system += (
+                "\nRebuild each section as a brief synthesis of the frozen body. "
+                "Use two sentences and no more than 60 words in each sentence. "
+                "Prioritize the direct answer and its principal evidence or limitation. "
+                "Leave detailed comparisons in the full body."
+            )
+        else:
+            system += (
+                "\nWrite 120–160 English words total in each section. "
+                "Count across all its paragraphs and keep the frozen body premises."
+            )
+        owner = planned_backend(getattr(self.llm, "_cost_budget", None))
+        prior_failure = self.journal.get("failure")
+        for call_name in (name, name + ":length_retry"):
+            try:
+                value = await self.call(
+                    call_name, system, payload, schema, stage="summary"
+                )
+                for section, paragraphs in value.items():
+                    _check_summary_capacity(
+                        [u["text"] for p in paragraphs for u in p["sentences"]],
+                        self.packet["language"],
+                        envelope=self.envelope,
+                        section=section,
+                    )
+            except (WriterError, EnvelopeExceeded) as exc:
+                capacity = (
+                    exc.code == "writer_summary_capacity_exceeded"
+                    if isinstance(exc, WriterError)
+                    else bool(exc.diagnostics)
+                    and all(item.get("stage") == "summary" for item in exc.diagnostics)
+                )
+                receipt = (
+                    owner.entries.get(f"{self.identity}:{call_name}", {})
+                    if owner is not None
+                    else {}
+                )
+                if (
+                    call_name != name
+                    or not capacity
+                    or owner is None
+                    or owner.stop_reason
+                    or owner.snapshot()["usage_uncertain"]
+                    or receipt.get("status") != "settled"
+                    or receipt.get("sent") is not True
+                ):
+                    raise
+                self.journal["calls"][call_name]["length_retry_reason"] = (
+                    classify_failure(exc)
+                )
+                self.save()
+                system += "\nThe previous response exceeded capacity. Use fewer and shorter sentences."
+            else:
+                if call_name != name:
+                    if prior_failure is None:
+                        self.journal.pop("failure", None)
+                    else:
+                        self.journal["failure"] = prior_failure
+                    self.save()
+                return value
+
+    async def repair_initial_summary_length(
+        self, body, summaries, name, *, shorter_target=False
+    ):
+        """Spend one existing local edit on a complete overlong initial summary."""
+        limits = effective_summary_limits(self.envelope)
+        if limits is None:
+            return summaries
+        targets, issues = summary_length_repair_targets(
+            summaries, self.packet["language"], limits
+        )
+        if not targets:
+            return summaries
+        failure = {
+            "family": "quality",
+            "code": "writer_summary_capacity_exceeded",
+            "diagnostics": issues,
+            "stage": "summary",
+            "call": name,
+            "instruction": (
+                "Shorten each overlong section identified in the host issues. "
+                "Its maximum applies across all replacement paragraphs. Aim within the "
+                "target range in summary_constraints. Preserve the answer, scientific "
+                "conditions and actual body_unit_refs. Remove redundant phrasing first."
+            ),
+        }
+        if shorter_target and self.packet["language"] == "en":
+            failure["instruction"] += (
+                " Aim for 120–160 English words total in each overlong section. "
+                "This target leaves room below the unchanged 250-word cap."
+            )
+        self.journal["failure"] = failure
+        self.save()
+        context = None
+        if self.envelope.get("repair_guidance_contract"):
+            current = current_repair_guidance_context(
+                None,
+                None,
+                {"packet": self.packet, "body": body, "summaries": summaries},
+                targets,
+                issues,
+                diagnostic_categories=["local"] * len(issues),
+            )
+            context = {"current": current, "prior_candidate": None}
+        candidate = await self.patch(
+            summaries,
+            targets,
+            cause="local",
+            summary_body=body,
+            guidance_context=context,
+        )
+        self.journal["calls"][name]["length_repair"] = {
+            "call": f"repair_{self.state['attempts'][-1]['index']}",
+            "problems": issues,
+            "candidate_sha256": digest(candidate),
+        }
+        self.journal.pop("failure", None)
+        self.save()
+        return candidate
 
     def reserve_followup(
         self,
@@ -6415,6 +6635,23 @@ class WriterSession:
 
     async def patch(self, body, targets, *, cause, **kwargs):
         """Reserve each edit in its frozen category without changing legacy calls."""
+        diagnostic = kwargs.get("capacity_diagnostic") or {}
+        envelope = self.envelope or {}
+        if (
+            cause == "capacity"
+            and diagnostic.get("code") == "writer_body_byte_capacity_exceeded"
+            and envelope.get("benchmark_faithfulness_policy")
+            and envelope.get("repair_mapping_contract") == "capacity-source-map-v4"
+        ):
+            kwargs["capacity_diagnostic"] = {
+                **diagnostic,
+                "source_owner_instruction": (
+                    "Copy whole original_unit_ids strings from the authorized target. "
+                    'For illustration, ["open_problems:3:0"] contains one complete ID. '
+                    "Never split its section and indices into separate source_unit_ids entries. "
+                    "Each deleted_sources.unit_id must also be one complete authorized string."
+                ),
+            }
         if not review_policy.enabled(self.envelope):
             return await self._patch(body, targets, cause=cause, **kwargs)
         category = (
@@ -7218,6 +7455,65 @@ async def repair_capacity_snapshot(
             session.save()
             from litagent.safety.planned_budget import EnvelopeExceeded
 
+            # BEGIN initial capacity recovery
+            if (
+                byte_capacity is not None
+                and isinstance(exc, WriterError)
+                and exc.code == capacity_recovery.ERROR_CODE
+                and len(session.state["attempts"]) == before + 1
+            ):
+                rejection = capacity_recovery.authenticate_rejection(
+                    session,
+                    f"repair_{before}",
+                    document,
+                    targets,
+                    record["failure"],
+                )
+                if rejection is not None:
+                    rejections = record.setdefault("source_map_rejections", [])
+                    remaining = min(
+                        session.repair_limit - len(session.state["attempts"]),
+                        repair_attempts_remaining(session.state, "capacity"),
+                    )
+                    repeated = any(
+                        item["patches_sha256"] == rejection["patches_sha256"]
+                        for item in rejections
+                    )
+                    rejection.update(
+                        remaining_attempts=remaining,
+                        next_action=(
+                            "stop_repeated_candidate"
+                            if repeated
+                            else "retry" if remaining > 0 else "stop_capacity_exhausted"
+                        ),
+                    )
+                    rejections.append(rejection)
+                    session.save()
+                    if repeated or remaining <= 0:
+                        raise WriterError(
+                            exc.code, exc.family, rejection["diagnostics"]
+                        ) from exc
+                    capacity_issue["diagnostics"] = capacity_recovery.feedback(
+                        rejection
+                    )
+                    local = current_repair_guidance_context(
+                        None,
+                        None,
+                        {
+                            "packet": session.packet,
+                            "aliases": session.aliases,
+                            "body": document,
+                            "summaries": {},
+                            "budget_envelope": session.envelope,
+                            "generation_writing_plan": session.writing_plan,
+                        },
+                        targets,
+                        [capacity_issue],
+                        diagnostic_categories=["capacity"],
+                    )
+                    guidance_context = {"current": local, "prior_candidate": None}
+                    continue
+            # END initial capacity recovery
             issues = getattr(exc, "diagnostics", [])
             # This overflow describes the rejected candidate. The preserved
             # original intentionally has a different measured byte count.
@@ -7447,6 +7743,11 @@ async def synthesize(worker, task, cards, selection, methodology, requirements):
                 else {}
             ),
             spent_tokens=snapshot["used_tokens"],
+            benchmark_faithfulness_policy=(
+                frozen_envelope.get("benchmark_faithfulness_policy")
+                if frozen_envelope is not None
+                else getattr(worker, "_benchmark_faithfulness_policy", None)
+            ),
             spent_requests=snapshot.get("requests_sent", 0),
             budget_policy=task.input_data["budget_policy"],
             **(
@@ -7642,6 +7943,34 @@ async def synthesize(worker, task, cards, selection, methodology, requirements):
                 exc.diagnostics if exc.code == "writer_reference_invalid" else ()
             ),
         )
+    return finalize_synthesis(
+        session,
+        body,
+        summaries,
+        cards,
+        selection,
+        methodology,
+        requirements,
+        verification=task.input_data.get(
+            "verification", {"judge": False, "jev": False}
+        ),
+    )
+
+
+def finalize_synthesis(
+    session,
+    body,
+    summaries,
+    cards,
+    selection,
+    methodology,
+    requirements,
+    *,
+    verification,
+):
+    """Compile a validated writer draft for the Reviewer and Evaluation."""
+    packet, aliases = session.packet, session.aliases
+    language = packet["language"]
     try:
         draft, bindings = compile_document(
             body,
@@ -7734,9 +8063,7 @@ async def synthesize(worker, task, cards, selection, methodology, requirements):
         "writing_bindings": bindings,
         "targeted_repair_state": session.state,
         "evidence_selection": selection.to_dict(),
-        "verification": task.input_data.get(
-            "verification", {"judge": False, "jev": False}
-        ),
+        "verification": verification,
     }
 
 
@@ -8884,6 +9211,7 @@ async def _repair_report(
     prepare_only=False,
 ):
     """Stage a complete candidate and commit only after independent full evaluation."""
+    from litagent.eval.conflict_review import selected as conflict_only
     from litagent.eval.ragas_repair import native_repair_diagnostics
     from litagent.runner import RewriteOutcome
 
@@ -9009,6 +9337,7 @@ async def _repair_report(
     if (
         not combined
         and not review_policy.enabled(session.envelope)
+        and not conflict_only(session.envelope)
         and review.get("source_report_sha256")
         == hashlib.sha256(original.encode()).hexdigest()
     ):

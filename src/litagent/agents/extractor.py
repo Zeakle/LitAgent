@@ -20,6 +20,7 @@ from litagent.evidence import (
     collect_ledger,
 )
 from litagent.logging import get_logger
+from litagent.observability.lifecycle import traced_io
 from litagent.orchestrator.scheduler import Worker
 from litagent.orchestrator.task_graph import SubTask
 from litagent.safety.injection import InjectionDetector, InjectionRisk
@@ -46,6 +47,7 @@ class ExtractorWorker(Worker):
         run_id_provider=None,
         evidence_preparation_policy=None,
         preparation_budget_path_provider=None,
+        fulltext_trace_hook: Callable[[str, dict], None] | None = None,
     ):
         """Initialize the extractor worker."""
         if max_papers <= 0:
@@ -64,6 +66,7 @@ class ExtractorWorker(Worker):
         self._detector = detector
         self._max_papers = max_papers
         self._fulltext_loader = fulltext_loader
+        self._fulltext_trace_hook = fulltext_trace_hook
         self._failure_callback = failure_callback
         if type(strict_field_spans) is not bool:
             raise ValueError("strict_field_spans must be boolean")
@@ -119,9 +122,13 @@ class ExtractorWorker(Worker):
         if strict:
             if self._fulltext_loader is None:
                 raise ValueError("strict_fulltext_loader_unavailable")
-            papers = await self._fulltext_loader.enrich(
-                papers, task.input_data.get("coverage_requirements", [])
-            )
+            requirements = task.input_data.get("coverage_requirements", [])
+            if self._fulltext_trace_hook is None:
+                papers = await self._fulltext_loader.enrich(papers, requirements)
+            else:
+                async with traced_io(self._fulltext_trace_hook, "fulltext") as outcome:
+                    papers = await self._fulltext_loader.enrich(papers, requirements)
+                    outcome["paper_count"] = len(papers)
             for paper in papers:
                 paper["quality_policy"] = task.input_data["quality_policy"]
                 if (

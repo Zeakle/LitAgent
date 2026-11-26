@@ -123,6 +123,8 @@ def _envelope(value):
         "evaluation_dimensions_identity",
         "evaluation_result_contract",
         "evaluation_result_identity",
+        "benchmark_faithfulness_policy",
+        "benchmark_faithfulness_identity",
         "assessment_decision_contract",
         "assessment_decision_identity",
         "closeout_profile",
@@ -133,6 +135,21 @@ def _envelope(value):
     if flat:
         required |= {"diagnostic_json_bytes", "claim_max_json_bytes"}
     _keys(value, required, optional)
+    benchmark_fields = {
+        "benchmark_faithfulness_policy",
+        "benchmark_faithfulness_identity",
+    }
+    if benchmark_fields.intersection(value):
+        _require(
+            flat
+            and value.get("benchmark_faithfulness_policy")
+            == "benchmark-faithfulness-95-v1"
+            and _hashed(value.get("benchmark_faithfulness_identity"))
+            and isinstance(value.get("semantic_engine"), dict)
+            and value["semantic_engine"].get("global_scope")
+            == "scientific-conflicts-v1",
+            "benchmark_faithfulness_policy_invalid",
+        )
     if "output_tokens" in value:
         _require(flat and "repair_mapping_contract" in value, "output_policy_invalid")
         envelope_output_tokens(value, archived=True)
@@ -165,7 +182,9 @@ def _envelope(value):
                 "global_status_contract",
                 "capacity_recovery_contract",
                 "inventory_context_contract",
+                "inventory_prompt_contract",
                 "organization_contract",
+                "stage_batch_contract",
             },
         )
         _require(
@@ -178,7 +197,11 @@ def _envelope(value):
         _require(
             "global_scope" not in engine
             or engine["global_scope"]
-            in ("question-coverage-v1", "report-review-no-omissions-v1"),
+            in (
+                "question-coverage-v1",
+                "report-review-no-omissions-v1",
+                "scientific-conflicts-v1",
+            ),
             "ragas_global_scope_invalid",
         )
         _require(
@@ -244,7 +267,12 @@ def _envelope(value):
                 engine["citation_contract"] == INLINE_CONTRACT,
                 "ragas_citation_contract_invalid",
             )
-        if {"citation_contract", "organization_contract"}.intersection(engine):
+        if {
+            "citation_contract",
+            "organization_contract",
+            "inventory_prompt_contract",
+            "stage_batch_contract",
+        }.intersection(engine):
             from litagent.eval.engine_policy import validate_engine
 
             validate_engine(engine, archived=True)
@@ -840,7 +868,9 @@ def _plan(plan):
     _require(
         isinstance(plan, dict) and plan.get("contract") in _CONTRACTS, "plan_invalid"
     )
-    context_limit = envelope_context_limit(plan.get("envelope"), archived=True)
+    envelope = plan.get("envelope")
+    baseline_context_limit = envelope_context_limit(envelope, archived=True)
+    context_limit = envelope_context_limit(envelope, stage="global", archived=True)
     if "joint_round_escrow" in plan:
         _joint_plan(plan)
         return
@@ -896,7 +926,9 @@ def _plan(plan):
             and all(
                 _integer(spec[k], 1) for k in ("count", "request_cap", "output_tokens")
             )
-            and spec["output_tokens"] <= spec["request_cap"] <= context_limit
+            and spec["output_tokens"]
+            <= spec["request_cap"]
+            <= (context_limit if name == "global" else baseline_context_limit)
             and spec["bound"]
             in (
                 {"exact_wire", "context_upper_bound", "host_envelope_upper_bound"}
@@ -1064,7 +1096,9 @@ def _plan(plan):
         "maximum_tokens": maximum,
         "planned_requests": requests,
         "maximum_requests": maximum_requests,
-        "context_tokens": envelope_context_tokens(plan.get("envelope"), archived=True),
+        "context_tokens": envelope_context_tokens(
+            envelope, stage="global", archived=True
+        ),
         "context_reservation_limit": context_limit,
         "context_margin": 0.1,
         "spent_tokens": spent,

@@ -156,6 +156,31 @@ nested[0].events.click();assert.ok(words(pane).includes('nested response'));
     )
 
 
+def test_inspector_distinguishes_reused_worker_output_from_execution():
+    """A checkpoint worker shows source and output without inventing elapsed time."""
+    run_js(
+        r"""
+const {renderExecutionInspector}=await load('execution-inspector.js');
+const worker={kind:'worker',task_id:'extract',status:'completed',output:{claims:['Previously extracted']},metadata:{checkpoint_source_run_id:'previous-run'}};
+const nodes={'worker:extract':worker};
+const selection={kind:'node',id:'extract',value:{id:'extract'}};
+for (const [locale,label] of [['zh-CN','输出复用自运行'],['en','Output reused from run']]) {
+  const t=translator(locale), pane=new Element('aside');
+  renderExecutionInspector(pane,selection,t,{view:{graph:{nodes}}});
+  assert.ok(walk(pane).some(e=>e.tag==='dt'&&e.textContent===label));
+  assert.ok(walk(pane).some(e=>e.tag==='dd'&&e.textContent==='previous-run'));
+  assert.ok(words(pane).includes('Previously extracted'));
+  assert.ok(!walk(pane).some(e=>e.tag==='dt'&&e.textContent===t('elapsed')));
+  const fresh={...worker,elapsed_ms:1200,metadata:{}};
+  pane.replaceChildren();
+  renderExecutionInspector(pane,selection,t,{view:{graph:{nodes:{'worker:extract':fresh}}}});
+  assert.ok(!walk(pane).some(e=>e.tag==='dt'&&e.textContent===label));
+  assert.ok(walk(pane).some(e=>e.tag==='dt'&&e.textContent===t('elapsed')));
+}
+"""
+    )
+
+
 def test_live_refresh_coalesces_events_and_rejects_late_run_or_version_responses():
     """Old network responses must not overwrite another run or report revision."""
     run_js(

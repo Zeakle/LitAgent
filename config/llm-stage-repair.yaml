@@ -158,7 +158,7 @@ observability:
 eval:
   native_capacity_recovery: true
   semantic_engine: ragas-cited-faithfulness-v1
-  native_global_scope: report-review-no-omissions-v1
+  native_global_scope: scientific-conflicts-v1
   native_global_unit_response: ragas-global-unit-keys-v4
   native_global_input: ragas-global-unit-input-v3
   context_tokens: 235930

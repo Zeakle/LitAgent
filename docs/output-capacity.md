@@ -9,9 +9,12 @@
 | `eval.max_tokens` | Evaluation 单次模型调用输出上限。 |
 | `safety.planned_run_limits.max_tokens` | 计划型 Survey 的模型用量上限。 |
 | `safety.planned_run_limits.max_requests` | 计划型 Survey 的模型请求数上限。 |
+| `safety.planned_run_limits.global_context_tokens` | 可选的全局检查上下文容量。预算按 90% 预留单次请求。 |
 | `safety.max_cost_tokens` | 常规用量保护配置。 |
 
 默认计划上限是 **10,000,000 tokens、200 次请求**。[独立双循环配置](../config/separate-review-evaluation.yaml)显式选择独立的写作修订和验收修复额度，其计划上限为 **47,420,000 tokens、226 次请求**。
+
+普通 Live 工作台使用 [agent-format-repair.yaml](../config/agent-format-repair.yaml)。写作、审阅、修订和分批核验的单次请求预留通常最高为 **221,184 tokens**。全局检查最高为 **276,480 tokens**，其中输出预留为 **45,056 tokens**。整轮硬上限为 **47,420,000 tokens、226 次请求**，具体额度在写作前锁定。正文与摘要序列化容量分别为 **48,000 字节**和 **6,000 字节**。
 
 ## 查看一次运行的用量
 

@@ -1,20 +1,20 @@
-import { bindAuditControls, bindSurveyVerification } from "./audit-controls.js?v=15.10.6.431";
-import { bindFormatControls } from "./format-controls.js?v=15.10.10";
-import { createApiClient, openEventStream } from "./api-client.js?v=15.10.6.431";
+import { bindAuditControls, bindSurveyVerification } from "./audit-controls.js?v=15.10.6.434";
+import { bindFormatControls } from "./format-controls.js?v=15.10.11";
+import { createApiClient, openEventStream } from "./api-client.js?v=15.10.6.434";
 import { createBenchmarkController } from "./benchmark-controller.js?v=15.10.6.163-summary-contract";
 import { renderBenchmarkDetail, renderBenchmarkList, renderBenchmarkObservation } from "./benchmark-view.js?v=15.10.6.163-summary-contract";
-import { adaptArchiveView, adaptInteractiveView, chooseDefaultSection, normalizeRunList } from "./adapters.js?v=15.10.6.431";
-import { evidenceMap, renderEvidenceList, renderEvidenceInspector } from "./evidence-view.js?v=15.10.6.431";
-import { buildEvidenceLedger, filterEvidence } from "./evidence-model.js?v=15.10.6.431";
-import { createLiveViewRefresh } from "./live-view.js?v=15.10.6.431";
-import { createExecutionWorkspace } from "./execution-workspace.js?v=15.10.6.431";
-import { renderExecutionInspector } from "./execution-inspector.js?v=15.10.6.431";
-import { renderHistory } from "./history-view.js";
-import { applyTranslations, translator } from "./i18n.js?v=15.10.6.431";
-import { renderQuality, locateReportDiagnostic } from "./quality-view.js?v=15.10.6.431";
-import { navigateReportHeading, renderOutline, renderReportDocument, renderSearchRecords } from "./report-view.js?v=15.10.6.431";
+import { adaptArchiveView, adaptInteractiveView, chooseDefaultSection, normalizeRunList } from "./adapters.js?v=15.10.6.434";
+import { evidenceMap, renderEvidenceList, renderEvidenceInspector } from "./evidence-view.js?v=15.10.6.434";
+import { buildEvidenceLedger, filterEvidence } from "./evidence-model.js?v=15.10.6.434";
+import { createLiveViewRefresh } from "./live-view.js?v=15.10.6.434";
+import { createExecutionWorkspace } from "./execution-workspace.js?v=15.10.6.434";
+import { renderExecutionInspector } from "./execution-inspector.js?v=15.10.6.434";
+import { renderHistory } from "./history-view.js?v=15.10.6.434";
+import { applyTranslations, translator } from "./i18n.js?v=15.10.6.434";
+import { renderQuality, locateReportDiagnostic } from "./quality-view.js?v=15.10.6.434";
+import { navigateReportHeading, renderOutline, renderReportDocument, renderSearchRecords } from "./report-view.js?v=15.10.6.434";
 import { renderReview } from "./review-view.js?v=15.10.5-strict";
-import { createWorkbenchStore } from "./state.js?v=15.10.6.431";
+import { createWorkbenchStore } from "./state.js?v=15.10.6.434";
 const $ = (selector) => document.querySelector(selector);
 const locale = localStorage.getItem("litagent-locale") || "zh-CN";
 const store = createWorkbenchStore({ locale });
@@ -27,6 +27,7 @@ let activeInspection = null;
 let inspectedView = null;
 let inspectedLocale = null;
 let historyLoading = false;
+let submittingSurvey = false;
 const mobileSidebar = globalThis.matchMedia?.("(max-width: 760px)");
 const benchmarkState = { results: [], selectedId: null, detail: null, observation: null, loaded: false };
 const api = createApiClient(() => context?.operation_token);
@@ -118,7 +119,8 @@ function summaryValue(value, suffix = "") { return value == null || value === ""
 function renderSummary(view) {
   const summary = view?.summary || {};
   $("#run-query").textContent = view?.identity?.query || t("noRun");
-  $("#run-source-label").textContent = view ? `${view.identity.source} / ${summary.report_language || view.identity.reportLanguage || "—"}` : "LITAGENT";
+  const source = view?.identity?.source === "legacy" ? t("flowLiveRun") : view?.identity?.source;
+  $("#run-source-label").textContent = view ? `${source} / ${summary.report_language || view.identity.reportLanguage || "—"}` : "LITAGENT";
   $("#summary-status").textContent = view?.identity?.status === "completed" ? t("executionCompleted") : summaryValue(view?.identity?.status);
   $("#summary-delivery").textContent = summaryValue(view?.delivery?.status || summary.delivery_status);
   $("#summary-quality").textContent = summaryValue(view?.quality?.status || summary.quality_status);
@@ -177,7 +179,7 @@ function render() {
   document.documentElement.lang = state.locale;
   $("#locale-toggle").textContent = state.locale === "zh-CN" ? "EN" : "中文";
   $("#run-count").textContent = state.runs.length;
-  renderHistory($("#run-list"), state.runs, state.selectedRunKey, $("#run-search").value, state.locale, t, selectRun);
+  renderHistory($("#run-list"), state.runs, state.selectedRunKey, $("#run-search").value, state.locale, t, selectRun, view?.identity?.status);
   renderSummary(view); renderControls(view);
   if (view?.displayWarnings?.some((item) => item.code === "nonfinite_numeric_values")) {
     setNotice(store.get().locale === "zh-CN"
@@ -229,7 +231,7 @@ function renderQualityContent() {
   const state = store.get(); const view = state.view;
   const revision = Number(view?.displayRevision || view?.versions?.[0]?.revision || 1);
   const snapshot = independentAuditState?.target && view?.identity && independentAuditState.target.runId === view.identity.runId && independentAuditState.target.revision === revision ? independentAuditState : null;
-  renderQuality($("#quality-content"), view?.runtimeEvaluation || {}, view?.quality, view?.delivery, setInspector, t, { budgetPlan: view?.budgetPlan, budgetState: view?.budgetState, runId: view?.identity?.runId, locale: state.locale, revision: view?.report?.survey ? revision : null, sha: snapshot?.data?.source_report_sha256 || view?.reportSha, audits: snapshot, reportJudgeRetired: true, qualityPolicy: view?.report?.metadata?.quality_policy, verification: view?.report?.metadata?.verification, bodyDiagnostics: view?.report?.metadata?.body_diagnostics, analysisPlan: view?.report?.metadata?.analysis_plan, pipelineVerification: view?.pipelineVerification, extractionVerification: view?.report?.metadata?.extraction_verification, automaticAcceptance: view?.report?.metadata?.automatic_acceptance, evaluationHistory: view?.report?.metadata?.evaluation_history, reviewWorkflow: view?.report?.metadata?.review_workflow, providerFailures: view?.report?.metadata?.provider_failures, writerFailure: view?.report?.metadata?.writer_failure, writerFormat: view?.report?.metadata?.writer_format, writerContract: view?.report?.metadata?.writing_bindings?.writer_contract, targetedRepairState: view?.report?.metadata?.targeted_repair_state || (view?.report?.survey ? null : view?.targetedRepairState) });
+  renderQuality($("#quality-content"), view?.runtimeEvaluation || {}, view?.quality, view?.delivery, setInspector, t, { budgetPlan: view?.budgetPlan, budgetState: view?.budgetState, runId: view?.identity?.runId, locale: state.locale, revision: view?.report?.survey ? revision : null, sha: snapshot?.data?.source_report_sha256 || view?.reportSha, audits: snapshot, reportJudgeRetired: true, qualityPolicy: view?.report?.metadata?.quality_policy, verification: view?.report?.metadata?.verification, bodyDiagnostics: view?.report?.metadata?.body_diagnostics, analysisPlan: view?.report?.metadata?.analysis_plan, pipelineVerification: view?.pipelineVerification, extractionVerification: view?.report?.metadata?.extraction_verification, automaticAcceptance: view?.report?.metadata?.automatic_acceptance, evaluationHistory: view?.report?.metadata?.evaluation_history, reviewWorkflow: view?.report?.metadata?.review_workflow, providerFailures: view?.report?.metadata?.provider_failures, execution: view?.report?.metadata?.execution, writerFailure: view?.report?.metadata?.writer_failure, writerFormat: view?.report?.metadata?.writer_format, writerContract: view?.report?.metadata?.writing_bindings?.writer_contract, targetedRepairState: view?.report?.metadata?.targeted_repair_state || (view?.report?.survey ? null : view?.targetedRepairState) });
 }
 
 function renderBenchmarkState() {
@@ -246,6 +248,10 @@ const { load: loadBenchmarks, select: selectBenchmark, selectObservation: select
 });
 
 function setSection(section, user = true) {
+  if (section === "benchmark" && context?.benchmark_overview === "/benchmark") {
+    window.location.assign("/benchmark");
+    return;
+  }
   store.update({ activeSection: section, sectionWasUserSelected: user || store.get().sectionWasUserSelected });
   const params = new URLSearchParams(location.search); params.set("view", section); history.replaceState(null, "", `?${params}`);
   if (section === "benchmark" && !benchmarkState.loaded) loadBenchmarks();
@@ -256,7 +262,7 @@ const liveViewRefresh = createLiveViewRefresh({
   async load(identity) {
     const prefix = identity.source === "interactive" ? "/survey" : "/flow-demo/runs";
     const style = citationPreferences.get(identity.runId);
-    const raw = await api.json(`${prefix}/${encodeURIComponent(identity.runId)}/view${style ? `?citation_style=${encodeURIComponent(style)}` : ""}`);
+    const raw = await api.json(`${prefix}/${encodeURIComponent(identity.runId)}/view${style ? `?citation_style=${encodeURIComponent(style)}` : ""}`, { navigation: true });
     if (raw.summary?.run_id !== identity.runId) throw new Error("live_run_identity_mismatch");
     const view = identity.source === "interactive" ? adaptInteractiveView(raw, identity) : adaptArchiveView(raw, identity);
     if (identity.source === "legacy") view.capabilities.canCancel = ["queued", "running", "cancelling"].includes(view.identity.status);
@@ -273,15 +279,7 @@ function connectEvents(runId, kind = "interactive") {
   eventSource = openEventStream(runId, {
     onTrace(event) {
       const view = store.get().view; if (!view || view.identity.runId !== runId || store.get().selectedRunKey !== key) return;
-      const sequence = event.seq ?? event.sequence;
-      const source = event.source || "sse";
-      const known = view.events.some((item) => (
-        sequence != null
-        && (item.seq ?? item.sequence) === sequence
-        && (item.source || "sse") === source
-      ));
-      if (!known) store.update({ view: { ...view, events: [...view.events, { ...event, source }] } });
-      liveViewRefresh.schedule();
+      liveViewRefresh.receive(event);
     },
     onError() { if (store.get().selectedRunKey === key) liveViewRefresh.schedule(); },
     async onSettle() {
@@ -297,7 +295,7 @@ function connectEvents(runId, kind = "interactive") {
 async function refreshInteractive(runId, preferredSection = null) {
   const epoch = store.beginRequest();
   try {
-    const raw = await api.json(`/survey/${encodeURIComponent(runId)}/view${citationPreferences.has(runId) ? "?citation_style=" + citationPreferences.get(runId) : ""}`); if (!store.isCurrent(epoch)) return;
+    const raw = await api.json(`/survey/${encodeURIComponent(runId)}/view${citationPreferences.has(runId) ? "?citation_style=" + citationPreferences.get(runId) : ""}`, { navigation: true }); if (!store.isCurrent(epoch)) return false;
     const identity = store.get().runs.find((item) => item.key === `interactive:${runId}`) || { key: `interactive:${runId}`, runId, source: "interactive", query: raw.summary?.query || "", status: raw.summary?.status || "unknown" };
     const view = adaptInteractiveView(raw, identity);
     const activeSection = preferredSection || (store.get().sectionWasUserSelected ? store.get().activeSection : chooseDefaultSection(view));
@@ -312,7 +310,7 @@ async function refreshLegacy(runId, query, preferredSection = null) {
   eventSource?.close();
   const epoch = store.beginRequest();
   try {
-    const raw = await api.json(`/flow-demo/runs/${encodeURIComponent(runId)}/view${citationPreferences.has(runId) ? "?citation_style=" + citationPreferences.get(runId) : ""}`);
+    const raw = await api.json(`/flow-demo/runs/${encodeURIComponent(runId)}/view${citationPreferences.has(runId) ? "?citation_style=" + citationPreferences.get(runId) : ""}`, { navigation: true });
     if (!store.isCurrent(epoch)) return false;
     if (raw.summary?.run_id !== runId) throw new Error("live_run_identity_mismatch");
     const status = raw.summary?.status || "unknown";
@@ -344,7 +342,9 @@ async function selectRun(key, preferredSection = null) {
   $("#evidence-search").value = "";
   $("#evidence-filter").value = "all";
   store.update({ selectedRunKey: key, view: null, inspector: null, loading: true });
-  if (identity.source === "interactive") await refreshInteractive(identity.runId, preferredSection);
+  if (identity.source === "interactive") {
+    if (!await refreshInteractive(identity.runId, preferredSection)) return false;
+  }
   else if (identity.source === "legacy") {
     if (!await refreshLegacy(identity.runId, identity.query, preferredSection)) return false;
     key = store.get().selectedRunKey;
@@ -352,7 +352,7 @@ async function selectRun(key, preferredSection = null) {
   else {
     const epoch = store.beginRequest();
     try {
-      const raw = await api.json(`/flow-demo/runs/${encodeURIComponent(identity.runId)}/view${citationPreferences.has(identity.runId) ? "?citation_style=" + citationPreferences.get(identity.runId) : ""}`);
+      const raw = await api.json(`/flow-demo/runs/${encodeURIComponent(identity.runId)}/view${citationPreferences.has(identity.runId) ? "?citation_style=" + citationPreferences.get(identity.runId) : ""}`, { navigation: true });
       if (!store.isCurrent(epoch)) return false;
       if (raw.summary?.run_id && raw.summary.run_id !== identity.runId) throw new Error("archive_run_identity_mismatch");
       const resolved = { ...identity, query: raw.summary?.query || identity.query, status: raw.summary?.status || identity.status };
@@ -383,8 +383,8 @@ async function loadRunList(preferred = null) {
   const selected = store.get().runs.find(item => item.key === store.get().selectedRunKey);
   if (selected && !runs.some(item => item.key === selected.key)) runs.unshift(selected);
   store.update({ runs });
-  const unchanged = store.isCurrent(epoch) && selection === store.get().selectedRunKey;
-  const key = (unchanged && preferred) || store.get().selectedRunKey || runs[0]?.key;
+  if (submittingSurvey || !store.isCurrent(epoch) || selection !== store.get().selectedRunKey) return;
+  const key = preferred || store.get().selectedRunKey || runs[0]?.key;
   if (key && key !== store.get().selectedRunKey) await selectRun(key, new URLSearchParams(location.search).get("view"));
 }
 
@@ -402,21 +402,60 @@ async function submitReview(action, values, form) {
   const payload = { request_id: request.request_id, revision: request.revision, action };
   if (action === "confirm") payload.selected_paper_ids = values.selectedPaperIds;
   if (action === "revise") payload.feedback = values.feedback;
-  try { await api.json(`/survey/${encodeURIComponent(view.identity.runId)}/review/decision`, { method: "POST", mutate: true, body: payload }); if (!await refreshInteractive(view.identity.runId)) setNotice(t("submittedSyncFailed"), "error"); }
-  catch (error) { setNotice(`${t("operationFailed")}: ${error.message}`, "error"); for (const button of form.querySelectorAll("button")) button.disabled = false; }
+  const stillSelected = () => store.get().selectedRunKey === view.identity.key;
+  try {
+    await api.json(`/survey/${encodeURIComponent(view.identity.runId)}/review/decision`, { method: "POST", mutate: true, body: payload });
+    if (stillSelected() && !await refreshInteractive(view.identity.runId) && stillSelected()) {
+      setNotice(t("submittedSyncFailed"), "error");
+    }
+  } catch (error) {
+    if (stillSelected()) setNotice(`${t("operationFailed")}: ${error.message}`, "error");
+    for (const button of form.querySelectorAll("button")) button.disabled = false;
+  }
 }
 
 async function startRun(event) {
-  event.preventDefault(); if (!context?.live_enabled) return setNotice(t("offline"), "error");
+  event.preventDefault();
+  if (submittingSurvey) return;
+  if (!context?.live_enabled) return setNotice(t("offline"), "error");
   const query = $("#query-input").value.trim(); if (!query) return;
   const qualityPolicy = $("#quality-policy").value;
   const humanReview = qualityPolicy === "strict_v1" || (!["strict_auto_v1", "strict_auto_v2"].includes(qualityPolicy) && $("#human-review").checked);
+  const citationStyle = $("#new-citation-style").value;
+  const submit = $('#new-run-form button[type="submit"]');
+  const notice = $("#survey-submit-status");
+  submittingSurvey = true;
+  submit.disabled = true;
+  notice.hidden = false;
+  notice.textContent = t("surveySubmitting");
+  let created;
   try {
-    const created = await api.json("/survey", { method: "POST", mutate: true, body: { query, quality_policy: qualityPolicy, report_language: $("#report-language").value, human_review: humanReview, review_structure: $("#review-structure").value, citation_style: $("#new-citation-style").value, ...surveyVerification.options() } });
-    citationPreferences.set(created.task_id, $("#new-citation-style").value);
-    $("#new-run-dialog").close();
-    if (humanReview) { await loadRunList(`interactive:${created.task_id}`); } else { await refreshLegacy(created.task_id, query); }
-  } catch (error) { setNotice(`${t("operationFailed")}: ${error.message}`, "error"); }
+    const response = await api.request("/survey", { method: "POST", mutate: true, body: { query, quality_policy: qualityPolicy, report_language: $("#report-language").value, human_review: humanReview, review_structure: $("#review-structure").value, citation_style: citationStyle, ...surveyVerification.options() } });
+    created = await response.json();
+    if (response.status !== 202 || typeof created?.task_id !== "string" || !created.task_id.trim()) {
+      throw new Error("survey_receipt_invalid");
+    }
+  } catch (error) {
+    const rejected = error.status >= 400 && error.status < 500 && error.status !== 408;
+    notice.textContent = rejected ? `${t("operationFailed")}: ${error.message}` : t("surveyReceiptUnknown");
+    if (!$("#new-run-dialog").open) setNotice(notice.textContent, "error");
+    return;
+  } finally {
+    submittingSurvey = false;
+    submit.disabled = false;
+  }
+  notice.hidden = true;
+  const runId = created.task_id;
+  const source = humanReview ? "interactive" : "legacy";
+  const key = `${source}:${runId}`;
+  const receipt = { key, runId, source, query, status: created.status || "queued" };
+  citationPreferences.set(runId, citationStyle);
+  store.update({ runs: [receipt, ...store.get().runs.filter(run => run.runId !== runId)] });
+  history.replaceState(null, "", `?run=${encodeURIComponent(key)}&view=execution`);
+  $("#new-run-dialog").close();
+  if (!await selectRun(key, "execution") && store.get().selectedRunKey === key) {
+    setNotice(`${t("surveyViewUnavailable")} (${runId})`, "error");
+  }
 }
 async function initialize() {
   context = await api.json("/workbench/context"); $("#runtime-mode").textContent = context.mode;
@@ -427,7 +466,7 @@ async function initialize() {
     $("#new-citation-style").value = "numbered"; setNotice(t("engineUnavailable"), "error");
   }
   const params = new URLSearchParams(location.search), requested = params.get("run");
-  const direct = /^(archive|sample|legacy):(.+)$/.exec(requested || "");
+  const direct = /^(archive|sample|legacy|interactive):(.+)$/.exec(requested || "");
   if (direct) {
     store.update({ runs: [{ key: requested, runId: direct[2], source: direct[1], query: "", status: "unknown" }] });
     await selectRun(requested, params.get("view"));

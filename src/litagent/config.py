@@ -19,6 +19,7 @@ from pydantic import (
 )
 
 from litagent.capacity import CapacityConfig
+from litagent.operational_limits import LIVE_EXTRACTION_OUTPUT_LIMIT, increase
 from litagent.run_limits import PlannedRunLimits
 from litagent.tools.base import ToolCategory
 
@@ -292,7 +293,7 @@ class ExtractorConfig(BaseModel):
     max_concurrent: int = Field(default=5, gt=0)
     enable_llm: bool = True
     max_papers: int = Field(default=50, gt=0, le=200)
-    max_tokens: int = Field(default=2048, gt=0, le=9831)
+    max_tokens: int = Field(default=2048, gt=0, le=LIVE_EXTRACTION_OUTPUT_LIMIT)
     thinking_mode: Literal["provider_default", "enabled", "disabled"] = "disabled"
     record_identity: Literal["source_fields_v1"] | None = None
     evidence_preparation_policy: Literal["question_focused_v1"] | None = None
@@ -470,9 +471,15 @@ class RAGConfig(BaseModel):
 class EvalConfig(BaseModel):
     """Configure evaluator and evidence-rewrite limits."""
 
+    benchmark_faithfulness_policy: Literal["benchmark-faithfulness-95-v1"] | None = None
     semantic_engine: Literal["ragas-cited-faithfulness-v1"] | None = None
     native_global_scope: (
-        Literal["question-coverage-v1", "report-review-no-omissions-v1"] | None
+        Literal[
+            "question-coverage-v1",
+            "report-review-no-omissions-v1",
+            "scientific-conflicts-v1",
+        ]
+        | None
     ) = None
     native_capacity_recovery: bool = False
     native_global_input: (
@@ -492,6 +499,8 @@ class EvalConfig(BaseModel):
     def preserve_historical_engine(self, handler):
         """Leave old configuration identities unchanged when the new engine is absent."""
         value = handler(self)
+        if self.benchmark_faithfulness_policy is None:
+            value.pop("benchmark_faithfulness_policy", None)
         if self.native_global_scope is None:
             value.pop("native_global_scope", None)
         if not self.native_capacity_recovery:
@@ -572,11 +581,24 @@ class AppConfig(BaseModel):
         from litagent.run_limits import (
             FORMAT_JSON_POLICY,
             FORMAT_MODELS,
+            FORMAT_PROFILE,
             configured_run_limits,
             repair_allowances,
         )
+        from litagent.safety.budget import STRICT_EXTRACTION_OUTPUT_TOKENS
 
         run_limits = configured_run_limits(self)
+        if self.extractor.max_tokens > increase(STRICT_EXTRACTION_OUTPUT_TOKENS) and (
+            (run_limits or {}).get("profile") != FORMAT_PROFILE
+            or self.extractor.evidence_preparation_policy is not None
+        ):
+            raise ValueError("expanded_extraction_requires_live_profile")
+        global_context = (run_limits or {}).get("global_context_tokens")
+        if global_context is not None and (
+            self.eval.context_tokens != global_context
+            or self.eval.strict_context_margin != 0.1
+        ):
+            raise ValueError("global_evaluation_context_mismatch")
         if (run_limits or {}).get("citation_contract") and (
             self.capacity is None or not self.eval.semantic_engine
         ):

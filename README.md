@@ -60,6 +60,25 @@ RRF + reranker 的 nDCG@10 达到 0.9406，p50 延迟为 647 ms；MiniLM + RRF
 项目使用 pytest 覆盖任务编排、证据处理、评估修订、断点恢复及 API 行为。
 检索结果和功能验证记录分别保存在 `benchmarks/rag/RESULTS.md` 和 `docs/design-truth.md`。
 
+### Survey 综述质量与延迟实验
+
+使用 Few-shot、ViT 和 NeRF 三个题目，完成 **3 次工作台实测和 18 次受控回放**。
+回放比较仅外部搜索、加本地摘要和加本地全文三种配置。严格交付要求 Faithfulness（获支持科学断言数 ÷ 全部科学断言数）≥ 0.95，同时要求核验完整、引用 ID 有效、零矛盾。
+
+原始矩阵严格通过 **11/21**，计入首条真实复跑后为 **12/21**，再计入摘要检查点续跑后为 **16/21（76.19%）**。5 个受摘要长度影响的槽位共执行 6 次续跑，下表列出各槽位的最新结果。
+
+| 题目 | 配置 | Faithfulness | 严格交付 | 续跑耗时（秒） |
+| --- | --- | ---: | --- | ---: |
+| `few-shot-metric` | `external-abstract` r1 | 99.80%（510/511） | 通过 | 875.1 |
+| `few-shot-metric` | `external-fulltext` r1 | 99.62%（531/533） | 通过 | 831.2 |
+| `vit-foundations` | `external-abstract` r1 | 100.00%（587/587） | 通过 | 414.0 |
+| `few-shot-metric` | `external-only` r2 | 94.14%（626/665） | 未通过 | 2,745.6 |
+| `vit-foundations` | `external-fulltext` r2 | 98.79%（652/660） | 通过 | 506.9 |
+
+五份报告的引用 ID 有效性和内部一致性均为 100%，必覆盖论文的终稿引用召回均为 0%。`few-shot-metric / external-only / r2` 重建后摘要和结论各为 104 词，均通过 250 词检查。保留稿仍有 39 条断言未获支持。
+
+续跑耗时从摘要检查点算至 Survey 完成。6 次续跑共新增 111 次模型请求，已结算 2,771,754 Token。逐次记录和工作台入口可通过本地查看器访问。[实验与查看器说明](./benchmarks/survey/README.md#survey-latency-and-the-095-delivery-experiment) · [本地 Benchmark](http://127.0.0.1:8765/benchmark)
+
 ## 效果展示
 
 ![真实生成的 Vision Transformer 综述，显示目录、摘要与行内引用](./docs/images/readme-workbench-zh.jpg)
@@ -70,28 +89,49 @@ RRF + reranker 的 nDCG@10 达到 0.9406，p50 延迟为 647 ms；MiniLM + RRF
 
 ### 无密钥离线演示
 
-需要 Python 3.11。演示模式无需 API key 或 Docker。
+在仓库根目录使用 Python 3.11 创建并激活虚拟环境。macOS / Linux 用户运行：
 
 ```sh
-python -m venv .venv
-# macOS / Linux
+python3.11 -m venv .venv
 source .venv/bin/activate
-# Windows PowerShell: .venv\Scripts\Activate.ps1
+```
+
+Windows PowerShell 用户运行：
+
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+```
+
+在已激活的环境中安装依赖并启动演示。首次安装需要联网；回放使用随项目提供的数据，无需 API key、Docker 或前端构建。
+
+```sh
 python -m pip install -c requirements/release-constraints.txt -e ".[api]"
 litagent demo --presentation
 ```
 
+保持终端运行。命令会尝试打开浏览器，也可以手动打开[研究工作台](http://127.0.0.1:8000/flow-demo)。
+直接进入[示例执行图](http://127.0.0.1:8000/flow-demo?run=sample%3Asample-ready&view=execution)，点击节点查看已记录的输入和输出，切换到「证据」查看证据详情，或在「报告」中导出文件。此示例保留了 claim 和提取器评分，未保存核验原文与 Jev 置信度。
+基准结果可在[工程演示页](http://127.0.0.1:8000/presentation)查看。
+
 ### 可选真实运行
+
+按 `Ctrl+C` 停止离线演示，在同一虚拟环境中安装 Live 依赖：
 
 ```sh
 python -m pip install -c requirements/release-constraints.txt -e ".[dev]"
-# 复制 .env.example 为 .env，填写 OpenAI-compatible provider key。
+```
+
+启动 Docker。如果尚无 `.env`，将 [.env.example](./.env.example) 复制为 `.env`。
+提交真实研究前，填写 `LLM_API_KEY`（或 `OPENAI_API_KEY`），并确认服务地址和模型与你的账号匹配。工作台默认使用 [config/agent-format-repair.yaml](./config/agent-format-repair.yaml)，其中启用的 Jev 核验还需要 `TYPESAFE_API_KEY`。
+
+```sh
 docker compose up -d
 litagent demo --live
 ```
 
-真实运行需要配置模型服务，费用由所选服务商收取。
-环境变量示例在 `.env.example`，默认配置在 `config/default.yaml`。
+回到[研究工作台](http://127.0.0.1:8000/flow-demo)，点击「新建研究」。提交后在「执行」中查看当前步骤和运行状态，模型调用按服务商计费。
+若要同时保留离线演示，可在另一个已激活虚拟环境的终端运行 `litagent demo --live --port 8001`，打开 [8001 端口的 Live 工作台](http://127.0.0.1:8001/flow-demo)。
 
 ### 开发验证
 

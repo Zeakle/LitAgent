@@ -14,7 +14,12 @@ from test_writer_v2 import case  # noqa: F401
 
 from litagent import api
 from litagent.config import load_config
-from litagent.eval.engine_policy import CONTRACT, KEYED_GLOBAL_QUOTED_OMISSIONS
+from litagent.eval.conflict_review import CONTRACT as CONFLICT_ONLY_SCOPE
+from litagent.eval.engine_policy import (
+    CONTRACT,
+    DIRECT_INVENTORY_PROMPT,
+    KEYED_GLOBAL_QUOTED_OMISSIONS,
+)
 from litagent.eval.ragas_global_wire import unpack_global_input
 from litagent.observability.recorder import ArchiveRepository
 from litagent.runner import LitAgent
@@ -30,16 +35,23 @@ class WorkbenchGateway(NativeGateway):
     """Replace search, full-text and model HTTP without bypassing report workers."""
 
     def __init__(
-        self, fixture, failing_candidates, *, mixed_summary=False, repetition=False
+        self,
+        fixture,
+        failing_candidates,
+        *,
+        mixed_summary=False,
+        repetition=False,
+        reviewer=False,
     ):
         """Align the reusable writer fixture with the one selected source."""
         fixture = copy.deepcopy(fixture)
         fixture.by_eid["b"] = "c1"
         for section in BODY:
             fixture.body[section][0]["sentences"][0]["fact_card_refs"] = ["c1"]
-        super().__init__(fixture, failures=failing_candidates)
+        super().__init__(fixture, failures=failing_candidates, reviewer=reviewer)
         self.discovery = []
         self.extractions = 0
+        self.inventory_prompts = []
         self.unexpected = []
         self.mixed_summary = mixed_summary
         self.repetition = repetition
@@ -132,6 +144,10 @@ class WorkbenchGateway(NativeGateway):
             self.unexpected.append((host, path))
             return httpx.Response(403)
         if path.endswith("/responses"):
+            wire = json.loads(request.content)
+            payload = json.loads(wire["input"][-1]["content"])
+            if "jobs" in payload and "context_pool" not in payload:
+                self.inventory_prompts.append(wire["input"][0]["content"])
             return await super().__call__(request)
         body = json.loads(request.content)
         system, user = body["messages"][:2]
@@ -242,6 +258,7 @@ async def test_workbench_survey_repairs_and_stops_after_full_reassessment(
         failing_candidates,
         mixed_summary=expanded and not repetition,
         repetition=repetition,
+        reviewer=expanded and not repetition,
     )
     real_init = httpx.AsyncClient.__init__
 
@@ -329,9 +346,17 @@ async def test_workbench_survey_repairs_and_stops_after_full_reassessment(
             == KEYED_GLOBAL_QUOTED_OMISSIONS
         )
     else:
-        assert initial["stages"]["global_scope"] == "report-review-no-omissions-v1"
+        assert initial["stages"]["global_scope"] == CONFLICT_ONLY_SCOPE
+        assert initial["stages"]["inventory_prompt_contract"] == DIRECT_INVENTORY_PROMPT
+        assert gateway.inventory_prompts and all(
+            "Extract statements only from this job's answer" in prompt
+            and "For NLI" not in prompt
+            for prompt in gateway.inventory_prompts
+        )
         assert initial["global_issues"] == []
-        assert all(row["answered"] for row in initial["core_coverage"])
+        assert set(initial["stages"]["global_sections"]) == {"conflicts"}
+        assert set(initial["evaluation_checks"]) == {"execution", "inventory"}
+        assert "core_coverage" not in initial
     *rejected, passed = history["attempts"]
     assert len(rejected) == failing_candidates + repetition
     if repetition:
@@ -350,6 +375,8 @@ async def test_workbench_survey_repairs_and_stops_after_full_reassessment(
     assert passed["committed"] and passed["candidate"] == report["survey"]
     if not repetition:
         assert passed["recovery_decision"]["action"] == "prose"
+        if expanded:
+            assert report["metadata"]["reviewer_diagnostics"]["issues"]
     assert "FLOPs by" not in report["survey"]
     expected_attempts = failing_candidates + 1 + repetition
     expected_assessments = expected_attempts + 1
@@ -429,6 +456,10 @@ async def test_workbench_survey_repairs_and_stops_after_full_reassessment(
                 == 1
             )
         else:
+            guidance = journal["calls"]["repair_0"]["guidance_wire_record"]["canonical"]
+            assert {issue["category"] for issue in guidance["current"]["issues"]} == {
+                "evaluation"
+            }
             summary = journal["summary_regeneration_guidance"]["summary_repair_1"]
             assert [d["claim_text"] for d in summary["diagnostics"]] == [
                 "Relation networks reduce FLOPs by 61%."

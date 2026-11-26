@@ -152,7 +152,7 @@ observability:
   payload_mode: full_redacted
 eval:
   semantic_engine: ragas-cited-faithfulness-v1
-  native_global_scope: report-review-no-omissions-v1
+  native_global_scope: scientific-conflicts-v1
   context_tokens: 235930
   max_tokens: 39322
   thinking_mode: disabled

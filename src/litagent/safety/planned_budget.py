@@ -437,6 +437,22 @@ def validate_writer_envelope(value: dict) -> dict:
 
         fields.update(FIELDS)
         selected(value)
+    benchmark_fields = {
+        "benchmark_faithfulness_policy",
+        "benchmark_faithfulness_identity",
+    }
+    if isinstance(value, dict) and benchmark_fields.intersection(value):
+        from litagent.eval.results import contract_identity
+
+        fields.update(benchmark_fields)
+        policy = value.get("benchmark_faithfulness_policy")
+        if (
+            not policy
+            or not (value.get("semantic_engine") or {}).get("global_scope")
+            or value.get("benchmark_faithfulness_identity")
+            != contract_identity(value["semantic_engine"]["global_scope"], policy)
+        ):
+            raise ValueError("evaluation_benchmark_faithfulness_policy_invalid")
     if isinstance(value, dict) and {
         "assessment_decision_contract",
         "assessment_decision_identity",
@@ -649,6 +665,7 @@ def make_writer_envelope(
     writer_source_view=None,
     evaluation_dimensions_contract=None,
     evaluation_result_contract=None,
+    benchmark_faithfulness_policy=None,
     closeout_profile=None,
     output_tokens=None,
     run_limits=None,
@@ -974,12 +991,22 @@ def make_writer_envelope(
             raise ValueError("evaluation_result_contract_invalid")
         value["evaluation_result_contract"] = evaluation_result_contract
         value["evaluation_result_identity"] = contract_identity(
-            (semantic_engine or {}).get("global_scope")
+            (semantic_engine or {}).get("global_scope"), benchmark_faithfulness_policy
         )
         if evaluation_dimensions_contract is not None:
             from litagent.eval.decision_output import fields as decision_fields
 
             value.update(decision_fields())
+    if benchmark_faithfulness_policy is not None:
+        from litagent.eval.results import contract_identity
+
+        value.update(
+            benchmark_faithfulness_policy=benchmark_faithfulness_policy,
+            benchmark_faithfulness_identity=contract_identity(
+                (semantic_engine or {}).get("global_scope"),
+                benchmark_faithfulness_policy,
+            ),
+        )
     if closeout_profile is not None:
         from litagent.closeout import PROFILE, profile_identity
 
@@ -995,9 +1022,9 @@ def make_writer_envelope(
             raise ValueError("ragas_engine_requires_v7")
         value["semantic_engine"] = validate_engine(semantic_engine)
     if run_limits is not None:
-        value["request_caps"] = dict.fromkeys(
-            value["request_caps"], envelope_context_limit(value)
-        )
+        baseline = envelope_context_limit(value)
+        value["request_caps"] = dict.fromkeys(value["request_caps"], baseline)
+        value["request_caps"]["global"] = envelope_context_limit(value, stage="global")
     from litagent.eval.native_capacity import inventory_input_bound, selected
 
     if selected(value):
@@ -1282,14 +1309,21 @@ def build_budget_plan(
     allowance = max(500000, ((required * 11 + 99999) // 100000) * 10000)
     from litagent.output_capacity import envelope_context_limit, envelope_context_tokens
 
-    context_limit = (
+    baseline_context_limit = (
         (157287 * 9 // 10)
         if contract == UPLIFT_PREPARATION_CONTRACT
         else envelope_context_limit(envelope)
     )
+    context_limit = max(
+        baseline_context_limit, envelope_context_limit(envelope, stage="global")
+    )
     reason = (
         "budget_plan_context_exceeded"
-        if any(s["request_cap"] > context_limit for s in projected.values())
+        if any(
+            spec["request_cap"]
+            > (context_limit if name == "global" else baseline_context_limit)
+            for name, spec in projected.items()
+        )
         else (
             "writer_envelope_frozen_components_exceeded"
             if envelope
@@ -1325,7 +1359,7 @@ def build_budget_plan(
         "context_tokens": (
             157287
             if contract == UPLIFT_PREPARATION_CONTRACT
-            else envelope_context_tokens(envelope)
+            else envelope_context_tokens(envelope, stage="global")
         ),
         "context_reservation_limit": context_limit,
         "context_margin": 0.1,

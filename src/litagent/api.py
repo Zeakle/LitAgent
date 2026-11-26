@@ -49,6 +49,7 @@ from litagent.observability.recorder import (
     CompositeTraceHook,
     RedactingTraceHook,
     RunRecorder,
+    summarize_archive,
 )
 from litagent.observability.tracing import LangFuseTracer
 from litagent.orchestrator.scheduler import CancellationToken
@@ -67,7 +68,7 @@ from litagent.report_render import (
     reader_report_projection,
 )
 from litagent.run_limits import configured_run_limits, repair_allowances
-from litagent.runner import LitAgent, derive_delivery
+from litagent.runner import LitAgent, RunPolicy, derive_delivery
 from litagent.workbench import (
     AutoAuditMode,
     CitationStyle,
@@ -291,7 +292,11 @@ def _load_runtime_config() -> AppConfig:
 @asynccontextmanager
 async def lifespan(application: FastAPI):
     """Initialize stable runtime state and close every owned task on shutdown."""
-    application.state.config = _load_runtime_config()
+    application.state.config = (
+        getattr(application.state, "latency_benchmark_config", None)
+        or _load_runtime_config()
+    )
+    application.state.flow_archive_scan = None
     if presentation_enabled():
         application.state.flow_repository = PresentationRepository()
         application.state.flow_archive_index = {
@@ -312,10 +317,6 @@ async def lifespan(application: FastAPI):
         archive_repository=application.state.flow_repository,
     )
     await application.state.interactive_service.initialize()
-    application.state.flow_archive_index = {
-        artifact["run_id"]: artifact
-        for artifact in application.state.flow_repository.list()
-    }
     cleanup_task = asyncio.create_task(_cleanup_old_tasks())
     logger.info("LitAgent API started")
     try:
@@ -344,6 +345,7 @@ app.state.flow_runs: dict[str, SurveyTaskEntry] = {}
 app.state.flow_samples = load_bundled_samples()
 # Lifespan owns archive I/O; importing the app must not load private run history.
 app.state.flow_archive_index = {}
+app.state.flow_archive_scan = None
 app.state.config = None
 app.state.survey_semaphore = None
 app.state.interactive_repository = (
@@ -525,21 +527,38 @@ async def _run_survey(entry: SurveyTaskEntry) -> None:
                 entry.status = "running"
                 entry.progress = "planning"
                 trace_hook = _build_survey_trace_hook(config, entry)
-                async with LitAgent(
+                agent = LitAgent(
                     config,
                     trace_hook=trace_hook,
-                ) as agent:
-                    if entry.options.quality_policy in {
-                        "strict_auto_v1",
-                        "strict_auto_v2",
-                    }:
-                        agent._session_id = entry.task_id
-                    result = await agent.run(
-                        entry.query,
-                        cancellation=entry.cancellation,
-                        options=entry.options,
+                    **(
+                        {"run_policy": RunPolicy.isolated_benchmark()}
+                        if config.eval.benchmark_faithfulness_policy
+                        else {}
+                    ),
+                )
+                benchmark_root = getattr(app.state, "latency_benchmark_root", None)
+                if config.eval.benchmark_faithfulness_policy and benchmark_root:
+                    agent._evaluation_progress_root = benchmark_root / "evaluations"
+                    agent._targeted_repair_state_path = (
+                        benchmark_root / "repairs" / f"{entry.task_id}.json"
                     )
-
+                try:
+                    async with agent:
+                        if entry.options.quality_policy in {
+                            "strict_auto_v1",
+                            "strict_auto_v2",
+                        }:
+                            agent._session_id = entry.task_id
+                        result = await agent.run(
+                            entry.query,
+                            cancellation=entry.cancellation,
+                            options=entry.options,
+                        )
+                finally:
+                    if config.eval.benchmark_faithfulness_policy:
+                        entry.recorder(
+                            "benchmark.accounting", agent.benchmark_accounting()
+                        )
             _capture_trace_reference(entry)
 
             cancelled = entry.cancellation.is_cancelled or (
@@ -1484,8 +1503,6 @@ def _flow_artifact(run_id: str) -> dict[str, Any] | None:
     artifact = app.state.flow_archive_index.get(run_id)
     if artifact is None:
         artifact = app.state.flow_repository.get(run_id)
-        if artifact is not None:
-            app.state.flow_archive_index[run_id] = artifact
     if artifact is None:
         artifact = app.state.flow_samples.get(run_id)
     return artifact
@@ -1505,20 +1522,9 @@ def _flow_source(run_id: str) -> Literal["sample", "archive", "live"]:
 
 def _flow_summary(artifact: dict[str, Any]) -> dict[str, Any]:
     """Build a compact summary for a flow-demo run."""
-    report = artifact.get("report") or {}
     return {
-        "run_id": artifact["run_id"],
-        "query": artifact.get("query", ""),
-        "status": artifact.get("status", "unknown"),
-        "started_at": artifact.get("started_at"),
-        "completed_at": artifact.get("completed_at"),
-        "error": artifact.get("error"),
-        "quality": report.get("quality"),
-        "delivery": report.get("delivery"),
-        "config_fingerprint": artifact.get("config_fingerprint"),
+        **summarize_archive(artifact),
         "source": _flow_source(str(artifact["run_id"])),
-        "partial": bool(report.get("partial", False)),
-        "trace_url": (artifact.get("trace") or {}).get("trace_url"),
     }
 
 
@@ -1545,13 +1551,33 @@ async def get_flow_demo_context():
     }
 
 
+def _scan_archive_summaries(repository):
+    """Keep disk parsing outside the event loop, including packaged archive reads."""
+    if isinstance(repository, ArchiveRepository):
+        return repository.list_summaries()
+    return [summarize_archive(artifact) for artifact in repository.list()]
+
+
 @app.get("/flow-demo/runs")
 async def list_flow_demo_runs():
-    """List live and archived flow-demo runs."""
-    artifacts = dict(app.state.flow_samples)
-    artifacts.update(app.state.flow_archive_index)
-    artifacts.update(
-        {item["run_id"]: item for item in app.state.flow_repository.list()}
+    """Merge archive summaries with the latest live states."""
+    repository = app.state.flow_repository
+    previous = app.state.flow_archive_scan
+    if previous is None or previous[0] is not repository or previous[1].done():
+        scan = asyncio.create_task(
+            asyncio.to_thread(_scan_archive_summaries, repository)
+        )
+        app.state.flow_archive_scan = (repository, scan)
+    else:
+        scan = previous[1]
+    # A disconnected list reader must not cancel the other readers' scan.
+    archives = await asyncio.shield(scan)
+    summaries = {
+        key: _flow_summary(artifact) for key, artifact in app.state.flow_samples.items()
+    }
+    summaries.update(
+        (item["run_id"], {**item, "source": _flow_source(str(item["run_id"]))})
+        for item in archives
     )
     live_ids = set(app.state.flow_runs)
     if not presentation_enabled():
@@ -1563,15 +1589,12 @@ async def list_flow_demo_runs():
     for run_id in live_ids:
         artifact = _flow_artifact(run_id)
         if artifact:
-            artifacts[run_id] = artifact
-    return [
-        _flow_summary(item)
-        for item in sorted(
-            artifacts.values(),
-            key=lambda item: item.get("completed_at") or item.get("started_at", ""),
-            reverse=True,
-        )
-    ]
+            summaries[run_id] = _flow_summary(artifact)
+    return sorted(
+        summaries.values(),
+        key=lambda item: item["completed_at"] or item["started_at"] or "",
+        reverse=True,
+    )
 
 
 @app.get("/flow-demo/runs/{run_id}")

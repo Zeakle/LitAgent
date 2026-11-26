@@ -7,13 +7,21 @@ import hashlib
 import inspect
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import lru_cache
 from typing import Any
+
+from litagent.eval.conflict_review import CONTRACT as CONFLICT_ONLY_SCOPE
 
 CONTRACT = "independent-evaluation-v1"
 FIELDS = ("evaluation_result_contract", "evaluation_result_identity")
 IMPLEMENTATION = "litagent-actual-citation-support-v1"
+BENCHMARK_FAITHFULNESS_POLICY = "benchmark-faithfulness-95-v1"
+BENCHMARK_POLICY_FIELD = "benchmark_faithfulness_policy"
+BENCHMARK_IDENTITY_FIELD = "benchmark_faithfulness_identity"
+CONFLICT_ONLY_IDENTITY = (
+    "1d068a341969e2e5c333772b2a1a47292711aaec9d1e64ede9a162532a3f89ad"
+)
 FULL_REVIEW_IDENTITY = (
     "567a9318619118471476bca87c005714784ae56670c176d071041145980108f8"
 )
@@ -59,45 +67,40 @@ def historical_checks(details, report_sha256):
     return copy.deepcopy(checks)
 
 
-@lru_cache(maxsize=3)
-def contract_identity(global_scope=None) -> str:
+@lru_cache(maxsize=5)
+def contract_identity(global_scope=None, benchmark_policy=None) -> str:
     """Bind responsibilities, state semantics and formulas without changing old IDs."""
+    if benchmark_policy is not None:
+        if (
+            benchmark_policy != BENCHMARK_FAITHFULNESS_POLICY
+            or global_scope != CONFLICT_ONLY_SCOPE
+        ):
+            raise ValueError("evaluation_benchmark_faithfulness_policy_invalid")
+    elif global_scope == CONFLICT_ONLY_SCOPE:
+        return CONFLICT_ONLY_IDENTITY
     if global_scope is None:
         # The full-review contract remains versioned at its published identity.
         return FULL_REVIEW_IDENTITY
     if global_scope == "question-coverage-v1":
         return "938db468a626ef977d3a2274f8c50a486236147b037b9cfb349e5771fb335783"
-    if global_scope != "report-review-no-omissions-v1":
+    if global_scope == "report-review-no-omissions-v1":
+        return "007967e7f81d376ae225569978e058523a9207ddf527c0481d2a68af4057a9ea"
+    if global_scope != CONFLICT_ONLY_SCOPE:
         raise ValueError("evaluation_global_scope_invalid")
-    from litagent.body_quality import (
-        bound_repair_diagnostics,
-        report_repair_diagnostics,
-    )
-    from litagent.eval.responsibilities import (
-        FORBIDDEN_CODES,
-        GLOBAL_INSTRUCTION,
-        parse_global_response,
-        project_global_schema,
-    )
 
     value = [
         CONTRACT,
         global_scope,
+        benchmark_policy,
         IMPLEMENTATION,
-        GLOBAL_INSTRUCTION,
-        sorted(FORBIDDEN_CODES),
-        inspect.getsource(report_repair_diagnostics),
-        inspect.getsource(bound_repair_diagnostics),
-        inspect.getsource(project_global_schema),
-        inspect.getsource(parse_global_response),
         inspect.getsource(result),
         inspect.getsource(check),
-        inspect.getsource(_legacy_execute_evaluation),
-        inspect.getsource(question_only),
+        inspect.getsource(three_metrics_only),
         inspect.getsource(required_metrics),
         inspect.getsource(derive_quality),
         inspect.getsource(EvaluationRunResult),
         inspect.getsource(acceptance),
+        inspect.getsource(benchmark_support_passed),
     ]
     return hashlib.sha256(json.dumps(value, ensure_ascii=False).encode()).hexdigest()
 
@@ -114,7 +117,8 @@ def selected(envelope) -> bool:
         envelope.get(FIELDS[0]) != CONTRACT
         or envelope.get(FIELDS[1])
         != contract_identity(
-            (envelope.get("semantic_engine") or {}).get("global_scope")
+            (envelope.get("semantic_engine") or {}).get("global_scope"),
+            envelope.get(BENCHMARK_POLICY_FIELD),
         )
         or envelope.get("global_findings_contract") != "anchored-global-findings-v2"
         or envelope.get("support_validation_revision") != "host-support-receipts-v2"
@@ -143,7 +147,15 @@ def check(status, *reasons, **scope) -> dict:
 
 def scope_identity(details):
     """Use the same scope for result projection and the frozen budget owner."""
-    return contract_identity(details.get("stages", {}).get("global_scope"))
+    return contract_identity(
+        details.get("stages", {}).get("global_scope"),
+        details.get(BENCHMARK_POLICY_FIELD),
+    )
+
+
+def benchmark_support_passed(supported: int, total: int) -> bool:
+    """Compare the exact fraction to 19/20 without display rounding."""
+    return total > 0 and supported * 20 >= total * 19
 
 
 def question_only(details):
@@ -151,6 +163,14 @@ def question_only(details):
     return (
         details.get("evaluation_version") == "survey-evaluation-ragas-v1"
         and details.get("stages", {}).get("global_scope") == "question-coverage-v1"
+    )
+
+
+def three_metrics_only(details):
+    """Read the scope recorded by the native engine for this report version."""
+    return (
+        details.get("evaluation_version") == "survey-evaluation-ragas-v1"
+        and details.get("stages", {}).get("global_scope") == CONFLICT_ONLY_SCOPE
     )
 
 
@@ -267,10 +287,19 @@ class EvaluationRunResult:
         if any(c.get("status") not in {"supported", "unsupported"} for c in science):
             reasons.append("scientific_assertions_unverified")
         score = counts["supported"] / len(science) if not reasons else None
+        benchmark = (
+            self.details.get(BENCHMARK_POLICY_FIELD) == BENCHMARK_FAITHFULNESS_POLICY
+        )
+        threshold = 0.95 if benchmark else self.details.get("threshold", 0.8)
+        passed = score is not None and (
+            benchmark_support_passed(counts["supported"], len(science))
+            if benchmark
+            else score >= threshold
+        )
         status = (
             ("error" if self.execution_error else "unverified")
             if reasons
-            else ("passed" if score >= self.details.get("threshold", 0.8) else "failed")
+            else ("passed" if passed else "failed")
         )
         support = result(
             status,
@@ -278,14 +307,14 @@ class EvaluationRunResult:
             reasons=reasons,
             implementation=IMPLEMENTATION,
             display_name="LitAgent 实际引用支持率",
-            threshold=self.details.get("threshold", 0.8),
+            threshold=threshold,
             factual_claim_count=len(science),
             supported_count=counts["supported"],
             unsupported_count=counts["unsupported"],
             unverified_count=counts["unverifiable"],
         )
         sections = self.details.get("stages", {}).get("global_sections", {})
-        measured_conflicts_required = (
+        measured_conflicts_required = three_metrics_only(self.details) or (
             self.details.get("stages", {}).get("global_scope")
             == "report-review-no-omissions-v1"
         )
@@ -335,28 +364,6 @@ class EvaluationRunResult:
         d, claims = self.details, self.assertions
         stages = d.get("stages") or {}
         global_sections = stages.get("global_sections") or {}
-        supported = {
-            c.get("claim_id")
-            for c in claims
-            if c.get("kind") == "scientific" and c.get("status") == "supported"
-        }
-        requirements, rows = (
-            d.get("coverage_requirements") or [],
-            d.get("core_coverage") or [],
-        )
-        coverage_valid = bool(
-            requirements
-            and len(rows) == len(requirements)
-            and len({r.get("requirement_id") for r in rows}) == len(rows)
-            and {r.get("requirement_id") for r in rows}
-            == {r.get("requirement_id") for r in requirements}
-        )
-        coverage_passed = coverage_valid and all(
-            r.get("answered") is True
-            and r.get("claim_ids")
-            and set(r["claim_ids"]).issubset(supported)
-            for r in rows
-        )
         out = {
             "execution": check(
                 (
@@ -393,22 +400,48 @@ class EvaluationRunResult:
                 ),
                 *([] if self.inventory_valid() else ["inventory_invalid"]),
             ),
-            "core_coverage": check(
-                (
-                    "passed"
-                    if coverage_passed
-                    else "failed" if coverage_valid else "unverified"
-                ),
-                *([] if coverage_passed else ["core_coverage_unverified"]),
-                answered=sum(
-                    r.get("answered") is True
-                    and bool(r.get("claim_ids"))
-                    and set(r["claim_ids"]).issubset(supported)
-                    for r in rows
-                ),
-                expected=len(requirements),
-            ),
         }
+        if d.get("inventory_check", {}).get("scope") == "processed_assertions":
+            out["inventory"]["scope"] = "processed_assertions"
+        if three_metrics_only(d):
+            return out
+        supported = {
+            c.get("claim_id")
+            for c in claims
+            if c.get("kind") == "scientific" and c.get("status") == "supported"
+        }
+        requirements, rows = (
+            d.get("coverage_requirements") or [],
+            d.get("core_coverage") or [],
+        )
+        coverage_valid = bool(
+            requirements
+            and len(rows) == len(requirements)
+            and len({r.get("requirement_id") for r in rows}) == len(rows)
+            and {r.get("requirement_id") for r in rows}
+            == {r.get("requirement_id") for r in requirements}
+        )
+        coverage_passed = coverage_valid and all(
+            r.get("answered") is True
+            and r.get("claim_ids")
+            and set(r["claim_ids"]).issubset(supported)
+            for r in rows
+        )
+        out["core_coverage"] = check(
+            (
+                "passed"
+                if coverage_passed
+                else "failed" if coverage_valid else "unverified"
+            ),
+            *([] if coverage_passed else ["core_coverage_unverified"]),
+            answered=sum(
+                r.get("answered") is True
+                and bool(r.get("claim_ids"))
+                and set(r["claim_ids"]).issubset(supported)
+                for r in rows
+            ),
+            expected=len(requirements),
+        )
         for name, field in (
             ("structure", "structure_checks"),
             ("method", "method_checks"),
@@ -463,8 +496,6 @@ class EvaluationRunResult:
         ):
             if global_sections.get(key, {}).get("status") == "error":
                 out[target] = copy.deepcopy(global_sections[key])
-        if d.get("inventory_check", {}).get("scope") == "processed_assertions":
-            out["inventory"]["scope"] = "processed_assertions"
         if question_only(d):
             for name in ("global_report", "analysis", "limitations"):
                 out[name] = check("not_applicable", "outside_global_review_scope")
@@ -494,12 +525,17 @@ def acceptance(details):
     checks, failures = run.checks(), []
     metrics = run.metrics()
     support, consistency = metrics["faithfulness"], metrics["internal_consistency"]
+    three_metrics = three_metrics_only(details)
     if (
         support["status"] not in {"passed", "failed"}
         or checks["execution"]["status"] != "passed"
     ):
         failures.append("incomplete_verification")
-    if support["score"] != 1.0:
+    benchmark = details.get(BENCHMARK_POLICY_FIELD) == BENCHMARK_FAITHFULNESS_POLICY
+    science_passed = (
+        support["status"] == "passed" if benchmark else support["score"] == 1.0
+    )
+    if not science_passed:
         failures.append("science_not_fully_supported")
     if checks["inventory"]["status"] != "passed":
         failures.append("inventory_invalid")
@@ -507,27 +543,35 @@ def acceptance(details):
         consistency["status"] not in {"passed", "failed"}
         or consistency["details"].get("conflict_count")
     ):
-        failures.append("global_inconsistency")
-    names = {
-        "core_coverage": "core_coverage_unverified",
-        "analysis": "body_analysis_incomplete",
-        "structure": "structure_checks",
-        "method": "method_checks",
-        "language": "language_checks",
-        "method_statements": "method_assertion_errors",
-        "organization": "organization_errors",
-        "global_report": "global_inconsistency",
-        "limitations": "scientific_limitations_missing",
-    }
-    for name, reason in names.items():
-        if checks[name].get("status") not in {"passed", "not_applicable"}:
-            failures.append(reason)
+        failures.append(
+            "internal_consistency_not_passed"
+            if three_metrics
+            else "global_inconsistency"
+        )
+    if not three_metrics:
+        names = {
+            "core_coverage": "core_coverage_unverified",
+            "analysis": "body_analysis_incomplete",
+            "structure": "structure_checks",
+            "method": "method_checks",
+            "language": "language_checks",
+            "method_statements": "method_assertion_errors",
+            "organization": "organization_errors",
+            "global_report": "global_inconsistency",
+            "limitations": "scientific_limitations_missing",
+        }
+        for name, reason in names.items():
+            if checks[name].get("status") not in {"passed", "not_applicable"}:
+                failures.append(reason)
     if not details.get("fact_card_map"):
         failures.append("fact_cards_unavailable")
     return {
         "policy": details.get("quality_policy"),
         "status": "failed" if failures else "passed",
-        "science_required_ratio": 1.0,
+        "science_required_ratio": 0.95 if benchmark else 1.0,
+        **(
+            {BENCHMARK_POLICY_FIELD: BENCHMARK_FAITHFULNESS_POLICY} if benchmark else {}
+        ),
         "failure_codes": list(dict.fromkeys(failures)),
         "human_approval_required": details.get("quality_policy")
         not in {"strict_auto_v1", "strict_auto_v2"},
@@ -592,7 +636,7 @@ def sanitize_request_preflight(value):
 # Only report-local, machine-issued identifiers may enter public exports.
 _GATE_REASONS = frozenset(
     """incomplete_verification science_not_fully_supported inventory_invalid
-    global_inconsistency core_coverage_unverified body_analysis_incomplete
+    global_inconsistency internal_consistency_not_passed core_coverage_unverified body_analysis_incomplete
     structure_checks method_checks language_checks method_assertion_errors
     organization_errors scientific_limitations_missing fact_cards_unavailable""".split()
 )
@@ -1170,6 +1214,9 @@ async def execute_evaluation(*, llm, survey, context, config):
 
     envelope = locked_writer_envelope(getattr(llm, "_cost_budget", None))
     engine = (envelope or {}).get("semantic_engine")
+    benchmark_policy = getattr(config, BENCHMARK_POLICY_FIELD, None)
+    if benchmark_policy != (envelope or {}).get(BENCHMARK_POLICY_FIELD):
+        raise ValueError("evaluation_benchmark_faithfulness_policy_mismatch")
     if engine is None:
         return await _legacy_execute_evaluation(
             llm=llm, survey=survey, context=context, config=config
@@ -1177,4 +1224,18 @@ async def execute_evaluation(*, llm, survey, context, config):
     validate_engine(engine)
     from litagent.eval.ragas_native import execute_native
 
-    return await execute_native(llm=llm, survey=survey, context=context, config=config)
+    run = await execute_native(llm=llm, survey=survey, context=context, config=config)
+    if benchmark_policy is None:
+        return run
+    details = {
+        **run.details,
+        BENCHMARK_POLICY_FIELD: benchmark_policy,
+        "threshold": 0.95,
+    }
+    # Early native failures can precede the global span. The frozen scope still
+    # owns the unavailable result and its policy identity.
+    details["stages"] = {**details["stages"], "global_scope": engine["global_scope"]}
+    details[FIELDS[1]] = scope_identity(details)
+    if details[FIELDS[1]] != envelope.get(BENCHMARK_IDENTITY_FIELD):
+        raise ValueError("evaluation_benchmark_faithfulness_identity_mismatch")
+    return replace(run, details=details)

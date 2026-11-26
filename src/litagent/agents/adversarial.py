@@ -122,6 +122,10 @@ class AdversarialReviewWorker(Worker):
         ) as span:
             synthesis_result = await self._synthesis.execute(task)
             span["output"] = synthesis_result
+        return await self.review_synthesis(task, synthesis_result)
+
+    async def review_synthesis(self, task: SubTask, synthesis_result: dict) -> dict:
+        """Review an authenticated synthesis result using the existing round policy."""
         if task.input_data.get("generation_strategy") in (
             "body_summary_v2",
             "body_summary_v3",

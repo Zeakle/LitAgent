@@ -220,12 +220,14 @@ class SynthesisWorker(Worker):
         output_tokens_provider: Callable | None = None,
         run_limits_provider: Callable | None = None,
         semantic_engine_provider: Callable | None = None,
+        benchmark_faithfulness_policy: str | None = None,
     ):
         """Initialize the synthesis worker."""
         self._capacity_config = capacity_config
         self._output_tokens_provider = output_tokens_provider
         self._run_limits_provider = run_limits_provider
         self._semantic_engine_provider = semantic_engine_provider
+        self._benchmark_faithfulness_policy = benchmark_faithfulness_policy
         self._methodology_provider = methodology_provider
         self._frozen_writer_plan_provider = frozen_writer_plan_provider
         self._received_native = copy.deepcopy(received_native)

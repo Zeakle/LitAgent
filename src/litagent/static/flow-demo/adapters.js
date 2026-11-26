@@ -130,7 +130,7 @@ export function adaptArchiveView(raw, identity) {
     capabilities: {
       canCancel: false,
       canReview: false,
-      canExport: (identity.source === "archive" || raw?.presentation === true) && Boolean(raw?.report?.survey),
+      canExport: raw?.capabilities?.can_export ?? ((identity.source === "archive" || raw?.presentation === true) && Boolean(raw?.report?.survey)),
       canDownloadArtifact: raw?.capabilities?.can_download_artifact ?? identity.source === "archive",
       hasTrace: Boolean(raw?.trace?.trace_url),
     },

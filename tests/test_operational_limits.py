@@ -10,6 +10,7 @@ from test_writer_v2 import case  # noqa: F401
 
 from litagent.capacity import CapacityConfig
 from litagent.config import load_config
+from litagent.eval.conflict_review import CONTRACT as CONFLICT_ONLY_SCOPE
 from litagent.eval.engine_policy import configured_engine, native_writer_budget_plan
 from litagent.operational_limits import increase, uplift_configuration
 from litagent.output_capacity import configured_output_tokens, envelope_context_limit
@@ -19,6 +20,7 @@ from litagent.run_limits import (
     configured_run_limits,
     validate_run_limits,
 )
+from litagent.safety.budget import strict_request_reservation
 from litagent.safety.planned_accounting import validate_accounting_snapshot
 from litagent.safety.planned_budget import (
     EnvelopeExceeded,
@@ -36,7 +38,7 @@ def test_every_declared_resource_ceiling_is_raised_without_growing_writing_targe
     actual = yaml.safe_load(Path("config/operational-plus20.yaml").read_text())
     # The active profile also selects Pro inventory and the new global scope.
     expected["llm"]["evaluation_inventory_model"] = expected["llm"]["generation_model"]
-    expected["eval"]["native_global_scope"] = "report-review-no-omissions-v1"
+    expected["eval"]["native_global_scope"] = CONFLICT_ONLY_SCOPE
     assert actual == expected
     assert len(inventory) > 60
     for row in inventory.values():
@@ -217,6 +219,220 @@ def test_live_workbench_selects_largest_profile_and_honors_explicit_paths(monkey
     monkeypatch.delenv("LITAGENT_CONFIG")
     monkeypatch.setenv("LITAGENT_DEMO_MODE", "offline")
     assert configured_run_limits(api._load_runtime_config())["max_requests"] == 77
+
+
+def test_live_expansion_preserves_independent_stage_budgets(case):
+    """Admit the observed global request and protect the full repair path."""
+    cfg = load_config("config/agent-format-repair.yaml")
+    old = cfg.model_copy(deep=True)
+    old.safety.planned_run_limits = old.safety.planned_run_limits.model_copy(
+        update={
+            "context_tokens": 235930,
+            "global_context_tokens": 294912,
+            "max_output_tokens": 39322,
+        }
+    )
+    old.llm.max_tokens = 29492
+    old.adversarial.review_max_tokens = 19661
+    old.eval.context_tokens = 294912
+    old.eval.max_tokens = 39322
+    old.capacity = old.capacity.model_copy(
+        update={"body_json_bytes": 38400, "summary_json_bytes": 4800}
+    )
+
+    def plan_for(config):
+        return native_writer_budget_plan(
+            case.packet,
+            case.aliases,
+            budget_policy="planned-budget-v7",
+            semantic_engine=configured_engine(config),
+            capacity=config.capacity,
+            methodology={},
+            output_tokens=configured_output_tokens(config),
+            run_limits=configured_run_limits(config),
+            spent_tokens=125958,
+            spent_requests=31,
+        )
+
+    before, after = plan_for(old), plan_for(cfg)
+    assert before["status"] == after["status"] == "admitted"
+    assert before["identity"] != after["identity"]
+    assert (after["context_tokens"], after["context_reservation_limit"]) == (
+        307200,
+        276480,
+    )
+    assert int(cfg.eval.context_tokens * (1 - cfg.eval.strict_context_margin)) == 276480
+    assert after["maximum_tokens"] == before["maximum_tokens"] == 47420000
+    assert before["planned_tokens"] < after["planned_tokens"] <= 47420000
+    assert after["planned_requests"] == before["planned_requests"] <= 226
+    assert after["repair_limit"] == before["repair_limit"] == 11
+    for key, row in after["stages"].items():
+        assert row["output_tokens"] > before["stages"][key]["output_tokens"]
+        assert row["request_cap"] > before["stages"][key]["request_cap"]
+        assert row["count"] == before["stages"][key]["count"]
+    assert after["envelope"]["body_json_bytes"] == 48000
+    assert after["envelope"]["summary_json_bytes"] == 6000
+
+    def wire(amount):
+        messages = [{"role": "user", "content": ""}]
+        messages[0]["content"] = "x" * (
+            amount - strict_request_reservation(messages, 45056)
+        )
+        return messages
+
+    owner = PlannedBudget(after)
+    with request_scope("global", "live-global"):
+        assert owner.check_wire(wire(276480), 45056) == 276480
+        owner.check_stage_requests("global", [276480])
+        with pytest.raises(ValueError, match="budget_plan_contract_breached"):
+            owner.check_wire(wire(276481), 45056)
+    with request_scope("assessment", "live-nli"):
+        assert owner.check_wire(wire(221184), 45056) == 221184
+        with pytest.raises(ValueError, match="budget_plan_contract_breached"):
+            owner.check_wire(wire(221185), 45056)
+    for state in (PlannedBudget(before), owner):
+        validate_accounting_snapshot(state.snapshot(), expected_plan=state.plan)
+        assert state.snapshot()["requests_sent"] == 31
+
+
+def test_live_global_context_rejects_unsupported_configuration():
+    """Require a matching evaluator and valid server-owned context capacity."""
+    from litagent.config import AppConfig
+
+    cfg = load_config("config/agent-format-repair.yaml").model_dump()
+    limits = cfg["safety"]["planned_run_limits"]
+    for change in (
+        {"context_tokens": 235930},
+        {"strict_context_margin": 0.2},
+    ):
+        invalid = {**cfg, "eval": {**cfg["eval"], **change}}
+        with pytest.raises(ValueError, match="global_evaluation_context_mismatch"):
+            AppConfig.model_validate(invalid)
+    limits["global_context_tokens"] = 307201
+    with pytest.raises(ValueError):
+        AppConfig.model_validate(cfg)
+
+
+def test_live_extraction_cap_applies_to_the_actual_batch_builder():
+    """Check the two-paper wire and the matching reported per-paper ceiling."""
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    from test_extraction_paper_batches import sources
+
+    from litagent.agents.extraction_strategy import LLMStrategy
+    from litagent.contracts import build_config_summary
+    from litagent.safety.budget import CostBudget
+
+    cfg = load_config("config/agent-format-repair.yaml")
+    owner = CostBudget(
+        max_tokens=cfg.safety.max_cost_tokens,
+        resource_profile=cfg.safety.planned_run_limits.profile,
+    )
+    extractor = LLMStrategy(
+        SimpleNamespace(_cost_budget=owner),
+        Mock(to_metadata_text_for=Mock(return_value="Offline skill metadata")),
+        record_identity=cfg.extractor.record_identity,
+        max_tokens=cfg.extractor.max_tokens,
+    )
+    papers, _ = sources()
+    _, single, _ = extractor.prepare_batch(papers[:1])
+    _, pair, _ = extractor.prepare_batch(papers)
+    assert (single["max_tokens"], pair["max_tokens"]) == (12288, 24576)
+    assert extractor._strict_resources()[1] == 176947
+    effective = build_config_summary(cfg, "strict_auto_v2")["effective"]
+    assert effective["extractor"]["strict_max_output_tokens"] == 12288
+    assert cfg.planner.max_tokens == 24576
+
+
+def test_real_014_live_repair_candidate_fits_the_expanded_body_capacity():
+    """Replay the received patch and check its exact bound under both plans."""
+    from types import SimpleNamespace
+
+    from litagent.eval.results import CONTRACT as RESULT_CONTRACT
+    from litagent.quality import digest
+    from litagent.writing_flat import parse
+    from litagent.writing_v2 import WriterSession, validate_targets
+
+    run_id = "014cb17f65d5"
+    root = Path("artifacts/targeted-repairs")
+    writer_file = root / f"{run_id}.json.writer-v2.json"
+    archive_file = Path("artifacts/runs") / f"{run_id}.json"
+    if not writer_file.is_file() or not archive_file.is_file():
+        pytest.skip("requires the local immutable 014 writer and Survey archives")
+    original = writer_file.read_bytes()
+    journal = json.loads(original)
+    call = journal["calls"]["repair_0"]
+    targets = call["guidance_wire_record"]["authorized_targets"]
+    body = journal["body"]
+    validate_targets(body, targets, allow_ranges=True)
+    result = parse(
+        call["raw"],
+        call["reference_schema"],
+        reference_contract=call["reference_contract"],
+        transport_revision=call["transport_revision"],
+    )
+    assert digest(result["canonical"]) == call["canonical_sha256"]
+    assert result["received_canonical"] == call["received_canonical"]
+    binding = journal["reference_inputs"][digest(body)]
+    view = SimpleNamespace(reference_paths=WriterSession.reference_paths)
+    paths = view.reference_paths(result["canonical"])
+    candidate = copy.deepcopy(body)
+    replacements = {
+        p["target_id"]: p["sentences"] for p in result["canonical"]["patches"]
+    }
+    assert replacements.keys() == targets.keys()
+    for key in sorted(targets, key=lambda key: targets[key]["path"], reverse=True):
+        section, paragraph, start = targets[key]["path"]
+        end = targets[key].get("end", start + 1)
+        candidate[section][paragraph]["sentences"][start:end] = replacements[key]
+    received_candidate, _ = WriterSession.reference_patch_candidate(
+        view,
+        body,
+        binding["received"],
+        binding["origins"],
+        result["received_canonical"],
+        [{"path": list(path)} for path in paths],
+        targets,
+        candidate,
+        cause="evaluation",
+    )
+
+    ledger = json.loads((root / f"{run_id}.json.budget-ledger.json").read_bytes())
+    old = ledger["plan"]
+    validate_accounting_snapshot(ledger, expected_plan=old)
+    with pytest.raises(EnvelopeExceeded) as rejected:
+        check_writer_envelope(received_candidate, old["envelope"], stage="body")
+    assert rejected.value.diagnostics == [
+        {
+            "stage": "body",
+            "field": "nested_json_bytes",
+            "actual": 38939,
+            "maximum": 38400,
+        }
+    ]
+    meta = json.loads(archive_file.read_bytes())["report"]["metadata"]
+    doc = meta["writer_document"]
+    cfg = load_config("config/agent-format-repair.yaml")
+    plan = native_writer_budget_plan(
+        doc["packet"],
+        doc["aliases"],
+        budget_policy="planned-budget-v7",
+        semantic_engine=configured_engine(cfg),
+        capacity=cfg.capacity,
+        methodology=meta["review_methodology"],
+        output_tokens=configured_output_tokens(cfg),
+        run_limits=configured_run_limits(cfg),
+        evaluation_result_contract=RESULT_CONTRACT,
+        spent_tokens=old["spent_tokens"],
+        spent_requests=old["spent_requests"],
+    )
+    assert plan["status"] == "admitted", plan["reason"]
+    assert plan["planned_requests"] == old["planned_requests"] == 219
+    assert plan["planned_tokens"] <= plan["maximum_tokens"] == 47420000
+    check_writer_envelope(received_candidate, plan["envelope"], stage="body")
+    validate_accounting_snapshot(PlannedBudget(plan).snapshot(), expected_plan=plan)
+    assert writer_file.read_bytes() == original
 
 
 def test_jev_and_independent_audit_resources_follow_the_same_profile(tmp_path):

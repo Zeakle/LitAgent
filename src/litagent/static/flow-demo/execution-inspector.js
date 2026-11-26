@@ -45,6 +45,10 @@ export function renderExecutionInspector(container, selection, t, { view, onSele
   appendField(list, t("role"), value.labelKey ? t(value.labelKey) : value.name || value.kind);
   appendField(list, t("flowRound"), value.round);
   appendField(list, t("status"), execution.status || value.status);
+  const checkpointSource = execution.kind === "worker" && execution.metadata?.checkpoint_source_run_id;
+  if (typeof checkpointSource === "string" && checkpointSource) {
+    appendField(list, t("checkpointSourceRun"), checkpointSource);
+  }
   const duration = execution.elapsed_ms ?? execution.duration_ms ?? execution.durationMs ?? value.durationMs;
   appendField(
     list,

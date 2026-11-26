@@ -59,33 +59,41 @@ class CitationEvaluator(Evaluator):
         """Return the evaluator metric name."""
         return "citation_accuracy"
 
+    def evaluate_ids(
+        self, survey: str, ledger: dict, *, strict: bool = False
+    ) -> EvalResult:
+        """Check reference identities locally against the run evidence ledger."""
+        refs = extract_evidence_refs_ordered(survey)
+        malformed = find_malformed_evidence_refs(survey)
+        unknown = [evidence_id for evidence_id in refs if evidence_id not in ledger]
+        total = len(refs) + len(malformed)
+        real = len(refs) - len(unknown)
+        result = self._make_result(
+            real / total if total else 1.0,
+            {
+                "mode": "evidence_ledger",
+                "cited_count": total,
+                "real_count": real,
+                "unknown_evidence_ids": unknown,
+                "malformed_evidence_refs": malformed,
+                "note": "no evidence references found" if not total else "",
+            },
+        )
+        reasons = ["malformed_evidence_refs"] if malformed else []
+        if strict and unknown:
+            reasons.append("unknown_evidence_ids")
+        if reasons:
+            result.passed = False
+            result.details["reason_codes"] = reasons
+        return result
+
     async def evaluate(self, survey: str, context: dict[str, Any]) -> EvalResult:
         """Score cited papers against titles in the evaluation context."""
         ledger = context.get(CTX_EVIDENCE)
         if isinstance(ledger, dict) and (
             ledger or context.get("evaluation_version") == "survey-evaluation-v2"
         ):
-            refs = extract_evidence_refs_ordered(survey)
-            malformed = find_malformed_evidence_refs(survey)
-            unknown = [evidence_id for evidence_id in refs if evidence_id not in ledger]
-            total = len(refs) + len(malformed)
-            real = len(refs) - len(unknown)
-            score = real / total if total else 1.0
-            result = self._make_result(
-                score,
-                {
-                    "mode": "evidence_ledger",
-                    "cited_count": total,
-                    "real_count": real,
-                    "unknown_evidence_ids": unknown,
-                    "malformed_evidence_refs": malformed,
-                    "note": "no evidence references found" if not total else "",
-                },
-            )
-            if malformed:
-                result.passed = False
-                result.details["reason_codes"] = ["malformed_evidence_refs"]
-            return result
+            return self.evaluate_ids(survey, ledger)
 
         if context.get("evaluation_version") == "survey-evaluation-v2":
             return EvalResult.skip(self.metric_name, "evidence_ledger_unavailable")

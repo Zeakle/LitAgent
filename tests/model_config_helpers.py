@@ -39,7 +39,11 @@ def load_legacy_mini_config(config_path=None):
         update={"task_timeout_ms": 720000}
     )
     config.eval = config.eval.model_copy(
-        update={"total_timeout_seconds": None, "semantic_engine": None}
+        update={
+            "total_timeout_seconds": None,
+            "semantic_engine": None,
+            "native_global_scope": None,
+        }
     )
     return config
 

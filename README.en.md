@@ -66,6 +66,25 @@ Pytest covers orchestration, evidence processing, evaluation and revision,
 checkpoint recovery and API behavior.
 Retrieval results and feature verification records are in `benchmarks/rag/RESULTS.md` and `docs/design-truth.md`.
 
+### Survey quality and latency benchmark
+
+The benchmark covers Few-shot, ViT and NeRF across **3 Workbench runs and 18 controlled replays**.
+The replays compared external search alone, external search with local abstracts, and external search with local full text. Strict delivery requires Faithfulness (supported scientific claims ÷ total scientific claims) ≥ 0.95, complete verification, valid citation IDs and zero contradictions.
+
+The original matrix had **11/21** strict passes. The count rose to **12/21** after the first live retry and **16/21 (76.19%)** after the summary checkpoint continuations. The five slots affected by summary length took six continuation runs. The table lists the latest result for each slot.
+
+| Topic | Configuration | Faithfulness | Strict delivery | Continuation time (s) |
+| --- | --- | ---: | --- | ---: |
+| `few-shot-metric` | `external-abstract` r1 | 99.80% (510/511) | Passed | 875.1 |
+| `few-shot-metric` | `external-fulltext` r1 | 99.62% (531/533) | Passed | 831.2 |
+| `vit-foundations` | `external-abstract` r1 | 100.00% (587/587) | Passed | 414.0 |
+| `few-shot-metric` | `external-only` r2 | 94.14% (626/665) | Failed | 2,745.6 |
+| `vit-foundations` | `external-fulltext` r2 | 98.79% (652/660) | Passed | 506.9 |
+
+All five reports scored 100% for citation ID validity and internal consistency. Final-report citation recall for required papers was 0% in all five. The rebuilt `few-shot-metric / external-only / r2` abstract and conclusion each passed the 250-word check at 104 words. The retained draft still had 39 unsupported claims.
+
+Continuation time runs from the summary checkpoint to Survey completion. The six continuation runs added 111 model requests and 2,771,754 tokens, all accounted for. The local viewer lists each run and its Workbench link. [Experiment and viewer instructions](./benchmarks/survey/README.md#survey-latency-and-the-095-delivery-experiment) · [Local Benchmark](http://127.0.0.1:8765/benchmark)
+
 ## Demo
 
 ![A generated Vision Transformer survey with its outline, abstract and inline citations](./docs/images/readme-workbench-zh.jpg)
@@ -78,28 +97,49 @@ did not meet the strict delivery criteria.
 
 ### Offline demonstration without API keys
 
-Requires Python 3.11. Demo mode needs no API key or Docker.
+From the repository root, create and activate a Python 3.11 virtual environment. On macOS or Linux, run:
 
 ```sh
-python -m venv .venv
-# macOS / Linux
+python3.11 -m venv .venv
 source .venv/bin/activate
-# Windows PowerShell: .venv\Scripts\Activate.ps1
+```
+
+On Windows PowerShell, run:
+
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+```
+
+Install the dependencies in the activated environment and start the demo. The first install requires internet access. Replay uses bundled data and needs no API key, Docker, or frontend build.
+
+```sh
 python -m pip install -c requirements/release-constraints.txt -e ".[api]"
 litagent demo --presentation
 ```
 
+Leave the terminal running. The command tries to open your browser. You can also open the [research workbench](http://127.0.0.1:8000/flow-demo) yourself.
+Open the [sample execution graph](http://127.0.0.1:8000/flow-demo?run=sample%3Asample-ready&view=execution) and select a node to inspect its recorded inputs and outputs. The Evidence tab shows the evidence ledger, and the Report tab offers file exports. This sample includes the claim and extractor score. The source passage used for verification and the Jev confidence score were not recorded.
+The [presentation page](http://127.0.0.1:8000/presentation) shows the benchmark results.
+
 ### Optional live run
+
+Stop the offline demo with `Ctrl+C` and install the live dependencies in the same environment:
 
 ```sh
 python -m pip install -c requirements/release-constraints.txt -e ".[dev]"
-# Copy .env.example to .env and configure an OpenAI-compatible provider key.
+```
+
+Start Docker. If you do not have a `.env` file yet, copy [.env.example](./.env.example) to `.env`.
+Before submitting a survey, set `LLM_API_KEY` (or `OPENAI_API_KEY`) and verify that your provider URL and models match your account. The workbench defaults to [config/agent-format-repair.yaml](./config/agent-format-repair.yaml), which enables Jev verification and requires `TYPESAFE_API_KEY` for that step.
+
+```sh
 docker compose up -d
 litagent demo --live
 ```
 
-Live runs require a configured model service and incur charges from that provider.
-See `.env.example` for environment variables and `config/default.yaml` for defaults.
+Return to the [research workbench](http://127.0.0.1:8000/flow-demo) and select **New research**. After submission, the Execution tab shows the current step and run status. Model calls incur provider charges.
+To keep the offline demo running, activate the environment in a second terminal, run `litagent demo --live --port 8001`, and open the [live workbench on port 8001](http://127.0.0.1:8001/flow-demo).
 
 ### Development checks
 

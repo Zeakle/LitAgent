@@ -330,7 +330,9 @@ def validate_candidate(
     return candidate_summary
 
 
-def authenticate_call(session, name, category, *, original_only=False):
+def authenticate_call(
+    session, name, category, *, original_only=False, initial_capacity_request=None
+):
     """Match exact dispatch, receipt and settlement before considering retry."""
     from litagent.llm.responses import (
         build_responses_request,
@@ -354,20 +356,34 @@ def authenticate_call(session, name, category, *, original_only=False):
         authenticate_call(session, name, category, original_only=True)
     if regenerated and original_only:
         call = {**call, **state["original"]}
-    bound = call["candidate_request"]
+    if initial_capacity_request is None:
+        bound = call["candidate_request"]
+        if digest(bound) != call["candidate_request_sha256"]:
+            raise ValueError("candidate_request_identity")
+    else:
+        from litagent.capacity_recovery import enabled as initial_capacity_enabled
+
+        if (
+            not initial_capacity_enabled(session.envelope)
+            or category != "capacity"
+            or state
+            or initial_capacity_request["stage"] != "repair"
+        ):
+            raise ValueError("candidate_request_identity")
+        bound = initial_capacity_request
     owner = planned_backend(getattr(session.llm, "_cost_budget", None))
     if owner is None or owner.stop_reason or owner.snapshot()["usage_uncertain"]:
         raise ValueError("candidate_unsettled")
     if any(e["status"] != "settled" for e in owner.entries.values()):
         raise ValueError("candidate_pending_request")
-    if digest(bound) != call["candidate_request_sha256"]:
-        raise ValueError("candidate_request_identity")
     stage = bound["stage"]
     if stage not in {"repair", "summary"} or bound["category"] != category:
         raise ValueError("candidate_request_category")
     messages = bound["messages"]
     settlement_key = f"{session.identity}:{name}"
-    expected_stage = f"{category}/{bound['stage']}"
+    expected_stage = (
+        "repair" if initial_capacity_request is not None else f"{category}/{stage}"
+    )
     if regenerated and not original_only:
         from litagent.format_repair import summary_retry_messages
 

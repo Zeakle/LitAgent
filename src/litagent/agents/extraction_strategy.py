@@ -1013,6 +1013,8 @@ class LLMStrategy(ExtractionStrategy):
     def _strict_resources(self, papers=1):
         """Resolve strict transport limits from the host-owned resource revision."""
         from litagent.operational_limits import (
+            LIVE_EXTRACTION_CONTEXT_TOKENS,
+            LIVE_EXTRACTION_OUTPUT_LIMIT,
             PROFILE,
             budget_resource_profile,
             increase,
@@ -1020,6 +1022,13 @@ class LLMStrategy(ExtractionStrategy):
 
         budget = getattr(self._llm, "_cost_budget", None)
         uplifted = budget_resource_profile(budget) == PROFILE
+        if (
+            uplifted
+            and increase(STRICT_EXTRACTION_OUTPUT_TOKENS)
+            < self._max_tokens
+            <= LIVE_EXTRACTION_OUTPUT_LIMIT
+        ):
+            return self._max_tokens * papers, LIVE_EXTRACTION_CONTEXT_TOKENS * 9 // 10
         scale = increase if uplifted else lambda value: value
         return scale(STRICT_EXTRACTION_OUTPUT_TOKENS * papers), int(scale(131072) * 0.9)
 

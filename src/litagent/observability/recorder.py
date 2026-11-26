@@ -155,12 +155,34 @@ class RedactingTraceHook:
             flush()
 
 
+def summarize_archive(artifact: dict[str, Any]) -> dict[str, Any]:
+    """Project an archive for the run list without retaining its report or trace."""
+    report = artifact.get("report")
+    if not isinstance(report, dict):
+        report = {}
+    trace = artifact.get("trace")
+    return {
+        "run_id": artifact["run_id"],
+        "query": artifact.get("query", ""),
+        "status": artifact.get("status", "unknown"),
+        "started_at": artifact.get("started_at"),
+        "completed_at": artifact.get("completed_at"),
+        "error": artifact.get("error"),
+        "quality": report.get("quality"),
+        "delivery": report.get("delivery"),
+        "config_fingerprint": artifact.get("config_fingerprint"),
+        "partial": bool(report.get("partial", False)),
+        "trace_url": trace.get("trace_url") if isinstance(trace, dict) else None,
+    }
+
+
 class ArchiveRepository:
     """Store completed run artifacts on the local filesystem."""
 
     def __init__(self, root: Path | str = "artifacts/runs") -> None:
         """Initialize the archive repository."""
         self._root = Path(root)
+        self._summaries: dict[Path, tuple[int, int, dict[str, Any] | None]] = {}
 
     def path_for(self, run_id: str) -> Path:
         """Return the archive path for a run."""
@@ -207,11 +229,32 @@ class ArchiveRepository:
             artifacts, key=lambda item: item.get("completed_at", ""), reverse=True
         )
 
+    def list_summaries(self) -> list[dict[str, Any]]:
+        """Read one archive at a time and reuse unchanged summary projections."""
+        current = {}
+        for path in self._root.glob("*.json"):
+            try:
+                stat = path.stat()
+            except OSError:
+                continue
+            signature = (stat.st_mtime_ns, stat.st_size)
+            previous = self._summaries.get(path)
+            if previous is None or previous[:2] != signature:
+                artifact = self._read(path)
+                previous = (
+                    *signature,
+                    summarize_archive(artifact) if artifact else None,
+                )
+                del artifact
+            current[path] = previous
+        self._summaries = current
+        return [summary for _, _, summary in current.values() if summary is not None]
+
     def _read(self, path: Path) -> dict[str, Any] | None:
         """Read and validate one archived run artifact."""
         try:
             value = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             logger.warning("Ignoring unreadable flow archive %s: %s", path, exc)
             return None
         if not isinstance(value, dict) or not value.get("run_id"):
@@ -325,6 +368,42 @@ class RunRecorder:
                 task_id: sorted(values) for task_id, values in dependencies.items()
             },
         }
+
+    def capture_worker_checkpoint(
+        self, graph: Any, *, source_run_id: str, source_snapshot_sha256: str
+    ) -> None:
+        """Expose inherited Worker outputs without recording new executions."""
+        nodes = self._artifact["nodes"]
+        if nodes or not source_run_id or source_run_id == self.run_id:
+            raise ArtifactContractError("worker_checkpoint_source_invalid")
+        self.capture_graph(graph)
+        results = graph.get_results()
+        for task_id, output in results.items():
+            task = self._artifact["graph"]["tasks"][task_id]
+            node_id = f"worker:{task_id}"
+            nodes[node_id] = {
+                "id": node_id,
+                "kind": "worker",
+                "task_id": task_id,
+                "name": task["agent_type"],
+                "status": "completed",
+                "started_at": None,
+                "completed_at": None,
+                "input": task["input"],
+                "output": _snapshot(output),
+                "error": None,
+                "elapsed_ms": None,
+                "usage": None,
+                "metadata": {"checkpoint_source_run_id": source_run_id},
+            }
+        self(
+            "benchmark.summary_checkpoint",
+            {
+                "source_run_id": source_run_id,
+                "source_snapshot_sha256": source_snapshot_sha256,
+                "reused_task_ids": sorted(results),
+            },
+        )
 
     def capture_graph_state(self, graph: Any) -> None:
         """Synchronize terminal task states after execution."""

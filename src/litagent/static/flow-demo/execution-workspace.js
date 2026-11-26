@@ -1,19 +1,33 @@
-import { buildExecutionPresentation } from "./execution-model.js?v=15.10.6.431";
-import { buildBusinessFlow } from "./execution-flow.js?v=15.10.6.431";
+import { buildExecutionPresentation } from "./execution-model.js?v=15.10.6.434";
+import { buildBusinessFlow } from "./execution-flow.js?v=15.10.6.434";
 import { renderStageOverview } from "./execution-overview.js";
 import { buildCallTimeline, renderCallTimeline } from "./execution-timeline.js";
 import {
   fitGraphToViewport,
   layoutExecutionGraph,
   renderExecutionGraph,
-} from "./execution-view.js?v=15.10.6.431";
+} from "./execution-view.js?v=15.10.6.434";
 
 const $ = (selector) => document.querySelector(selector);
+
+function statusKey(status) {
+  return "status" + String(status || "unknown").replace(/(^|_)([a-z])/g,
+    (_match, _prefix, letter) => letter.toUpperCase());
+}
+
+function currentSteps(nodes, runStatus) {
+  if (runStatus === "awaiting_human") return nodes.filter(node => node.status === "awaiting_human");
+  if (runStatus !== "running" && runStatus !== "cancelling") return [];
+  const running = nodes.filter(node => node.status === "running" || node.status === "cancelling");
+  const parents = new Set(running.map(node => node.parentTaskId || node.execution?.parentTaskId));
+  return running.filter(node => !parents.has(node.id) && !parents.has(node.execution?.taskId ?? node.id));
+}
 
 export function createExecutionWorkspace({ store, t, onInspect }) {
   let currentLayout = null;
   let pendingFitSignature = null;
   let graphPan = null;
+  let progressSignature = null;
 
   function update(patch) {
     const runId = store.get().view?.identity?.runId;
@@ -21,10 +35,7 @@ export function createExecutionWorkspace({ store, t, onInspect }) {
   }
 
   function status(node) {
-    const key = `status${String(node.status || "unknown").replace(
-      /(^|_)([a-z])/g,
-      (_match, _prefix, letter) => letter.toUpperCase(),
-    )}`;
+    const key = statusKey(node.status === "done" ? "completed" : node.status);
     const elapsed = node.durationMs == null
       ? ""
       : ` · ${(node.durationMs / 1000).toFixed(1)}${t("secondsShort")}`;
@@ -79,6 +90,47 @@ export function createExecutionWorkspace({ store, t, onInspect }) {
     });
   }
 
+  function renderProgress(view, steps) {
+    const bar = $("#execution-progress");
+    bar.hidden = !view;
+    if (!view) { delete bar.dataset.runId; progressSignature = null; return; }
+    const runStatus = view.identity?.status || view.summary?.status || "unknown";
+    const names = steps.map(node => {
+      const name = node.labelKey && node.labelKey !== "taskOther" ? t(node.labelKey) : node.name;
+      return node.round ? `${name} · ${t("flowRound")} ${node.round}` : name;
+    });
+    const signature = JSON.stringify([view.identity?.key, store.get().locale, runStatus, steps.map(node => node.id), names]);
+    if (signature === progressSignature) return;
+    progressSignature = signature;
+    bar.dataset.runId = view.identity?.runId || "";
+    bar.dataset.status = runStatus;
+    $("#execution-run-state").textContent = t(statusKey(runStatus));
+    const label = $("#execution-current-label");
+    label.textContent = steps.length ? t("flowCurrentSteps") : runStatus === "running" ? t("flowAwaitingStep") : "";
+    const links = $("#execution-current-steps");
+    links.replaceChildren();
+    steps.forEach((node, index) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = names[index];
+      button.title = t("flowLocateStep");
+      button.addEventListener("click", () => {
+        const graph = $("#execution-graph");
+        const position = currentLayout?.byId.get(node.id);
+        if (!position) return;
+        // Switch modes before measuring a previously hidden graph.
+        if (graph.hidden) update({ mode: "dag" });
+        const scale = Math.max(1, store.getExecutionUi(view.identity.runId).scale);
+        update({
+          fittedSignature: currentLayout.signature, scale, selectedNodeId: node.id,
+          translateX: graph.clientWidth / 2 - (position.x + position.width / 2) * scale,
+          translateY: graph.clientHeight / 2 - (position.y + position.height / 2) * scale,
+        });
+      });
+      links.append(button);
+    });
+  }
+
   function render(view) {
     const runId = view?.identity?.runId;
     const ui = store.getExecutionUi(runId);
@@ -87,6 +139,8 @@ export function createExecutionWorkspace({ store, t, onInspect }) {
     const graph = buildBusinessFlow(presentation, source.nodes);
     graph.signature = `TB:${graph.signature}`;
     currentLayout = layoutExecutionGraph(graph, { direction: "TB" });
+    const active = currentSteps(graph.nodes, view?.identity?.status || view?.summary?.status);
+    renderProgress(view, active);
 
     const diagnostic = $("#graph-diagnostic");
     const messages = presentation.diagnostics.map((item) => item.code === "missing_dependency"
@@ -121,6 +175,8 @@ export function createExecutionWorkspace({ store, t, onInspect }) {
       onSelect: select,
     });
     renderExecutionGraph($("#execution-graph"), currentLayout, select, {
+      activeIds: new Set(active.map(node => node.id)),
+      activeLabel: t("flowCurrentSteps"),
       scale: ui.scale,
       translateX: ui.translateX,
       translateY: ui.translateY,
@@ -153,7 +209,10 @@ export function createExecutionWorkspace({ store, t, onInspect }) {
       && ui.fittedSignature !== graph.signature
       && pendingFitSignature !== graph.signature) {
       pendingFitSignature = graph.signature;
-      requestAnimationFrame(() => fit(graph.signature));
+      requestAnimationFrame(() => {
+        if (pendingFitSignature === graph.signature
+          && store.getExecutionUi(runId).fittedSignature !== graph.signature) fit(graph.signature);
+      });
     }
   }
 

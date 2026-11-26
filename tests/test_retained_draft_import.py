@@ -1,27 +1,21 @@
-"""Check frozen import before dispatch and replay the bounded c38 summary retry."""
+"""Check frozen import, settled historical receipts, and current Evaluation."""
 
 import copy
 import hashlib
-import importlib.util
 import json
-import shutil
 from pathlib import Path
 from types import SimpleNamespace
 
-import httpx
 import pytest
-from openai import AsyncOpenAI
 from test_native_report_input import source
-from test_native_responses import envelope
-from test_responses_stream import WireStream, frame
 from test_writer_v2 import case  # noqa: F401
 
-from litagent import review_policy, stage_repair
 from litagent.frozen_writing import import_retained_draft
-from litagent.quality import digest, repair_attempts_remaining
-from litagent.writing_v2 import WriterError, compile_document, refresh_summaries
+from litagent.llm.responses import decode_private_receipt
+from litagent.safety.planned_accounting import validate_accounting_snapshot
+from litagent.safety.planned_budget import PlannedBudget
+from litagent.writing_v2 import WriterError
 
-ARCHIVE_SHA = "6f3e06719bfc7de8e3d21e39f91f573b935986839cf864a4a7ecb96cb2854f84"
 REAL = (
     Path(__file__).resolve().parents[1]
     / "artifacts/acceptance/vit14-failure-attribution/report-review-no-omissions-once"
@@ -97,126 +91,53 @@ def test_import_checks_the_retained_draft(case, tmp_path, fault):
     assert retained["editorial_history"] == []
 
 
-@pytest.mark.asyncio
-async def test_real_c38_receipt_retries_only_the_summary(tmp_path, monkeypatch):
-    """Reopen real settled receipts and substitute only the next HTTP response."""
+def test_real_c38_receipt_is_readable_but_cannot_resume_on_current_identity():
+    """Authenticate the settled invalid summary without reopening its old ledger."""
     if not REAL.exists():
         pytest.skip("requires the private settled 34-card ViT archive")
-    spec = importlib.util.spec_from_file_location(
-        "vit_frozen_receipt_fixture", REAL / "run.py"
+    originals = {
+        name: (REAL / name).read_bytes()
+        for name in (
+            "evaluated.json",
+            "budget-plan.json",
+            "ledger.json",
+            "repairs.json.writer-v2.json",
+        )
+    }
+    report, plan, ledger, writer = map(json.loads, originals.values())
+    snapshot = validate_accounting_snapshot(ledger, expected_plan=plan)
+    failure = report["metadata"]["writer_failure"]
+    assert failure["code"] == "writer_inline_citation_unknown"
+    assert (
+        failure["source_report_sha256"]
+        == hashlib.sha256(report["survey"].encode()).hexdigest()
     )
-    fixture = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(fixture)
-    monkeypatch.setenv("LLM_API_KEY", "offline-key")
-    cfg, _, _, source_input, _, plan = fixture.prepare()
-    plan_file = json.loads((REAL / "budget-plan.json").read_text())
-    assert plan == plan_file
-    for name in ("ledger.json", "repairs.json", "repairs.json.writer-v2.json"):
-        shutil.copyfile(REAL / name, tmp_path / name)
-    report = json.loads((REAL / "evaluated.json").read_text())
-    calls = []
+    [diagnostic] = failure["diagnostics"]
+    assert diagnostic["reference"] == "c38"
+    assert diagnostic["path"] == ["conclusion", 0, 0]
+    assert "c38" not in report["metadata"]["writer_document"]["aliases"]
 
-    def transport(request):
-        wire = json.loads(request.content)
-        assert request.url.path.endswith("/responses")
-        assert set(wire["text"]["format"]["schema"]["properties"]) == {
-            "abstract",
-            "conclusion",
-        }
-        calls.append(request)
-        # The replacement is a test response grounded in the original body.
-        # Its local validity is independent of any scientific score.
-        response = envelope(original_summary, model=wire["model"])
-        return httpx.Response(
-            200,
-            headers={"content-type": "text/event-stream"},
-            stream=WireStream([frame("response.completed", 0, response=response)]),
-        )
+    summary = writer["calls"]["summary_repair_1"]
+    wire, response = decode_private_receipt(summary["provider_receipt"])
+    assert set(wire["text"]["format"]["schema"]["properties"]) == {
+        "abstract",
+        "conclusion",
+    }
+    [message] = [row for row in response["output"] if row["type"] == "message"]
+    [content] = message["content"]
+    assert content["text"] == summary["raw"]
+    text = json.loads(content["text"])["conclusion"][0]["text"]
+    assert text[diagnostic["offset"] :].startswith("[C:c38]")
+    settlement = snapshot["entries"][f"{writer['identity']}:summary_repair_1"]
+    assert settlement["stage"] == "evaluation_revision/summary"
+    assert settlement["status"] == "settled" and settlement["sent"]
+    assert settlement["actual_tokens"] == response["usage"]["total_tokens"] == 12926
+    assert snapshot["requests_sent"] == 15 and not snapshot["usage_uncertain"]
 
-    monkeypatch.setattr(
-        "litagent.llm.client.AsyncOpenAI",
-        lambda **kw: AsyncOpenAI(
-            **kw,
-            http_client=httpx.AsyncClient(
-                transport=httpx.MockTransport(transport), trust_env=False
-            ),
-        ),
-    )
-    agent = fixture.LitAgent(cfg)
-    agent._cost_budget = fixture.CostBudget(cfg.safety.max_cost_tokens)
-    agent._cost_budget.activate_plan(plan, path=tmp_path / "ledger.json")
-    agent._wire_llms()
-    try:
-        doc = source_input["writer_document"]
-        session = fixture.writer_session(
-            agent._stage_llm("generation"), tmp_path / "repairs.json", fixture.RUN, doc
-        )
-        retained = import_retained_draft(
-            session,
-            source_input,
-            archive_path=fixture.fx.paths["upstream"],
-            archive_sha256=ARCHIVE_SHA,
-            report_sha256=fixture.base.REPORT,
-        )
-        original_summary = session.journal["calls"]["local_summary"]["raw"]
-        origin = session.state["attempts"][0]
-        provenance = origin["provenance"]
-        body = copy.deepcopy(doc["body"])
-        for tid, target in sorted(
-            provenance["targets"].items(),
-            key=lambda item: tuple(item[1]["path"]),
-            reverse=True,
-        ):
-            sec, pi, si = target["path"]
-            body[sec][pi]["sentences"][si : target.get("end", si + 1)] = provenance[
-                "replacements"
-            ][tid]
-        assert digest(body) == origin["candidate_sha256"]
-        failure = report["metadata"]["writer_failure"]
-        assert failure["diagnostics"][0]["reference"] == "c38"
-        decision = stage_repair.reject_candidate(
-            session,
-            WriterError(failure["code"], failure["family"], failure["diagnostics"]),
-            retained,
-            category="evaluation_revision",
-            body=body,
-        )
-        assert decision["action"] == "repair_summary" and decision["remaining"] == 2
-        assert agent._cost_budget.snapshot()["requests_sent"] == 15 and calls == []
-        session = fixture.writer_session(
-            agent._stage_llm("generation"), tmp_path / "repairs.json", fixture.RUN, doc
-        )
-        targets = origin["patch_request"]["targets"]
-        with (
-            review_policy.partition("evaluation_revision"),
-            stage_repair.policy(session.envelope),
-        ):
-            resumed = await session.patch(doc["body"], targets, cause="evaluation")
-            assert resumed == body and not calls
-            summaries = await refresh_summaries(
-                session, doc["body"], resumed, doc["summaries"], targets
-            )
-        text, bindings = compile_document(
-            resumed,
-            summaries,
-            retained["fact_cards"],
-            doc["aliases"],
-            retained["report_language"],
-            retained["review_methodology"],
-            writing_plan=session.writing_plan,
-            envelope=session.envelope,
-        )
-        assert (
-            len(calls) == 1
-            and text != retained["draft"]
-            and hashlib.sha256(text.encode()).hexdigest() == bindings["report_sha256"]
-        )
-        assert session.state["attempts"][-1]["operation"] == "summary_only"
-        assert repair_attempts_remaining(session.state, "evaluation_revision") == 1
-        assert agent._cost_budget.snapshot()["requests_sent"] == 16
-        assert json.loads((REAL / "ledger.json").read_text())["requests_sent"] == 15
-    finally:
-        await agent.cleanup()
+    # Current summary-only continuation is tested with a current writer identity.
+    with pytest.raises(ValueError, match="stage_repair_identity_invalid"):
+        PlannedBudget(plan)
+    assert all((REAL / name).read_bytes() == raw for name, raw in originals.items())
 
 
 @pytest.mark.asyncio
