@@ -18,6 +18,7 @@ for a separate paper-by-paper audit. The formal controlled baseline is pending.
 | [September 2026 NeRF run](results/post-repair-pilot-2026-09-08.md) | One full-text run with a same-model Judge | Runtime Faithfulness was 0.8958 and delivery was marked ready under that run's policy. |
 | [Revision case 377 → 380](../../src/litagent/static/presentation/frozen-repair-377-380.json) | One report revised using frozen evidence | In the final reassessment, all 398 extracted scientific assertions were supported. |
 | [November 2026 run 055](../../docs/closeout.md) | One of three planned topics ran | The Reviewer reached its output limit. Evaluation did not run. |
+| [Survey quality and latency experiment](results/latency-faithfulness-95/README.md) | 21 original slots, with 29 execution records including retries and diagnostics | Strict delivery rose from 11/21 to 16/21 after recorded live retries. Each run includes a process snapshot. |
 
 ## Inspect a benchmark plan
 

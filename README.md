@@ -77,7 +77,7 @@ RRF + reranker 的 nDCG@10 达到 0.9406，p50 延迟为 647 ms；MiniLM + RRF
 
 五份报告的引用 ID 有效性和内部一致性均为 100%，必覆盖论文的终稿引用召回均为 0%。`few-shot-metric / external-only / r2` 重建后摘要和结论各为 104 词，均通过 250 词检查。保留稿仍有 39 条断言未获支持。
 
-续跑耗时从摘要检查点算至 Survey 完成。6 次续跑共新增 111 次模型请求，已结算 2,771,754 Token。逐次记录和工作台入口可通过本地查看器访问。[实验与查看器说明](./benchmarks/survey/README.md#survey-latency-and-the-095-delivery-experiment) · [本地 Benchmark](http://127.0.0.1:8765/benchmark)
+续跑耗时从摘要检查点算至 Survey 完成。6 次续跑共新增 111 次模型请求，已结算 2,771,754 Token。每次运行的指标和过程快照可在 GitHub 上查看。[Survey Benchmark](./benchmarks/survey/results/latency-faithfulness-95/README.md)
 
 ## 效果展示
 
