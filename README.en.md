@@ -83,7 +83,7 @@ The original matrix had **11/21** strict passes. The count rose to **12/21** aft
 
 All five reports scored 100% for citation ID validity and internal consistency. Final-report citation recall for required papers was 0% in all five. The rebuilt `few-shot-metric / external-only / r2` abstract and conclusion each passed the 250-word check at 104 words. The retained draft still had 39 unsupported claims.
 
-Continuation time runs from the summary checkpoint to Survey completion. The six continuation runs added 111 model requests and 2,771,754 tokens, all accounted for. The local viewer lists each run and its Workbench link. [Experiment and viewer instructions](./benchmarks/survey/README.md#survey-latency-and-the-095-delivery-experiment) · [Local Benchmark](http://127.0.0.1:8765/benchmark)
+Continuation time runs from the summary checkpoint to Survey completion. The six continuation runs added 111 model requests and 2,771,754 tokens, all accounted for. GitHub displays the metrics and execution snapshot for each run. [Survey Benchmark](./benchmarks/survey/results/latency-faithfulness-95/README.md)
 
 ## Demo
 
