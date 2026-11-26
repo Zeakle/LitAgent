@@ -1,0 +1,49 @@
+name: Survey Benchmark Pages
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/survey-benchmark-pages.yml
+      - scripts/build_survey_benchmark_pages.py
+      - benchmarks/survey/pages/**
+      - benchmarks/survey/results/latency-faithfulness-95/execution-data/**
+      - src/litagent/static/flow-demo/*.js
+      - src/litagent/static/flow-demo/styles.css
+
+permissions: {}
+
+concurrency:
+  group: survey-benchmark-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/configure-pages@v5
+      - name: Build static viewer
+        run: python3 scripts/build_survey_benchmark_pages.py --output _site
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy static viewer
+        id: deployment
+        uses: actions/deploy-pages@v4
