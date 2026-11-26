@@ -459,7 +459,7 @@ def project_execution(row, archive, public_run_ids):
         "delivery": {"status": summary["delivery"], "reason_codes": reasons},
         "quality": {"status": label(quality, STATES)} if quality in STATES else None,
         "metrics": project_metrics(row),
-        "report": project_report(archive.get("report"), row.get("report_sha256")),
+        "report": project_report(archive, row.get("report_sha256")),
         "step_io": step_io,
     }
 

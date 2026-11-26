@@ -122,6 +122,9 @@
 .archive-report-header p { margin: 7px 0 0; color: var(--muted); font-size: 13px; }
 .archive-report .report-document { padding-bottom: 36px; }
 .archive-report .report-document:has(> .archive-report-source) { padding-top: 20px; }
+.archive-report .report-document a[href^="#archive-ieee-reference-"] { color: var(--accent); }
+.archive-report .report-document [id^="archive-ieee-reference-"] { scroll-margin-top: 24px; }
+.archive-report .report-document [id^="archive-ieee-reference-"]:target { background: var(--accent-soft); }
 
 .archive-report-markdown {
   border-top: 1px solid var(--line);

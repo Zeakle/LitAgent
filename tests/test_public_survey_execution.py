@@ -161,4 +161,58 @@ def test_generation_failure_notice_is_not_report_prose():
             "faithfulness": {"details": {"skipped_reason": "final_report_unavailable"}}
         },
     }
-    assert project_report(report, sha256(report["survey"].encode()).hexdigest()) is None
+    assert (
+        project_report(
+            {"report": report}, sha256(report["survey"].encode()).hexdigest()
+        )
+        is None
+    )
+
+
+def test_public_report_uses_ieee_numbers_and_references_without_mutating_source():
+    markdown = "# Survey\n\nFirst [E:a]. Second [E:b]. First again [E:a2].\n"
+    papers = [
+        {
+            "paper_id": "arxiv:2010.11929",
+            "title": "A Study",
+            "author_details": [{"given": "Alice", "family": "Chen"}],
+            "year": 2020,
+        },
+        {
+            "paper_id": "arxiv:2202.01301",
+            "title": "The Second Study",
+            "authors": ["Taylor Smith"],
+            "year": 2022,
+        },
+    ]
+    archive = {
+        "run_id": "ieee-public",
+        "report": {"survey": markdown},
+        "nodes": {
+            "worker:dedup": {"output": papers},
+            "worker:extract": {
+                "output": [
+                    {
+                        "evidence_items": [
+                            {"evidence_id": eid, "paper_id": papers[index]["paper_id"]}
+                            for eid, index in (("a", 0), ("b", 1), ("a2", 0))
+                        ]
+                    }
+                ],
+            },
+        },
+    }
+    digest = sha256(markdown.encode()).hexdigest()
+
+    report = project_report(archive, digest)
+
+    assert report["markdown"] == markdown
+    assert report["source_sha256"] == digest
+    html = report["html"]
+    assert 'First <a href="#citation-1">[1]</a>' in html
+    assert 'Second <a href="#citation-2">[2]</a>' in html
+    assert 'First again <a href="#citation-3">[1]</a>' in html
+    assert '<h2 id="references">References</h2>' in html
+    assert "<p>[1]" in html and "A. Chen, “A Study,”" in html
+    assert "<p>[2]" in html and "Taylor Smith, “The Second Study,”" in html
+    assert "[E:" not in html
