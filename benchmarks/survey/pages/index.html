@@ -33,6 +33,11 @@
           <dl id="archive-metrics"></dl>
         </section>
 
+        <nav id="archive-views" class="section-tabs archive-views" aria-label="Run views" data-i18n-label="archiveViews">
+          <button type="button" data-archive-view="execution" aria-controls="section-execution" aria-current="page" data-i18n="archiveExecutionTab">执行过程</button>
+          <button type="button" data-archive-view="report" aria-controls="section-report" data-i18n="archiveReportTab">报告正文</button>
+        </nav>
+
         <section id="section-execution" class="workbench-section execution-section" aria-labelledby="execution-title">
           <header class="execution-toolbar">
             <div><h2 id="execution-title" data-i18n="executionFlow">Agent 执行流程</h2></div>
@@ -77,6 +82,18 @@
             <div id="execution-timeline" class="execution-timeline" hidden><div id="timeline" class="timeline"></div></div>
           </div>
           <button id="history-collapse" type="button" hidden></button>
+        </section>
+
+        <section id="section-report" class="archive-report" aria-labelledby="archive-report-title" hidden>
+          <header class="archive-report-header">
+            <h2 id="archive-report-title" data-i18n="archiveReportTab">报告正文</h2>
+            <p id="archive-report-status" hidden></p>
+          </header>
+          <article id="archive-report-document" class="report-document"></article>
+          <details id="archive-report-markdown" class="archive-report-markdown" hidden>
+            <summary data-i18n="archiveReportSource">原始 Markdown</summary>
+            <pre class="archive-report-source"></pre>
+          </details>
         </section>
 
         <details id="archive-stages" class="archive-stages" hidden>

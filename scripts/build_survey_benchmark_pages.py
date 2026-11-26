@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import shutil
@@ -21,6 +22,7 @@ WORKBENCH_FILES = (
     "execution-view.js",
     "execution-workspace.js",
     "i18n.js",
+    "report-view.js",
     "state.js",
     "styles.css",
 )
@@ -42,7 +44,12 @@ RUN_VIEW_FIELDS = {
     "delivery",
     "quality",
     "metrics",
+    "report",
+    "step_io",
 }
+REPORT_FIELDS = {"markdown", "source_sha256", "state", "html"}
+STEP_SIDES = {"input", "output"}
+STEP_FIELDS = STEP_SIDES | {"status", "omitted"}
 
 
 def _regular_file(path: Path) -> Path:
@@ -54,7 +61,85 @@ def _regular_file(path: Path) -> Path:
 
 def _read_json(path: Path) -> object:
     """Read a single expected public data file."""
-    return json.loads(_regular_file(path).read_text(encoding="utf-8"))
+    return json.loads(
+        _regular_file(path).read_text(encoding="utf-8"),
+        object_pairs_hook=_unique_members,
+        parse_constant=_invalid_json_number,
+    )
+
+
+def _unique_members(members: list[tuple[str, object]]) -> dict[str, object]:
+    """Prevent duplicate keys from hiding unvalidated data in the published file."""
+    result = dict(members)
+    if len(result) != len(members):
+        raise ValueError("Duplicate member in public execution JSON")
+    return result
+
+
+def _invalid_json_number(number: str) -> None:
+    """Reject Python JSON extensions that cannot be read by the browser."""
+    raise ValueError(f"Invalid number in public execution JSON: {number}")
+
+
+def _validate_report(report: object, run_id: str) -> None:
+    """Check the report fields and verify its exact archived Markdown hash."""
+    if report is None:
+        return
+    if (
+        not isinstance(report, dict)
+        or report.keys() != REPORT_FIELDS
+        or report["state"] not in ("complete", "partial")
+        or not isinstance(report["markdown"], str)
+        or not report["markdown"].strip()
+        or not isinstance(report["html"], str)
+        or not report["html"].strip()
+    ):
+        raise ValueError(f"Invalid public report for {run_id}")
+    if (
+        hashlib.sha256(report["markdown"].encode("utf-8")).hexdigest()
+        != report["source_sha256"]
+    ):
+        raise ValueError(f"Public report hash mismatch for {run_id}")
+
+
+def _validate_step_io(view: dict, run_id: str) -> None:
+    """Require every detail record to resolve to a visible task, node, or event."""
+    graph, events, steps = view["graph"], view["events"], view["step_io"]
+    if (
+        not isinstance(graph, dict)
+        or not isinstance(graph.get("tasks"), dict)
+        or not isinstance(graph.get("nodes"), dict)
+        or not isinstance(events, list)
+        or not isinstance(steps, dict)
+    ):
+        raise ValueError(f"Invalid public step IO for {run_id}")
+    sequences = [
+        event.get("sequence") if isinstance(event, dict) else None for event in events
+    ]
+    if any(type(sequence) is not int or sequence < 1 for sequence in sequences):
+        raise ValueError(f"Invalid public event sequence for {run_id}")
+    event_ids = {f"event:sequence:{sequence}" for sequence in sequences}
+    if len(event_ids) != len(events):
+        raise ValueError(f"Duplicate public event sequence for {run_id}")
+    references = graph["tasks"].keys() | graph["nodes"].keys() | event_ids
+    for key, detail in steps.items():
+        if (
+            key not in references
+            or not isinstance(detail, dict)
+            or not detail.keys() <= STEP_FIELDS
+            or detail.get("status") not in ("recorded", "reused", "planned")
+        ):
+            raise ValueError(f"Invalid public step IO for {run_id}")
+        omitted = detail.get("omitted", [])
+        recorded = STEP_SIDES & detail.keys()
+        if (
+            not isinstance(omitted, list)
+            or any(side not in ("input", "output") for side in omitted)
+            or len(omitted) != len(set(omitted))
+            or not (recorded or omitted)
+            or any(not isinstance(detail[side], (dict, list)) for side in recorded)
+        ):
+            raise ValueError(f"Invalid public step payload for {run_id}")
 
 
 def _run_files(directory: Path) -> list[Path]:
@@ -85,6 +170,8 @@ def _run_files(directory: Path) -> list[Path]:
             or view["identity"].get("runId") != run_id
         ):
             raise ValueError(f"Invalid public execution view for {run_id}")
+        _validate_report(view["report"], run_id)
+        _validate_step_io(view, run_id)
         files.add(path)
     if set(directory.iterdir()) != files:
         raise ValueError("Execution data contains unindexed files")
